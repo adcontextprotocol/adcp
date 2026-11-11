@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/catalog-ingestion-capability.json",
+  "title": "Catalog Ingestion Capability",
+  "description": "Seller-wide ingestion contract for buyer-managed catalogs sent through sync_catalogs. Presence in media_buy.features requires catalog_management: true. A seller MUST reject an unlisted catalog type, ingestion mode, feed format, or explicitly supplied content_id_type outside a declared supported_content_id_types list with UNSUPPORTED_FEATURE before mutation, including on dry runs. A missing declaration means support is unknown, not unrestricted. Product catalog_types remains authoritative for serving eligibility.",
+  "x-adcp-hoist": true,
+  "type": "object",
+  "properties": {
+    "accepted_catalog_types": {
+      "type": "array",
+      "description": "Catalog types accepted by sync_catalogs. The agent-wide union of product catalog_types; accepting a type does not mean every product can serve it.",
+      "items": { "$ref": "/schemas/enums/catalog-type.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ingestion_modes": {
+      "type": "array",
+      "description": "Supported catalog sources: feed_url fetches Catalog.url; inline_items accepts Catalog.items. Catalog references without either field are not a new ingestion mode.",
+      "items": { "type": "string", "enum": ["feed_url", "inline_items"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "supported_feed_formats": {
+      "type": "array",
+      "description": "External feed formats the seller parses. Required when feed_url is supported; an empty list means no external formats are accepted. Native AdCP offering feeds omit feed_format and are governed by accepted_catalog_types and ingestion_modes. custom uses the existing buyer-supplied feed_field_mappings contract.",
+      "items": { "$ref": "/schemas/enums/feed-format.json" },
+      "uniqueItems": true
+    },
+    "supported_content_id_types": {
+      "type": "array",
+      "description": "Identifier types the seller can key catalog items by for conversion matching. When declared, an explicitly supplied Catalog.content_id_type MUST be listed. An empty list accepts none of the named types. Absence leaves identifier support unknown; buyers using custom identifiers continue to omit content_id_type.",
+      "items": { "$ref": "/schemas/enums/content-id-type.json" },
+      "uniqueItems": true
+    },
+    "max_inline_items_per_request": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum total number of inline items across all catalogs in one sync_catalogs request. Applicable only with inline_items support. A seller MUST reject excess items with INVALID_REQUEST before mutation. Absence means the limit is unknown, not unlimited."
+    },
+    "item_status_reporting": {
+      "type": "string",
+      "enum": ["per_item", "feed_level"],
+      "description": "per_item: terminal results for created, updated, or unchanged catalogs MUST include exactly one catalogs[].item_issues entry for every item in the resulting catalog, including approved and pending items, with its canonical item_id and catalog-item-status. This includes discovery-only reads of accessible buyer-managed catalogs, which MUST return current statuses without re-ingestion or restarting review. The number of unique item_id entries MUST equal item_count. Buyers use a fresh idempotency_key for each current read; replayed results are historical snapshots. feed_level: only catalog/feed registration is confirmed, without complete item outcomes. Neither mode guarantees that every item is approved; feed_level does not prove a fetched revision. Dry-run statuses are previews, not live eligibility."
+    }
+  },
+  "required": ["accepted_catalog_types", "ingestion_modes", "item_status_reporting"],
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "required": ["ingestion_modes"],
+        "properties": {
+          "ingestion_modes": { "contains": { "const": "feed_url" } }
+        }
+      },
+      "then": { "required": ["supported_feed_formats"] }
+    },
+    {
+      "if": { "required": ["max_inline_items_per_request"] },
+      "then": {
+        "properties": {
+          "ingestion_modes": { "contains": { "const": "inline_items" } }
+        }
+      }
+    }
+  ]
+}

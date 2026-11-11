@@ -1,0 +1,757 @@
+{
+  "$comment": "The proposed core delta, grouped by the layer that owns each changed file (core/placement.json, the final layout: kernel, kernel types, nine standard modules, and buying's eight layers). build-core.mjs applies it to core/upstream/ (verbatim adcp-main) and writes core/schemas/. Each layer then hashes to its frozen digest in core/release.json. The kernel (`core`) adds only the generic mechanism: the entry schema, the branch id, the hook annotation vocabulary, the negotiation fields, and the task union on its own declaration type. It names no module's host object and no extension's task. Each module, or each buying layer, declares its own hooks on its own schemas; in this example every module hook sits in a buying layer: pricing, commitment, or execution. Ops: create (new file), add (new key at a JSON pointer), append (push to an existing array), widen (an existing schema becomes anyOf[old, value]; accepts everything it accepted before), and compose (the 3.4 registry composition: a $ref to a module-owned definition becomes allOf[kernel type from registries, the inlined definition]; accepts exactly what it accepted before). The groups kernel-types, accounts, buying/supply, and the extra patches in buying/commitment and buying/execution apply the final layout's 3.4 fixes, each with its fix id: kernel types with registry composition, and x-adcp-bridge-point annotations on the host properties that bridges fill. After them the vendored subset breaks no layout rule. Nothing upstream is removed or renamed, and no core schema $refs an extension.",
+  "registries": {
+    "/schemas/core/canonical-format-kind.json": "/schemas/core/format-kind-id.json",
+    "/schemas/enums/indicator-type.json": "/schemas/core/indicator-type-id.json",
+    "/schemas/core/assets/image-asset.json": "/schemas/core/media-asset.json",
+    "/schemas/core/assets/video-asset.json": "/schemas/core/media-asset.json",
+    "/schemas/core/assets/markdown-asset.json": "/schemas/core/media-asset.json",
+    "/schemas/core/assets/url-asset.json": "/schemas/core/media-asset.json",
+    "/schemas/core/assets/published-post-asset.json": "/schemas/core/media-asset.json"
+  },
+  "layers": [
+    {
+      "layer": "core",
+      "role": "kernel",
+      "summary": "Generic hook mechanism: entry schema, branch id, annotation vocabulary, declaration (with the contributed-task union), request-side negotiation.",
+      "patches": [
+        {
+          "op": "create",
+          "file": "core/extension-hook.json",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/core/extension-hook.json",
+            "title": "Extension Hook",
+            "description": "The vocabulary a schema uses to open a hook for extensions. The kernel defines the two annotation keywords and their rules. The schema that owns a host object declares each hook on that object; the kernel lists no module's hooks. `x-adcp-extension-point` (value: ExtensionPoint) marks a property that carries extension data. `x-adcp-open-union` (value: OpenUnion) marks a host object whose discriminator accepts an ExtensionBranchId besides its closed values. Rules: (1) extension data appears only at a declared hook; (2) hook names are unique across the kernel and all modules, and each hook has a contract major in the release manifest of the layer that declares it; (3) a receiver understands an entry only when it holds a module for the exact uri@digest; (4) an unknown entry is rejected when it is must-understand and ignored otherwise, except that an unknown open-union branch on an array item is dropped with a warning when the union declares unknown_in_list drop_option; (5) a sender MUST NOT send must-understand extension data to a caller that did not list its uri@digest in understood_extensions: it omits the entry, or the object that carries it; (6) validators MUST register both keywords as annotations; (7) an extension adds a task by registering a branch of the kernel's `task` union (core/extension-declaration.json): the task id is the branch id, and an agent serves the task under the transport name its declaration maps to that id.",
+            "definitions": {
+              "HookName": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 64},
+              "MustUnderstand": {
+                "type": "string",
+                "enum": ["always", "flag", "never"],
+                "description": "always: every entry is must-understand whatever its flag (binding data, such as data under terms_digest). flag: an entry is must-understand when its must_understand is true. never: readback; receivers MAY ignore every entry."
+              },
+              "ExtensionPoint": {
+                "title": "Extension Point",
+                "type": "object",
+                "properties": {
+                  "name": {"$ref": "#/definitions/HookName"},
+                  "must_understand": {"$ref": "#/definitions/MustUnderstand"},
+                  "order": {
+                    "type": "string",
+                    "enum": ["uri"],
+                    "description": "Entries are unique by uri and in ascending uri order, so equal content serializes to equal bytes and equal digests."
+                  },
+                  "identity": {
+                    "type": "string",
+                    "enum": ["entry", "enclosing"],
+                    "default": "entry",
+                    "description": "entry: the value is an array of ExtensionEntry. enclosing: the value is the data of the extension that the nearest enclosing object names by uri and digest (an ExtensionDeclaration)."
+                  }
+                },
+                "required": ["name", "must_understand"],
+                "additionalProperties": false
+              },
+              "OpenUnion": {
+                "title": "Open Union",
+                "type": "object",
+                "description": "By default a branch is must-understand: a receiver that does not understand the branch cannot act on the host object, so it rejects the host, or drops it from its array when the union's unknown_in_list is drop_option. With identity entry, the branch's body is an ExtensionEntry whose uri is the part of the branch id before '#'. With identity enclosing, the host carries no body: the nearest enclosing object names the extension by uri and digest, and that uri MUST equal the part of the branch id before '#'.",
+                "properties": {
+                  "name": {"$ref": "#/definitions/HookName"},
+                  "discriminator": {"type": "string", "minLength": 1},
+                  "body": {"type": "string", "minLength": 1},
+                  "identity": {
+                    "type": "string",
+                    "enum": ["entry", "enclosing"],
+                    "default": "entry",
+                    "description": "entry: the host's body property carries the branch's ExtensionEntry. enclosing: the nearest enclosing object (an ExtensionDeclaration) names the extension; the host has no body."
+                  },
+                  "must_understand": {
+                    "type": "string",
+                    "enum": ["always", "never"],
+                    "default": "always",
+                    "description": "always: a branch the receiver does not understand makes the host unusable (rejected, or dropped per unknown_in_list). never: the host only offers something, such as a task an agent serves, so a receiver ignores a branch it does not understand."
+                  },
+                  "branch_requires": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                    "uniqueItems": true,
+                    "description": "Keys an extension manifest MUST give when it registers a branch in this union. This is the owning module's contract for branches."
+                  },
+                  "unknown_in_list": {
+                    "type": "string",
+                    "enum": ["drop_option", "reject"],
+                    "default": "reject",
+                    "description": "What a receiver does with a host object whose branch it does not understand, when that host is an item of an array (one alternative in a list of alternatives). drop_option: the receiver drops that item, records a warning, and keeps the rest of the message; if it drops every item of the array, it rejects the enclosing object. reject: the receiver rejects the enclosing object. A host that is not an array item is always rejected. The owning module sets the policy, and MUST NOT set drop_option on a union whose hosts can be array items inside data covered by terms_digest, so signed terms always fail closed."
+                  }
+                },
+                "required": ["name", "discriminator"],
+                "if": {"properties": {"identity": {"const": "enclosing"}}, "required": ["identity"]},
+                "then": {"not": {"required": ["body"]}},
+                "else": {"required": ["body"]},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "op": "create",
+          "file": "core/extension-branch-id.json",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/core/extension-branch-id.json",
+            "title": "Extension Branch Id",
+            "description": "Discriminator value for a branch that an extension registers in an open union: the extension uri, '#', and the branch name. It carries no digest, so code that switches on it survives a new digest of the same extension; the branch's body (an ExtensionEntry) carries the digest. A closed value of a union never matches this pattern.",
+            "type": "string",
+            "pattern": "^https://[^\\s#@]+#[a-z][a-z0-9_]*$",
+            "maxLength": 512
+          }
+        },
+        {
+          "op": "create",
+          "file": "core/extension-entry.json",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/core/extension-entry.json",
+            "title": "Extension Entry",
+            "description": "The envelope for data defined by a declared extension, attached at a hook that a host schema declares (core/extension-hook.json). `uri` + `digest` identify one immutable extension definition (same reference format and fetch contract as platform-extension-ref.json). `data` is validated against that definition's schema for this hook; core never interprets it. A receiver that does not hold a module for `uri@digest` MUST reject the enclosing object when the entry is must-understand (the hook's must_understand policy, or the flag when the policy is `flag`), and MUST ignore the entry otherwise. Within one message, entries with the same `uri` MUST carry the same `digest`; divergent digests fail closed. `digest` is the SHA-256 of the RFC 8785 (JCS) serialization of the definition; producers serve the definition as its JCS bytes, so it also equals the SHA-256 of the response body.",
+            "type": "object",
+            "properties": {
+              "uri": {"$ref": "/schemas/core/platform-extension-ref.json#/properties/uri"},
+              "digest": {"$ref": "/schemas/core/platform-extension-ref.json#/properties/digest"},
+              "must_understand": {
+                "type": "boolean",
+                "default": false,
+                "description": "True when a receiver that does not understand this extension MUST NOT act on the enclosing object (the JWS `crit` rule, RFC 7515 §4.1.11). Read only at hooks whose policy is `flag`."
+              },
+              "data": {
+                "type": "object",
+                "description": "Extension data. Its schema is the extension definition's schema for this hook."
+              }
+            },
+            "required": ["uri", "digest", "data"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "op": "create",
+          "file": "core/extension-declaration.json",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/core/extension-declaration.json",
+            "title": "Extension Declaration",
+            "description": "An agent's declaration that it emits or understands one extension definition, pinned by digest. Sellers list what they may emit; buyers send what they understand so a seller can omit must-understand data the buyer cannot process. A seller MAY declare several digests of one uri.",
+            "type": "object",
+            "properties": {
+              "uri": {"$ref": "/schemas/core/platform-extension-ref.json#/properties/uri"},
+              "digest": {"$ref": "/schemas/core/platform-extension-ref.json#/properties/digest"},
+              "points": {
+                "type": "array",
+                "items": {"$ref": "/schemas/core/extension-hook.json#/definitions/HookName"},
+                "minItems": 1,
+                "uniqueItems": true,
+                "description": "Hooks at which this agent uses the extension. Hook names come from the layers' release manifests; the kernel does not enumerate them."
+              },
+              "capabilities": {
+                "type": "object",
+                "x-adcp-extension-point": {"name": "capabilities", "must_understand": "never", "identity": "enclosing"},
+                "description": "This agent's capability fragment for the extension, validated against the extension definition's schema for the `capabilities` hook. The kernel's capabilities response carries one fragment per declared extension; modules contribute their own top-level blocks."
+              },
+              "tasks": {
+                "type": "array",
+                "items": {"$ref": "#/definitions/ExtensionTask"},
+                "minItems": 1,
+                "uniqueItems": true,
+                "description": "Tasks the extension contributes that this agent serves, each under a transport name. A caller that understands the extension calls the transport name; a caller that does not ignores the entry."
+              }
+            },
+            "required": ["uri", "digest"],
+            "additionalProperties": false,
+            "definitions": {
+              "ExtensionTask": {
+                "title": "Extension Task",
+                "description": "Maps a transport name (the MCP tool name or A2A skill id) to a task an extension contributes. The task id is a branch of the kernel's `task` union: the extension uri, '#', and the task name. The request and response schemas are the definitions that the extension's manifest registers for that branch. A caller sends the request definition as the task arguments under `name`, and receives the response definition, which carries the kernel's task status. Both sides validate against the definitions of the declared uri@digest.",
+                "type": "object",
+                "x-adcp-open-union": {
+                  "name": "task",
+                  "discriminator": "task",
+                  "identity": "enclosing",
+                  "must_understand": "never",
+                  "branch_requires": ["response"]
+                },
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^x_[a-z0-9_]{1,62}$",
+                    "description": "Transport name. The `x_` prefix keeps it clear of every task a module defines; the agent picks the rest and keeps it unique among the tasks it serves."
+                  },
+                  "task": {"$ref": "/schemas/core/extension-branch-id.json"}
+                },
+                "required": ["name", "task"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "op": "add",
+          "file": "core/version-envelope.json",
+          "pointer": "/properties/understood_extensions",
+          "value": {
+            "type": "array",
+            "items": {"$ref": "/schemas/core/platform-extension-ref.json"},
+            "uniqueItems": true,
+            "maxItems": 64,
+            "description": "On a request: digest-pinned extension definitions the caller understands (uri@digest, exact match). The seller MUST NOT put must-understand extension data (an entry at an `always` hook, a flagged entry, or an open-union branch) in a response for this caller unless it is listed here; it omits the entry, or the object that carries it. Absent means the caller understands no extensions. Strict request schemas redeclare it by $ref, like adcp_version."
+          }
+        }
+      ]
+    },
+    {
+      "layer": "_assembly",
+      "role": "assembly",
+      "contributed_by": "core",
+      "summary": "The kernel's fragment of the generated capabilities response: declared_extensions, and the optional modules map (one version and digest per module and buying layer).",
+      "patches": [
+        {
+          "op": "add",
+          "file": "protocol/get-adcp-capabilities-response.json",
+          "pointer": "/properties/declared_extensions",
+          "value": {
+            "type": "array",
+            "items": {"$ref": "/schemas/core/extension-declaration.json"},
+            "uniqueItems": true,
+            "description": "Digest-pinned extension definitions this agent may emit at declared hooks, each with its capability fragment. Unlike extensions_supported (bare ext namespaces, pattern ^[a-z][a-z0-9_]*$), each entry names an exact definition."
+          }
+        },
+        {
+          "op": "add",
+          "file": "protocol/get-adcp-capabilities-response.json",
+          "pointer": "/properties/modules",
+          "value": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)?$"},
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+                "digest": {"$ref": "/schemas/core/platform-extension-ref.json#/properties/digest"}
+              },
+              "required": ["version", "digest"],
+              "additionalProperties": false
+            },
+            "description": "The version and frozen digest of each standard module and buying layer this agent implements, keyed by name (governance, buying/pricing). Optional and additive: adcp.supported_versions keeps its meaning, and extensions stay in declared_extensions. A module the agent doesn't implement is absent; a seller that doesn't negotiate proposals leaves buying/offer out. A buyer checks each entry against the module versions it was built for: the same major is compatible, and another minor only adds."
+          }
+        }
+      ]
+    },
+    {
+      "layer": "kernel-types",
+      "role": "kernel-types",
+      "summary": "3.4 kernel types for the open-id retypes (format_kind_id, indicator_type_id, media_asset), and the two kernel-type fields that $ref creative today, composed from creative's registries (same bytes).",
+      "patches": [
+        {
+          "op": "create",
+          "file": "core/format-kind-id.json",
+          "fix": "format_kind_id",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/core/format-kind-id.json",
+            "title": "Format Kind Id",
+            "description": "Open id of a format kind. Creative keeps the known values in its registry (core/canonical-format-kind.json); the build composes them into every published field typed with this id, so validation stays the same.",
+            "type": "string"
+          }
+        },
+        {
+          "op": "create",
+          "file": "core/indicator-type-id.json",
+          "fix": "indicator_type_id",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/core/indicator-type-id.json",
+            "title": "Indicator Type Id",
+            "description": "Open id of an indicator type. Creative keeps the known values in its registry (enums/indicator-type.json); the build composes them into every published field typed with this id, so validation stays the same.",
+            "type": "string"
+          }
+        },
+        {
+          "op": "create",
+          "file": "core/media-asset.json",
+          "fix": "media_asset",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/core/media-asset.json",
+            "title": "Media Asset",
+            "description": "The media asset core a module uses to carry an image, video, text, or URL asset without $ref'ing creative. Creative keeps the typed asset formats (core/assets/*.json) in its registry; the build composes the known format into every published field typed with this core, so validation stays the same.",
+            "type": "object"
+          }
+        },
+        {
+          "op": "compose",
+          "file": "core/brand-ref.json",
+          "pointer": "/properties/brand_kit_override/properties/logo",
+          "ref": "/schemas/core/assets/image-asset.json",
+          "fix": "media_asset"
+        },
+        {
+          "op": "compose",
+          "file": "core/indicator.json",
+          "pointer": "/properties/type",
+          "ref": "/schemas/enums/indicator-type.json",
+          "fix": "indicator_type_id"
+        }
+      ]
+    },
+    {
+      "layer": "accounts",
+      "role": "module",
+      "summary": "Accounts declares the extension point that bridge C2a fills (reporting delivery configs).",
+      "patches": [
+        {
+          "op": "add",
+          "file": "core/account.json",
+          "pointer": "/properties/reporting_delivery_configs/x-adcp-bridge-point",
+          "value": {"bridge": "C2a", "extension": "reliable-reporting-account-attachments"},
+          "fix": "C2a"
+        }
+      ]
+    },
+    {
+      "layer": "buying/pricing",
+      "role": "module layer",
+      "summary": "The pricing layer of buying owns the pricing hooks: the pricing_option extension point on core-model options, and the open pricing_model union with its generic extension option.",
+      "patches": [
+        {
+          "op": "create",
+          "file": "pricing-options/extension-option.json",
+          "value": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "/schemas/pricing-options/extension-option.json",
+            "title": "Extension Pricing Option",
+            "description": "A pricing option whose model an extension defines. pricing_model is the branch id (extension uri '#' branch name); extension_model carries the model's data, validated by that extension. A buyer that does not understand the branch cannot buy the option: it drops the option with a warning and keeps the product's other options (unknown_in_list: drop_option). A seller MUST NOT send the option to a caller that did not list the extension in understood_extensions. fixed_price and floor_price are absent: the model defines how the price is set. The branch's registration names the core model whose delivery metric and spend semantics apply in reporting (reports_as).",
+            "type": "object",
+            "x-adcp-open-union": {
+              "name": "pricing_model",
+              "discriminator": "pricing_model",
+              "body": "extension_model",
+              "branch_requires": ["reports_as"],
+              "unknown_in_list": "drop_option"
+            },
+            "properties": {
+              "pricing_option_id": {
+                "type": "string",
+                "description": "Unique identifier for this pricing option within the product"
+              },
+              "pricing_model": {"$ref": "/schemas/core/extension-branch-id.json"},
+              "currency": {
+                "type": "string",
+                "description": "ISO 4217 currency code. Budgets and spend stay in this currency.",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "extension_model": {"$ref": "/schemas/core/extension-entry.json"},
+              "min_spend_per_package": {"type": "number", "minimum": 0},
+              "extensions": {
+                "type": "array",
+                "items": {"$ref": "/schemas/core/extension-entry.json"},
+                "minItems": 1,
+                "maxItems": 16,
+                "x-adcp-extension-point": {"name": "pricing_option", "must_understand": "flag"},
+                "description": "Explanatory extension data for this option, as on core-model options."
+              }
+            },
+            "required": ["pricing_option_id", "pricing_model", "currency", "extension_model"],
+            "not": {"anyOf": [{"required": ["fixed_price"]}, {"required": ["floor_price"]}]},
+            "additionalProperties": true
+          }
+        },
+        {
+          "op": "append",
+          "file": "core/pricing-option.json",
+          "pointer": "/oneOf",
+          "value": {"$ref": "/schemas/pricing-options/extension-option.json"}
+        },
+        {
+          "op": "widen",
+          "file": "core/canonical-pricing-option.json",
+          "pointer": "/properties/pricing_model",
+          "value": {"$ref": "/schemas/core/extension-branch-id.json"},
+          "annotate": {
+            "description": "A core pricing model, or the branch id of an extension pricing model (open union pricing_model)."
+          }
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-pricing-option.json",
+          "pointer": "/properties/extension_model",
+          "value": {
+            "$ref": "/schemas/core/extension-entry.json",
+            "description": "The extension pricing model's data, under terms_digest when inside commercial_terms. Present exactly when pricing_model is an extension branch id."
+          }
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-pricing-option.json",
+          "pointer": "/x-adcp-open-union",
+          "value": {
+            "name": "pricing_model",
+            "discriminator": "pricing_model",
+            "body": "extension_model",
+            "branch_requires": ["reports_as"],
+            "unknown_in_list": "drop_option"
+          }
+        },
+        {
+          "op": "append",
+          "file": "core/canonical-pricing-option.json",
+          "pointer": "/allOf",
+          "value": {
+            "description": "An extension pricing model carries its body and no core price; a core model carries no extension body.",
+            "if": {
+              "properties": {"pricing_model": {"$ref": "/schemas/core/extension-branch-id.json"}},
+              "required": ["pricing_model"]
+            },
+            "then": {
+              "required": ["extension_model"],
+              "not": {"anyOf": [{"required": ["fixed_price"]}, {"required": ["floor_price"]}]}
+            },
+            "else": {"not": {"required": ["extension_model"]}}
+          }
+        },
+        {
+          "op": "add",
+          "file": "pricing-options/cpm-option.json",
+          "pointer": "/properties/extensions",
+          "value": {
+            "type": "array",
+            "items": {"$ref": "/schemas/core/extension-entry.json"},
+            "minItems": 1,
+            "maxItems": 16,
+            "x-adcp-extension-point": {"name": "pricing_option", "must_understand": "flag"},
+            "description": "Extension data for this pricing option (for example, a rate card a buyer can evaluate locally for planning). fixed_price and price_breakdown remain the binding quote; entries default to ignorable unless must_understand is true."
+          }
+        },
+        {
+          "op": "add",
+          "file": "pricing-options/cpp-option.json",
+          "pointer": "/properties/extensions",
+          "value": {
+            "type": "array",
+            "items": {"$ref": "/schemas/core/extension-entry.json"},
+            "minItems": 1,
+            "maxItems": 16,
+            "x-adcp-extension-point": {"name": "pricing_option", "must_understand": "flag"},
+            "description": "Extension data for this pricing option (for example, a rate card a buyer can evaluate locally for planning). fixed_price and price_breakdown remain the binding quote; entries default to ignorable unless must_understand is true."
+          }
+        }
+      ]
+    },
+    {
+      "layer": "buying/commitment",
+      "role": "module layer",
+      "summary": "The commitment layer of buying owns the commercial_terms extension point: binding extension data under terms_digest.",
+      "patches": [
+        {
+          "op": "add",
+          "file": "media-buy/commercial-terms.json",
+          "pointer": "/properties/extensions",
+          "value": {
+            "type": "array",
+            "items": {"$ref": "/schemas/core/extension-entry.json"},
+            "minItems": 1,
+            "x-adcp-extension-point": {"name": "commercial_terms", "must_understand": "always", "order": "uri"},
+            "description": "Binding extension data, covered by terms_digest. EVERY entry is must-understand whatever its must_understand flag: a buyer MUST NOT accept terms carrying an entry whose uri@digest it does not understand, and a seller MUST NOT put one there for a buyer that did not declare it. Entries are unique by uri and ordered by uri so equal terms serialize to equal digests."
+          }
+        },
+        {
+          "op": "add",
+          "file": "core/product-audience-evidence-requirements.json",
+          "pointer": "/properties/accepted_methodologies/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/product-audience-evidence-requirements.json",
+          "pointer": "/properties/excluded_methodologies/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/product-audience-evidence-requirements.json",
+          "pointer": "/properties/accepted_subject_types/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/product-audience-evidence-requirements.json",
+          "pointer": "/properties/accepted_resolution_methods/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        }
+      ]
+    },
+    {
+      "layer": "buying/supply",
+      "role": "module layer",
+      "summary": "The supply layer declares the extension points that bridges C4 and C6 and the spot-lifecycle extension fill, and types its asset and format-kind fields with kernel types, composed from creative's registries (same bytes).",
+      "patches": [
+        {
+          "op": "add",
+          "file": "core/audience-evidence-requirements.json",
+          "pointer": "/properties/accepted_methodologies/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/audience-evidence-requirements.json",
+          "pointer": "/properties/excluded_methodologies/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/audience-evidence-requirements.json",
+          "pointer": "/properties/accepted_subject_types/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/audience-evidence-requirements.json",
+          "pointer": "/properties/accepted_resolution_methods/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/audience-evidence-selection.json",
+          "pointer": "/properties/evidence/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-audience-evidence.json",
+          "pointer": "/properties/audience/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-audience-evidence.json",
+          "pointer": "/properties/methodology/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-audience-evidence.json",
+          "pointer": "/properties/subject_type/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-audience-evidence.json",
+          "pointer": "/properties/resolution_method/x-adcp-bridge-point",
+          "value": {"bridge": "C6", "extension": "audience-evidence-on-products"},
+          "fix": "C6"
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-placement.json",
+          "pointer": "/properties/format_options/x-adcp-bridge-point",
+          "value": {"bridge": "C4", "extension": "format-declarations-on-products"},
+          "fix": "C4"
+        },
+        {
+          "op": "add",
+          "file": "core/canonical-product.json",
+          "pointer": "/properties/format_options/x-adcp-bridge-point",
+          "value": {"bridge": "C4", "extension": "format-declarations-on-products"},
+          "fix": "C4"
+        },
+        {
+          "op": "add",
+          "file": "core/placement.json",
+          "pointer": "/properties/format_options/x-adcp-bridge-point",
+          "value": {"bridge": "C4", "extension": "format-declarations-on-products"},
+          "fix": "C4"
+        },
+        {
+          "op": "add",
+          "file": "core/spot-reporting-capability.json",
+          "pointer": "/properties/available_statuses/x-adcp-bridge-point",
+          "value": {"extension": "spot-lifecycle"},
+          "fix": "spot-lifecycle"
+        },
+        {
+          "op": "compose",
+          "file": "core/collection.json",
+          "pointer": "/properties/images/items",
+          "ref": "/schemas/core/assets/image-asset.json",
+          "fix": "media_asset"
+        },
+        {
+          "op": "compose",
+          "file": "core/collection.json",
+          "pointer": "/properties/sample_content/items",
+          "ref": "/schemas/core/assets/published-post-asset.json",
+          "fix": "media_asset"
+        },
+        {
+          "op": "compose",
+          "file": "core/product-card-reference-asset.json",
+          "pointer": "/properties/asset/oneOf/0",
+          "ref": "/schemas/core/assets/image-asset.json",
+          "fix": "media_asset"
+        },
+        {
+          "op": "compose",
+          "file": "core/product-card-reference-asset.json",
+          "pointer": "/properties/asset/oneOf/1",
+          "ref": "/schemas/core/assets/video-asset.json",
+          "fix": "media_asset"
+        },
+        {
+          "op": "compose",
+          "file": "core/product-card-reference-asset.json",
+          "pointer": "/properties/asset/oneOf/2",
+          "ref": "/schemas/core/assets/markdown-asset.json",
+          "fix": "media_asset"
+        },
+        {
+          "op": "compose",
+          "file": "core/product-card-reference-asset.json",
+          "pointer": "/properties/asset/oneOf/3",
+          "ref": "/schemas/core/assets/url-asset.json",
+          "fix": "media_asset"
+        },
+        {
+          "op": "compose",
+          "file": "core/product-filters.json",
+          "pointer": "/properties/format_kinds/items",
+          "ref": "/schemas/core/canonical-format-kind.json",
+          "fix": "format_kind_id"
+        },
+        {
+          "op": "compose",
+          "file": "core/product-offer-filters.json",
+          "pointer": "/properties/format_kinds/items",
+          "ref": "/schemas/core/canonical-format-kind.json",
+          "fix": "format_kind_id"
+        }
+      ]
+    },
+    {
+      "layer": "buying/offer",
+      "role": "module layer",
+      "summary": "The offer layer of buying lets its closed request_proposals and refine_proposals requests carry understood_extensions. The field itself stays in the kernel envelope; offer adds it by $ref and declares no hook.",
+      "patches": [
+        {
+          "op": "add",
+          "file": "media-buy/request-proposals-request.json",
+          "pointer": "/properties/understood_extensions",
+          "value": {"$ref": "/schemas/core/version-envelope.json#/properties/understood_extensions"}
+        },
+        {
+          "op": "add",
+          "file": "media-buy/refine-proposals-request.json",
+          "pointer": "/properties/understood_extensions",
+          "value": {"$ref": "/schemas/core/version-envelope.json#/properties/understood_extensions"}
+        }
+      ]
+    },
+    {
+      "layer": "buying/execution",
+      "role": "module layer",
+      "summary": "The execution layer of buying owns the media_buy_state readback extension point on get_media_buys media buys (host property extensions_state).",
+      "patches": [
+        {
+          "op": "add",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/extensions_state",
+          "value": {
+            "type": "array",
+            "items": {"$ref": "/schemas/core/extension-entry.json"},
+            "minItems": 1,
+            "x-adcp-extension-point": {"name": "media_buy_state", "must_understand": "never"},
+            "description": "Readback written by extensions whose entries this media buy accepted (for example, which pre-agreed adjustments the seller applied, which make-good units it issued, or the market index it fixed after booking). Never binding: the authority for a change is the accepted commercial_terms entry, or the accepted pricing branch, with the same uri. Receivers MAY ignore entries they do not understand. Changes that produce a new entry are announced through the core change feed (account.change_recorded with resource media_buy) like any other revision."
+          }
+        },
+        {
+          "op": "add",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/account/x-adcp-bridge-point",
+          "value": {"bridge": "C8", "extension": "account-details-on-buys"},
+          "fix": "C8"
+        },
+        {
+          "op": "add",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/packages/items/properties/creative_approvals/items/properties/approval_status/x-adcp-bridge-point",
+          "value": {"bridge": "C3", "extension": "creative-approvals-on-packages"},
+          "fix": "C3"
+        },
+        {
+          "op": "add",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/packages/items/properties/creative_approvals/items/properties/approval_scopes/x-adcp-bridge-point",
+          "value": {"bridge": "C3", "extension": "creative-approvals-on-packages"},
+          "fix": "C3"
+        },
+        {
+          "op": "add",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/packages/items/properties/snapshot_unavailable_reason/x-adcp-bridge-point",
+          "value": {"bridge": "C3", "extension": "creative-approvals-on-packages"},
+          "fix": "C3"
+        },
+        {
+          "op": "add",
+          "file": "core/package-format-snapshot.json",
+          "pointer": "/allOf/0/x-adcp-bridge-point",
+          "value": {"bridge": "C4", "extension": "format-declarations-on-products"},
+          "fix": "C4"
+        },
+        {
+          "op": "compose",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/packages/items/properties/format_kind",
+          "ref": "/schemas/core/canonical-format-kind.json",
+          "fix": "format_kind_id"
+        },
+        {
+          "op": "compose",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/packages/items/properties/creative_approvals/items/properties/indicator_types_evaluated/items",
+          "ref": "/schemas/enums/indicator-type.json",
+          "fix": "indicator_type_id"
+        },
+        {
+          "op": "compose",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/packages/items/properties/creative_approvals/items/allOf/0",
+          "ref": "/schemas/core/indicator-bearing.json",
+          "fix": "indicator"
+        },
+        {
+          "op": "compose",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/properties/packages/items/allOf/0",
+          "ref": "/schemas/core/indicator-bearing.json",
+          "fix": "indicator"
+        },
+        {
+          "op": "compose",
+          "file": "media-buy/get-media-buys-response.json",
+          "pointer": "/properties/media_buys/items/allOf/1",
+          "ref": "/schemas/core/indicator-bearing.json",
+          "fix": "indicator"
+        }
+      ]
+    }
+  ]
+}

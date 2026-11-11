@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/tracker-firing-path.json",
+  "title": "Tracker Firing Path",
+  "description": "Environment in which the responsible actor initiates a tracker. A selector may permit both values, but exactly one path is used for each logical event occurrence.",
+  "type": "string",
+  "enum": ["client", "server"]
+}

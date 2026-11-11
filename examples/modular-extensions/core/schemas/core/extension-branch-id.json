@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/extension-branch-id.json",
+  "title": "Extension Branch Id",
+  "description": "Discriminator value for a branch that an extension registers in an open union: the extension uri, '#', and the branch name. It carries no digest, so code that switches on it survives a new digest of the same extension; the branch's body (an ExtensionEntry) carries the digest. A closed value of a union never matches this pattern.",
+  "type": "string",
+  "pattern": "^https://[^\\s#@]+#[a-z][a-z0-9_]*$",
+  "maxLength": 512
+}

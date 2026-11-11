@@ -1,0 +1,36 @@
+{
+  "$comment": "A minor release of one buying layer, as a module would ship it: buying/pricing 1.0 -> 1.1. It adds one optional property to the cpp pricing option, the spot length its fixed_price is quoted for. Each patch must touch a file the layer owns, and the additive check must pass. scripts/module-release.mjs runs it on a scratch copy of this example (npm run release:pricing); the example itself stays at 1.0. `refused` is not part of the release: the same field made required, which the additive check refuses.",
+  "layer": "buying/pricing",
+  "from": "1.0",
+  "to": "1.1",
+  "patches": [
+    {
+      "op": "add",
+      "file": "pricing-options/cpp-option.json",
+      "pointer": "/properties/base_spot_length_seconds",
+      "value": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "The spot length, in seconds, that fixed_price is quoted for. The seller indexes other lengths from it."
+      }
+    }
+  ],
+  "refused": [
+    {
+      "op": "add",
+      "file": "pricing-options/cpp-option.json",
+      "pointer": "/properties/base_spot_length_seconds",
+      "value": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "The spot length, in seconds, that fixed_price is quoted for. The seller indexes other lengths from it."
+      }
+    },
+    {
+      "op": "append",
+      "file": "pricing-options/cpp-option.json",
+      "pointer": "/required",
+      "value": "base_spot_length_seconds"
+    }
+  ]
+}

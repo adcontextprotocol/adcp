@@ -1,0 +1,334 @@
+{
+ "name": "cut-11",
+ "kernel_share_post_ga_fc": [
+  551,
+  3026,
+  18.2
+ ],
+ "kernel_share_post_ga_nonadd_fc": [
+  32,
+  481,
+  6.7
+ ],
+ "all": {
+  "commits": 611,
+  "cross": 209,
+  "cross_pct": 34.2,
+  "five_plus": 18
+ },
+ "all_no_sweeps": {
+  "commits": 598,
+  "cross": 196,
+  "cross_pct": 32.8,
+  "five_plus": 5
+ },
+ "post": {
+  "commits": 397,
+  "cross": 118,
+  "cross_pct": 29.7,
+  "five_plus": 7
+ },
+ "post_no_sweeps": {
+  "commits": 393,
+  "cross": 114,
+  "cross_pct": 29.0,
+  "five_plus": 3
+ },
+ "post_no_sweeps_no_ct": {
+  "commits": 393,
+  "cross": 103,
+  "cross_pct": 26.2,
+  "five_plus": 3
+ },
+ "top_pairs_post_no_sweeps": [
+  [
+   "discovery",
+   "media-buy",
+   47,
+   "media-buy → discovery"
+  ],
+  [
+   "creative",
+   "media-buy",
+   24,
+   "media-buy → creative"
+  ],
+  [
+   "creative",
+   "discovery",
+   15,
+   "discovery → creative"
+  ],
+  [
+   "discovery",
+   "inventory",
+   14,
+   "discovery → inventory"
+  ],
+  [
+   "discovery",
+   "signals",
+   13,
+   "discovery → signals"
+  ],
+  [
+   "account",
+   "media-buy",
+   8,
+   "media-buy → account"
+  ],
+  [
+   "discovery",
+   "x-compliance-testing",
+   8,
+   "x-compliance-testing → discovery"
+  ],
+  [
+   "media-buy",
+   "signals",
+   8,
+   "media-buy → signals"
+  ],
+  [
+   "media-buy",
+   "x-compliance-testing",
+   7,
+   "x-compliance-testing → media-buy"
+  ],
+  [
+   "account",
+   "discovery",
+   7,
+   "discovery → account"
+  ],
+  [
+   "inventory",
+   "signals",
+   5,
+   "none"
+  ],
+  [
+   "media-buy",
+   "x-reporting-delivery",
+   5,
+   "x-reporting-delivery → media-buy"
+  ],
+  [
+   "creative",
+   "x-compliance-testing",
+   5,
+   "x-compliance-testing → creative"
+  ],
+  [
+   "inventory",
+   "media-buy",
+   5,
+   "media-buy → inventory"
+  ],
+  [
+   "governance",
+   "media-buy",
+   5,
+   "governance → media-buy"
+  ]
+ ],
+ "top_pairs_all_no_sweeps": [
+  [
+   "discovery",
+   "media-buy",
+   78,
+   "media-buy → discovery"
+  ],
+  [
+   "creative",
+   "media-buy",
+   44,
+   "media-buy → creative"
+  ],
+  [
+   "creative",
+   "discovery",
+   33,
+   "discovery → creative"
+  ],
+  [
+   "discovery",
+   "signals",
+   22,
+   "discovery → signals"
+  ],
+  [
+   "discovery",
+   "inventory",
+   22,
+   "discovery → inventory"
+  ],
+  [
+   "brand",
+   "discovery",
+   14,
+   "discovery → brand"
+  ],
+  [
+   "account",
+   "media-buy",
+   13,
+   "media-buy → account"
+  ],
+  [
+   "media-buy",
+   "signals",
+   13,
+   "media-buy → signals"
+  ],
+  [
+   "governance",
+   "media-buy",
+   12,
+   "governance → media-buy"
+  ],
+  [
+   "account",
+   "discovery",
+   11,
+   "discovery → account"
+  ],
+  [
+   "brand",
+   "creative",
+   11,
+   "creative → brand"
+  ],
+  [
+   "brand",
+   "media-buy",
+   10,
+   "media-buy → brand"
+  ],
+  [
+   "discovery",
+   "x-compliance-testing",
+   9,
+   "x-compliance-testing → discovery"
+  ],
+  [
+   "media-buy",
+   "x-compliance-testing",
+   8,
+   "x-compliance-testing → media-buy"
+  ],
+  [
+   "creative",
+   "signals",
+   8,
+   "none"
+  ]
+ ],
+ "pair_incidences_unrelated_post_no_sweeps": [
+  16,
+  245
+ ],
+ "implementers": {
+  "governance": {
+   "modules": [
+    "governance"
+   ],
+   "changed": 5,
+   "or_kernel": 11,
+   "patch_changed": 2,
+   "patch_or_kernel": 7,
+   "deps": [
+    "account",
+    "brand",
+    "creative",
+    "discovery",
+    "inventory",
+    "media-buy",
+    "signals"
+   ],
+   "with_deps": 20,
+   "with_deps_or_kernel": 22
+  },
+  "signals": {
+   "modules": [
+    "signals"
+   ],
+   "changed": 4,
+   "or_kernel": 11,
+   "patch_changed": 1,
+   "patch_or_kernel": 7,
+   "deps": [],
+   "with_deps": 4,
+   "with_deps_or_kernel": 11
+  },
+  "creative/formats": {
+   "modules": [
+    "creative"
+   ],
+   "changed": 11,
+   "or_kernel": 15,
+   "patch_changed": 7,
+   "patch_or_kernel": 11,
+   "deps": [
+    "account",
+    "brand"
+   ],
+   "with_deps": 13,
+   "with_deps_or_kernel": 15
+  },
+  "buying": {
+   "modules": [
+    "discovery",
+    "media-buy"
+   ],
+   "changed": 14,
+   "or_kernel": 18,
+   "patch_changed": 10,
+   "patch_or_kernel": 14,
+   "deps": [
+    "account",
+    "brand",
+    "creative",
+    "inventory",
+    "signals"
+   ],
+   "with_deps": 19,
+   "with_deps_or_kernel": 21
+  },
+  "accounts/onboarding": {
+   "modules": [
+    "account"
+   ],
+   "changed": 6,
+   "or_kernel": 10,
+   "patch_changed": 3,
+   "patch_or_kernel": 6,
+   "deps": [],
+   "with_deps": 6,
+   "with_deps_or_kernel": 10
+  },
+  "reporting": {
+   "modules": [
+    "media-buy",
+    "x-reporting-delivery",
+    "x-measurement"
+   ],
+   "changed": 9,
+   "or_kernel": 14,
+   "patch_changed": 5,
+   "patch_or_kernel": 10,
+   "deps": [
+    "account",
+    "brand",
+    "creative",
+    "discovery",
+    "inventory",
+    "signals"
+   ],
+   "with_deps": 19,
+   "with_deps_or_kernel": 21
+  }
+ },
+ "ga_releases": 65,
+ "kernel_releases": 10
+}

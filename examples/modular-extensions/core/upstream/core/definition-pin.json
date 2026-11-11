@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/definition-pin.json",
+  "title": "Definition Pin",
+  "description": "Seller-authored integrity pin over one third-party-published definition that a proposal's commercial_terms reference: a publisher-catalog format option, publisher-catalog placement, adagents.json collection, or data-provider signal. content_digest is the lowercase-hex SHA-256 of the RFC 8785 (JCS) serialization of the kind's closed projection of the published entry, defined normatively in docs/media-buy/specification.mdx#definition-pins. Pins live inside commercial_terms, so terms_digest covers the pin but not the definition it names: a published definition can change while terms_digest still verifies, and re-verifying the pin is what detects it. Request inputs never carry pins.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "ref_kind"
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "pin_projection": "content_digest is computed over the published entry minus its kind's exclusion list, with the kind's named set arrays de-duplicated and sorted by JCS bytes",
+      "on_violation": "REFERENCE_DEFINITION_CHANGED"
+    }
+  },
+  "properties": {
+    "ref_kind": { "$ref": "/schemas/enums/definition-pin-ref-kind.json" },
+    "reference": {
+      "type": "object",
+      "description": "Closed canonical identity of the pinned definition. Only the identity members below are permitted, so the same definition always has one reference value and pins are unique by (ref_kind, reference)."
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Lowercase-hex SHA-256 of the UTF-8 RFC 8785 serialization of the projected published entry. No algorithm prefix."
+    },
+    "source_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Opaque version label of the source document the seller resolved when it computed content_digest, such as the document's catalog_etag. Informational and never dereferenced: verification compares content_digest, never source_version. It MUST NOT contain URLs, credentials, or fetch detail."
+    }
+  },
+  "required": ["ref_kind", "reference", "content_digest"],
+  "oneOf": [
+    {
+      "required": ["ref_kind"],
+      "properties": {
+        "ref_kind": { "type": "string", "const": "publisher_format_option" },
+        "reference": {
+          "type": "object",
+          "properties": {
+            "publisher_domain": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+            "format_option_id": { "type": "string", "minLength": 1, "maxLength": 255 }
+          },
+          "required": ["publisher_domain", "format_option_id"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "required": ["ref_kind"],
+      "properties": {
+        "ref_kind": { "type": "string", "const": "publisher_placement" },
+        "reference": {
+          "type": "object",
+          "properties": {
+            "publisher_domain": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+            "placement_id": { "type": "string", "minLength": 1, "maxLength": 255 }
+          },
+          "required": ["publisher_domain", "placement_id"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "required": ["ref_kind"],
+      "properties": {
+        "ref_kind": { "type": "string", "const": "publisher_collection" },
+        "reference": {
+          "type": "object",
+          "properties": {
+            "publisher_domain": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+            "collection_id": { "type": "string", "minLength": 1, "maxLength": 255 }
+          },
+          "required": ["publisher_domain", "collection_id"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "required": ["ref_kind"],
+      "properties": {
+        "ref_kind": { "type": "string", "const": "data_provider_signal" },
+        "reference": {
+          "type": "object",
+          "properties": {
+            "data_provider_domain": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+            "signal_id": { "type": "string", "maxLength": 255, "pattern": "^[a-zA-Z0-9_-]+$" }
+          },
+          "required": ["data_provider_domain", "signal_id"],
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

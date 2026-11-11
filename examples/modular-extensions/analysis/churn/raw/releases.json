@@ -1,0 +1,607 @@
+[
+ {
+  "tag": "v2.1.0",
+  "sha": "029101d5e8e7b09242641866206d8971f7f24cf5",
+  "date": "2025-10-19T10:00:18-04:00",
+  "line": "2.1",
+  "prev": "v2.0.0",
+  "prev_sha": "78e8a85dc94a6e715b664e3883d805106a52bf7f",
+  "n_files": null,
+  "baseline_missing": true
+ },
+ {
+  "tag": "v2.5.0",
+  "sha": "993ee3cf5c5cced40a0d99c538f8f2732c75f854",
+  "date": "2025-11-22T16:42:35-05:00",
+  "line": "2.5",
+  "prev": "v2.1.0",
+  "prev_sha": "029101d5e8e7b09242641866206d8971f7f24cf5",
+  "n_files": null,
+  "baseline_missing": true
+ },
+ {
+  "tag": "v2.5.1",
+  "sha": "9ba8c55e4d647679680e3e469bdd95ba78b5cc78",
+  "date": "2025-12-24T07:54:30-05:00",
+  "line": "2.5",
+  "prev": "v2.5.0",
+  "prev_sha": "993ee3cf5c5cced40a0d99c538f8f2732c75f854",
+  "n_files": 29
+ },
+ {
+  "tag": "v3.0.0",
+  "sha": "4472eb295cf49e6a0ff5dcf69e72749da8ca31ae",
+  "date": "2026-04-22T05:43:57-04:00",
+  "line": "3.0",
+  "prev": "v2.5.1",
+  "prev_sha": "9ba8c55e4d647679680e3e469bdd95ba78b5cc78",
+  "n_files": 497
+ },
+ {
+  "tag": "v3.0.1",
+  "sha": "2a24ca5f070f36bf7d1793651a1f0fb4f50084dd",
+  "date": "2026-04-28T08:43:11-04:00",
+  "line": "3.0",
+  "prev": "v3.0.0",
+  "prev_sha": "4472eb295cf49e6a0ff5dcf69e72749da8ca31ae",
+  "n_files": 71
+ },
+ {
+  "tag": "v3.0.2",
+  "sha": "22a69cf33f674a79e1e75200f8f0b1d08588aad9",
+  "date": "2026-04-29T22:28:18-04:00",
+  "line": "3.0",
+  "prev": "v3.0.1",
+  "prev_sha": "2a24ca5f070f36bf7d1793651a1f0fb4f50084dd",
+  "n_files": 6
+ },
+ {
+  "tag": "v3.0.3",
+  "sha": "8dc3d15e4be6de844862395c164c9ac1c39d0b59",
+  "date": "2026-05-01T16:05:46-04:00",
+  "line": "3.0",
+  "prev": "v3.0.2",
+  "prev_sha": "22a69cf33f674a79e1e75200f8f0b1d08588aad9",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.4",
+  "sha": "4555f01b0f6345907237ce4812c84e85625acb19",
+  "date": "2026-05-02T07:34:06-04:00",
+  "line": "3.0",
+  "prev": "v3.0.3",
+  "prev_sha": "8dc3d15e4be6de844862395c164c9ac1c39d0b59",
+  "n_files": 12
+ },
+ {
+  "tag": "v3.0.5",
+  "sha": "1cb57a67d4af6683472d82be23c2afb6fe17880e",
+  "date": "2026-05-02T19:24:21-04:00",
+  "line": "3.0",
+  "prev": "v3.0.4",
+  "prev_sha": "4555f01b0f6345907237ce4812c84e85625acb19",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.0.6",
+  "sha": "2cea1dcd6218ecee15039906d1f0f4b0c3b7e794",
+  "date": "2026-05-03T14:07:12-04:00",
+  "line": "3.0",
+  "prev": "v3.0.5",
+  "prev_sha": "1cb57a67d4af6683472d82be23c2afb6fe17880e",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.0.7",
+  "sha": "7d656dabb39f26d76237444c08a1b3610c3df625",
+  "date": "2026-05-08T07:49:44-04:00",
+  "line": "3.0",
+  "prev": "v3.0.6",
+  "prev_sha": "2cea1dcd6218ecee15039906d1f0f4b0c3b7e794",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.8",
+  "sha": "13f8f4b1702705892ac3e62194d2c49578fe8f87",
+  "date": "2026-05-08T10:25:22-04:00",
+  "line": "3.0",
+  "prev": "v3.0.7",
+  "prev_sha": "7d656dabb39f26d76237444c08a1b3610c3df625",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.9",
+  "sha": "ea2025f06386c325a796d87b2a7d5a6f1f97e325",
+  "date": "2026-05-09T16:46:21-04:00",
+  "line": "3.0",
+  "prev": "v3.0.8",
+  "prev_sha": "13f8f4b1702705892ac3e62194d2c49578fe8f87",
+  "n_files": 4
+ },
+ {
+  "tag": "v3.0.10",
+  "sha": "d48ca0ea00540b91fcd58b2c6af76cd9eac26025",
+  "date": "2026-05-10T19:22:21-04:00",
+  "line": "3.0",
+  "prev": "v3.0.9",
+  "prev_sha": "ea2025f06386c325a796d87b2a7d5a6f1f97e325",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.11",
+  "sha": "d805fa2d65f335d97990517ea7dbfe30cc2f3212",
+  "date": "2026-05-11T04:51:15-04:00",
+  "line": "3.0",
+  "prev": "v3.0.10",
+  "prev_sha": "d48ca0ea00540b91fcd58b2c6af76cd9eac26025",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.12",
+  "sha": "173402db996b0e8cd776932e4fc6ef26dbd266a2",
+  "date": "2026-05-13T06:42:39-04:00",
+  "line": "3.0",
+  "prev": "v3.0.11",
+  "prev_sha": "d805fa2d65f335d97990517ea7dbfe30cc2f3212",
+  "n_files": 3
+ },
+ {
+  "tag": "v3.0.13",
+  "sha": "21413f6d76bb31207eda25d3f4efeb4a15833a15",
+  "date": "2026-05-22T18:46:32-04:00",
+  "line": "3.0",
+  "prev": "v3.0.12",
+  "prev_sha": "173402db996b0e8cd776932e4fc6ef26dbd266a2",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.0.14",
+  "sha": "3f1dde415534aa3a8a6bdb398aec4bd1bcd868f9",
+  "date": "2026-05-30T09:00:16-04:00",
+  "line": "3.0",
+  "prev": "v3.0.13",
+  "prev_sha": "21413f6d76bb31207eda25d3f4efeb4a15833a15",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.15",
+  "sha": "2bf3505eae772edabd6e45762c2f72d13057fac4",
+  "date": "2026-05-31T19:10:35-04:00",
+  "line": "3.0",
+  "prev": "v3.0.14",
+  "prev_sha": "3f1dde415534aa3a8a6bdb398aec4bd1bcd868f9",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.16",
+  "sha": "6b96e69b275ea9d7f8662f7663aed7ef871a24a1",
+  "date": "2026-06-14T12:43:03-04:00",
+  "line": "3.0",
+  "prev": "v3.0.15",
+  "prev_sha": "2bf3505eae772edabd6e45762c2f72d13057fac4",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.0.17",
+  "sha": "088a962ed0913954851402fb78d63dfd1d6f2f58",
+  "date": "2026-06-16T08:22:06+02:00",
+  "line": "3.0",
+  "prev": "v3.0.16",
+  "prev_sha": "6b96e69b275ea9d7f8662f7663aed7ef871a24a1",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.18",
+  "sha": "5919879eedcc89dc6a88d099e40e742c5104b9e7",
+  "date": "2026-06-16T08:42:58+02:00",
+  "line": "3.0",
+  "prev": "v3.0.17",
+  "prev_sha": "088a962ed0913954851402fb78d63dfd1d6f2f58",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.19",
+  "sha": "2508b392b9a3e74e0e568b2e4009a9e2a489f9c7",
+  "date": "2026-06-17T15:37:24+02:00",
+  "line": "3.0",
+  "prev": "v3.0.18",
+  "prev_sha": "5919879eedcc89dc6a88d099e40e742c5104b9e7",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.20",
+  "sha": "a16ae8babfc3efef8d373562578fb2914564c3df",
+  "date": "2026-07-02T08:11:58+01:00",
+  "line": "3.0",
+  "prev": "v3.0.19",
+  "prev_sha": "2508b392b9a3e74e0e568b2e4009a9e2a489f9c7",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.0.21",
+  "sha": "5ffe457f9190b6cfa92174bf4acdadc150a4be07",
+  "date": "2026-07-02T11:11:46+01:00",
+  "line": "3.0",
+  "prev": "v3.0.20",
+  "prev_sha": "a16ae8babfc3efef8d373562578fb2914564c3df",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.22",
+  "sha": "72688089985dc703dafcde693399705c5be3c1a4",
+  "date": "2026-07-24T15:46:42+01:00",
+  "line": "3.0",
+  "prev": "v3.0.21",
+  "prev_sha": "5ffe457f9190b6cfa92174bf4acdadc150a4be07",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.23",
+  "sha": "64f68907e9b8d79d32af9f1b9a49a9479461ac06",
+  "date": "2026-08-15T22:09:58+02:00",
+  "line": "3.0",
+  "prev": "v3.0.22",
+  "prev_sha": "72688089985dc703dafcde693399705c5be3c1a4",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.0.24",
+  "sha": "d72e226a5807d8f739a824649694b6ed2c75005b",
+  "date": "2026-08-16T21:10:21+02:00",
+  "line": "3.0",
+  "prev": "v3.0.23",
+  "prev_sha": "64f68907e9b8d79d32af9f1b9a49a9479461ac06",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.25",
+  "sha": "335b89282dffe4bc79f5cd234d0f2eb63d5c0c38",
+  "date": "2026-08-20T00:02:51+02:00",
+  "line": "3.0",
+  "prev": "v3.0.24",
+  "prev_sha": "d72e226a5807d8f739a824649694b6ed2c75005b",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.0.26",
+  "sha": "40fa114a59d3f53ac6fa84fb3e64d46705a6ceba",
+  "date": "2026-08-21T07:49:20+02:00",
+  "line": "3.0",
+  "prev": "v3.0.25",
+  "prev_sha": "335b89282dffe4bc79f5cd234d0f2eb63d5c0c38",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.27",
+  "sha": "1bb836845ea0e1639028d9eee20923308f44ea9d",
+  "date": "2026-10-01T07:13:18-07:00",
+  "line": "3.0",
+  "prev": "v3.0.26",
+  "prev_sha": "40fa114a59d3f53ac6fa84fb3e64d46705a6ceba",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.0.28",
+  "sha": "12f2d0d91ad47deefcff78fb21e8cef2b5e9ecd9",
+  "date": "2026-10-07T10:11:12-04:00",
+  "line": "3.0",
+  "prev": "v3.0.27",
+  "prev_sha": "1bb836845ea0e1639028d9eee20923308f44ea9d",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.0",
+  "sha": "e19ef26ee9803b923dbaec22ded2021c98c1a22e",
+  "date": "2026-06-18T10:43:34+02:00",
+  "line": "3.1",
+  "prev": "v3.0.19",
+  "prev_sha": "2508b392b9a3e74e0e568b2e4009a9e2a489f9c7",
+  "n_files": 375
+ },
+ {
+  "tag": "v3.1.1",
+  "sha": "467fd93d77112baf9e094e18980119edcd3a4d07",
+  "date": "2026-06-30T20:58:33+01:00",
+  "line": "3.1",
+  "prev": "v3.1.0",
+  "prev_sha": "e19ef26ee9803b923dbaec22ded2021c98c1a22e",
+  "n_files": 20
+ },
+ {
+  "tag": "v3.1.2",
+  "sha": "16c8be1288eb55091954abb6ea172b20878d37b8",
+  "date": "2026-07-08T17:50:21+02:00",
+  "line": "3.1",
+  "prev": "v3.1.1",
+  "prev_sha": "467fd93d77112baf9e094e18980119edcd3a4d07",
+  "n_files": 4
+ },
+ {
+  "tag": "v3.1.3",
+  "sha": "b41c882936ae892c2cabd4f36040152d6f258338",
+  "date": "2026-07-13T15:59:11+02:00",
+  "line": "3.1",
+  "prev": "v3.1.2",
+  "prev_sha": "16c8be1288eb55091954abb6ea172b20878d37b8",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.4",
+  "sha": "31523e73b83e7a513b60beeb11811e8041de5414",
+  "date": "2026-07-18T20:26:12-04:00",
+  "line": "3.1",
+  "prev": "v3.1.3",
+  "prev_sha": "b41c882936ae892c2cabd4f36040152d6f258338",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.5",
+  "sha": "2c546ff13cd7226e5374fe4beb692f4411dff9d8",
+  "date": "2026-07-24T15:48:45+01:00",
+  "line": "3.1",
+  "prev": "v3.1.4",
+  "prev_sha": "31523e73b83e7a513b60beeb11811e8041de5414",
+  "n_files": 8
+ },
+ {
+  "tag": "v3.1.6",
+  "sha": "d2a4fac711fc281e2587b63a28c676559de3365f",
+  "date": "2026-07-27T13:50:45-04:00",
+  "line": "3.1",
+  "prev": "v3.1.5",
+  "prev_sha": "2c546ff13cd7226e5374fe4beb692f4411dff9d8",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.7",
+  "sha": "1cb0eadebb002c13c0d00767be7575a69415af5a",
+  "date": "2026-07-27T20:49:24-04:00",
+  "line": "3.1",
+  "prev": "v3.1.6",
+  "prev_sha": "d2a4fac711fc281e2587b63a28c676559de3365f",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.8",
+  "sha": "aa4ae310011bcbfe47f5cb6984dc334a813c8f4d",
+  "date": "2026-07-28T09:27:08-04:00",
+  "line": "3.1",
+  "prev": "v3.1.7",
+  "prev_sha": "1cb0eadebb002c13c0d00767be7575a69415af5a",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.9",
+  "sha": "6ed8bb2f0c15e76b62e26ed9050e4550171807e4",
+  "date": "2026-08-03T18:11:14+02:00",
+  "line": "3.1",
+  "prev": "v3.1.8",
+  "prev_sha": "aa4ae310011bcbfe47f5cb6984dc334a813c8f4d",
+  "n_files": 6
+ },
+ {
+  "tag": "v3.1.10",
+  "sha": "266a52e661b5bd229557c2daa79b7b39828f6fc2",
+  "date": "2026-08-04T07:57:40+02:00",
+  "line": "3.1",
+  "prev": "v3.1.9",
+  "prev_sha": "6ed8bb2f0c15e76b62e26ed9050e4550171807e4",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.11",
+  "sha": "59df40e4be004b299342320d1067c669dde2695b",
+  "date": "2026-08-07T07:04:09+02:00",
+  "line": "3.1",
+  "prev": "v3.1.10",
+  "prev_sha": "266a52e661b5bd229557c2daa79b7b39828f6fc2",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.12",
+  "sha": "434d58cbf3e5009c57e51b78e8d958cfdb44749b",
+  "date": "2026-08-08T22:46:41+02:00",
+  "line": "3.1",
+  "prev": "v3.1.11",
+  "prev_sha": "59df40e4be004b299342320d1067c669dde2695b",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.13",
+  "sha": "5d7a75a8195fd2c9241faee85b5da2373effb46e",
+  "date": "2026-08-11T12:21:30+02:00",
+  "line": "3.1",
+  "prev": "v3.1.12",
+  "prev_sha": "434d58cbf3e5009c57e51b78e8d958cfdb44749b",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.14",
+  "sha": "67d488ec9949160100361e678652495216fbd4f5",
+  "date": "2026-08-15T22:24:25+02:00",
+  "line": "3.1",
+  "prev": "v3.1.13",
+  "prev_sha": "5d7a75a8195fd2c9241faee85b5da2373effb46e",
+  "n_files": 4
+ },
+ {
+  "tag": "v3.1.15",
+  "sha": "bcc130be1e18acd241ceced1229ab39021b95668",
+  "date": "2026-08-16T21:36:38+02:00",
+  "line": "3.1",
+  "prev": "v3.1.14",
+  "prev_sha": "67d488ec9949160100361e678652495216fbd4f5",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.16",
+  "sha": "2d64735e21558674dfaab2e2e2ec036b9706d51f",
+  "date": "2026-08-20T00:14:15+02:00",
+  "line": "3.1",
+  "prev": "v3.1.15",
+  "prev_sha": "bcc130be1e18acd241ceced1229ab39021b95668",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.17",
+  "sha": "a18201e6aef5a1b3094263d0eba974d1a9a40875",
+  "date": "2026-08-20T11:54:32+02:00",
+  "line": "3.1",
+  "prev": "v3.1.16",
+  "prev_sha": "2d64735e21558674dfaab2e2e2ec036b9706d51f",
+  "n_files": 3
+ },
+ {
+  "tag": "v3.1.18",
+  "sha": "560668e0378ba3e997711bb6b506c38d94c414ff",
+  "date": "2026-08-20T13:10:54+02:00",
+  "line": "3.1",
+  "prev": "v3.1.17",
+  "prev_sha": "a18201e6aef5a1b3094263d0eba974d1a9a40875",
+  "n_files": 3
+ },
+ {
+  "tag": "v3.1.19",
+  "sha": "f95ba8a0d565578c412283f78d79c7aa3e3b17e6",
+  "date": "2026-08-21T08:11:00+02:00",
+  "line": "3.1",
+  "prev": "v3.1.18",
+  "prev_sha": "560668e0378ba3e997711bb6b506c38d94c414ff",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.20",
+  "sha": "75d1454815ca7302908262b9309afd1d4a2f0ec1",
+  "date": "2026-09-02T09:05:43-04:00",
+  "line": "3.1",
+  "prev": "v3.1.19",
+  "prev_sha": "f95ba8a0d565578c412283f78d79c7aa3e3b17e6",
+  "n_files": 2
+ },
+ {
+  "tag": "v3.1.21",
+  "sha": "e384ef14c554f6d286e2ed26dd3e3171411085ea",
+  "date": "2026-09-09T11:12:49-04:00",
+  "line": "3.1",
+  "prev": "v3.1.20",
+  "prev_sha": "75d1454815ca7302908262b9309afd1d4a2f0ec1",
+  "n_files": 11
+ },
+ {
+  "tag": "v3.1.22",
+  "sha": "3cb6cbc38293577fd27ac73ceeb2251e5464e673",
+  "date": "2026-09-13T08:53:58-04:00",
+  "line": "3.1",
+  "prev": "v3.1.21",
+  "prev_sha": "e384ef14c554f6d286e2ed26dd3e3171411085ea",
+  "n_files": 3
+ },
+ {
+  "tag": "v3.1.23",
+  "sha": "e57647988c44d93518f1d58cc15731aa5cf0fb54",
+  "date": "2026-09-14T08:42:05-04:00",
+  "line": "3.1",
+  "prev": "v3.1.22",
+  "prev_sha": "3cb6cbc38293577fd27ac73ceeb2251e5464e673",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.24",
+  "sha": "2b2f6569e54e6e887215010fc4a40396d8789030",
+  "date": "2026-09-23T11:41:04-04:00",
+  "line": "3.1",
+  "prev": "v3.1.23",
+  "prev_sha": "e57647988c44d93518f1d58cc15731aa5cf0fb54",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.25",
+  "sha": "76b031a85eb8efd7727c9107254ee0bcef3af037",
+  "date": "2026-10-01T07:13:25-07:00",
+  "line": "3.1",
+  "prev": "v3.1.24",
+  "prev_sha": "2b2f6569e54e6e887215010fc4a40396d8789030",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.26",
+  "sha": "2267672a0b074e78deb190716f657e7c7d188ea5",
+  "date": "2026-10-07T13:27:46-04:00",
+  "line": "3.1",
+  "prev": "v3.1.25",
+  "prev_sha": "76b031a85eb8efd7727c9107254ee0bcef3af037",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.27",
+  "sha": "f46c09ea9ee9a115faf0bf877fd66f6637ad2571",
+  "date": "2026-10-08T07:46:19-04:00",
+  "line": "3.1",
+  "prev": "v3.1.26",
+  "prev_sha": "2267672a0b074e78deb190716f657e7c7d188ea5",
+  "n_files": 8
+ },
+ {
+  "tag": "v3.1.28",
+  "sha": "f4d53b8a8c228c27a579228590257228684c39bb",
+  "date": "2026-10-16T11:53:07-04:00",
+  "line": "3.1",
+  "prev": "v3.1.27",
+  "prev_sha": "f46c09ea9ee9a115faf0bf877fd66f6637ad2571",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.1.29",
+  "sha": "f082c7a4be42c58f35103cf3db1d642ed6de24a3",
+  "date": "2026-10-16T14:00:27-04:00",
+  "line": "3.1",
+  "prev": "v3.1.28",
+  "prev_sha": "f4d53b8a8c228c27a579228590257228684c39bb",
+  "n_files": 1
+ },
+ {
+  "tag": "v3.2.1",
+  "sha": "c32bd78c5389753e3b8f3ffd8a1c04b777854d83",
+  "date": "2026-10-01T05:18:58+01:00",
+  "line": "3.2",
+  "prev": "v3.1.24",
+  "prev_sha": "2b2f6569e54e6e887215010fc4a40396d8789030",
+  "n_files": 628
+ },
+ {
+  "tag": "v3.2.2",
+  "sha": "e3b3aaa9f40551fcb854c28f29559a8060f9a75d",
+  "date": "2026-10-04T12:09:33-04:00",
+  "line": "3.2",
+  "prev": "v3.2.1",
+  "prev_sha": "c32bd78c5389753e3b8f3ffd8a1c04b777854d83",
+  "n_files": 13
+ },
+ {
+  "tag": "v3.2.3",
+  "sha": "dfc6ad602780c1cff4fe23e16e30a570900c89d7",
+  "date": "2026-10-07T13:35:36-04:00",
+  "line": "3.2",
+  "prev": "v3.2.2",
+  "prev_sha": "e3b3aaa9f40551fcb854c28f29559a8060f9a75d",
+  "n_files": 4
+ },
+ {
+  "tag": "v3.2.4",
+  "sha": "5e6c4b01113237234b440b6c95adb8c6e0a07ca9",
+  "date": "2026-10-12T03:56:02-04:00",
+  "line": "3.2",
+  "prev": "v3.2.3",
+  "prev_sha": "dfc6ad602780c1cff4fe23e16e30a570900c89d7",
+  "n_files": 14
+ },
+ {
+  "tag": "v3.2.5",
+  "sha": "3512882b67592622d2ae8bf5c853f565cf58043a",
+  "date": "2026-10-16T13:16:55-04:00",
+  "line": "3.2",
+  "prev": "v3.2.4",
+  "prev_sha": "5e6c4b01113237234b440b6c95adb8c6e0a07ca9",
+  "n_files": 1
+ }
+]

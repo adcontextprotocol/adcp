@@ -1,0 +1,5387 @@
+{
+ "UNREG:accessibility_violation": {
+  "markers": 1,
+  "owned": [
+   "error-details/accessibility-violation.json"
+  ],
+  "inline": [],
+  "nested": 0,
+  "commits": {
+   "28aeec16db3ba508bfd7718f05da2ea9d8b22f33": {
+    "subj": "2026-08-16|Add structured accessibility rejection details (#6169) (#6595)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "error-details/accessibility-violation.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "UNREG:ooh_metrics": {
+  "markers": 1,
+  "owned": [],
+  "inline": [
+   [
+    "core/delivery-metrics.json",
+    "('prop', 'ooh_metrics')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "b2ae44a927d0c9e8b3d5e13abcfb1cf4daf501d1": {
+    "subj": "2026-08-25|feat(media-buy): static OOH channel contract \u2014 ooh_metrics, posting records, channel guide (#6241)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/delivery-metrics.json",
+      "ooh_metrics",
+      "create",
+      []
+     ]
+    ]
+   },
+   "e0372580fdf1474cd3e6627d6c2d3f01b8cd61fd": {
+    "subj": "2026-09-02|feat(schema): define DOOH time-share allocation (#7190)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "core/delivery-metrics.json",
+      "ooh_metrics",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "UNREG:placement_evidence": {
+  "markers": 1,
+  "owned": [
+   "core/placement-evidence.json"
+  ],
+  "inline": [],
+  "nested": 0,
+  "commits": {
+   "b2ae44a927d0c9e8b3d5e13abcfb1cf4daf501d1": {
+    "subj": "2026-08-25|feat(media-buy): static OOH channel contract \u2014 ooh_metrics, posting records, channel guide (#6241)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/placement-evidence.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "UNREG:print_metrics": {
+  "markers": 1,
+  "owned": [],
+  "inline": [
+   [
+    "core/delivery-metrics.json",
+    "('prop', 'print_metrics')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "2e7994cf9ac422336e082e1e7f3f8bff6f53effa": {
+    "subj": "2026-10-06|feat(schema): add print_metrics for proof of insertion and circulation (#7936)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "core/delivery-metrics.json",
+      "print_metrics",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "UNREG:search_brands": {
+  "markers": 2,
+  "owned": [
+   "brand/search-brands-request.json",
+   "brand/search-brands-response.json"
+  ],
+  "inline": [],
+  "nested": 0,
+  "commits": {
+   "f23c966f6df9a7e14cce2bb690c157deb4e04fb3": {
+    "subj": "2026-04-30|feat(schema): add search_brands discovery verb to brand protocol (#3486)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "brand/search-brands-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/search-brands-response.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "ca60b16ccf1ac3df97f637ea2b66eb7f0e1c8af3": {
+    "subj": "2026-05-22|spec: fold protocol-envelope into per-task response schemas (closes #4878) (#4896)",
+    "nfiles": 70,
+    "changes": [
+     [
+      "brand/search-brands-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "6fad41c3f76ba7d4d9f556d44400b68051002574": {
+    "subj": "2026-08-16|feat(brand): surface relationship_trust in SearchBrandResult and registry API (#6161)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "brand/search-brands-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "account.change_feed": {
+  "markers": 4,
+  "owned": [
+   "account/list-account-changes-request.json",
+   "account/list-account-changes-response.json",
+   "core/account-change-recorded-webhook.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'account/change_feed')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "2fecc3e916ff24e505acbdbefa61e610de6259e9": {
+    "subj": "2026-08-28|feat(protocol): draft account change feed (#6811)",
+    "nfiles": 11,
+    "changes": [
+     [
+      "account/list-account-changes-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "account/list-account-changes-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/account-change-recorded-webhook.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "account/change_feed",
+      "create",
+      []
+     ]
+    ]
+   },
+   "c4040c36526378cfc8502d17d26f44a1c8fc7137": {
+    "subj": "2026-09-29|feat(schema): mark the account change feed experimental for 3.2 (#7727)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "account/list-account-changes-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "account/list-account-changes-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/account-change-recorded-webhook.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "account/change_feed",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "90d44780ef6144ed8f99bf78d3f8973fcf1effdf": {
+    "subj": "2026-10-06|fix(schema): compose version envelope in compact request and submitted schemas (#7946)",
+    "nfiles": 11,
+    "changes": [
+     [
+      "account/list-account-changes-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "brand.collection_links": {
+  "markers": 2,
+  "owned": [],
+  "inline": [
+   [
+    "brand.json",
+    "('prop', '#brand/collections/[]/publisher_domain')"
+   ],
+   [
+    "brand/get-brand-identity-response.json",
+    "('prop', 'collections')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "6506011b9359ba2b4ed7bc575db58ac734d9237f": {
+    "subj": "2026-10-13|feat(schema): experimental collection objects in product and proposal responses (#8141)",
+    "nfiles": 18,
+    "changes": [
+     [
+      "brand.json",
+      "#brand/collections/[]/publisher_domain",
+      "create",
+      []
+     ],
+     [
+      "brand/get-brand-identity-response.json",
+      "collections",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "brand.rights_lifecycle": {
+  "markers": 14,
+  "owned": [
+   "brand/acquire-rights-request.json",
+   "brand/acquire-rights-response.json",
+   "brand/get-rights-request.json",
+   "brand/get-rights-response.json",
+   "brand/rights-pricing-option.json",
+   "brand/rights-terms.json",
+   "brand/update-rights-request.json",
+   "brand/update-rights-response.json",
+   "enums/right-type.json",
+   "enums/right-use.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'brand/rights')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'brand/right_types')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'brand/available_uses')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'brand/generation_providers')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "fc149400b222d14890c3da9e81aa4db866fa06ae": {
+    "subj": "2026-03-14|feat: brand protocol \u2014 identity, rights, and acquisition tasks (#1415)",
+    "nfiles": 24,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/acquire-rights-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/get-rights-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/get-rights-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/rights-pricing-option.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/rights-terms.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand/update-rights-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "enums/right-type.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "enums/right-use.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/rights",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/right_types",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/available_uses",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/generation_providers",
+      "create",
+      []
+     ]
+    ]
+   },
+   "5ecc29d0c0e52ae68a7bc0e57e93be33d4603d74": {
+    "subj": "2026-03-23|feat!: seller-assigned IDs, opaque governance context, explicit idempotency (#1622)",
+    "nfiles": 43,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "7736865ac1bf947aef927de8e1d675724da8f2fd": {
+    "subj": "2026-04-06|feat: per-request version declaration (adcp_major_version) (#1959)",
+    "nfiles": 59,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "43586d69cc4e0db4e6000cfcae0a231cbff71705": {
+    "subj": "2026-04-18|feat(schemas)!: require idempotency_key on all mutating requests (#2315)",
+    "nfiles": 33,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      [
+       "added required /idempotency_key"
+      ]
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      [
+       "added required /idempotency_key"
+      ]
+     ]
+    ]
+   },
+   "d874136b97961a34dbfd72051741a8106059d217": {
+    "subj": "2026-04-19|spec: experimental status mechanism + custom pricing escape hatch (#2422)",
+    "nfiles": 20,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/acquire-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/rights-pricing-option.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/rights-terms.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "enums/right-type.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "enums/right-use.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/rights",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/right_types",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/available_uses",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "brand/generation_providers",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ff9094c2912c7f726e58f57b90d75b9bc0995c52": {
+    "subj": "2026-04-21|spec + tooling: x-entity annotation and storyboard context-entity lint (#2660) (#2668)",
+    "nfiles": 13,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/acquire-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "b9b5cfc4723afadef77b4ce8e19242cc8d38a0b1": {
+    "subj": "2026-04-21|spec + tooling: address expert review feedback on #2660 phase 2",
+    "nfiles": 9,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "26b4fb155558d2a5e30b0bebb4b27d313cc01456": {
+    "subj": "2026-04-21|spec + tooling: x-mutates-state annotation on request schemas (#2675) (#2690)",
+    "nfiles": 31,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "a7dbe650a7bb9d0db49039b947db3bf6caa25be3": {
+    "subj": "2026-04-24|docs(brand): specify request-validation clauses for acquire_rights (#2680, #2681) (#3072)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "6eadf0663c194823916791bc6108859e3bd92650": {
+    "subj": "2026-04-29|spec(versioning): release-precision protocol version negotiation (#3493)",
+    "nfiles": 130,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/acquire-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "1e76c74a21cee91f428cfc95e9a84936016e70ac": {
+    "subj": "2026-05-02|spec(brand): account on acquire_rights/update_rights + bound CPM projection (#3923)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "3f1bfeb861546db633ee9e4883503aa536cd58d3": {
+    "subj": "2026-08-05|feat(governance): enforce cross-role authorization (#6214)",
+    "nfiles": 17,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "f36f565076246abfa7b51d4a1e4fe62612389751": {
+    "subj": "2026-08-05|feat(creative): make formats canonical in AdCP 3.2 (#6125)",
+    "nfiles": 45,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "60f368fb76027f093caab9df432ef4c718eade5b": {
+    "subj": "2026-08-06|fix(schemas): stabilize deprecation metadata (#6136)",
+    "nfiles": 47,
+    "changes": [
+     [
+      "brand/acquire-rights-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ca60b16ccf1ac3df97f637ea2b66eb7f0e1c8af3": {
+    "subj": "2026-05-22|spec: fold protocol-envelope into per-task response schemas (closes #4878) (#4896)",
+    "nfiles": 70,
+    "changes": [
+     [
+      "brand/acquire-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/get-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "487df50c476c5d176b5bcdc3f454957cf7bb97fe": {
+    "subj": "2026-08-06|feat: add issuer-bound rights attestations (#6246)",
+    "nfiles": 10,
+    "changes": [
+     [
+      "brand/acquire-rights-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/update-rights-response.json",
+      "",
+      "modify",
+      [
+       "added required /generation_credentials",
+       "added required /rights_constraint"
+      ]
+     ]
+    ]
+   },
+   "3027c39e8f35224fe9a789e896c476931e68f1dc": {
+    "subj": "2026-04-25|feat(schema): hoist 4 duplicate inline enum sets into shared enums/ definitions (#3144) (#3148)",
+    "nfiles": 16,
+    "changes": [
+     [
+      "brand/rights-pricing-option.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "brand/rights-terms.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "298fa5a2a9bd969fef2e3c99c84a22530c36a138": {
+    "subj": "2026-04-19|spec: submitted branch for create_media_buy + ai_generated_image right-use (#2425)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "enums/right-use.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "creative.broadcast_loudness": {
+  "markers": 1,
+  "owned": [],
+  "inline": [
+   [
+    "formats/canonical/video_hosted.json",
+    "('prop', 'loudness')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "9ac7d9cff524846f7c58021f122a75ef0ef8a0e9": {
+    "subj": "2026-10-08|feat(schema): add NMO and VideoAmp demographic systems, MXF and loudness on video_hosted (#8019)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "formats/canonical/video_hosted.json",
+      "loudness",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "creative.evaluator": {
+  "markers": 4,
+  "owned": [
+   "core/evaluator-spec.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'creative/supports_evaluator')"
+   ],
+   [
+    "media-buy/build-creative-request.json",
+    "('prop', 'evaluator')"
+   ],
+   [
+    "media-buy/build-creative-response.json",
+    "('prop', 'creatives/[]/variants/[]/eval')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "5fc5283c66fc0a5226355bdc29c99f1f9b91658d": {
+    "subj": "2026-06-03|feat(creative): advisory evaluator for build_creative (RFC #5241) (#5305)",
+    "nfiles": 7,
+    "changes": [
+     [
+      "core/evaluator-spec.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "creative/supports_evaluator",
+      "create",
+      []
+     ],
+     [
+      "media-buy/build-creative-request.json",
+      "evaluator",
+      "create",
+      []
+     ],
+     [
+      "media-buy/build-creative-response.json",
+      "creatives/[]/variants/[]/eval",
+      "create",
+      []
+     ]
+    ]
+   },
+   "0f107839e080dcf89848cc1e96d6577777779605": {
+    "subj": "2026-06-04|Clarify evaluator ranking feature discovery (#5350)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/evaluator-spec.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "creative/supports_evaluator",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/build-creative-request.json",
+      "evaluator",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "402062c9c9c4ea162aea364287877603e0f21918": {
+    "subj": "2026-06-05|docs(creative): document evaluator auth boundary (#5372)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/evaluator-spec.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "creative/supports_evaluator",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/build-creative-request.json",
+      "evaluator",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "creative.signal_fanout": {
+  "markers": 9,
+  "owned": [
+   "enums/creative-selection-strategy.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'creative/multiplicity/supports_signal_fanout')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'creative/multiplicity/max_signal_conditions_limit')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'creative/multiplicity/selection_strategies')"
+   ],
+   [
+    "media-buy/build-creative-request.json",
+    "('prop', 'signal_conditions')"
+   ],
+   [
+    "media-buy/build-creative-request.json",
+    "('prop', 'selection_strategy')"
+   ],
+   [
+    "media-buy/build-creative-response.json",
+    "('prop', 'creatives/[]/signal_condition')"
+   ],
+   [
+    "media-buy/build-creative-response.json",
+    "('prop', 'selection_strategy_applied')"
+   ],
+   [
+    "media-buy/build-creative-response.json",
+    "('prop', 'estimate/conditions_total')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "e5c269489edb4b7e94877916a16657e692c49342": {
+    "subj": "2026-06-03|feat(creative): signal-driven creative fan-out + item-selection strategy (RFC #5240, folds #5262) (#5304)",
+    "nfiles": 8,
+    "changes": [
+     [
+      "enums/creative-selection-strategy.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "creative/multiplicity/supports_signal_fanout",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "creative/multiplicity/max_signal_conditions_limit",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "creative/multiplicity/selection_strategies",
+      "create",
+      []
+     ],
+     [
+      "media-buy/build-creative-request.json",
+      "signal_conditions",
+      "create",
+      []
+     ],
+     [
+      "media-buy/build-creative-request.json",
+      "selection_strategy",
+      "create",
+      []
+     ],
+     [
+      "media-buy/build-creative-response.json",
+      "creatives/[]/signal_condition",
+      "create",
+      []
+     ],
+     [
+      "media-buy/build-creative-response.json",
+      "selection_strategy_applied",
+      "create",
+      []
+     ],
+     [
+      "media-buy/build-creative-response.json",
+      "estimate/conditions_total",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "governance.campaign": {
+  "markers": 12,
+  "owned": [
+   "enums/governance-mode.json",
+   "governance/check-governance-request.json",
+   "governance/check-governance-response.json",
+   "governance/get-plan-audit-logs-request.json",
+   "governance/get-plan-audit-logs-response.json",
+   "governance/report-plan-adjustment-request.json",
+   "governance/report-plan-adjustment-response.json",
+   "governance/report-plan-outcome-request.json",
+   "governance/report-plan-outcome-response.json",
+   "governance/sync-plans-request.json",
+   "governance/sync-plans-response.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'adcp/governance_enforcement')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "9c2a978c3a38cc789c68fa623cc1d16675014f53": {
+    "subj": "2026-03-13|feat: governance policy registry and campaign governance protocol (#1351)",
+    "nfiles": 31,
+    "changes": [
+     [
+      "enums/governance-mode.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/check-governance-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "20a8310671b6b6a3492f31bcfb023e0377c393c8": {
+    "subj": "2026-04-25|schema(governance): mark governance-mode enum experimental + clarify per-check mode semantics (#3169)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "enums/governance-mode.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ff30c6a96b7ef676e9d7a2af67c4fb4a51b66690": {
+    "subj": "2026-03-14|feat(governance): schema improvements from E2E testing (#1448)",
+    "nfiles": 5,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "257463e7cd369363e6b9636539cbe208c2c134f7": {
+    "subj": "2026-03-23|feat: structured audience data for bias/fairness governance (#1389) (#1593)",
+    "nfiles": 17,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "5ecc29d0c0e52ae68a7bc0e57e93be33d4603d74": {
+    "subj": "2026-03-23|feat!: seller-assigned IDs, opaque governance context, explicit idempotency (#1622)",
+    "nfiles": 43,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      [
+       "removed prop /buyer_campaign_ref",
+       "removed prop /buyer_ref"
+      ]
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      [
+       "removed prop /buyer_campaign_ref"
+      ]
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      [
+       "removed prop /buyer_campaign_ref"
+      ]
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      [
+       "removed enum /plans[]/campaigns[]/status=\"active\"",
+       "removed enum /plans[]/campaigns[]/status=\"completed\"",
+       "removed enum /plans[]/campaigns[]/status=\"suspended\"",
+       "removed prop /plans[]/campaigns",
+       "removed prop /plans[]/campaigns[]/active_media_buys",
+       "removed prop /plans[]/campaigns[]/buyer_campaign_ref",
+       "removed prop /plans[]/campaigns[]/committed",
+       "removed prop /plans[]/campaigns[]/status"
+      ]
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      [
+       "removed prop /buyer_campaign_ref",
+       "removed prop /seller_response/buyer_ref"
+      ]
+     ]
+    ]
+   },
+   "f132f844bdf3a1e4868cbd2d7c3493e0ac04f768": {
+    "subj": "2026-03-25|feat: structured business entity data for B2B invoicing (#1605)",
+    "nfiles": 12,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "0777cfe6bc42ebcaa34356e3ab52a55f6a672e6d": {
+    "subj": "2026-04-01|Governance cross-refs and protocol simplifications (#1772)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      [
+       "removed enum /binding=\"committed\"",
+       "removed enum /binding=\"proposed\"",
+       "removed prop /binding"
+      ]
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      [
+       "removed enum /binding=\"committed\"",
+       "removed enum /binding=\"proposed\"",
+       "removed enum /status=\"escalated\"",
+       "removed prop /binding",
+       "removed prop /escalation",
+       "removed prop /escalation/approval_tier",
+       "removed prop /escalation/reason",
+       "removed prop /escalation/requires_human",
+       "removed prop /escalation/severity",
+       "removed prop /mode"
+      ]
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      [
+       "removed enum /plans[]/entries[]/binding=\"committed\"",
+       "removed enum /plans[]/entries[]/binding=\"proposed\"",
+       "removed enum /plans[]/entries[]/status=\"escalated\"",
+       "removed prop /plans[]/entries[]/binding",
+       "removed prop /plans[]/summary/statuses/escalated"
+      ]
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      [
+       "removed prop /plans[]/mode"
+      ]
+     ]
+    ]
+   },
+   "7736865ac1bf947aef927de8e1d675724da8f2fd": {
+    "subj": "2026-04-06|feat: per-request version declaration (adcp_major_version) (#1959)",
+    "nfiles": 59,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "60f2a9ec0ed07f6d7db4332dfddcdddae2bcf0a0": {
+    "subj": "2026-04-10|feat: generalize governance to all purchase types (#2014)",
+    "nfiles": 9,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      [
+       "removed prop /media_buy_id"
+      ]
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      [
+       "removed enum /plans[]/media_buys[]/status=\"active\"",
+       "removed enum /plans[]/media_buys[]/status=\"completed\"",
+       "removed enum /plans[]/media_buys[]/status=\"suspended\"",
+       "removed prop /plans[]/entries[]/media_buy_id",
+       "removed prop /plans[]/media_buys",
+       "removed prop /plans[]/media_buys[]/check_count",
+       "removed prop /plans[]/media_buys[]/committed",
+       "removed prop /plans[]/media_buys[]/media_buy_id",
+       "removed prop /plans[]/media_buys[]/status"
+      ]
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      [
+       "removed prop /delivery/media_buy_id",
+       "removed prop /seller_response/media_buy_id"
+      ]
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "b674082efeed21e285f9a645dbb572e47d1a9f9f": {
+    "subj": "2026-04-15|feat: GOVERNANCE_DENIED error, flatten comply_test_controller, context/ext, require signal_id (#2194)",
+    "nfiles": 31,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "2e3ec71ddc4b25d5eec05030bc87f706d675afd9": {
+    "subj": "2026-04-18|spec(governance): signed JWS format for governance_context (#2316)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "d874136b97961a34dbfd72051741a8106059d217": {
+    "subj": "2026-04-19|spec: experimental status mechanism + custom pricing escape hatch (#2422)",
+    "nfiles": 20,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "bdfe6f7735ad5e91371a1178dd35c6f02989b5a4": {
+    "subj": "2026-04-21|spec: extend x-entity annotation to account and governance (#2660 phase 3) (#2678)",
+    "nfiles": 17,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "466481f21287a34a46ea1bfec3f46634df3b6832": {
+    "subj": "2026-04-21|feat(schema): asset_type discriminator + governance plan_id scoping (#2776, #2777) (#2795)",
+    "nfiles": 24,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "6eadf0663c194823916791bc6108859e3bd92650": {
+    "subj": "2026-04-29|spec(versioning): release-precision protocol version negotiation (#3493)",
+    "nfiles": 130,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "dbc5b561726b1d6f62ecff18bc5207199af31ea8": {
+    "subj": "2026-05-29|feat(schemas): improve SDK generation ergonomics",
+    "nfiles": 26,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "3f1bfeb861546db633ee9e4883503aa536cd58d3": {
+    "subj": "2026-08-05|feat(governance): enforce cross-role authorization (#6214)",
+    "nfiles": 17,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      [
+       "added required /delivery_metrics",
+       "added required /governance_context",
+       "added required /planned_delivery"
+      ]
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "adcp/governance_enforcement",
+      "create",
+      []
+     ]
+    ]
+   },
+   "48ccce960cce8f9c4a70deb1b76ec3f7b76357d9": {
+    "subj": "2026-08-06|feat(schema): add portable attestations and audience evidence (#6218)",
+    "nfiles": 25,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "0bb862e0764630cb4898e2cfdfff3d3b33dfa279": {
+    "subj": "2026-08-14|feat(schema): add resource-scoped indicators and warnings (#6212)",
+    "nfiles": 126,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "adcp/governance_enforcement",
+      "modify",
+      [
+       "const changed /tasks[]/task=\"accept_proposal\"",
+       "const changed /tasks[]/task=\"buy_products\"",
+       "const changed /tasks[]/task=\"control_media_buy\""
+      ]
+     ]
+    ]
+   },
+   "77d17df828747002137f3e116eb9f4b312b0fd8d": {
+    "subj": "2026-08-17|feat(governance): reconcile delivery and plan adjustments (#6305)",
+    "nfiles": 10,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-adjustment-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/report-plan-adjustment-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      [
+       "added required /delivery/reporting_period",
+       "closed /delivery"
+      ]
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "655383c6422821c9c1358777d4d58401d864fc0a": {
+    "subj": "2026-10-06|feat(governance): add budget periods to campaign governance plans (#7965)",
+    "nfiles": 5,
+    "changes": [
+     [
+      "governance/check-governance-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "204fe595f352930443f105aee9d395190894b678": {
+    "subj": "2026-04-18|spec: governance + validation + content-standards schema alignment for 3.0 GA (#2322)",
+    "nfiles": 13,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "6f3da9cf11f1eeacf6bffb0340d54f277207d65f": {
+    "subj": "2026-04-20|spec(schemas): canonicalize governance conditions + catalog item_count (#2603, #2604) (#2612)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "68db18951120570116fc240e5a64d6dc23a29923": {
+    "subj": "2026-04-21|spec + tooling: split governance_policy into registry vs. inline (closes #2685) (#2724)",
+    "nfiles": 17,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "2ee6ac78d12e2339e6a6219936025753299ff8ce": {
+    "subj": "2026-04-22|fix(schemas): accept envelope-level replayed on 15 response schemas (#2839) (#2862)",
+    "nfiles": 15,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "00c15740542166fe41b4da7182dc3d323c743769": {
+    "subj": "2026-04-25|fix(schema): add mode to governance responses; replace binding with check_type in audit entries (#3163)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ff95642a5426c9d5b2f6ff4976eaf3fd83db97df": {
+    "subj": "2026-04-25|fix(schema): clarify policies_evaluated includes inline policy IDs (#3201)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "feed616198c20a1212829017237191d240960fd9": {
+    "subj": "2026-04-26|feat(schema): hoist 13 duplicate inline enum sets into shared enums/ definitions (#3174)",
+    "nfiles": 34,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "7b2de61b1b956fdf5a9ca67e7386fca2aba9f4ae": {
+    "subj": "2026-04-28|spec(governance): single governance agent per account (#3010) (#3015)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "1346fb6b3009a79a131e9e9d90de2e0a9c4abbae": {
+    "subj": "2026-05-17|docs(governance): policy attribution pattern (closes #2303) (#4631)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "989da5104e8043e8bb33bc4e931a1bb70ad51b1a": {
+    "subj": "2026-05-21|spec(governance): rename body-level `status` on check_governance and report_plan_outcome (#4897) (#4902)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "governance/check-governance-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "e50579ea7696b06776d54a181280e74cb50cd5ec": {
+    "subj": "2026-04-20|spec(governance): bind governance_context JWS to plan_hash (#2486)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ae7eae248e1bd150f13af15834e3b431d02b9a27": {
+    "subj": "2026-04-25|feat(schema): add mode to get_plan_audit_logs audit entries (#3160)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ca60b16ccf1ac3df97f637ea2b66eb7f0e1c8af3": {
+    "subj": "2026-05-22|spec: fold protocol-envelope into per-task response schemas (closes #4878) (#4896)",
+    "nfiles": 70,
+    "changes": [
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "60f368fb76027f093caab9df432ef4c718eade5b": {
+    "subj": "2026-08-06|fix(schemas): stabilize deprecation metadata (#6136)",
+    "nfiles": 47,
+    "changes": [
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "a1672f91421e0d20c42465486bc0d6f8454a552c": {
+    "subj": "2026-08-28|feat(governance): add seller policy and change-right contracts (#6794)",
+    "nfiles": 43,
+    "changes": [
+     [
+      "governance/get-plan-audit-logs-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "adcp/governance_enforcement",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "245108f7920d6ac89f6f959bf2407937d17d191b": {
+    "subj": "2026-09-09|fix(protocol): scope idempotency replay to mutations (#7383)",
+    "nfiles": 11,
+    "changes": [
+     [
+      "governance/report-plan-adjustment-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "43586d69cc4e0db4e6000cfcae0a231cbff71705": {
+    "subj": "2026-04-18|feat(schemas)!: require idempotency_key on all mutating requests (#2315)",
+    "nfiles": 33,
+    "changes": [
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      [
+       "added required /idempotency_key"
+      ]
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "26b4fb155558d2a5e30b0bebb4b27d313cc01456": {
+    "subj": "2026-04-21|spec + tooling: x-mutates-state annotation on request schemas (#2675) (#2690)",
+    "nfiles": 31,
+    "changes": [
+     [
+      "governance/report-plan-outcome-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "4c124545f15c0f8b54c61693a4b8b451755ac931": {
+    "subj": "2026-05-19|spec(3.1): WG-review batch \u2014 10 normative clarifications (#4796)",
+    "nfiles": 13,
+    "changes": [
+     [
+      "governance/report-plan-outcome-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "governance/sync-plans-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "e6dd73a086de107762a84fd2790f252b42e6e546": {
+    "subj": "2026-04-18|feat(governance)!: enforce Art 22 / Annex III as schema invariants (#2310) (#2338)",
+    "nfiles": 7,
+    "changes": [
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      [
+       "added required /plans[]/budget/reallocation_threshold",
+       "removed prop /plans[]/budget/authority_level"
+      ]
+     ]
+    ]
+   },
+   "e5d2bbcc69d74bde732667bea33a9cd739d28103": {
+    "subj": "2026-05-29|feat(schema): add signal definition enrichment",
+    "nfiles": 20,
+    "changes": [
+     [
+      "governance/sync-plans-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "identity.trust_json": {
+  "markers": 2,
+  "owned": [
+   "trust/v1/trust-acknowledgements.json",
+   "trust/v1/trust.json"
+  ],
+  "inline": [],
+  "nested": 0,
+  "commits": {
+   "9a5f7f2b11e6b971e91354ca1f6275a7b8864116": {
+    "subj": "2026-10-09|feat(schema): add experimental trust.json v1 schemas (RFC #7809) (#8067)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "trust/v1/trust-acknowledgements.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trust/v1/trust.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "ff9b0f41fe4b40c6051c3ce0f29977ea0fd3a7ab": {
+    "subj": "2026-10-12|fix(schema): move identity_relying_party into a core schema so Python SDK generation succeeds (#8147)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "trust/v1/trust.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "110adf30ffb1f2807d1683d2608da00fd512a2f1": {
+    "subj": "2026-10-13|feat(schema): trust.json v1 identifies agents by origin and carries no keys (#8121)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "trust/v1/trust.json",
+      "",
+      "modify",
+      [
+       "removed prop #agent/jwks_uri"
+      ]
+     ]
+    ]
+   }
+  }
+ },
+ "measurement.core": {
+  "markers": 20,
+  "owned": [
+   "core/performance-feedback-assertion.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'media_buy/performance_feedback')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'measurement')"
+   ],
+   [
+    "media-buy/provide-performance-feedback-response.json",
+    "('prop', 'feedback_id')"
+   ],
+   [
+    "media-buy/provide-performance-feedback-response.json",
+    "('prop', 'application_status')"
+   ],
+   [
+    "media-buy/provide-performance-feedback-response.json",
+    "('prop', 'status_reason')"
+   ],
+   [
+    "media-buy/provide-performance-feedback-response.json",
+    "('prop', 'received_at')"
+   ],
+   [
+    "media-buy/provide-performance-feedback-response.json",
+    "('prop', 'applied_at')"
+   ]
+  ],
+  "nested": 12,
+  "commits": {
+   "2ec088212771819ef7e2cdacbe6f5134cf6a3a9c": {
+    "subj": "2026-08-13|feat(measurement): add measurement gateway feedback contract (#6245)",
+    "nfiles": 9,
+    "changes": [
+     [
+      "core/performance-feedback-assertion.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/performance_feedback",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "measurement",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/provide-performance-feedback-response.json",
+      "feedback_id",
+      "create",
+      []
+     ],
+     [
+      "media-buy/provide-performance-feedback-response.json",
+      "application_status",
+      "create",
+      []
+     ],
+     [
+      "media-buy/provide-performance-feedback-response.json",
+      "status_reason",
+      "create",
+      []
+     ],
+     [
+      "media-buy/provide-performance-feedback-response.json",
+      "received_at",
+      "create",
+      []
+     ],
+     [
+      "media-buy/provide-performance-feedback-response.json",
+      "applied_at",
+      "create",
+      []
+     ]
+    ]
+   },
+   "12bfb06511f3089cdb175d09eca0abc51b42663d": {
+    "subj": "2026-04-30|feat(schemas): measurement capability block + brand.json metric_categories (#3612) (#3652)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "measurement",
+      "create",
+      []
+     ]
+    ]
+   },
+   "8da6974d0508c3910c40c1cee369ca9a3dcd9534": {
+    "subj": "2026-05-30|spec(3.1): clarify proposal lifecycle and experimental measurement",
+    "nfiles": 11,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "measurement",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "6cf4e18e07dc2ee533e2318522e02a16e54bc768": {
+    "subj": "2026-09-04|feat(schema): typed vendor_relationship and play-based coverage denominators for vendor metrics (#7177)",
+    "nfiles": 7,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "measurement",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "measurement.gateway": {
+  "markers": 1,
+  "owned": [],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'measurement_gateway')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "2ec088212771819ef7e2cdacbe6f5134cf6a3a9c": {
+    "subj": "2026-08-13|feat(measurement): add measurement gateway feedback contract (#6245)",
+    "nfiles": 9,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "measurement_gateway",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.audience_activation": {
+  "markers": 6,
+  "owned": [
+   "core/audience-activation-method.json",
+   "core/audience-source.json"
+  ],
+  "inline": [
+   [
+    "core/product-filters.json",
+    "('prop', 'audience_activation_methods')"
+   ],
+   [
+    "core/product.json",
+    "('prop', 'audience_activation')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'media_buy/audience_targeting/supported_activation_methods')"
+   ],
+   [
+    "media-buy/sync-audiences-response.json",
+    "('prop', 'audiences/[]/source')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "dc349b08548b8e1839bf872f058c487c7104143f": {
+    "subj": "2026-08-25|feat(schema): audience activation method declarations (#4324) (#6549)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/audience-activation-method.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/product-filters.json",
+      "audience_activation_methods",
+      "create",
+      []
+     ],
+     [
+      "core/product.json",
+      "audience_activation",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/audience_targeting/supported_activation_methods",
+      "create",
+      []
+     ]
+    ]
+   },
+   "172dae75d9ea9abc26c3135ebdd17e73dfe59c5e": {
+    "subj": "2026-08-27|feat(media-buy): external audience sources on sync_audiences (#6540) (#6857)",
+    "nfiles": 5,
+    "changes": [
+     [
+      "core/audience-activation-method.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/audience-source.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "media-buy/sync-audiences-response.json",
+      "audiences/[]/source",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.collection_cards": {
+  "markers": 14,
+  "owned": [
+   "core/response-collection.json"
+  ],
+  "inline": [
+   [
+    "core/collection.json",
+    "('prop', 'images')"
+   ],
+   [
+    "core/collection.json",
+    "('prop', 'sample_content')"
+   ],
+   [
+    "core/collection.json",
+    "('prop', 'url')"
+   ],
+   [
+    "core/collection-distribution.json",
+    "('prop', 'followers')"
+   ],
+   [
+    "core/talent.json",
+    "('prop', 'brand_ref')"
+   ],
+   [
+    "media-buy/refine-proposals-request.json",
+    "('prop', 'include_collections')"
+   ],
+   [
+    "media-buy/list-products-response.json",
+    "('prop', 'collections')"
+   ],
+   [
+    "media-buy/request-proposals-response.json",
+    "('prop', 'collections')"
+   ],
+   [
+    "media-buy/list-products-request.json",
+    "('prop', 'include_collections')"
+   ],
+   [
+    "media-buy/get-products-response.json",
+    "('prop', 'collections')"
+   ],
+   [
+    "media-buy/refine-proposals-response.json",
+    "('prop', 'collections')"
+   ],
+   [
+    "media-buy/get-products-request.json",
+    "('prop', 'include_collections')"
+   ],
+   [
+    "media-buy/request-proposals-request.json",
+    "('prop', 'include_collections')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "6506011b9359ba2b4ed7bc575db58ac734d9237f": {
+    "subj": "2026-10-13|feat(schema): experimental collection objects in product and proposal responses (#8141)",
+    "nfiles": 18,
+    "changes": [
+     [
+      "core/response-collection.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/collection.json",
+      "images",
+      "modify",
+      []
+     ],
+     [
+      "core/collection.json",
+      "sample_content",
+      "modify",
+      []
+     ],
+     [
+      "core/collection.json",
+      "url",
+      "create",
+      []
+     ],
+     [
+      "core/talent.json",
+      "brand_ref",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/refine-proposals-request.json",
+      "include_collections",
+      "create",
+      []
+     ],
+     [
+      "media-buy/list-products-response.json",
+      "collections",
+      "create",
+      []
+     ],
+     [
+      "media-buy/request-proposals-response.json",
+      "collections",
+      "create",
+      []
+     ],
+     [
+      "media-buy/list-products-request.json",
+      "include_collections",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-products-response.json",
+      "collections",
+      "create",
+      []
+     ],
+     [
+      "media-buy/refine-proposals-response.json",
+      "collections",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-products-request.json",
+      "include_collections",
+      "create",
+      []
+     ],
+     [
+      "media-buy/request-proposals-request.json",
+      "include_collections",
+      "create",
+      []
+     ]
+    ]
+   },
+   "9486c57183b39ae22fb9c04744877938254d3a00": {
+    "subj": "2026-10-13|feat(schema): experimental follower count on collection distribution for creator cards (#8098)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "core/response-collection.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/collection-distribution.json",
+      "followers",
+      "create",
+      []
+     ],
+     [
+      "media-buy/list-products-response.json",
+      "collections",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/request-proposals-response.json",
+      "collections",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-products-response.json",
+      "collections",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/refine-proposals-response.json",
+      "collections",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "15df9e107e9ef29225bde5f15ef59dfbfbaa7330": {
+    "subj": "2026-10-17|feat(media-buy): experimental list_collections and collection card webhooks (#8279)",
+    "nfiles": 12,
+    "changes": [
+     [
+      "core/response-collection.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/collection-distribution.json",
+      "followers",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "b528b43a329407f61263eeedd32db80593b0d1f7": {
+    "subj": "2026-10-13|feat(schema): experimental collection cards with images, sample content and talent brand_ref (#8094)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "core/collection.json",
+      "images",
+      "create",
+      []
+     ],
+     [
+      "core/collection.json",
+      "sample_content",
+      "create",
+      []
+     ],
+     [
+      "core/talent.json",
+      "brand_ref",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.collection_catalog": {
+  "markers": 5,
+  "owned": [
+   "media-buy/list-collections-request.json",
+   "media-buy/list-collections-response.json"
+  ],
+  "inline": [
+   [
+    "core/wholesale-feed-event.json",
+    "('branch', '/oneOf/9')"
+   ],
+   [
+    "core/wholesale-feed-event.json",
+    "('branch', '/oneOf/10')"
+   ],
+   [
+    "core/wholesale-feed-event.json",
+    "('branch', '/oneOf/11')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "15df9e107e9ef29225bde5f15ef59dfbfbaa7330": {
+    "subj": "2026-10-17|feat(media-buy): experimental list_collections and collection card webhooks (#8279)",
+    "nfiles": 12,
+    "changes": [
+     [
+      "media-buy/list-collections-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "media-buy/list-collections-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/wholesale-feed-event.json",
+      "/oneOf/9",
+      "create",
+      []
+     ],
+     [
+      "core/wholesale-feed-event.json",
+      "/oneOf/10",
+      "create",
+      []
+     ],
+     [
+      "core/wholesale-feed-event.json",
+      "/oneOf/11",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.daypart_granularity": {
+  "markers": 5,
+  "owned": [
+   "enums/daypart-time-granularity.json"
+  ],
+  "inline": [
+   [
+    "core/targeting-overlay-requirements.json",
+    "('prop', '#daypartRequirement/time_granularity')"
+   ],
+   [
+    "core/targeting-overlay-support.json",
+    "('prop', '#daypartSupport/time_granularity')"
+   ],
+   [
+    "core/daypart-target.json",
+    "('prop', 'start_time')"
+   ],
+   [
+    "core/daypart-target.json",
+    "('prop', 'end_time')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "e6e8fa554304e12532cb94b8d809a2860ec3f74c": {
+    "subj": "2026-10-08|feat(targeting): experimental minute-resolution dayparts (#8025)",
+    "nfiles": 5,
+    "changes": [
+     [
+      "enums/daypart-time-granularity.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/targeting-overlay-requirements.json",
+      "#daypartRequirement/time_granularity",
+      "create",
+      []
+     ],
+     [
+      "core/targeting-overlay-support.json",
+      "#daypartSupport/time_granularity",
+      "create",
+      []
+     ],
+     [
+      "core/daypart-target.json",
+      "start_time",
+      "create",
+      []
+     ],
+     [
+      "core/daypart-target.json",
+      "end_time",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.delegated_composition": {
+  "markers": 3,
+  "owned": [],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'media_buy/proposal_refinement/hold_semantics')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'media_buy/supports_exclusive_product_ids')"
+   ],
+   [
+    "media-buy/product-discovery-criteria.json",
+    "('prop', 'product_ids_exclusive')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "a828a8152aa90aecd4a90524bf4797e7be345509": {
+    "subj": "2026-10-13|feat(media-buy): delegated composition bootstrap \u2014 exclusive product universe and terms-only finalize (#7954)",
+    "nfiles": 8,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/proposal_refinement/hold_semantics",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/supports_exclusive_product_ids",
+      "create",
+      []
+     ],
+     [
+      "media-buy/product-discovery-criteria.json",
+      "product_ids_exclusive",
+      "create",
+      []
+     ]
+    ]
+   },
+   "68c487e0b4de20fa47876387588fcb3757c53115": {
+    "subj": "2026-10-13|feat(media-buy): experimental hold_policy on products and proposals (#8140)",
+    "nfiles": 8,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/proposal_refinement/hold_semantics",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.execution_requirements": {
+  "markers": 2,
+  "owned": [
+   "core/product-execution-requirement.json",
+   "error-details/execution-requirement-unmet.json"
+  ],
+  "inline": [
+   [
+    "core/canonical-product.json",
+    "('prop', 'execution_requirements')"
+   ],
+   [
+    "core/product.json",
+    "('prop', 'execution_requirements')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "2b80738b9d2ce8a24d8758f41ab9be03fad2a301": {
+    "subj": "2026-09-30|feat(schema): add experimental product execution requirements (#7774)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "core/product-execution-requirement.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "error-details/execution-requirement-unmet.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/canonical-product.json",
+      "execution_requirements",
+      "create",
+      []
+     ],
+     [
+      "core/product.json",
+      "execution_requirements",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.hold_extension": {
+  "markers": 4,
+  "owned": [],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'media_buy/proposal_refinement/hold_extension')"
+   ],
+   [
+    "media-buy/proposal-refinement.json",
+    "('branch', '/oneOf/1')"
+   ]
+  ],
+  "nested": 2,
+  "commits": {
+   "66bb73322f4ed2bf335f4c5eb116a3b122ac3730": {
+    "subj": "2026-10-14|feat(media-buy): experimental extend_hold action for refine_proposals (#8097)",
+    "nfiles": 8,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/proposal_refinement/hold_extension",
+      "create",
+      []
+     ],
+     [
+      "media-buy/proposal-refinement.json",
+      "/oneOf/1",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.hold_policy": {
+  "markers": 8,
+  "owned": [
+   "core/hold-policy.json"
+  ],
+  "inline": [
+   [
+    "core/canonical-proposal.json",
+    "('prop', 'hold_policy')"
+   ],
+   [
+    "core/canonical-proposal.json",
+    "('prop', 'hold_placed_at')"
+   ],
+   [
+    "core/canonical-product.json",
+    "('prop', 'hold_policy')"
+   ],
+   [
+    "core/product.json",
+    "('prop', 'hold_policy')"
+   ]
+  ],
+  "nested": 3,
+  "commits": {
+   "68c487e0b4de20fa47876387588fcb3757c53115": {
+    "subj": "2026-10-13|feat(media-buy): experimental hold_policy on products and proposals (#8140)",
+    "nfiles": 8,
+    "changes": [
+     [
+      "core/hold-policy.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/canonical-proposal.json",
+      "hold_policy",
+      "create",
+      []
+     ],
+     [
+      "core/canonical-proposal.json",
+      "hold_placed_at",
+      "create",
+      []
+     ],
+     [
+      "core/canonical-product.json",
+      "hold_policy",
+      "create",
+      []
+     ],
+     [
+      "core/product.json",
+      "hold_policy",
+      "create",
+      []
+     ]
+    ]
+   },
+   "66bb73322f4ed2bf335f4c5eb116a3b122ac3730": {
+    "subj": "2026-10-14|feat(media-buy): experimental extend_hold action for refine_proposals (#8097)",
+    "nfiles": 8,
+    "changes": [
+     [
+      "core/hold-policy.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/canonical-proposal.json",
+      "hold_policy",
+      "modify",
+      []
+     ],
+     [
+      "core/canonical-proposal.json",
+      "hold_placed_at",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ad0c1011cfe13f2a687b07c188b4f1638dcf51bd": {
+    "subj": "2026-10-17|feat(media-buy): experimental advisory hold ranking (rankable, hold_rank) (#8255)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/hold-policy.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/canonical-proposal.json",
+      "hold_policy",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "96a6e09b199cde357c47e758f338aa04bbd8c7a7": {
+    "subj": "2026-10-17|feat(media-buy): experimental per-installment hold readback (holds) (#8257)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "core/canonical-proposal.json",
+      "hold_policy",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.hold_ranking": {
+  "markers": 2,
+  "owned": [],
+  "inline": [
+   [
+    "core/canonical-proposal.json",
+    "('prop', 'hold_rank')"
+   ]
+  ],
+  "nested": 1,
+  "commits": {
+   "ad0c1011cfe13f2a687b07c188b4f1638dcf51bd": {
+    "subj": "2026-10-17|feat(media-buy): experimental advisory hold ranking (rankable, hold_rank) (#8255)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/canonical-proposal.json",
+      "hold_rank",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.installment_holds": {
+  "markers": 1,
+  "owned": [],
+  "inline": [
+   [
+    "core/canonical-proposal.json",
+    "('prop', 'holds')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "96a6e09b199cde357c47e758f338aa04bbd8c7a7": {
+    "subj": "2026-10-17|feat(media-buy): experimental per-installment hold readback (holds) (#8257)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "core/canonical-proposal.json",
+      "holds",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.product_identity": {
+  "markers": 3,
+  "owned": [
+   "core/product-identity.json"
+  ],
+  "inline": [
+   [
+    "core/canonical-product.json",
+    "('prop', 'identity')"
+   ],
+   [
+    "core/product.json",
+    "('prop', 'identity')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "17162cf8aa2a94263a0b90f9fd2f395f50975347": {
+    "subj": "2026-09-03|feat(schema): add product identity-absence disclosure (#7195)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "core/product-identity.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/canonical-product.json",
+      "identity",
+      "create",
+      []
+     ],
+     [
+      "core/product.json",
+      "identity",
+      "create",
+      []
+     ]
+    ]
+   },
+   "d44756ac5d726a35d384f3d33cd7bd817f1c76d7": {
+    "subj": "2026-09-13|feat(media-buy): add structured product frequency-cap constraints (#7438)",
+    "nfiles": 18,
+    "changes": [
+     [
+      "core/product-identity.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "f1848ee6521fb0d48a4b5add861df0c0da0326a1": {
+    "subj": "2026-09-13|feat(media-buy): add shared media-buy frequency cap (#7449)",
+    "nfiles": 36,
+    "changes": [
+     [
+      "core/product-identity.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.reporting_delivery": {
+  "markers": 45,
+  "owned": [
+   "core/reporting-adjustment-receipt.json",
+   "core/reporting-adjustment.json",
+   "core/reporting-canonical-content-digest.json",
+   "core/reporting-canonicalization-contract.json",
+   "core/reporting-consumer-status.json",
+   "core/reporting-control-total.json",
+   "core/reporting-coverage.json",
+   "core/reporting-dataset-share-destination.json",
+   "core/reporting-delivery-capabilities.json",
+   "core/reporting-delivery-config-state.json",
+   "core/reporting-delivery-config.json",
+   "core/reporting-delivery-method.json",
+   "core/reporting-delivery-offering.json",
+   "core/reporting-delivery-ready-webhook.json",
+   "core/reporting-file-compression.json",
+   "core/reporting-file-entry.json",
+   "core/reporting-file-manifest.json",
+   "core/reporting-file-object-ref.json",
+   "core/reporting-ledger-changed-webhook.json",
+   "core/reporting-materialization.json",
+   "core/reporting-native-version-ref.json",
+   "core/reporting-obligation.json",
+   "core/reporting-receipt.json",
+   "core/reporting-reconciliation-mode.json",
+   "core/reporting-reliability-statistics.json",
+   "core/reporting-report-definition.json",
+   "core/reporting-resource.json",
+   "core/reporting-revision.json",
+   "core/reporting-schedule-offering.json",
+   "core/reporting-schedule.json",
+   "core/reporting-status-changed-webhook.json",
+   "core/reporting-status-issue.json",
+   "core/reporting-verification-profile.json",
+   "core/reporting-verification.json",
+   "core/reporting-write-destination.json",
+   "media-buy/get-reporting-status-request.json",
+   "media-buy/get-reporting-status-response.json",
+   "media-buy/sync-reporting-receipts-request.json",
+   "media-buy/sync-reporting-receipts-response.json",
+   "media-buy/sync-reporting-status-request.json",
+   "media-buy/sync-reporting-status-response.json"
+  ],
+  "inline": [
+   [
+    "core/account.json",
+    "('prop', 'reporting_delivery_configs')"
+   ],
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'media_buy/reporting_delivery')"
+   ],
+   [
+    "account/sync-accounts-request.json",
+    "('prop', 'accounts/[]/reporting_delivery_configs')"
+   ],
+   [
+    "account/sync-accounts-response.json",
+    "('prop', 'accounts/[]/reporting_delivery_configs')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "dd6ab0bce389a1ebdc1dda455b508500ae5eca6f": {
+    "subj": "2026-09-04|feat(reporting): add Reliable Reporting pipelines (#7228)",
+    "nfiles": 22,
+    "changes": [
+     [
+      "core/reporting-adjustment-receipt.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-adjustment.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-capabilities.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-delivery-config.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-ledger-changed-webhook.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-obligation.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-reliability-statistics.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-report-definition.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-revision.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-schedule-offering.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-schedule.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/sync-reporting-receipts-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/sync-reporting-receipts-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/reporting_delivery",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "049bca31290894c545f24fbaf30f689ba1676e15": {
+    "subj": "2026-09-04|feat(reporting): harden Reliable Reporting for RC1 (#7254)",
+    "nfiles": 13,
+    "changes": [
+     [
+      "core/reporting-adjustment-receipt.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-adjustment.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-delivery-capabilities.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-delivery-config.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-delivery-offering.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-obligation.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-receipt.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-revision.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-status-issue.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "b7b6ba9171ba1be935bdf88cd3f5754f8118d2bf": {
+    "subj": "2026-08-31|feat(reporting): add managed reporting status schemas (#6953)",
+    "nfiles": 44,
+    "changes": [
+     [
+      "core/reporting-canonical-content-digest.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-canonicalization-contract.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-control-total.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-coverage.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-dataset-share-destination.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-capabilities.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-config-state.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-config.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-method.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-offering.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-ready-webhook.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-file-compression.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-file-entry.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-file-manifest.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-materialization.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-obligation.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-receipt.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-reconciliation-mode.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-report-definition.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-resource.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-revision.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-schedule-offering.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-schedule.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-status-changed-webhook.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-status-issue.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-verification-profile.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-verification.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-write-destination.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "media-buy/sync-reporting-receipts-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "media-buy/sync-reporting-receipts-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/account.json",
+      "reporting_delivery_configs",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/reporting_delivery",
+      "create",
+      []
+     ],
+     [
+      "account/sync-accounts-request.json",
+      "accounts/[]/reporting_delivery_configs",
+      "create",
+      []
+     ],
+     [
+      "account/sync-accounts-response.json",
+      "accounts/[]/reporting_delivery_configs",
+      "create",
+      []
+     ]
+    ]
+   },
+   "388e78e63e9f1824a4d430c0124ea4cbfc67c791": {
+    "subj": "2026-09-13|feat(reporting): add consumer status sync loop (#7436)",
+    "nfiles": 14,
+    "changes": [
+     [
+      "core/reporting-consumer-status.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-delivery-capabilities.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-obligation.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-status-issue.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/sync-reporting-status-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "media-buy/sync-reporting-status-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/reporting_delivery",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "acab75657290b05582bd90ea58eed34b81f632e5": {
+    "subj": "2026-09-13|feat(reporting): harden consumer-status loop for rc.3 (#7465)",
+    "nfiles": 10,
+    "changes": [
+     [
+      "core/reporting-consumer-status.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-delivery-capabilities.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-delivery-config.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-obligation.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-status-issue.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/sync-reporting-status-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "7a470ca63179571bf7d6427af57688f1abb9a231": {
+    "subj": "2026-09-04|fix(reporting): allow partially covered media buys (#7267)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "core/reporting-coverage.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "f5915480f7f63ddbc63b0f586589115ca9d86e7f": {
+    "subj": "2026-10-09|feat(reporting): define superseded snapshot content retention (#8100)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "core/reporting-delivery-capabilities.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-revision.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-status-issue.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "7483a04748fbd11b09a9e3ef1f4a62cb69fec2d4": {
+    "subj": "2026-09-04|fix(reporting): separate native file version references (#7264)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "core/reporting-file-entry.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-file-object-ref.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-native-version-ref.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/reporting-receipt.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-resource.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-verification.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "deedffb18a5825eca26fb5650a8f84dce2c89f2c": {
+    "subj": "2026-09-03|feat(reporting): add reliable reporting implementer training (#7200)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "core/reporting-obligation.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "b01c18b3917f33a1de7ed0a3b42b136e2a7dffcb": {
+    "subj": "2026-09-23|fix(reporting): reconcile waived mismatch health projection (#7658)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/reporting-obligation.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-status-changed-webhook.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-status-issue.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "e9ca5417b72a6d0d1170a21bd14c64a8a89293ad": {
+    "subj": "2026-10-09|feat(reporting): add REVISION_UNREADABLE status issue code (#8099)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "core/reporting-obligation.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/reporting-status-issue.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "8b9868a1a4229fe16bf50a94d615ceea1af4159c": {
+    "subj": "2026-09-18|fix(reporting): allow future next_expected_at on complete summaries (#7593)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "a3657f914f85bba3e75af114c8c78ab3f7e9b2e9": {
+    "subj": "2026-09-22|fix(schema): appease AJV strictTypes and strictRequired in get-reporting-status-response (#7626)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "media-buy/get-reporting-status-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "90d44780ef6144ed8f99bf78d3f8973fcf1effdf": {
+    "subj": "2026-10-06|fix(schema): compose version envelope in compact request and submitted schemas (#7946)",
+    "nfiles": 11,
+    "changes": [
+     [
+      "media-buy/sync-reporting-status-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "media_buy.spot_lifecycle": {
+  "markers": 7,
+  "owned": [
+   "enums/spot-status.json"
+  ],
+  "inline": [
+   [
+    "core/spot-reporting-capability.json",
+    "('prop', 'available_statuses')"
+   ],
+   [
+    "core/spot-reporting-capability.json",
+    "('prop', 'supports_break_position')"
+   ],
+   [
+    "media-buy/get-media-buy-delivery-response.json",
+    "('prop', 'media_buy_deliveries/[]/by_package/[]/by_spot/[]/spot_status')"
+   ],
+   [
+    "media-buy/get-media-buy-delivery-response.json",
+    "('prop', 'media_buy_deliveries/[]/by_package/[]/by_spot/[]/scheduled_at')"
+   ],
+   [
+    "media-buy/get-media-buy-delivery-response.json",
+    "('prop', 'media_buy_deliveries/[]/by_package/[]/by_spot/[]/replaces_spot_id')"
+   ],
+   [
+    "media-buy/get-media-buy-delivery-response.json",
+    "('prop', 'media_buy_deliveries/[]/by_package/[]/by_spot/[]/break_position')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "be785cf0da05068478a83f9c861a8717b173a42e": {
+    "subj": "2026-10-08|feat(media-buy): spot lifecycle, makegood linkage and break position in by_spot (#8017)",
+    "nfiles": 5,
+    "changes": [
+     [
+      "enums/spot-status.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/spot-reporting-capability.json",
+      "available_statuses",
+      "create",
+      []
+     ],
+     [
+      "core/spot-reporting-capability.json",
+      "supports_break_position",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-media-buy-delivery-response.json",
+      "media_buy_deliveries/[]/by_package/[]/by_spot/[]/spot_status",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-media-buy-delivery-response.json",
+      "media_buy_deliveries/[]/by_package/[]/by_spot/[]/scheduled_at",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-media-buy-delivery-response.json",
+      "media_buy_deliveries/[]/by_package/[]/by_spot/[]/replaces_spot_id",
+      "create",
+      []
+     ],
+     [
+      "media-buy/get-media-buy-delivery-response.json",
+      "media_buy_deliveries/[]/by_package/[]/by_spot/[]/break_position",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "protocol.principal": {
+  "markers": 14,
+  "owned": [
+   "core/agent-reporting-destination-state.json",
+   "core/agent-reporting-destination.json",
+   "core/principal-changed-webhook.json",
+   "core/principal-declarations-state.json",
+   "core/principal-declarations.json",
+   "core/principal-state.json",
+   "enums/delivery-recipient-cloud.json",
+   "enums/principal-kind.json",
+   "enums/reporting-destination-setup-state.json",
+   "protocol/get-principal-request.json",
+   "protocol/get-principal-response.json",
+   "protocol/sync-principal-request.json",
+   "protocol/sync-principal-response.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'adcp/principal')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "877f6a20a06a7f7f5714184ae7125fea3c03a43f": {
+    "subj": "2026-08-31|feat(protocol): add agent configuration sync (#6966)",
+    "nfiles": 20,
+    "changes": [
+     [
+      "core/agent-reporting-destination-state.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/agent-reporting-destination.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/principal-state.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "enums/delivery-recipient-cloud.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "enums/reporting-destination-setup-state.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-principal-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-principal-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/sync-principal-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/sync-principal-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "adcp/principal",
+      "create",
+      []
+     ]
+    ]
+   },
+   "9753caade306047adc14b4f87addd042c200af1f": {
+    "subj": "2026-08-31|feat(protocol): the principal layer \u2014 unified webhooks, declarations, principal.changed (#7110)",
+    "nfiles": 16,
+    "changes": [
+     [
+      "core/agent-reporting-destination.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "core/principal-changed-webhook.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/principal-declarations-state.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/principal-declarations.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "core/principal-state.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "enums/principal-kind.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-principal-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-principal-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/sync-principal-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/sync-principal-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "adcp/principal",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "c0366bae4d23c17d982a243b3690d385c7a06bd1": {
+    "subj": "2026-09-01|fix(identity): key signed principals by canonical Agent URL (#7124)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "protocol/get-principal-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/sync-principal-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "8b0980db282ce0e782c57af5c90bcf15e6d8723d": {
+    "subj": "2026-09-01|feat(principal): expose recognized identity before configuration (#7127)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "protocol/get-principal-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-principal-response.json",
+      "",
+      "modify",
+      [
+       "const changed /result/kind=\"recognized\""
+      ]
+     ]
+    ]
+   }
+  }
+ },
+ "sponsored_intelligence.core": {
+  "markers": 15,
+  "owned": [
+   "sponsored-intelligence/si-capabilities.json",
+   "sponsored-intelligence/si-context-use.json",
+   "sponsored-intelligence/si-get-offering-request.json",
+   "sponsored-intelligence/si-get-offering-response.json",
+   "sponsored-intelligence/si-identity.json",
+   "sponsored-intelligence/si-initiate-session-request.json",
+   "sponsored-intelligence/si-initiate-session-response.json",
+   "sponsored-intelligence/si-send-message-request.json",
+   "sponsored-intelligence/si-send-message-response.json",
+   "sponsored-intelligence/si-sponsored-context-receipt.json",
+   "sponsored-intelligence/si-sponsored-context.json",
+   "sponsored-intelligence/si-terminate-session-request.json",
+   "sponsored-intelligence/si-terminate-session-response.json",
+   "sponsored-intelligence/si-ui-element.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'sponsored_intelligence')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "f4ef555547b632670d010f11cf9cb7703667bf6c": {
+    "subj": "2026-01-25|Release AdCP v3.0.0-beta.1 (#859)",
+    "nfiles": 90,
+    "changes": [
+     [
+      "sponsored-intelligence/si-capabilities.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-get-offering-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-identity.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-ui-element.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "sponsored_intelligence",
+      "create",
+      []
+     ]
+    ]
+   },
+   "8b8b63cd9e3a36da3a91086b7d55045fc018e98b": {
+    "subj": "2026-01-28|Add A2UI + MCP Apps support to Sponsored Intelligence (#906)",
+    "nfiles": 7,
+    "changes": [
+     [
+      "sponsored-intelligence/si-capabilities.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "8e67dd2e9b061148df3d9e8fb294db2a790c7b87": {
+    "subj": "2026-04-19|spec(sponsored-intelligence): mark SI experimental using canonical convention (#2446)",
+    "nfiles": 12,
+    "changes": [
+     [
+      "sponsored-intelligence/si-capabilities.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-get-offering-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-identity.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-ui-element.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "sponsored_intelligence",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "1d1c56225ecb079e2e16ba1f5e20535a36fcf6fc": {
+    "subj": "2026-06-12|feat(si): add sponsored context accountability (#5501)",
+    "nfiles": 9,
+    "changes": [
+     [
+      "sponsored-intelligence/si-context-use.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-sponsored-context-receipt.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-sponsored-context.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "c782f665a8e0ade910c8ad5cf4a556fda9b97c32": {
+    "subj": "2026-02-21|feat: first-class catalogs \u2014 unified data feeds with sync lifecycle, 12 catalog types, and conversion attribution (#1144)",
+    "nfiles": 57,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "7736865ac1bf947aef927de8e1d675724da8f2fd": {
+    "subj": "2026-04-06|feat: per-request version declaration (adcp_major_version) (#1959)",
+    "nfiles": 59,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "915f4d2b2e0533b7427b4fb4b2ead77d2a18e9a3": {
+    "subj": "2026-04-21|spec + tooling: complete x-entity annotation rollout (#2660 phase 4, capstone) (#2705)",
+    "nfiles": 28,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-identity.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "1bc03ffd5edae1a1ae5b5643c961de7fe6ccc195": {
+    "subj": "2026-04-21|fix(schemas)!: rename SI context\u2192intent, adopt core context echo (#2774) (#2791)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "6eadf0663c194823916791bc6108859e3bd92650": {
+    "subj": "2026-04-29|spec(versioning): release-precision protocol version negotiation (#3493)",
+    "nfiles": 130,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "b674082efeed21e285f9a645dbb572e47d1a9f9f": {
+    "subj": "2026-04-15|feat: GOVERNANCE_DENIED error, flatten comply_test_controller, context/ext, require signal_id (#2194)",
+    "nfiles": 31,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ca60b16ccf1ac3df97f637ea2b66eb7f0e1c8af3": {
+    "subj": "2026-05-22|spec: fold protocol-envelope into per-task response schemas (closes #4878) (#4896)",
+    "nfiles": 70,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "52bd79c0911b5f60db7b2b3b337d3f68aed4fb82": {
+    "subj": "2026-06-02|feat(si): optional availability_status enum on SI offering + matching products (#5282)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "sponsored-intelligence/si-get-offering-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "5ecc29d0c0e52ae68a7bc0e57e93be33d4603d74": {
+    "subj": "2026-03-23|feat!: seller-assigned IDs, opaque governance context, explicit idempotency (#1622)",
+    "nfiles": 43,
+    "changes": [
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "43586d69cc4e0db4e6000cfcae0a231cbff71705": {
+    "subj": "2026-04-18|feat(schemas)!: require idempotency_key on all mutating requests (#2315)",
+    "nfiles": 33,
+    "changes": [
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      [
+       "added required /idempotency_key"
+      ]
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "26b4fb155558d2a5e30b0bebb4b27d313cc01456": {
+    "subj": "2026-04-21|spec + tooling: x-mutates-state annotation on request schemas (#2675) (#2690)",
+    "nfiles": 31,
+    "changes": [
+     [
+      "sponsored-intelligence/si-initiate-session-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "bb60926a3224058466999deb87741da503880dda": {
+    "subj": "2026-03-25|feat: formalize lifecycle state machines across protocol specs (#1684)",
+    "nfiles": 8,
+    "changes": [
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-send-message-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "sponsored-intelligence/si-terminate-session-response.json",
+      "",
+      "modify",
+      [
+       "removed prop /acp_handoff/product"
+      ]
+     ]
+    ]
+   },
+   "9ae4fdc3652724d8486a4f26758035bab99deab3": {
+    "subj": "2026-03-26|feat: comply_test_controller on training agent (#1695)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "sponsored-intelligence/si-initiate-session-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "892da1df244ee2017ba6a21fd6b774bbeef33746": {
+    "subj": "2026-02-18|feat!: Unify brand identity \u2014 delete brand-manifest.json, use brand refs (#1113)",
+    "nfiles": 22,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "sponsored_intelligence",
+      "modify",
+      [
+       "removed prop /brand_manifest_url"
+      ]
+     ]
+    ]
+   }
+  }
+ },
+ "trusted_match.core": {
+  "markers": 16,
+  "owned": [
+   "core/seller-agent-ref.json",
+   "trusted-match/available-package.json",
+   "trusted-match/context-match-request.json",
+   "trusted-match/context-match-response.json",
+   "trusted-match/error.json",
+   "trusted-match/identity-match-request.json",
+   "trusted-match/identity-match-response.json",
+   "trusted-match/offer-price.json",
+   "trusted-match/offer.json",
+   "trusted-match/provider-context-match-response.json",
+   "trusted-match/provider-identity-match-response.json",
+   "trusted-match/provider-registration.json",
+   "trusted-match/publisher-targeting-kv-config.json",
+   "trusted-match/publisher-tmpx-config.json",
+   "trusted-match/tmpx-chunk.json"
+  ],
+  "inline": [
+   [
+    "protocol/get-adcp-capabilities-response.json",
+    "('prop', 'media_buy/execution/trusted_match')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "f1e8340ab9525c93e1397c3b127b663434ae79d4": {
+    "subj": "2026-04-24|feat(tmp): require seller_agent on AvailablePackage (#2984)",
+    "nfiles": 5,
+    "changes": [
+     [
+      "core/seller-agent-ref.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "aa71ebc7e0eb053b4d74b6c54818a08cd1752d1a": {
+    "subj": "2026-04-24|docs(reference): add URL canonicalization reference page (#3067)",
+    "nfiles": 4,
+    "changes": [
+     [
+      "core/seller-agent-ref.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "90ad0dd30ec306231e7e624bbf9c55f1f181f4cd": {
+    "subj": "2026-04-24|feat(schema): add x-status: experimental to all TMP schemas + seller-agent-ref (#3063)",
+    "nfiles": 10,
+    "changes": [
+     [
+      "core/seller-agent-ref.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "e8c21cc5dcf0e53ed6c5235db9578b76a9c99117": {
+    "subj": "2026-06-28|fix(schemas): make Trusted Match structure self-evident (#5741)",
+    "nfiles": 12,
+    "changes": [
+     [
+      "trusted-match/available-package.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/context-match-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/context-match-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/error.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/identity-match-request.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/identity-match-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/offer-price.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/offer.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/provider-registration.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "f36f565076246abfa7b51d4a1e4fe62612389751": {
+    "subj": "2026-08-05|feat(creative): make formats canonical in AdCP 3.2 (#6125)",
+    "nfiles": 45,
+    "changes": [
+     [
+      "trusted-match/available-package.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "60f368fb76027f093caab9df432ef4c718eade5b": {
+    "subj": "2026-08-06|fix(schemas): stabilize deprecation metadata (#6136)",
+    "nfiles": 47,
+    "changes": [
+     [
+      "trusted-match/available-package.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/context-match-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/identity-match-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/identity-match-response.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "ad899c283f6bf1d67ba8c9ed095258f182296684": {
+    "subj": "2026-08-25|feat(creative): declare tracker execution contracts (#6786)",
+    "nfiles": 28,
+    "changes": [
+     [
+      "trusted-match/available-package.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "9ceac99d5cf77cdf644d70fb8f751f214a09869b": {
+    "subj": "2026-08-06|feat(content-standards): deprecate inline asset credentials (#6225)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "trusted-match/context-match-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "0b772e7a7ab0b6a30748a3b8693b1a2d6af57c3b": {
+    "subj": "2026-08-07|feat(security): require signed request body integrity (#6251)",
+    "nfiles": 5,
+    "changes": [
+     [
+      "trusted-match/context-match-request.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/identity-match-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "b5580e118de7dfcee60fb3c8d96f36af852ee955": {
+    "subj": "2026-09-13|fix(tmp): restrict single-user context embeddings (#7396)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "trusted-match/context-match-request.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "8f47ee401fd227b86d814bad3c00b14bf193e541": {
+    "subj": "2026-08-12|fix(tmp): preserve provider-attributed targeting KVs (#6281)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "trusted-match/context-match-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/provider-context-match-response.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "7c237fc01d24163192867bf9e927330052cd2f10": {
+    "subj": "2026-06-28|feat(trusted-match): provider-declared TMPX macros + multi-chunk values (#5729)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "trusted-match/identity-match-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/provider-registration.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "847b0b2e56f3c8a3f8ead10cee99f2fe714e2f46": {
+    "subj": "2026-08-03|feat(trusted-match): publisher-owned TMPX macro mapping (#5971)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "trusted-match/identity-match-response.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/provider-identity-match-response.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/provider-registration.json",
+      "",
+      "modify",
+      [
+       "removed prop /tmpx_macros"
+      ]
+     ],
+     [
+      "trusted-match/publisher-tmpx-config.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/tmpx-chunk.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "37857511070abd1dd7d75e7cd30bd557f103a34c": {
+    "subj": "2026-08-16|Rename TMP offer macros to creative_data (#2199) (#6593)",
+    "nfiles": 2,
+    "changes": [
+     [
+      "trusted-match/offer.json",
+      "",
+      "modify",
+      [
+       "removed prop /macros"
+      ]
+     ]
+    ]
+   },
+   "ec0226905c5d9cb7e8668f1811402c80a8bebf36": {
+    "subj": "2026-08-08|fix(tmp): settle router merge semantics for 3.2 (#6170)",
+    "nfiles": 1,
+    "changes": [
+     [
+      "trusted-match/provider-registration.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "530b8599e9d2a99441f810b744fd4c581e877c61": {
+    "subj": "2026-08-12|feat(tmp): standardize publisher targeting KV mapping (#6283)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "trusted-match/provider-registration.json",
+      "",
+      "modify",
+      []
+     ],
+     [
+      "trusted-match/publisher-targeting-kv-config.json",
+      "",
+      "create",
+      []
+     ]
+    ]
+   },
+   "ddac6b86920eff3e991b2f2b9b3eb716cc7495d1": {
+    "subj": "2026-10-02|docs: fix contradictions between trust docs and the spec (#7881)",
+    "nfiles": 7,
+    "changes": [
+     [
+      "trusted-match/provider-registration.json",
+      "",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "8bc089239bdf62b780e98fd8ce63c3305e8427d1": {
+    "subj": "2026-04-01|docs: promote TMP to first-class protocol domain (#1797)",
+    "nfiles": 9,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/execution/trusted_match",
+      "create",
+      []
+     ]
+    ]
+   },
+   "80ecf76a8e8a061d39c4a4f487da503d509dd6e4": {
+    "subj": "2026-04-14|feat!: simplify capabilities model for 3.0 (#2143)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/execution/trusted_match",
+      "modify",
+      [
+       "removed prop /supported"
+      ]
+     ]
+    ]
+   },
+   "d874136b97961a34dbfd72051741a8106059d217": {
+    "subj": "2026-04-19|spec: experimental status mechanism + custom pricing escape hatch (#2422)",
+    "nfiles": 20,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/execution/trusted_match",
+      "modify",
+      []
+     ]
+    ]
+   },
+   "2c1d02d145fc7c6d003c18856c7ead8b22531324": {
+    "subj": "2026-08-16|fix(schema): replace drifted inline enums with $ref and add drift lint (#6555)",
+    "nfiles": 3,
+    "changes": [
+     [
+      "protocol/get-adcp-capabilities-response.json",
+      "media_buy/execution/trusted_match",
+      "modify",
+      []
+     ]
+    ]
+   }
+  }
+ },
+ "trusted_match.verified_identity": {
+  "markers": 0,
+  "owned": [
+   "enums/attestation-claim.json"
+  ],
+  "inline": [
+   [
+    "trusted-match/identity-match-request.json",
+    "('prop', 'identities/[]/attestation')"
+   ],
+   [
+    "trusted-match/identity-match-request.json",
+    "('prop', 'sealed_credentials')"
+   ],
+   [
+    "brand.json",
+    "('prop', '#brand/identity_relying_parties')"
+   ],
+   [
+    "brand.json",
+    "('prop', '#house/identity_relying_parties')"
+   ],
+   [
+    "enums/uid-type.json",
+    "('enumval', 'world_id_nullifier')"
+   ]
+  ],
+  "nested": 0,
+  "commits": {
+   "cdfe3ad45b235892560219a35a5d3ff410705027": {
+    "subj": "2026-06-09|spec(tmp): experimental verified-identity attestation surface (World ID) (#5387)",
+    "nfiles": 6,
+    "changes": [
+     [
+      "enums/attestation-claim.json",
+      "",
+      "create",
+      []
+     ],
+     [
+      "brand.json",
+      "#brand/identity_relying_parties",
+      "create",
+      []
+     ],
+     [
+      "brand.json",
+      "#house/identity_relying_parties",
+      "create",
+      []
+     ],
+     [
+      "enums/uid-type.json",
+      "world_id_nullifier",
+      "create",
+      []
+     ]
+    ]
+   },
+   "e8c21cc5dcf0e53ed6c5235db9578b76a9c99117": {
+    "subj": "2026-06-28|fix(schemas): make Trusted Match structure self-evident (#5741)",
+    "nfiles": 12,
+    "changes": [
+     [
+      "trusted-match/identity-match-request.json",
+      "identities/[]/attestation",
+      "create",
+      []
+     ],
+     [
+      "trusted-match/identity-match-request.json",
+      "sealed_credentials",
+      "create",
+      []
+     ]
+    ]
+   }
+  }
+ }
+}

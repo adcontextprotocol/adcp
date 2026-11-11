@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/macro-mapping-status.json",
+  "title": "Macro Mapping Status",
+  "description": "Evidence level connecting a dialect-local macro meaning to the AdCP universal vocabulary.",
+  "type": "string",
+  "enum": ["verified_universal", "dialect_defined", "unresolved"],
+  "enumDescriptions": {
+    "verified_universal": "The cited dialect mapping verifies an AdCP universal semantic.",
+    "dialect_defined": "The dialect defines the token, but no AdCP universal semantic is asserted.",
+    "unresolved": "No safe meaning is established; the token remains byte-preserved."
+  }
+}

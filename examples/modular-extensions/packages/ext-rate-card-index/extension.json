@@ -1,0 +1,70 @@
+{
+  "id": "https://extensions.adcontextprotocol.org/rate-card-index",
+  "name": "rate-card-index",
+  "version": "1.5.0",
+  "title": "Rate card: base x ordered indices + premiums",
+  "description": "Publishes a seller rate card so a buyer can evaluate prices locally while planning. Ports adcp#7955 (price_adjustments) with the changes that the PR #7955 review and the rate-card market survey asked for: an object container, an open dimension vocabulary, an explicit premium basis, seller-declared rounding, index-point rows, and provisional (capped) rows. The seller's quoted fixed_price and price_breakdown stay the binding contract.",
+  "owner": "AdCP Working Group",
+  "status": "candidate",
+  "origin": [
+    "https://github.com/adcontextprotocol/adcp/issues/7659",
+    "https://github.com/adcontextprotocol/adcp/pull/7955"
+  ],
+  "requires": {
+    "core": ">=3.3 <5",
+    "points": {
+      "pricing_option": 1,
+      "commercial_terms": 1
+    }
+  },
+  "extends": [
+    {
+      "point": "pricing_option",
+      "definition": "RateCard",
+      "must_understand": "optional",
+      "semantics": "Planning aid. A buyer without this extension ignores it and uses fixed_price."
+    },
+    {
+      "point": "commercial_terms",
+      "definition": "RateCardBinding",
+      "must_understand": "required",
+      "semantics": "Signed card for one purchase. Provisional rows make the purchase price a ceiling that the seller re-quotes once it fixes the row."
+    }
+  ],
+  "adopters": [
+    {
+      "party": "seller A (NL linear TV)",
+      "since": "2026-11-01"
+    }
+  ],
+  "promotion": {
+    "rule": "2+ independent adopters with substantively similar cards for 90+ days, or 1 adopter plus a published market (JIC) rule",
+    "target": "/schemas/pricing-options/rate-card.json"
+  },
+  "changelog": [
+    {
+      "version": "1.5.0",
+      "change": "Current version: the pricing_option rate card and its commercial_terms binding, ported from adcp#7955, with the normative spec, the conformance suite, and the reference code, all pinned by the digest. Uses the kernel container ExtensionEntry with `data`, and the host properties `extensions` and `extensions_state`. The spec and manifest text follow the documentation style guide; the rules and their IDs are unchanged."
+    },
+    {
+      "version": "1.4.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.3.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.2.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.1.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.0.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    }
+  ]
+}

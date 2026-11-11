@@ -1,0 +1,6 @@
+{"governance (campaign)": ["module:campaign-governance"],
+ "governance (all three)": ["module:campaign-governance", "module:governance-lists", "module:content-standards"],
+ "signals": ["module:signals"], "creative": ["module:creative"], "formats": ["module:formats"],
+ "creative/formats": ["module:creative", "module:formats"],
+ "proposal-negotiation": ["module:proposal-negotiation"], "media-buy": ["module:media-buy"],
+ "onboarding": ["module:account-onboarding"], "onboarding/accounts": ["module:account-onboarding", "module:account"]}

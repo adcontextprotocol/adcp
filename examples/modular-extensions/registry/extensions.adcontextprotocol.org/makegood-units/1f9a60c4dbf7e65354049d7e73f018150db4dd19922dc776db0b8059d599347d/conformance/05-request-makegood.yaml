@@ -1,0 +1,174 @@
+id: makegood_units/request_makegood
+version: "1.0.0"
+title: "The buyer asks for a make-good under an accepted rule"
+category: extension_conformance
+extension: makegood-units
+summary: "The seller declares request_makegood under a transport name; the buyer calls it, gets a zero-cost unit under the rule, and is refused past the cap or for a rule it never accepted."
+narrative: |
+  After signing, video 2 is not delivered. The buyer does not wait for the seller: it calls the
+  task the extension contributes, under the transport name the seller declared, and names the
+  accepted rule and the missed package. The seller adds the unit and answers with its zero-cost
+  package. A second request under the same rule exceeds the cap, and a request under a rule the
+  buyer never accepted, or for another purchase's package, is refused. The storyboard then plays
+  a seller whose response breaks the response definition, and a GREASE declaration: a task of an
+  extension no buyer can hold, which the buyer ignores.
+
+fixture: creator_network
+buyer:
+  extensions: [seller-adjustable-terms, makegood-units]
+
+phases:
+  - id: discover
+    title: "Discover the task"
+    steps:
+      - id: capabilities
+        title: "The seller declares the task id under a transport name"
+        task: capabilities
+        covers: [MG-R18]
+        expect:
+          ok: true
+          status: { ext: makegood-units, point: task, status: understood }
+          checks:
+            - path: capabilities.declared_extensions.@makegood-units.tasks.0.task
+              equals: { $branch: makegood-units#request_makegood }
+            - path: capabilities.declared_extensions.@makegood-units.tasks.0.name
+              matches: "^x_[a-z0-9_]+$"
+            - path: capabilities.declared_extensions.@makegood-units.points
+              equals: [commercial_terms, media_buy_state, task]
+      - id: grease_task
+        title: "GREASE: a task of an unknown extension is ignored"
+        task: validate
+        with:
+          schema: capabilities
+          subject: capabilities
+          mutate:
+            - { op: remove, path: /negotiation }
+          grease: { at: /declared_extensions, kind: task }
+        covers: [MG-R18]
+        expect:
+          ok: true
+          status:
+            - { ext: grease, point: task, status: ignored }
+            - { ext: makegood-units, point: task, status: understood }
+
+  - id: buy
+    title: "Buy the two videos"
+    steps:
+      - { id: request_proposals, title: "Request a draft proposal", task: request_proposals, expect: { ok: true } }
+      - { id: finalize, title: "Finalize", task: refine_proposals, expect: { ok: true } }
+      - { id: accept, title: "Accept", task: accept_proposal, expect: { ok: true } }
+
+  - id: request
+    title: "Call the task"
+    steps:
+      - id: request_accepted
+        title: "The buyer asks for a unit for the missed video 2; the seller accepts"
+        task: call_task
+        with:
+          ext: makegood-units
+          task: request_makegood
+          as: accepted
+          request: { media_buy_id: { $from: media_buy_id }, rule_id: mg_video_2, package_id: pkg_video_2, reason: deliverable_missed }
+        covers: [MG-R18, MG-R22]
+        expect:
+          ok: true
+          status: { ext: makegood-units, point: task, status: understood }
+          checks:
+            - path: task_call.name
+              equals: { $from: capabilities.declared_extensions.@makegood-units.tasks.0.name }
+            - path: accepted.outcome
+              equals: accepted
+            - path: accepted.package_id
+              present: true
+      - id: read_back
+        title: "The media buy carries the unit at the revision the response names"
+        task: get_media_buys
+        covers: [MG-R21]
+        expect:
+          ok: true
+          violations: 0
+          status: { ext: makegood-units, point: media_buy_state, status: understood }
+          checks:
+            - path: media_buy.revision
+              equals: { $from: accepted.revision }
+            - path: media_buy.extensions_state.@makegood-units.data.issued.0.makegood_id
+              equals: { $from: accepted.makegood_id }
+            - path: media_buy.extensions_state.@makegood-units.data.issued.0.change_id
+              equals: { $from: accepted.change_id }
+            - path: media_buy.packages
+              some: { package_id: { $from: accepted.package_id }, budget: 0 }
+            - path: media_buy.packages.1.canceled
+              equals: true
+      - id: over_cap
+        title: "A second unit under the same rule exceeds max_units 1"
+        task: call_task
+        with:
+          ext: makegood-units
+          task: request_makegood
+          request: { media_buy_id: { $from: media_buy_id }, rule_id: mg_video_2, package_id: pkg_video_2, reason: deliverable_missed }
+        covers: [MG-R20]
+        expect:
+          ok: true
+          checks:
+            - path: task_result.outcome
+              equals: rejected
+            - path: task_result.rejection.code
+              equals: CAP_EXCEEDED
+      - id: rule_not_accepted
+        title: "A rule the buyer never accepted is refused"
+        task: call_task
+        with:
+          ext: makegood-units
+          task: request_makegood
+          request: { media_buy_id: { $from: media_buy_id }, rule_id: mg_bonus, package_id: pkg_video_1, reason: deliverable_missed }
+        covers: [MG-R19]
+        expect:
+          ok: true
+          checks:
+            - path: task_result.rejection.code
+              equals: RULE_NOT_ACCEPTED
+      - id: package_of_another_purchase
+        title: "A rule invoked for another purchase's package is refused"
+        task: call_task
+        with:
+          ext: makegood-units
+          task: request_makegood
+          request: { media_buy_id: { $from: media_buy_id }, rule_id: mg_video_1, package_id: pkg_video_2, reason: deliverable_missed }
+        covers: [MG-R19]
+        expect:
+          ok: true
+          checks:
+            - path: task_result.rejection.code
+              equals: RULE_NOT_ACCEPTED
+
+  - id: buyer_checks
+    title: "The buyer checks the response"
+    steps:
+      - id: response_without_package
+        title: "An accepted response that names no package fails the response definition"
+        task: validate
+        with:
+          schema: task_response
+          task: makegood-units#request_makegood
+          subject: accepted
+          mutate:
+            - { op: remove, path: /package_id }
+        covers: [MG-R22]
+        expect:
+          ok: false
+          error_code: EXTENSION_DATA_INVALID
+      - id: response_for_another_rule
+        title: "A response for another rule than the request named is rejected"
+        task: validate
+        with:
+          schema: task_response
+          task: makegood-units#request_makegood
+          subject: accepted
+          request: accepted_request
+          mutate:
+            - { op: set, path: /rule_id, value: mg_video_1 }
+        covers: [MG-R22]
+        expect:
+          ok: false
+          error_code: EXTENSION_SEMANTIC_ERROR
+          error_match: "the response is for rule mg_video_1; the request named mg_video_2"

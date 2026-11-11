@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/pricing-options/extension-option.json",
+  "title": "Extension Pricing Option",
+  "description": "A pricing option whose model an extension defines. pricing_model is the branch id (extension uri '#' branch name); extension_model carries the model's data, validated by that extension. A buyer that does not understand the branch cannot buy the option: it drops the option with a warning and keeps the product's other options (unknown_in_list: drop_option). A seller MUST NOT send the option to a caller that did not list the extension in understood_extensions. fixed_price and floor_price are absent: the model defines how the price is set. The branch's registration names the core model whose delivery metric and spend semantics apply in reporting (reports_as).",
+  "type": "object",
+  "x-adcp-open-union": {
+    "name": "pricing_model",
+    "discriminator": "pricing_model",
+    "body": "extension_model",
+    "branch_requires": [
+      "reports_as"
+    ],
+    "unknown_in_list": "drop_option"
+  },
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product"
+    },
+    "pricing_model": {
+      "$ref": "/schemas/core/extension-branch-id.json"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code. Budgets and spend stay in this currency.",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "extension_model": {
+      "$ref": "/schemas/core/extension-entry.json"
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "minimum": 0
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/extension-entry.json"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "x-adcp-extension-point": {
+        "name": "pricing_option",
+        "must_understand": "flag"
+      },
+      "description": "Explanatory extension data for this option, as on core-model options."
+    }
+  },
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "currency",
+    "extension_model"
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "fixed_price"
+        ]
+      },
+      {
+        "required": [
+          "floor_price"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,263 @@
+id: linear_tv_indexed_cpp/model_and_fixing
+version: "1.0.0"
+title: "Indexed cpp from offer to invoice"
+category: extension_conformance
+extension: linear-tv-indexed-cpp
+summary: "The buyer verifies the ceiling, signs the formula, checks the fixed index, and recomputes the invoice."
+narrative: |
+  A buyer with the module buys 100 rating points of prime time in March under the
+  indexed model, with the market index capped at 100 for an early request. On 16 January
+  the seller fixes the index at 96, writes the readback, and announces it on the core
+  change feed. After airing, the seller invoices 104.1 delivered points at the fixed rate.
+  The storyboard also plays a seller that gets the model, the fixing, or the rate wrong.
+
+fixture: tv_sales_house
+buyer:
+  extensions: [linear-tv-indexed-cpp]
+
+phases:
+  - id: capabilities
+    title: "Capabilities"
+    steps:
+      - id: capabilities
+        title: "The seller declares the model with its capability fragment"
+        task: capabilities
+        expect:
+          ok: true
+          status: { ext: linear-tv-indexed-cpp, point: capabilities, status: understood }
+      - id: capability_out_of_scope
+        title: "A fragment outside the model's channels is a warning"
+        task: validate
+        with:
+          schema: capabilities
+          subject: capabilities
+          mutate:
+            - { op: remove, path: /negotiation }
+            - { op: set, path: /declared_extensions/@linear-tv-indexed-cpp/capabilities/channels, value: [olv] }
+        covers: [LTV-R7]
+        expect:
+          ok: true
+          warning_code: INDEXED_CPP_CAPABILITY_SCOPE
+
+  - id: offer
+    title: "The offer"
+    steps:
+      - id: get_products
+        title: "The branch on the prime-time product reproduces its ceiling"
+        task: get_products
+        covers: [LTV-R4, LTV-R5, LTV-R6]
+        expect:
+          ok: true
+          status: { ext: linear-tv-indexed-cpp, point: pricing_model, status: understood }
+          checks:
+            - path: reports.0.extensions.@linear-tv-indexed-cpp.evaluation.ceiling_price
+              equals: { $from: products.0.pricing_options.1.extension_model.data.ceiling_price }
+      - id: wrong_ceiling
+        title: "A ceiling that does not follow from the formula is rejected"
+        task: validate
+        with:
+          schema: product
+          subject: products.0
+          mutate:
+            - { op: set, path: /pricing_options/1/extension_model/data/ceiling_price, value: 1950 }
+        covers: [LTV-R4]
+        expect:
+          ok: false
+          error_match: "INDEXED_CPP_CEILING_MISMATCH: base x indices x cap gives 1898, ceiling_price is 1950"
+      - id: floor_above_cap
+        title: "A floor above the cap is rejected"
+        task: validate
+        with:
+          schema: product
+          subject: products.0
+          mutate:
+            - { op: set, path: /pricing_options/1/extension_model/data/market_index/floor, value: 1.1 }
+        covers: [LTV-R5]
+        expect:
+          ok: false
+          error_match: "INDEXED_CPP_BOUNDS: market index floor 1.1 is above cap 1"
+      - id: out_of_scope
+        title: "The branch on an online-video product is rejected"
+        task: validate
+        with:
+          schema: product
+          subject: products.1
+          mutate:
+            - { op: append, path: /pricing_options, value: { $from: products.0.pricing_options.1 } }
+        covers: [LTV-R6]
+        expect:
+          ok: false
+          error_match: "INDEXED_CPP_OUT_OF_SCOPE: product nl_online_video is sold as \\[olv\\]"
+      - id: grease_drop_next_to_branch
+        title: "GREASE: an unknown branch next to the known one is dropped; the known branch stays understood"
+        task: validate
+        with:
+          schema: product
+          subject: products.0
+          grease: { at: /pricing_options, kind: branch }
+        covers: [LTV-R1]
+        expect:
+          ok: true
+          dropped: [/pricing_options/2]
+          status:
+            - { ext: grease, point: pricing_model, status: dropped }
+            - { ext: linear-tv-indexed-cpp, point: pricing_model, status: understood }
+
+  - id: sign
+    title: "Sign the formula"
+    steps:
+      - id: request_proposals
+        title: "The draft proposal (request_proposals) prices the purchase with the branch"
+        task: request_proposals
+        expect:
+          ok: true
+          status: { ext: linear-tv-indexed-cpp, point: pricing_model, status: understood }
+          checks:
+            - path: draft.commercial_terms.purchases.0.pricing.pricing_model
+              equals: { $branch: "linear-tv-indexed-cpp#indexed_cpp" }
+      - id: finalize
+        title: "The committed proposal prices the purchase with the branch"
+        task: refine_proposals
+        expect:
+          ok: true
+          checks:
+            - path: committed.commercial_terms.purchases.0.pricing.pricing_model
+              equals: { $branch: "linear-tv-indexed-cpp#indexed_cpp" }
+      - id: grease_reject_signed
+        title: "GREASE: a signed purchase priced with an unknown branch is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          grease: { at: /purchases/0/pricing, kind: branch_host }
+        covers: [LTV-R2]
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          dropped: []
+          status: { ext: grease, point: pricing_model, status: rejected }
+      - { id: accept, title: "Accept", task: accept_proposal, expect: { ok: true } }
+
+  - id: fixing
+    title: "The seller fixes the market index"
+    steps:
+      - id: fix_index
+        title: "On 16 January the seller fixes the index at 96"
+        task: seller_op
+        with: { op: fixMarketIndex, args: [{ $from: media_buy_id }, 0.96] }
+        expect: { ok: true }
+      - id: read_back
+        title: "The buyer verifies the fixing"
+        task: get_media_buys
+        covers: [LTV-R8, LTV-R9, LTV-R10, LTV-R11, LTV-R12]
+        expect:
+          ok: true
+          violations: 0
+          status: { ext: linear-tv-indexed-cpp, point: media_buy_state, status: understood }
+          checks:
+            - path: media_buy.extensions_state.@linear-tv-indexed-cpp.digest
+              equals: { $from: media_buy.accepted_proposal.commercial_terms.purchases.0.pricing.extension_model.digest }
+            - path: media_buy.extensions_state.@linear-tv-indexed-cpp.data.fixings.0.rate
+              equals: 1822
+      - id: change_feed
+        title: "The fixing is on the core change feed"
+        task: assert
+        covers: [LTV-R13]
+        expect:
+          checks:
+            - path: changes
+              some:
+                change_id: { $from: media_buy.extensions_state.@linear-tv-indexed-cpp.data.fixings.0.change_id }
+                resource_revision: { $from: media_buy.extensions_state.@linear-tv-indexed-cpp.data.fixings.0.revision }
+
+  - id: seller_breaks_the_fixing
+    title: "A seller that breaks the fixing is reported"
+    steps:
+      - id: other_digest
+        title: "Readback under a digest the buyer did not accept fails closed"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@linear-tv-indexed-cpp/digest, value: { $digest: linear-tv-indexed-cpp@1.0.0 } }
+        covers: [LTV-R8]
+        expect:
+          ok: false
+          error_code: EXTENSION_DIGEST_DIVERGENT
+      - id: unknown_purchase
+        title: "A fixing for a purchase not priced with the branch"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@linear-tv-indexed-cpp/data/fixings/0/purchase_index, value: 3 }
+        covers: [LTV-R9]
+        expect:
+          ok: true
+          violation_match: "fixing for purchase 3: the accepted purchase is not priced with indexed_cpp"
+      - id: above_cap
+        title: "An index above the signed cap"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@linear-tv-indexed-cpp/data/fixings/0/market_index, value: 1.05 }
+            - { op: set, path: /media_buys/0/extensions_state/@linear-tv-indexed-cpp/data/fixings/0/rate, value: 1993 }
+        covers: [LTV-R10]
+        expect:
+          ok: true
+          violation_match: "market index 1.05 is above the signed cap 1$"
+      - id: before_agreed_date
+        title: "An index fixed before the agreed date"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@linear-tv-indexed-cpp/data/fixings/0/fixed_at, value: "2027-01-10T09:00:00+01:00" }
+        covers: [LTV-R11]
+        expect:
+          ok: true
+          violation_match: "before the agreed 2027-01-16T00:00:00\\+01:00"
+
+  - id: settlement
+    title: "Invoice delivered points at the fixed rate"
+    steps:
+      - id: invoice
+        title: "The seller invoices 104.1 delivered points"
+        task: seller_op
+        with: { op: invoice, args: [{ $from: media_buy_id }, 104.1] }
+        expect: { ok: true }
+      - id: recompute
+        title: "The buyer recomputes the invoice with the same module"
+        task: module_call
+        with:
+          ext: linear-tv-indexed-cpp
+          fn: settle
+          args:
+            - { $from: media_buy.accepted_proposal.commercial_terms.purchases.0.pricing.extension_model.data }
+            - { $from: media_buy.extensions_state.@linear-tv-indexed-cpp.data.fixings.0 }
+            - 104.1
+        covers: [LTV-R14]
+        expect:
+          checks:
+            - path: result
+              equals: { $from: op_result }
+            - path: op_result.amount
+              lte: { $from: media_buy.accepted_proposal.commercial_terms.purchases.0.budget }
+      - id: wrong_rate
+        title: "The seller writes a rate that does not follow from the index"
+        task: seller_op
+        with: { op: fixMarketIndex, args: [{ $from: media_buy_id }, 0.96, { rate: 1850 }] }
+        expect: { ok: true }
+      - id: read_back_dispute
+        title: "The buyer reports the rate as a violation"
+        task: get_media_buys
+        covers: [LTV-R12]
+        expect:
+          ok: true
+          violations: 1
+          violation_match: "rate 1850 does not follow from index 0.96 \\(expected 1822\\)"

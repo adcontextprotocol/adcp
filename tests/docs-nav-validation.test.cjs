@@ -129,6 +129,7 @@ const NAV_COVERAGE_ALLOWLIST = new Map([
   ['aao/aao-admins', 'Internal staff reference; the page sets noindex: true'],
   ['curation/coming-soon', 'Placeholder for an unreleased protocol'],
   ['learning/test-personas', 'Internal personas for evaluating docs, not learner content'],
+  ['reference/proposals/', 'Working group discussion drafts, not adopted protocol documentation'],
   [
     'media-buy/advanced-topics/index',
     'Legacy hub page; each child page is listed individually under Media Buy',

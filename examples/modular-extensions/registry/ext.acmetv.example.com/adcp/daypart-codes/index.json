@@ -1,0 +1,55 @@
+{
+  "uri": "https://ext.acmetv.example.com/adcp/daypart-codes",
+  "versions": {
+    "2.2.0": {
+      "digest": "sha256:b54ec8888136bee66cd3c22a6a679500feb9ff08e1b0253635ca0d72544aa136",
+      "requires": {
+        "core": ">=3.3",
+        "core_types": {},
+        "points": {
+          "pricing_option": 1
+        }
+      }
+    },
+    "2.3.0": {
+      "digest": "sha256:7dae4455208b4e0212082a6fca8a9eca8a42cfe9bc49eac4ce40e7bdf7afa9e4",
+      "requires": {
+        "core": ">=3.3",
+        "core_types": {},
+        "points": {
+          "pricing_option": 1
+        }
+      }
+    },
+    "2.4.0": {
+      "digest": "sha256:722acd16326de03b39de0bc08ae7dfde00befc8f08c84e1820b91a3202e4bf87",
+      "requires": {
+        "core": ">=3.3",
+        "core_types": {},
+        "points": {
+          "pricing_option": 1
+        }
+      }
+    },
+    "2.5.0": {
+      "digest": "sha256:d4d31463c620632159db02ddd1286068499aeb083b21e65ca4767632031e317c",
+      "requires": {
+        "core": ">=3.3",
+        "core_types": {},
+        "points": {
+          "pricing_option": 1
+        }
+      }
+    },
+    "2.6.0": {
+      "digest": "sha256:06d49beb19d149698a586ae63eec054e07d85c4ece866af81821b2c5931d2c40",
+      "requires": {
+        "core": ">=3.3",
+        "core_types": {},
+        "points": {
+          "pricing_option": 1
+        }
+      }
+    }
+  }
+}

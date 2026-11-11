@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/extension-hook.json",
+  "title": "Extension Hook",
+  "description": "The vocabulary a schema uses to open a hook for extensions. The kernel defines the two annotation keywords and their rules. The schema that owns a host object declares each hook on that object; the kernel lists no module's hooks. `x-adcp-extension-point` (value: ExtensionPoint) marks a property that carries extension data. `x-adcp-open-union` (value: OpenUnion) marks a host object whose discriminator accepts an ExtensionBranchId besides its closed values. Rules: (1) extension data appears only at a declared hook; (2) hook names are unique across the kernel and all modules, and each hook has a contract major in the release manifest of the layer that declares it; (3) a receiver understands an entry only when it holds a module for the exact uri@digest; (4) an unknown entry is rejected when it is must-understand and ignored otherwise, except that an unknown open-union branch on an array item is dropped with a warning when the union declares unknown_in_list drop_option; (5) a sender MUST NOT send must-understand extension data to a caller that did not list its uri@digest in understood_extensions: it omits the entry, or the object that carries it; (6) validators MUST register both keywords as annotations; (7) an extension adds a task by registering a branch of the kernel's `task` union (core/extension-declaration.json): the task id is the branch id, and an agent serves the task under the transport name its declaration maps to that id.",
+  "definitions": {
+    "HookName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "maxLength": 64
+    },
+    "MustUnderstand": {
+      "type": "string",
+      "enum": [
+        "always",
+        "flag",
+        "never"
+      ],
+      "description": "always: every entry is must-understand whatever its flag (binding data, such as data under terms_digest). flag: an entry is must-understand when its must_understand is true. never: readback; receivers MAY ignore every entry."
+    },
+    "ExtensionPoint": {
+      "title": "Extension Point",
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/HookName"
+        },
+        "must_understand": {
+          "$ref": "#/definitions/MustUnderstand"
+        },
+        "order": {
+          "type": "string",
+          "enum": [
+            "uri"
+          ],
+          "description": "Entries are unique by uri and in ascending uri order, so equal content serializes to equal bytes and equal digests."
+        },
+        "identity": {
+          "type": "string",
+          "enum": [
+            "entry",
+            "enclosing"
+          ],
+          "default": "entry",
+          "description": "entry: the value is an array of ExtensionEntry. enclosing: the value is the data of the extension that the nearest enclosing object names by uri and digest (an ExtensionDeclaration)."
+        }
+      },
+      "required": [
+        "name",
+        "must_understand"
+      ],
+      "additionalProperties": false
+    },
+    "OpenUnion": {
+      "title": "Open Union",
+      "type": "object",
+      "description": "By default a branch is must-understand: a receiver that does not understand the branch cannot act on the host object, so it rejects the host, or drops it from its array when the union's unknown_in_list is drop_option. With identity entry, the branch's body is an ExtensionEntry whose uri is the part of the branch id before '#'. With identity enclosing, the host carries no body: the nearest enclosing object names the extension by uri and digest, and that uri MUST equal the part of the branch id before '#'.",
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/HookName"
+        },
+        "discriminator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identity": {
+          "type": "string",
+          "enum": [
+            "entry",
+            "enclosing"
+          ],
+          "default": "entry",
+          "description": "entry: the host's body property carries the branch's ExtensionEntry. enclosing: the nearest enclosing object (an ExtensionDeclaration) names the extension; the host has no body."
+        },
+        "must_understand": {
+          "type": "string",
+          "enum": [
+            "always",
+            "never"
+          ],
+          "default": "always",
+          "description": "always: a branch the receiver does not understand makes the host unusable (rejected, or dropped per unknown_in_list). never: the host only offers something, such as a task an agent serves, so a receiver ignores a branch it does not understand."
+        },
+        "branch_requires": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "uniqueItems": true,
+          "description": "Keys an extension manifest MUST give when it registers a branch in this union. This is the owning module's contract for branches."
+        },
+        "unknown_in_list": {
+          "type": "string",
+          "enum": [
+            "drop_option",
+            "reject"
+          ],
+          "default": "reject",
+          "description": "What a receiver does with a host object whose branch it does not understand, when that host is an item of an array (one alternative in a list of alternatives). drop_option: the receiver drops that item, records a warning, and keeps the rest of the message; if it drops every item of the array, it rejects the enclosing object. reject: the receiver rejects the enclosing object. A host that is not an array item is always rejected. The owning module sets the policy, and MUST NOT set drop_option on a union whose hosts can be array items inside data covered by terms_digest, so signed terms always fail closed."
+        }
+      },
+      "required": [
+        "name",
+        "discriminator"
+      ],
+      "if": {
+        "properties": {
+          "identity": {
+            "const": "enclosing"
+          }
+        },
+        "required": [
+          "identity"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "body"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "body"
+        ]
+      },
+      "additionalProperties": false
+    }
+  }
+}

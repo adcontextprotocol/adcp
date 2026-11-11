@@ -1,0 +1,36 @@
+id: linear_tv_indexed_cpp/fail_closed
+version: "1.0.0"
+title: "Signed terms with an unknown branch fail closed"
+category: extension_conformance
+extension: linear-tv-indexed-cpp
+summary: "A seller prices the proposal with the branch for a buyer that cannot read it; the buyer rejects the proposal."
+narrative: |
+  The sales house in this fixture ignores understood_extensions everywhere, including the
+  proposal. In the request_proposals response, the same branch appears twice: as one option
+  in a compact product's pricing_options, where the buyer drops it, and as the pricing of
+  a purchase under terms_digest. That pricing is not an item of a list, so the drop
+  policy does not apply there: the buyer must reject the response.
+
+fixture:
+  seller: tv_sales_house
+  ignore_understood: true
+buyer:
+  extensions: []
+
+phases:
+  - id: fail_closed
+    title: "Fail closed on a signed branch"
+    steps:
+      - id: reject_signed_branch
+        title: "The buyer rejects the proposal priced with the branch"
+        task: request_proposals
+        covers: [LTV-R2]
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          error_match: "must-understand at pricing_model#indexed_cpp"
+          checks:
+            - path: report.extensions
+              some: { path: /proposals/0/commercial_terms/purchases/0/pricing/extension_model, status: rejected }
+            - path: report.dropped
+              equals: [/products/0/pricing_options/1]

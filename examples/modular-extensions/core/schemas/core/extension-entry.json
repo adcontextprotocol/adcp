@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/extension-entry.json",
+  "title": "Extension Entry",
+  "description": "The envelope for data defined by a declared extension, attached at a hook that a host schema declares (core/extension-hook.json). `uri` + `digest` identify one immutable extension definition (same reference format and fetch contract as platform-extension-ref.json). `data` is validated against that definition's schema for this hook; core never interprets it. A receiver that does not hold a module for `uri@digest` MUST reject the enclosing object when the entry is must-understand (the hook's must_understand policy, or the flag when the policy is `flag`), and MUST ignore the entry otherwise. Within one message, entries with the same `uri` MUST carry the same `digest`; divergent digests fail closed. `digest` is the SHA-256 of the RFC 8785 (JCS) serialization of the definition; producers serve the definition as its JCS bytes, so it also equals the SHA-256 of the response body.",
+  "type": "object",
+  "properties": {
+    "uri": {
+      "$ref": "/schemas/core/platform-extension-ref.json#/properties/uri"
+    },
+    "digest": {
+      "$ref": "/schemas/core/platform-extension-ref.json#/properties/digest"
+    },
+    "must_understand": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when a receiver that does not understand this extension MUST NOT act on the enclosing object (the JWS `crit` rule, RFC 7515 §4.1.11). Read only at hooks whose policy is `flag`."
+    },
+    "data": {
+      "type": "object",
+      "description": "Extension data. Its schema is the extension definition's schema for this hook."
+    }
+  },
+  "required": [
+    "uri",
+    "digest",
+    "data"
+  ],
+  "additionalProperties": false
+}

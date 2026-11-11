@@ -1,0 +1,193 @@
+{
+ "by_fix_class": {
+  "kernel->module|a-split": 1,
+  "kernel->module|k": 1,
+  "layer|slated": 1,
+  "module->extension|c": 15,
+  "module->extension|x": 4,
+  "module->module|a-split": 56,
+  "module->module|c": 31,
+  "module->module|e": 23,
+  "module->module|slated": 4
+ },
+ "crossing_file_edges": {
+  "kernel->module": 2,
+  "layer": 1,
+  "module->extension": 17,
+  "module->module": 106
+ },
+ "crossing_occurrences": {
+  "kernel->module|resolved": 2,
+  "layer|resolved": 1,
+  "module->extension|resolved": 19,
+  "module->module|resolved": 114
+ },
+ "cycles_after": [],
+ "cycles_today": [
+  [
+   "extension:audience-evidence-on-products",
+   "extension:format-declarations-on-products",
+   "extension:reliable-reporting-account-attachments",
+   "kernel",
+   "module:accounts",
+   "module:buying/catalogs",
+   "module:buying/commitment",
+   "module:buying/delivery",
+   "module:buying/execution",
+   "module:buying/offer",
+   "module:buying/pricing",
+   "module:buying/supply",
+   "module:buying/targeting",
+   "module:creative",
+   "module:governance",
+   "module:identity",
+   "module:reporting",
+   "module:signals"
+  ]
+ ],
+ "edges_total": 3833,
+ "ids_by_module": {
+  "accounts": {
+   "C2a reliable-reporting-account-attachments": 5
+  },
+  "buying": {
+   "C2b reliable-reporting-delivery-revision": 2,
+   "C3 creative-approvals-on-packages": 3,
+   "C4 format-declarations-on-products": 7,
+   "C6 audience-evidence-on-products": 14,
+   "C8 account-details-on-buys": 3,
+   "asset_type_id": 1,
+   "format_kind_id": 7,
+   "indicator": 3,
+   "indicator_type_id": 3,
+   "media_asset": 22
+  },
+  "creative": {
+   "C10 creative-delivery-metrics": 2,
+   "C7a content-artifacts-for-creative-evaluation": 2,
+   "C9 account-details-on-creatives": 2,
+   "asset_type_id": 4,
+   "metric_id": 1,
+   "right_type_id": 3,
+   "right_use_id": 8
+  },
+  "governance": {
+   "C1 governance-checks-on-buying": 3,
+   "format_kind_id": 1
+  },
+  "reporting": {
+   "metric_id": 2
+  },
+  "signals": {
+   "forecast_range + metric_id": 1
+  },
+  "trusted-match": {
+   "C11 format-snapshots-for-context-match": 1,
+   "C12 creative-manifests-for-context-match": 1,
+   "C7b content-artifacts-for-context-match": 1
+  }
+ },
+ "layer_violations_today": 1,
+ "layer_wrong_way_today": [
+  {
+   "dst": "core/proposal.json",
+   "dst_label": "module:buying/offer",
+   "fix_class": "slated",
+   "path": "proposals[]",
+   "release_34": "-",
+   "release_40": "4.0: already slated removal",
+   "src": "media-buy/get-products-response.json",
+   "src_label": "module:buying/supply"
+  }
+ ],
+ "star_violations_after": [],
+ "star_violations_today": 39,
+ "unit_graph_after": {
+  "extension:adcp-ext-namespace": [
+   "module:buying/commitment"
+  ],
+  "extension:audience-evidence-on-products": [
+   "kernel",
+   "module:signals"
+  ],
+  "extension:format-declarations-on-products": [
+   "kernel",
+   "module:creative"
+  ],
+  "extension:reliable-reporting-account-attachments": [
+   "kernel",
+   "module:reporting"
+  ],
+  "module:accounts": [
+   "kernel"
+  ],
+  "module:buying/catalogs": [
+   "kernel",
+   "module:buying/targeting"
+  ],
+  "module:buying/commitment": [
+   "kernel",
+   "module:buying/pricing",
+   "module:buying/targeting"
+  ],
+  "module:buying/delivery": [
+   "kernel",
+   "module:buying/commitment",
+   "module:buying/execution",
+   "module:buying/supply",
+   "module:buying/targeting"
+  ],
+  "module:buying/execution": [
+   "kernel",
+   "module:buying/commitment",
+   "module:buying/pricing",
+   "module:buying/supply",
+   "module:buying/targeting"
+  ],
+  "module:buying/offer": [
+   "kernel",
+   "module:buying/commitment",
+   "module:buying/supply",
+   "module:buying/targeting"
+  ],
+  "module:buying/pricing": [
+   "kernel",
+   "module:buying/targeting"
+  ],
+  "module:buying/supply": [
+   "kernel",
+   "module:buying/catalogs",
+   "module:buying/commitment",
+   "module:buying/pricing",
+   "module:buying/targeting"
+  ],
+  "module:buying/targeting": [
+   "kernel"
+  ],
+  "module:compliance-testing": [
+   "kernel"
+  ],
+  "module:creative": [
+   "kernel"
+  ],
+  "module:governance": [
+   "kernel"
+  ],
+  "module:identity": [
+   "kernel"
+  ],
+  "module:reporting": [
+   "kernel"
+  ],
+  "module:signals": [
+   "kernel"
+  ],
+  "module:sponsored-intelligence": [
+   "kernel"
+  ],
+  "module:trusted-match": [
+   "kernel"
+  ]
+ },
+ "unresolved": []
+}

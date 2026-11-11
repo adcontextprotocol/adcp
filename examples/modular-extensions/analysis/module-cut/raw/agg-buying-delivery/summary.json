@@ -1,0 +1,3805 @@
+{
+ "head": "45591e97b36b45e880c6d480526c11499bbc7c5c",
+ "since": "2025-10-19",
+ "placement": "../module-cut/raw/buying-delivery/placement.json",
+ "total": {
+  "commits": 839,
+  "file_changes": 5028,
+  "fc_nonadditive": 917,
+  "fc_additive": 2558,
+  "fc_annotation": 1553,
+  "rec_additive": 4932,
+  "rec_nonadditive": 1690,
+  "rec_annotation": 4085,
+  "commits_nonadditive": 283,
+  "files": 1066
+ },
+ "place_source": {
+  "placement": 4841,
+  "dir-heuristic": 39,
+  "referrers": 37,
+  "placement-via-rename": 111
+ },
+ "by_layer": {
+  "kernel": {
+   "commits": 196,
+   "file_changes": 307,
+   "fc_nonadditive": 27,
+   "fc_additive": 162,
+   "fc_annotation": 118,
+   "rec_additive": 190,
+   "rec_nonadditive": 41,
+   "rec_annotation": 319,
+   "commits_nonadditive": 22,
+   "files": 65
+  },
+  "module": {
+   "commits": 645,
+   "file_changes": 4110,
+   "fc_nonadditive": 820,
+   "fc_additive": 2202,
+   "fc_annotation": 1088,
+   "rec_additive": 4332,
+   "rec_nonadditive": 1517,
+   "rec_annotation": 3069,
+   "commits_nonadditive": 249,
+   "files": 974
+  },
+  "extension": {
+   "commits": 4,
+   "file_changes": 4,
+   "fc_nonadditive": 0,
+   "fc_additive": 4,
+   "fc_annotation": 0,
+   "rec_additive": 4,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 4
+  },
+  "assembly": {
+   "commits": 417,
+   "file_changes": 602,
+   "fc_nonadditive": 70,
+   "fc_additive": 187,
+   "fc_annotation": 345,
+   "rec_additive": 403,
+   "rec_nonadditive": 132,
+   "rec_annotation": 697,
+   "commits_nonadditive": 59,
+   "files": 18
+  },
+  "retire": {
+   "commits": 4,
+   "file_changes": 5,
+   "fc_nonadditive": 0,
+   "fc_additive": 3,
+   "fc_annotation": 2,
+   "rec_additive": 3,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 5
+  }
+ },
+ "by_layer_window": {
+  "kernel|pre-3.0": {
+   "commits": 64,
+   "file_changes": 109,
+   "fc_nonadditive": 12,
+   "fc_additive": 67,
+   "fc_annotation": 30,
+   "rec_additive": 84,
+   "rec_nonadditive": 21,
+   "rec_annotation": 83,
+   "commits_nonadditive": 11,
+   "files": 39
+  },
+  "module|pre-3.0": {
+   "commits": 209,
+   "file_changes": 1698,
+   "fc_nonadditive": 400,
+   "fc_additive": 944,
+   "fc_annotation": 354,
+   "rec_additive": 1837,
+   "rec_nonadditive": 770,
+   "rec_annotation": 948,
+   "commits_nonadditive": 96,
+   "files": 452
+  },
+  "assembly|pre-3.0": {
+   "commits": 130,
+   "file_changes": 192,
+   "fc_nonadditive": 24,
+   "fc_additive": 62,
+   "fc_annotation": 106,
+   "rec_additive": 177,
+   "rec_nonadditive": 52,
+   "rec_annotation": 216,
+   "commits_nonadditive": 21,
+   "files": 14
+  },
+  "retire|pre-3.0": {
+   "commits": 2,
+   "file_changes": 3,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 2,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 3
+  },
+  "total|pre-3.0": {
+   "commits": 252,
+   "file_changes": 2002,
+   "fc_nonadditive": 436,
+   "fc_additive": 1074,
+   "fc_annotation": 492,
+   "rec_additive": 2099,
+   "rec_nonadditive": 843,
+   "rec_annotation": 1247,
+   "commits_nonadditive": 108,
+   "files": 508
+  },
+  "kernel|3.0->3.1": {
+   "commits": 67,
+   "file_changes": 96,
+   "fc_nonadditive": 8,
+   "fc_additive": 54,
+   "fc_annotation": 34,
+   "rec_additive": 60,
+   "rec_nonadditive": 11,
+   "rec_annotation": 118,
+   "commits_nonadditive": 7,
+   "files": 30
+  },
+  "module|3.0->3.1": {
+   "commits": 193,
+   "file_changes": 900,
+   "fc_nonadditive": 174,
+   "fc_additive": 458,
+   "fc_annotation": 268,
+   "rec_additive": 843,
+   "rec_nonadditive": 312,
+   "rec_annotation": 789,
+   "commits_nonadditive": 54,
+   "files": 372
+  },
+  "extension|3.0->3.1": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "assembly|3.0->3.1": {
+   "commits": 143,
+   "file_changes": 186,
+   "fc_nonadditive": 11,
+   "fc_additive": 55,
+   "fc_annotation": 120,
+   "rec_additive": 87,
+   "rec_nonadditive": 12,
+   "rec_annotation": 229,
+   "commits_nonadditive": 9,
+   "files": 16
+  },
+  "retire|3.0->3.1": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "total|3.0->3.1": {
+   "commits": 288,
+   "file_changes": 1184,
+   "fc_nonadditive": 193,
+   "fc_additive": 569,
+   "fc_annotation": 422,
+   "rec_additive": 992,
+   "rec_nonadditive": 335,
+   "rec_annotation": 1136,
+   "commits_nonadditive": 64,
+   "files": 420
+  },
+  "kernel|3.1->3.2": {
+   "commits": 51,
+   "file_changes": 86,
+   "fc_nonadditive": 6,
+   "fc_additive": 39,
+   "fc_annotation": 41,
+   "rec_additive": 44,
+   "rec_nonadditive": 8,
+   "rec_annotation": 98,
+   "commits_nonadditive": 3,
+   "files": 35
+  },
+  "module|3.1->3.2": {
+   "commits": 186,
+   "file_changes": 1286,
+   "fc_nonadditive": 208,
+   "fc_additive": 702,
+   "fc_annotation": 376,
+   "rec_additive": 1461,
+   "rec_nonadditive": 389,
+   "rec_annotation": 1156,
+   "commits_nonadditive": 80,
+   "files": 597
+  },
+  "extension|3.1->3.2": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "assembly|3.1->3.2": {
+   "commits": 115,
+   "file_changes": 190,
+   "fc_nonadditive": 28,
+   "fc_additive": 61,
+   "fc_annotation": 101,
+   "rec_additive": 121,
+   "rec_nonadditive": 60,
+   "rec_annotation": 224,
+   "commits_nonadditive": 22,
+   "files": 13
+  },
+  "retire|3.1->3.2": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "total|3.1->3.2": {
+   "commits": 235,
+   "file_changes": 1564,
+   "fc_nonadditive": 242,
+   "fc_additive": 804,
+   "fc_annotation": 518,
+   "rec_additive": 1628,
+   "rec_nonadditive": 457,
+   "rec_annotation": 1478,
+   "commits_nonadditive": 88,
+   "files": 647
+  },
+  "kernel|3.2->now": {
+   "commits": 14,
+   "file_changes": 16,
+   "fc_nonadditive": 1,
+   "fc_additive": 2,
+   "fc_annotation": 13,
+   "rec_additive": 2,
+   "rec_nonadditive": 1,
+   "rec_annotation": 20,
+   "commits_nonadditive": 1,
+   "files": 9
+  },
+  "module|3.2->now": {
+   "commits": 57,
+   "file_changes": 226,
+   "fc_nonadditive": 38,
+   "fc_additive": 98,
+   "fc_annotation": 90,
+   "rec_additive": 191,
+   "rec_nonadditive": 46,
+   "rec_annotation": 176,
+   "commits_nonadditive": 19,
+   "files": 154
+  },
+  "extension|3.2->now": {
+   "commits": 2,
+   "file_changes": 2,
+   "fc_nonadditive": 0,
+   "fc_additive": 2,
+   "fc_annotation": 0,
+   "rec_additive": 2,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 2
+  },
+  "assembly|3.2->now": {
+   "commits": 29,
+   "file_changes": 34,
+   "fc_nonadditive": 7,
+   "fc_additive": 9,
+   "fc_annotation": 18,
+   "rec_additive": 18,
+   "rec_nonadditive": 8,
+   "rec_annotation": 28,
+   "commits_nonadditive": 7,
+   "files": 5
+  },
+  "total|3.2->now": {
+   "commits": 64,
+   "file_changes": 278,
+   "fc_nonadditive": 46,
+   "fc_additive": 111,
+   "fc_annotation": 121,
+   "rec_additive": 213,
+   "rec_nonadditive": 55,
+   "rec_annotation": 224,
+   "commits_nonadditive": 23,
+   "files": 170
+  }
+ },
+ "by_module": {
+  "kernel": {
+   "commits": 155,
+   "file_changes": 227,
+   "fc_nonadditive": 18,
+   "fc_additive": 121,
+   "fc_annotation": 88,
+   "rec_additive": 134,
+   "rec_nonadditive": 29,
+   "rec_annotation": 253,
+   "commits_nonadditive": 15,
+   "files": 39
+  },
+  "kernel-types": {
+   "commits": 58,
+   "file_changes": 80,
+   "fc_nonadditive": 9,
+   "fc_additive": 41,
+   "fc_annotation": 30,
+   "rec_additive": 56,
+   "rec_nonadditive": 12,
+   "rec_annotation": 66,
+   "commits_nonadditive": 7,
+   "files": 26
+  },
+  "module:buying": {
+   "commits": 354,
+   "file_changes": 1524,
+   "fc_nonadditive": 272,
+   "fc_additive": 866,
+   "fc_annotation": 386,
+   "rec_additive": 1652,
+   "rec_nonadditive": 486,
+   "rec_annotation": 1102,
+   "commits_nonadditive": 114,
+   "files": 354
+  },
+  "module:creative": {
+   "commits": 198,
+   "file_changes": 949,
+   "fc_nonadditive": 204,
+   "fc_additive": 481,
+   "fc_annotation": 264,
+   "rec_additive": 1051,
+   "rec_nonadditive": 423,
+   "rec_annotation": 767,
+   "commits_nonadditive": 71,
+   "files": 228
+  },
+  "module:governance": {
+   "commits": 73,
+   "file_changes": 461,
+   "fc_nonadditive": 112,
+   "fc_additive": 236,
+   "fc_annotation": 113,
+   "rec_additive": 418,
+   "rec_nonadditive": 214,
+   "rec_annotation": 229,
+   "commits_nonadditive": 29,
+   "files": 83
+  },
+  "module:accounts": {
+   "commits": 75,
+   "file_changes": 233,
+   "fc_nonadditive": 35,
+   "fc_additive": 114,
+   "fc_annotation": 84,
+   "rec_additive": 192,
+   "rec_nonadditive": 62,
+   "rec_annotation": 222,
+   "commits_nonadditive": 21,
+   "files": 52
+  },
+  "module:signals": {
+   "commits": 80,
+   "file_changes": 226,
+   "fc_nonadditive": 52,
+   "fc_additive": 109,
+   "fc_annotation": 65,
+   "rec_additive": 212,
+   "rec_nonadditive": 77,
+   "rec_annotation": 160,
+   "commits_nonadditive": 28,
+   "files": 51
+  },
+  "module:media-vocabulary": {
+   "commits": 76,
+   "file_changes": 188,
+   "fc_nonadditive": 15,
+   "fc_additive": 128,
+   "fc_annotation": 45,
+   "rec_additive": 194,
+   "rec_nonadditive": 21,
+   "rec_annotation": 129,
+   "commits_nonadditive": 14,
+   "files": 76
+  },
+  "module:reporting": {
+   "commits": 37,
+   "file_changes": 136,
+   "fc_nonadditive": 28,
+   "fc_additive": 80,
+   "fc_annotation": 28,
+   "rec_additive": 151,
+   "rec_nonadditive": 55,
+   "rec_annotation": 103,
+   "commits_nonadditive": 14,
+   "files": 56
+  },
+  "module:identity": {
+   "commits": 76,
+   "file_changes": 127,
+   "fc_nonadditive": 28,
+   "fc_additive": 77,
+   "fc_annotation": 22,
+   "rec_additive": 218,
+   "rec_nonadditive": 44,
+   "rec_annotation": 137,
+   "commits_nonadditive": 19,
+   "files": 34
+  },
+  "module:compliance-testing": {
+   "commits": 61,
+   "file_changes": 91,
+   "fc_nonadditive": 32,
+   "fc_additive": 33,
+   "fc_annotation": 26,
+   "rec_additive": 120,
+   "rec_nonadditive": 58,
+   "rec_annotation": 108,
+   "commits_nonadditive": 28,
+   "files": 4
+  },
+  "module:trusted-match": {
+   "commits": 35,
+   "file_changes": 91,
+   "fc_nonadditive": 32,
+   "fc_additive": 30,
+   "fc_annotation": 29,
+   "rec_additive": 64,
+   "rec_nonadditive": 65,
+   "rec_annotation": 74,
+   "commits_nonadditive": 16,
+   "files": 16
+  },
+  "module:sponsored-intelligence": {
+   "commits": 17,
+   "file_changes": 84,
+   "fc_nonadditive": 10,
+   "fc_additive": 48,
+   "fc_annotation": 26,
+   "rec_additive": 60,
+   "rec_nonadditive": 12,
+   "rec_annotation": 38,
+   "commits_nonadditive": 4,
+   "files": 20
+  },
+  "extension:response-signing-jws": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "extension:aao-verification-token": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "extension:adcp-ext-namespace": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "extension:spot-lifecycle": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "assembly": {
+   "commits": 417,
+   "file_changes": 602,
+   "fc_nonadditive": 70,
+   "fc_additive": 187,
+   "fc_annotation": 345,
+   "rec_additive": 403,
+   "rec_nonadditive": 132,
+   "rec_annotation": 697,
+   "commits_nonadditive": 59,
+   "files": 18
+  },
+  "retire": {
+   "commits": 4,
+   "file_changes": 5,
+   "fc_nonadditive": 0,
+   "fc_additive": 3,
+   "fc_annotation": 2,
+   "rec_additive": 3,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 5
+  }
+ },
+ "by_module_window": {
+  "kernel|pre-3.0": {
+   "commits": 40,
+   "file_changes": 68,
+   "fc_nonadditive": 7,
+   "fc_additive": 43,
+   "fc_annotation": 18,
+   "rec_additive": 49,
+   "rec_nonadditive": 15,
+   "rec_annotation": 51,
+   "commits_nonadditive": 6,
+   "files": 21
+  },
+  "kernel|3.0->3.1": {
+   "commits": 62,
+   "file_changes": 83,
+   "fc_nonadditive": 8,
+   "fc_additive": 50,
+   "fc_annotation": 25,
+   "rec_additive": 56,
+   "rec_nonadditive": 11,
+   "rec_annotation": 108,
+   "commits_nonadditive": 7,
+   "files": 21
+  },
+  "kernel|3.1->3.2": {
+   "commits": 41,
+   "file_changes": 63,
+   "fc_nonadditive": 2,
+   "fc_additive": 26,
+   "fc_annotation": 35,
+   "rec_additive": 27,
+   "rec_nonadditive": 2,
+   "rec_annotation": 77,
+   "commits_nonadditive": 1,
+   "files": 22
+  },
+  "kernel|3.2->now": {
+   "commits": 12,
+   "file_changes": 13,
+   "fc_nonadditive": 1,
+   "fc_additive": 2,
+   "fc_annotation": 10,
+   "rec_additive": 2,
+   "rec_nonadditive": 1,
+   "rec_annotation": 17,
+   "commits_nonadditive": 1,
+   "files": 7
+  },
+  "kernel-types|pre-3.0": {
+   "commits": 29,
+   "file_changes": 41,
+   "fc_nonadditive": 5,
+   "fc_additive": 24,
+   "fc_annotation": 12,
+   "rec_additive": 35,
+   "rec_nonadditive": 6,
+   "rec_annotation": 32,
+   "commits_nonadditive": 5,
+   "files": 18
+  },
+  "kernel-types|3.0->3.1": {
+   "commits": 11,
+   "file_changes": 13,
+   "fc_nonadditive": 0,
+   "fc_additive": 4,
+   "fc_annotation": 9,
+   "rec_additive": 4,
+   "rec_nonadditive": 0,
+   "rec_annotation": 10,
+   "commits_nonadditive": 0,
+   "files": 9
+  },
+  "kernel-types|3.1->3.2": {
+   "commits": 15,
+   "file_changes": 23,
+   "fc_nonadditive": 4,
+   "fc_additive": 13,
+   "fc_annotation": 6,
+   "rec_additive": 17,
+   "rec_nonadditive": 6,
+   "rec_annotation": 21,
+   "commits_nonadditive": 2,
+   "files": 13
+  },
+  "kernel-types|3.2->now": {
+   "commits": 3,
+   "file_changes": 3,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 3,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 3,
+   "commits_nonadditive": 0,
+   "files": 2
+  },
+  "module:buying|pre-3.0": {
+   "commits": 122,
+   "file_changes": 537,
+   "fc_nonadditive": 122,
+   "fc_additive": 327,
+   "fc_annotation": 88,
+   "rec_additive": 592,
+   "rec_nonadditive": 212,
+   "rec_annotation": 266,
+   "commits_nonadditive": 48,
+   "files": 136
+  },
+  "module:buying|3.0->3.1": {
+   "commits": 92,
+   "file_changes": 263,
+   "fc_nonadditive": 45,
+   "fc_additive": 133,
+   "fc_annotation": 85,
+   "rec_additive": 269,
+   "rec_nonadditive": 98,
+   "rec_annotation": 268,
+   "commits_nonadditive": 17,
+   "files": 84
+  },
+  "module:buying|3.1->3.2": {
+   "commits": 105,
+   "file_changes": 596,
+   "fc_nonadditive": 84,
+   "fc_additive": 353,
+   "fc_annotation": 159,
+   "rec_additive": 694,
+   "rec_nonadditive": 149,
+   "rec_annotation": 474,
+   "commits_nonadditive": 38,
+   "files": 242
+  },
+  "module:buying|3.2->now": {
+   "commits": 35,
+   "file_changes": 128,
+   "fc_nonadditive": 21,
+   "fc_additive": 53,
+   "fc_annotation": 54,
+   "rec_additive": 97,
+   "rec_nonadditive": 27,
+   "rec_annotation": 94,
+   "commits_nonadditive": 11,
+   "files": 77
+  },
+  "module:creative|pre-3.0": {
+   "commits": 81,
+   "file_changes": 420,
+   "fc_nonadditive": 117,
+   "fc_additive": 216,
+   "fc_annotation": 87,
+   "rec_additive": 538,
+   "rec_nonadditive": 262,
+   "rec_annotation": 259,
+   "commits_nonadditive": 37,
+   "files": 113
+  },
+  "module:creative|3.0->3.1": {
+   "commits": 57,
+   "file_changes": 221,
+   "fc_nonadditive": 38,
+   "fc_additive": 111,
+   "fc_annotation": 72,
+   "rec_additive": 182,
+   "rec_nonadditive": 67,
+   "rec_annotation": 186,
+   "commits_nonadditive": 15,
+   "files": 107
+  },
+  "module:creative|3.1->3.2": {
+   "commits": 48,
+   "file_changes": 268,
+   "fc_nonadditive": 42,
+   "fc_additive": 131,
+   "fc_annotation": 95,
+   "rec_additive": 272,
+   "rec_nonadditive": 85,
+   "rec_annotation": 301,
+   "commits_nonadditive": 16,
+   "files": 140
+  },
+  "module:creative|3.2->now": {
+   "commits": 12,
+   "file_changes": 40,
+   "fc_nonadditive": 7,
+   "fc_additive": 23,
+   "fc_annotation": 10,
+   "rec_additive": 59,
+   "rec_nonadditive": 9,
+   "rec_annotation": 21,
+   "commits_nonadditive": 3,
+   "files": 31
+  },
+  "module:governance|pre-3.0": {
+   "commits": 43,
+   "file_changes": 308,
+   "fc_nonadditive": 73,
+   "fc_additive": 168,
+   "fc_annotation": 67,
+   "rec_additive": 240,
+   "rec_nonadditive": 136,
+   "rec_annotation": 102,
+   "commits_nonadditive": 19,
+   "files": 75
+  },
+  "module:governance|3.0->3.1": {
+   "commits": 15,
+   "file_changes": 105,
+   "fc_nonadditive": 26,
+   "fc_additive": 51,
+   "fc_annotation": 28,
+   "rec_additive": 69,
+   "rec_nonadditive": 34,
+   "rec_annotation": 69,
+   "commits_nonadditive": 3,
+   "files": 52
+  },
+  "module:governance|3.1->3.2": {
+   "commits": 12,
+   "file_changes": 42,
+   "fc_nonadditive": 13,
+   "fc_additive": 14,
+   "fc_annotation": 15,
+   "rec_additive": 106,
+   "rec_nonadditive": 44,
+   "rec_annotation": 55,
+   "commits_nonadditive": 7,
+   "files": 25
+  },
+  "module:governance|3.2->now": {
+   "commits": 3,
+   "file_changes": 6,
+   "fc_nonadditive": 0,
+   "fc_additive": 3,
+   "fc_annotation": 3,
+   "rec_additive": 3,
+   "rec_nonadditive": 0,
+   "rec_annotation": 3,
+   "commits_nonadditive": 0,
+   "files": 6
+  },
+  "module:accounts|pre-3.0": {
+   "commits": 29,
+   "file_changes": 73,
+   "fc_nonadditive": 15,
+   "fc_additive": 38,
+   "fc_annotation": 20,
+   "rec_additive": 64,
+   "rec_nonadditive": 37,
+   "rec_annotation": 67,
+   "commits_nonadditive": 8,
+   "files": 13
+  },
+  "module:accounts|3.0->3.1": {
+   "commits": 23,
+   "file_changes": 64,
+   "fc_nonadditive": 8,
+   "fc_additive": 27,
+   "fc_annotation": 29,
+   "rec_additive": 34,
+   "rec_nonadditive": 10,
+   "rec_annotation": 58,
+   "commits_nonadditive": 5,
+   "files": 22
+  },
+  "module:accounts|3.1->3.2": {
+   "commits": 18,
+   "file_changes": 89,
+   "fc_nonadditive": 11,
+   "fc_additive": 47,
+   "fc_annotation": 31,
+   "rec_additive": 91,
+   "rec_nonadditive": 14,
+   "rec_annotation": 84,
+   "commits_nonadditive": 7,
+   "files": 39
+  },
+  "module:accounts|3.2->now": {
+   "commits": 5,
+   "file_changes": 7,
+   "fc_nonadditive": 1,
+   "fc_additive": 2,
+   "fc_annotation": 4,
+   "rec_additive": 3,
+   "rec_nonadditive": 1,
+   "rec_annotation": 13,
+   "commits_nonadditive": 1,
+   "files": 6
+  },
+  "module:signals|pre-3.0": {
+   "commits": 36,
+   "file_changes": 111,
+   "fc_nonadditive": 26,
+   "fc_additive": 58,
+   "fc_annotation": 27,
+   "rec_additive": 94,
+   "rec_nonadditive": 36,
+   "rec_annotation": 50,
+   "commits_nonadditive": 14,
+   "files": 33
+  },
+  "module:signals|3.0->3.1": {
+   "commits": 26,
+   "file_changes": 71,
+   "fc_nonadditive": 19,
+   "fc_additive": 32,
+   "fc_annotation": 20,
+   "rec_additive": 88,
+   "rec_nonadditive": 33,
+   "rec_annotation": 80,
+   "commits_nonadditive": 11,
+   "files": 33
+  },
+  "module:signals|3.1->3.2": {
+   "commits": 12,
+   "file_changes": 32,
+   "fc_nonadditive": 4,
+   "fc_additive": 14,
+   "fc_annotation": 14,
+   "rec_additive": 20,
+   "rec_nonadditive": 5,
+   "rec_annotation": 19,
+   "commits_nonadditive": 2,
+   "files": 25
+  },
+  "module:signals|3.2->now": {
+   "commits": 6,
+   "file_changes": 12,
+   "fc_nonadditive": 3,
+   "fc_additive": 5,
+   "fc_annotation": 4,
+   "rec_additive": 10,
+   "rec_nonadditive": 3,
+   "rec_annotation": 11,
+   "commits_nonadditive": 1,
+   "files": 9
+  },
+  "module:media-vocabulary|pre-3.0": {
+   "commits": 31,
+   "file_changes": 71,
+   "fc_nonadditive": 9,
+   "fc_additive": 49,
+   "fc_annotation": 13,
+   "rec_additive": 85,
+   "rec_nonadditive": 11,
+   "rec_annotation": 44,
+   "commits_nonadditive": 9,
+   "files": 35
+  },
+  "module:media-vocabulary|3.0->3.1": {
+   "commits": 19,
+   "file_changes": 49,
+   "fc_nonadditive": 2,
+   "fc_additive": 36,
+   "fc_annotation": 11,
+   "rec_additive": 51,
+   "rec_nonadditive": 6,
+   "rec_annotation": 37,
+   "commits_nonadditive": 2,
+   "files": 31
+  },
+  "module:media-vocabulary|3.1->3.2": {
+   "commits": 20,
+   "file_changes": 58,
+   "fc_nonadditive": 2,
+   "fc_additive": 39,
+   "fc_annotation": 17,
+   "rec_additive": 54,
+   "rec_nonadditive": 2,
+   "rec_annotation": 43,
+   "commits_nonadditive": 1,
+   "files": 39
+  },
+  "module:media-vocabulary|3.2->now": {
+   "commits": 6,
+   "file_changes": 10,
+   "fc_nonadditive": 2,
+   "fc_additive": 4,
+   "fc_annotation": 4,
+   "rec_additive": 4,
+   "rec_nonadditive": 2,
+   "rec_annotation": 5,
+   "commits_nonadditive": 2,
+   "files": 9
+  },
+  "module:reporting|pre-3.0": {
+   "commits": 11,
+   "file_changes": 14,
+   "fc_nonadditive": 4,
+   "fc_additive": 6,
+   "fc_annotation": 4,
+   "rec_additive": 13,
+   "rec_nonadditive": 9,
+   "rec_annotation": 11,
+   "commits_nonadditive": 4,
+   "files": 3
+  },
+  "module:reporting|3.0->3.1": {
+   "commits": 5,
+   "file_changes": 6,
+   "fc_nonadditive": 1,
+   "fc_additive": 5,
+   "fc_annotation": 0,
+   "rec_additive": 8,
+   "rec_nonadditive": 1,
+   "rec_annotation": 3,
+   "commits_nonadditive": 1,
+   "files": 3
+  },
+  "module:reporting|3.1->3.2": {
+   "commits": 18,
+   "file_changes": 110,
+   "fc_nonadditive": 21,
+   "fc_additive": 69,
+   "fc_annotation": 20,
+   "rec_additive": 128,
+   "rec_nonadditive": 43,
+   "rec_annotation": 83,
+   "commits_nonadditive": 7,
+   "files": 56
+  },
+  "module:reporting|3.2->now": {
+   "commits": 3,
+   "file_changes": 6,
+   "fc_nonadditive": 2,
+   "fc_additive": 0,
+   "fc_annotation": 4,
+   "rec_additive": 2,
+   "rec_nonadditive": 2,
+   "rec_annotation": 6,
+   "commits_nonadditive": 2,
+   "files": 5
+  },
+  "module:identity|pre-3.0": {
+   "commits": 36,
+   "file_changes": 62,
+   "fc_nonadditive": 18,
+   "fc_additive": 34,
+   "fc_annotation": 10,
+   "rec_additive": 124,
+   "rec_nonadditive": 24,
+   "rec_annotation": 88,
+   "commits_nonadditive": 14,
+   "files": 16
+  },
+  "module:identity|3.0->3.1": {
+   "commits": 21,
+   "file_changes": 35,
+   "fc_nonadditive": 9,
+   "fc_additive": 23,
+   "fc_annotation": 3,
+   "rec_additive": 59,
+   "rec_nonadditive": 19,
+   "rec_annotation": 21,
+   "commits_nonadditive": 4,
+   "files": 16
+  },
+  "module:identity|3.1->3.2": {
+   "commits": 11,
+   "file_changes": 17,
+   "fc_nonadditive": 0,
+   "fc_additive": 13,
+   "fc_annotation": 4,
+   "rec_additive": 27,
+   "rec_nonadditive": 0,
+   "rec_annotation": 11,
+   "commits_nonadditive": 0,
+   "files": 13
+  },
+  "module:identity|3.2->now": {
+   "commits": 8,
+   "file_changes": 13,
+   "fc_nonadditive": 1,
+   "fc_additive": 7,
+   "fc_annotation": 5,
+   "rec_additive": 8,
+   "rec_nonadditive": 1,
+   "rec_annotation": 17,
+   "commits_nonadditive": 1,
+   "files": 8
+  },
+  "module:compliance-testing|pre-3.0": {
+   "commits": 7,
+   "file_changes": 8,
+   "fc_nonadditive": 2,
+   "fc_additive": 4,
+   "fc_annotation": 2,
+   "rec_additive": 13,
+   "rec_nonadditive": 8,
+   "rec_annotation": 8,
+   "commits_nonadditive": 2,
+   "files": 2
+  },
+  "module:compliance-testing|3.0->3.1": {
+   "commits": 27,
+   "file_changes": 40,
+   "fc_nonadditive": 16,
+   "fc_additive": 14,
+   "fc_annotation": 10,
+   "rec_additive": 50,
+   "rec_nonadditive": 33,
+   "rec_annotation": 45,
+   "commits_nonadditive": 13,
+   "files": 2
+  },
+  "module:compliance-testing|3.1->3.2": {
+   "commits": 25,
+   "file_changes": 40,
+   "fc_nonadditive": 13,
+   "fc_additive": 14,
+   "fc_annotation": 13,
+   "rec_additive": 52,
+   "rec_nonadditive": 16,
+   "rec_annotation": 50,
+   "commits_nonadditive": 12,
+   "files": 4
+  },
+  "module:compliance-testing|3.2->now": {
+   "commits": 2,
+   "file_changes": 3,
+   "fc_nonadditive": 1,
+   "fc_additive": 1,
+   "fc_annotation": 1,
+   "rec_additive": 5,
+   "rec_nonadditive": 1,
+   "rec_annotation": 5,
+   "commits_nonadditive": 1,
+   "files": 2
+  },
+  "module:trusted-match|pre-3.0": {
+   "commits": 11,
+   "file_changes": 32,
+   "fc_nonadditive": 8,
+   "fc_additive": 14,
+   "fc_annotation": 10,
+   "rec_additive": 33,
+   "rec_nonadditive": 27,
+   "rec_annotation": 19,
+   "commits_nonadditive": 3,
+   "files": 10
+  },
+  "module:trusted-match|3.0->3.1": {
+   "commits": 9,
+   "file_changes": 24,
+   "fc_nonadditive": 6,
+   "fc_additive": 8,
+   "fc_annotation": 10,
+   "rec_additive": 14,
+   "rec_nonadditive": 7,
+   "rec_annotation": 18,
+   "commits_nonadditive": 5,
+   "files": 10
+  },
+  "module:trusted-match|3.1->3.2": {
+   "commits": 14,
+   "file_changes": 34,
+   "fc_nonadditive": 18,
+   "fc_additive": 8,
+   "fc_annotation": 8,
+   "rec_additive": 17,
+   "rec_nonadditive": 31,
+   "rec_annotation": 36,
+   "commits_nonadditive": 8,
+   "files": 14
+  },
+  "module:trusted-match|3.2->now": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 1,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 1,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "module:sponsored-intelligence|pre-3.0": {
+   "commits": 13,
+   "file_changes": 62,
+   "fc_nonadditive": 6,
+   "fc_additive": 30,
+   "fc_annotation": 26,
+   "rec_additive": 41,
+   "rec_nonadditive": 8,
+   "rec_annotation": 34,
+   "commits_nonadditive": 3,
+   "files": 16
+  },
+  "module:sponsored-intelligence|3.0->3.1": {
+   "commits": 4,
+   "file_changes": 22,
+   "fc_nonadditive": 4,
+   "fc_additive": 18,
+   "fc_annotation": 0,
+   "rec_additive": 19,
+   "rec_nonadditive": 4,
+   "rec_annotation": 4,
+   "commits_nonadditive": 1,
+   "files": 12
+  },
+  "module:sponsored-intelligence|3.1->3.2": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "module:sponsored-intelligence|3.2->now": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:response-signing-jws|pre-3.0": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:response-signing-jws|3.0->3.1": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "extension:response-signing-jws|3.1->3.2": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:response-signing-jws|3.2->now": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:aao-verification-token|pre-3.0": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:aao-verification-token|3.0->3.1": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:aao-verification-token|3.1->3.2": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "extension:aao-verification-token|3.2->now": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:adcp-ext-namespace|pre-3.0": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:adcp-ext-namespace|3.0->3.1": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:adcp-ext-namespace|3.1->3.2": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:adcp-ext-namespace|3.2->now": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "extension:spot-lifecycle|pre-3.0": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:spot-lifecycle|3.0->3.1": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:spot-lifecycle|3.1->3.2": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  },
+  "extension:spot-lifecycle|3.2->now": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "assembly|pre-3.0": {
+   "commits": 130,
+   "file_changes": 192,
+   "fc_nonadditive": 24,
+   "fc_additive": 62,
+   "fc_annotation": 106,
+   "rec_additive": 177,
+   "rec_nonadditive": 52,
+   "rec_annotation": 216,
+   "commits_nonadditive": 21,
+   "files": 14
+  },
+  "assembly|3.0->3.1": {
+   "commits": 143,
+   "file_changes": 186,
+   "fc_nonadditive": 11,
+   "fc_additive": 55,
+   "fc_annotation": 120,
+   "rec_additive": 87,
+   "rec_nonadditive": 12,
+   "rec_annotation": 229,
+   "commits_nonadditive": 9,
+   "files": 16
+  },
+  "assembly|3.1->3.2": {
+   "commits": 115,
+   "file_changes": 190,
+   "fc_nonadditive": 28,
+   "fc_additive": 61,
+   "fc_annotation": 101,
+   "rec_additive": 121,
+   "rec_nonadditive": 60,
+   "rec_annotation": 224,
+   "commits_nonadditive": 22,
+   "files": 13
+  },
+  "assembly|3.2->now": {
+   "commits": 29,
+   "file_changes": 34,
+   "fc_nonadditive": 7,
+   "fc_additive": 9,
+   "fc_annotation": 18,
+   "rec_additive": 18,
+   "rec_nonadditive": 8,
+   "rec_annotation": 28,
+   "commits_nonadditive": 7,
+   "files": 5
+  },
+  "retire|pre-3.0": {
+   "commits": 2,
+   "file_changes": 3,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 2,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 3
+  },
+  "retire|3.0->3.1": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "retire|3.1->3.2": {
+   "commits": 1,
+   "file_changes": 1,
+   "fc_nonadditive": 0,
+   "fc_additive": 1,
+   "fc_annotation": 0,
+   "rec_additive": 1,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 1
+  },
+  "retire|3.2->now": {
+   "commits": 0,
+   "file_changes": 0,
+   "fc_nonadditive": 0,
+   "fc_additive": 0,
+   "fc_annotation": 0,
+   "rec_additive": 0,
+   "rec_nonadditive": 0,
+   "rec_annotation": 0,
+   "commits_nonadditive": 0,
+   "files": 0
+  }
+ },
+ "kernel_nonadditive_by_window": {
+  "pre-3.0": 21,
+  "3.0->3.1": 11,
+  "3.1->3.2": 8,
+  "3.2->now": 1
+ },
+ "kernel_nonadditive_commits_by_window": {
+  "pre-3.0": 11,
+  "3.0->3.1": 7,
+  "3.1->3.2": 3,
+  "3.2->now": 1
+ },
+ "kernel_release_status": {
+  "pre-3.0|never-released": 3,
+  "pre-3.0|released-GA": 15,
+  "pre-3.0|prerelease-only": 3,
+  "3.0->3.1|released-GA": 2,
+  "3.0->3.1|never-released": 6,
+  "3.0->3.1|prerelease-only": 3,
+  "3.1->3.2|released-GA": 5,
+  "3.1->3.2|prerelease-only": 3,
+  "3.2->now|released-GA": 1
+ },
+ "release_status_all": {
+  "module|pre-3.0|never-released": 216,
+  "kernel|pre-3.0|never-released": 3,
+  "assembly|pre-3.0|released-GA": 6,
+  "module|pre-3.0|released-GA": 210,
+  "kernel|pre-3.0|released-GA": 15,
+  "assembly|pre-3.0|prerelease-only": 19,
+  "module|pre-3.0|prerelease-only": 344,
+  "kernel|pre-3.0|prerelease-only": 3,
+  "assembly|pre-3.0|never-released": 27,
+  "kernel|3.0->3.1|released-GA": 2,
+  "module|3.0->3.1|never-released": 59,
+  "module|3.0->3.1|released-GA": 188,
+  "kernel|3.0->3.1|never-released": 6,
+  "assembly|3.0->3.1|never-released": 3,
+  "assembly|3.0->3.1|released-GA": 7,
+  "kernel|3.0->3.1|prerelease-only": 3,
+  "module|3.0->3.1|prerelease-only": 65,
+  "assembly|3.0->3.1|prerelease-only": 2,
+  "module|3.1->3.2|released-GA": 261,
+  "module|3.1->3.2|never-released": 45,
+  "assembly|3.1->3.2|released-GA": 58,
+  "kernel|3.1->3.2|released-GA": 5,
+  "assembly|3.1->3.2|never-released": 1,
+  "module|3.1->3.2|prerelease-only": 83,
+  "assembly|3.1->3.2|prerelease-only": 1,
+  "kernel|3.1->3.2|prerelease-only": 3,
+  "assembly|3.2->now|released-GA": 8,
+  "kernel|3.2->now|released-GA": 1,
+  "module|3.2->now|released-GA": 44,
+  "module|3.2->now|never-released": 2
+ },
+ "aggregators": [
+  "adagents.json",
+  "core/async-response-data.json",
+  "core/mcp-webhook-payload.json",
+  "core/tasks-get-response.json",
+  "core/tasks-list-response.json",
+  "core/x-entity-types.json",
+  "enums/adcp-protocol.json",
+  "enums/notification-type.json",
+  "enums/specialism.json",
+  "enums/task-type.json",
+  "extensions/index.json",
+  "index.json",
+  "manifest.schema.json",
+  "protocol/get-adcp-capabilities-response.json",
+  "protocol/get-task-status-response.json",
+  "protocol/list-tasks-response.json"
+ ],
+ "cochange": {
+  "all|caps-as-aggregator": {
+   "commits": 839,
+   "multi_module": 405,
+   "single-module": 434,
+   "aggregator-only": 110,
+   "cross-module": 241,
+   "kernel+one-module": 54,
+   "cross_module_size": {
+    "2": 144,
+    "3": 51,
+    "4": 25,
+    "5": 8,
+    "6": 13
+   },
+   "top_pairs_non_kernel": [
+    [
+     "module:buying",
+     "module:creative",
+     90
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     62
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     54
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     38
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     35
+    ],
+    [
+     "module:creative",
+     "module:signals",
+     32
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     30
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     28
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     27
+    ],
+    [
+     "module:creative",
+     "module:identity",
+     23
+    ],
+    [
+     "module:accounts",
+     "module:governance",
+     23
+    ],
+    [
+     "module:buying",
+     "module:reporting",
+     22
+    ],
+    [
+     "module:buying",
+     "module:compliance-testing",
+     21
+    ],
+    [
+     "module:accounts",
+     "module:signals",
+     20
+    ],
+    [
+     "module:governance",
+     "module:signals",
+     20
+    ]
+   ],
+   "top_pairs_all": [
+    [
+     "module:buying",
+     "module:creative",
+     90
+    ],
+    [
+     "kernel",
+     "module:buying",
+     70
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     62
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     54
+    ],
+    [
+     "kernel",
+     "module:creative",
+     47
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     38
+    ],
+    [
+     "kernel-types",
+     "module:buying",
+     35
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     35
+    ],
+    [
+     "module:creative",
+     "module:signals",
+     32
+    ],
+    [
+     "kernel",
+     "module:signals",
+     30
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     30
+    ],
+    [
+     "kernel",
+     "module:accounts",
+     30
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     28
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     27
+    ],
+    [
+     "kernel-types",
+     "module:creative",
+     26
+    ]
+   ],
+   "by_window": {
+    "pre-3.0|single-module": 101,
+    "pre-3.0|aggregator-only": 40,
+    "pre-3.0|cross-module": 99,
+    "pre-3.0|kernel+one-module": 12,
+    "3.0->3.1|single-module": 181,
+    "3.0->3.1|cross-module": 60,
+    "3.0->3.1|aggregator-only": 29,
+    "3.0->3.1|kernel+one-module": 18,
+    "3.1->3.2|single-module": 125,
+    "3.1->3.2|aggregator-only": 32,
+    "3.1->3.2|cross-module": 61,
+    "3.1->3.2|kernel+one-module": 17,
+    "3.2->now|single-module": 27,
+    "3.2->now|cross-module": 21,
+    "3.2->now|kernel+one-module": 7,
+    "3.2->now|aggregator-only": 9
+   }
+  },
+  "all|caps-split": {
+   "commits": 839,
+   "multi_module": 405,
+   "single-module": 434,
+   "aggregator-only": 84,
+   "cross-module": 260,
+   "kernel+one-module": 61,
+   "cross_module_size": {
+    "2": 155,
+    "3": 52,
+    "4": 27,
+    "5": 12,
+    "6": 14
+   },
+   "top_pairs_non_kernel": [
+    [
+     "module:buying",
+     "module:creative",
+     95
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     64
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     58
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     43
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     40
+    ],
+    [
+     "module:creative",
+     "module:signals",
+     33
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     32
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     28
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     28
+    ],
+    [
+     "module:buying",
+     "module:reporting",
+     26
+    ],
+    [
+     "module:accounts",
+     "module:governance",
+     25
+    ],
+    [
+     "module:creative",
+     "module:identity",
+     23
+    ],
+    [
+     "module:buying",
+     "module:compliance-testing",
+     23
+    ],
+    [
+     "module:governance",
+     "module:signals",
+     21
+    ],
+    [
+     "module:accounts",
+     "module:signals",
+     20
+    ]
+   ],
+   "top_pairs_all": [
+    [
+     "module:buying",
+     "module:creative",
+     95
+    ],
+    [
+     "kernel",
+     "module:buying",
+     88
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     64
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     60
+    ],
+    [
+     "kernel",
+     "module:creative",
+     52
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     43
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     41
+    ],
+    [
+     "kernel-types",
+     "module:buying",
+     37
+    ],
+    [
+     "kernel",
+     "module:accounts",
+     34
+    ],
+    [
+     "module:creative",
+     "module:signals",
+     33
+    ],
+    [
+     "kernel",
+     "module:signals",
+     32
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     32
+    ],
+    [
+     "kernel",
+     "module:governance",
+     29
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     28
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     28
+    ]
+   ],
+   "by_window": {
+    "pre-3.0|single-module": 101,
+    "pre-3.0|aggregator-only": 27,
+    "pre-3.0|cross-module": 110,
+    "pre-3.0|kernel+one-module": 14,
+    "3.0->3.1|single-module": 181,
+    "3.0->3.1|cross-module": 61,
+    "3.0->3.1|aggregator-only": 26,
+    "3.0->3.1|kernel+one-module": 20,
+    "3.1->3.2|single-module": 125,
+    "3.1->3.2|aggregator-only": 23,
+    "3.1->3.2|cross-module": 68,
+    "3.1->3.2|kernel+one-module": 19,
+    "3.2->now|single-module": 27,
+    "3.2->now|cross-module": 21,
+    "3.2->now|kernel+one-module": 8,
+    "3.2->now|aggregator-only": 8
+   }
+  },
+  "substantive|caps-as-aggregator": {
+   "commits": 611,
+   "multi_module": 259,
+   "single-module": 352,
+   "cross-module": 171,
+   "kernel+one-module": 30,
+   "aggregator-only": 58,
+   "cross_module_size": {
+    "2": 109,
+    "3": 35,
+    "4": 12,
+    "5": 6,
+    "6": 9
+   },
+   "top_pairs_non_kernel": [
+    [
+     "module:buying",
+     "module:creative",
+     61
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     42
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     34
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     24
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     24
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     22
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     19
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     19
+    ],
+    [
+     "module:creative",
+     "module:identity",
+     18
+    ],
+    [
+     "module:creative",
+     "module:signals",
+     17
+    ],
+    [
+     "module:accounts",
+     "module:governance",
+     16
+    ],
+    [
+     "module:buying",
+     "module:reporting",
+     14
+    ],
+    [
+     "module:governance",
+     "module:signals",
+     13
+    ],
+    [
+     "module:accounts",
+     "module:signals",
+     12
+    ],
+    [
+     "module:buying",
+     "module:compliance-testing",
+     12
+    ]
+   ],
+   "top_pairs_all": [
+    [
+     "module:buying",
+     "module:creative",
+     61
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     42
+    ],
+    [
+     "kernel",
+     "module:buying",
+     38
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     34
+    ],
+    [
+     "kernel",
+     "module:creative",
+     31
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     24
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     24
+    ],
+    [
+     "kernel-types",
+     "module:buying",
+     23
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     22
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     19
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     19
+    ],
+    [
+     "module:creative",
+     "module:identity",
+     18
+    ],
+    [
+     "module:creative",
+     "module:signals",
+     17
+    ],
+    [
+     "kernel",
+     "module:signals",
+     16
+    ],
+    [
+     "kernel-types",
+     "module:creative",
+     16
+    ]
+   ],
+   "by_window": {
+    "pre-3.0|single-module": 106,
+    "pre-3.0|cross-module": 79,
+    "pre-3.0|kernel+one-module": 11,
+    "pre-3.0|aggregator-only": 18,
+    "3.0->3.1|single-module": 118,
+    "3.0->3.1|cross-module": 40,
+    "3.0->3.1|aggregator-only": 16,
+    "3.0->3.1|kernel+one-module": 7,
+    "3.1->3.2|single-module": 98,
+    "3.1->3.2|aggregator-only": 19,
+    "3.1->3.2|cross-module": 38,
+    "3.1->3.2|kernel+one-module": 11,
+    "3.2->now|single-module": 30,
+    "3.2->now|aggregator-only": 5,
+    "3.2->now|cross-module": 14,
+    "3.2->now|kernel+one-module": 1
+   }
+  },
+  "substantive|caps-split": {
+   "commits": 611,
+   "multi_module": 259,
+   "single-module": 352,
+   "cross-module": 186,
+   "kernel+one-module": 31,
+   "aggregator-only": 41,
+   "kernel-internal": 1,
+   "cross_module_size": {
+    "2": 116,
+    "3": 39,
+    "4": 12,
+    "5": 10,
+    "6": 9
+   },
+   "top_pairs_non_kernel": [
+    [
+     "module:buying",
+     "module:creative",
+     65
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     44
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     37
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     28
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     28
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     22
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     21
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     19
+    ],
+    [
+     "module:creative",
+     "module:identity",
+     18
+    ],
+    [
+     "module:buying",
+     "module:reporting",
+     17
+    ],
+    [
+     "module:creative",
+     "module:signals",
+     17
+    ],
+    [
+     "module:accounts",
+     "module:governance",
+     17
+    ],
+    [
+     "module:buying",
+     "module:compliance-testing",
+     14
+    ],
+    [
+     "module:media-vocabulary",
+     "module:signals",
+     13
+    ],
+    [
+     "module:governance",
+     "module:signals",
+     13
+    ]
+   ],
+   "top_pairs_all": [
+    [
+     "module:buying",
+     "module:creative",
+     65
+    ],
+    [
+     "module:buying",
+     "module:media-vocabulary",
+     44
+    ],
+    [
+     "kernel",
+     "module:buying",
+     43
+    ],
+    [
+     "module:buying",
+     "module:signals",
+     39
+    ],
+    [
+     "kernel",
+     "module:creative",
+     34
+    ],
+    [
+     "module:accounts",
+     "module:buying",
+     29
+    ],
+    [
+     "module:buying",
+     "module:governance",
+     28
+    ],
+    [
+     "kernel-types",
+     "module:buying",
+     23
+    ],
+    [
+     "module:buying",
+     "module:identity",
+     22
+    ],
+    [
+     "module:creative",
+     "module:governance",
+     21
+    ],
+    [
+     "module:accounts",
+     "module:creative",
+     19
+    ],
+    [
+     "kernel",
+     "module:accounts",
+     19
+    ],
+    [
+     "module:creative",
+     "module:identity",
+     18
+    ],
+    [
+     "kernel",
+     "module:signals",
+     17
+    ],
+    [
+     "module:buying",
+     "module:reporting",
+     17
+    ]
+   ],
+   "by_window": {
+    "pre-3.0|single-module": 106,
+    "pre-3.0|cross-module": 88,
+    "pre-3.0|kernel+one-module": 12,
+    "pre-3.0|aggregator-only": 7,
+    "pre-3.0|kernel-internal": 1,
+    "3.0->3.1|single-module": 118,
+    "3.0->3.1|cross-module": 40,
+    "3.0->3.1|aggregator-only": 15,
+    "3.0->3.1|kernel+one-module": 8,
+    "3.1->3.2|single-module": 98,
+    "3.1->3.2|aggregator-only": 14,
+    "3.1->3.2|cross-module": 44,
+    "3.1->3.2|kernel+one-module": 10,
+    "3.2->now|single-module": 30,
+    "3.2->now|aggregator-only": 5,
+    "3.2->now|cross-module": 14,
+    "3.2->now|kernel+one-module": 1
+   }
+  }
+ },
+ "dag_view": {
+  "relation": {
+   "all pairs on one dependency path": 149,
+   "some pairs unrelated": 32,
+   "no pair related": 7
+  },
+  "forced_proxy_commits": 89,
+  "forced_proxy_by_window": {
+   "pre-3.0": 42,
+   "3.0->3.1": 15,
+   "3.1->3.2": 26,
+   "3.2->now": 6
+  },
+  "pairs": [
+   [
+    "module:buying",
+    "module:creative",
+    "dependency",
+    65
+   ],
+   [
+    "module:buying",
+    "module:media-vocabulary",
+    "dependency",
+    44
+   ],
+   [
+    "module:buying",
+    "module:signals",
+    "dependency",
+    39
+   ],
+   [
+    "module:accounts",
+    "module:buying",
+    "dependency",
+    29
+   ],
+   [
+    "module:buying",
+    "module:governance",
+    "dependency",
+    28
+   ],
+   [
+    "module:buying",
+    "module:identity",
+    "dependency",
+    22
+   ],
+   [
+    "module:creative",
+    "module:governance",
+    "dependency",
+    21
+   ],
+   [
+    "module:accounts",
+    "module:creative",
+    "dependency",
+    19
+   ],
+   [
+    "module:creative",
+    "module:identity",
+    "dependency",
+    18
+   ],
+   [
+    "module:buying",
+    "module:reporting",
+    "dependency",
+    17
+   ],
+   [
+    "module:creative",
+    "module:signals",
+    "dependency",
+    17
+   ],
+   [
+    "module:accounts",
+    "module:governance",
+    "dependency",
+    17
+   ],
+   [
+    "module:buying",
+    "module:compliance-testing",
+    "dependency",
+    14
+   ],
+   [
+    "module:media-vocabulary",
+    "module:signals",
+    "dependency",
+    13
+   ],
+   [
+    "module:accounts",
+    "module:signals",
+    "unrelated",
+    13
+   ],
+   [
+    "module:governance",
+    "module:signals",
+    "dependency",
+    13
+   ],
+   [
+    "module:governance",
+    "module:identity",
+    "dependency",
+    11
+   ],
+   [
+    "module:accounts",
+    "module:reporting",
+    "dependency",
+    11
+   ],
+   [
+    "module:creative",
+    "module:media-vocabulary",
+    "dependency",
+    10
+   ],
+   [
+    "module:identity",
+    "module:signals",
+    "dependency",
+    10
+   ],
+   [
+    "module:buying",
+    "module:trusted-match",
+    "dependency",
+    10
+   ],
+   [
+    "module:creative",
+    "module:reporting",
+    "dependency",
+    9
+   ],
+   [
+    "module:reporting",
+    "module:signals",
+    "dependency",
+    9
+   ],
+   [
+    "module:governance",
+    "module:media-vocabulary",
+    "dependency",
+    9
+   ],
+   [
+    "module:accounts",
+    "module:compliance-testing",
+    "dependency",
+    9
+   ]
+  ]
+ },
+ "caps": {
+  "file_changes": 164,
+  "owners_touched": {
+   "1": 133,
+   "2": 19,
+   "3": 12
+  },
+  "commits": 164,
+  "share_of_schema_commits": 0.19547079856972585,
+  "owner_substantive_changes": {
+   "module:buying": 52,
+   "kernel": 22,
+   "module:creative": 20,
+   "module:accounts": 14,
+   "module:governance": 12,
+   "module:signals": 10,
+   "extension:request-signing-rfc9421": 10,
+   "module:compliance-testing": 6,
+   "extension:webhook-signing": 5,
+   "module:media-vocabulary": 5,
+   "module:identity": 3,
+   "module:reporting": 3,
+   "module:sponsored-intelligence": 1
+  }
+ },
+ "releases": {
+  "rows": [
+   {
+    "tag": "v2.5.1",
+    "date": "2025-12-24",
+    "line": "2.5",
+    "prev": "v2.5.0",
+    "files": 29,
+    "modules": [
+     "assembly",
+     "kernel",
+     "module:buying",
+     "module:creative"
+    ],
+    "modules_nonadditive": [
+     "assembly",
+     "module:buying",
+     "module:creative"
+    ],
+    "layers": [
+     "assembly",
+     "kernel",
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.0",
+    "date": "2026-04-22",
+    "line": "3.0",
+    "prev": "v2.5.1",
+    "files": 497,
+    "modules": [
+     "assembly",
+     "kernel",
+     "kernel-types",
+     "module:accounts",
+     "module:buying",
+     "module:compliance-testing",
+     "module:creative",
+     "module:governance",
+     "module:identity",
+     "module:media-vocabulary",
+     "module:reporting",
+     "module:signals",
+     "module:sponsored-intelligence",
+     "module:trusted-match",
+     "retire"
+    ],
+    "modules_nonadditive": [
+     "assembly",
+     "kernel",
+     "kernel-types",
+     "module:buying",
+     "module:creative",
+     "module:identity",
+     "module:media-vocabulary",
+     "module:reporting",
+     "module:signals"
+    ],
+    "layers": [
+     "assembly",
+     "kernel",
+     "module",
+     "retire"
+    ]
+   },
+   {
+    "tag": "v3.0.1",
+    "date": "2026-04-28",
+    "line": "3.0",
+    "prev": "v3.0.0",
+    "files": 71,
+    "modules": [
+     "kernel",
+     "module:accounts",
+     "module:buying",
+     "module:compliance-testing",
+     "module:creative",
+     "module:governance",
+     "module:trusted-match"
+    ],
+    "modules_nonadditive": [
+     "kernel",
+     "module:compliance-testing",
+     "module:trusted-match"
+    ],
+    "layers": [
+     "kernel",
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.2",
+    "date": "2026-04-29",
+    "line": "3.0",
+    "prev": "v3.0.1",
+    "files": 6,
+    "modules": [
+     "module:creative"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.3",
+    "date": "2026-05-01",
+    "line": "3.0",
+    "prev": "v3.0.2",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.4",
+    "date": "2026-05-02",
+    "line": "3.0",
+    "prev": "v3.0.3",
+    "files": 12,
+    "modules": [
+     "kernel"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "kernel"
+    ]
+   },
+   {
+    "tag": "v3.0.5",
+    "date": "2026-05-02",
+    "line": "3.0",
+    "prev": "v3.0.4",
+    "files": 2,
+    "modules": [
+     "module:identity"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.6",
+    "date": "2026-05-03",
+    "line": "3.0",
+    "prev": "v3.0.5",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.7",
+    "date": "2026-05-08",
+    "line": "3.0",
+    "prev": "v3.0.6",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.8",
+    "date": "2026-05-08",
+    "line": "3.0",
+    "prev": "v3.0.7",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.9",
+    "date": "2026-05-09",
+    "line": "3.0",
+    "prev": "v3.0.8",
+    "files": 4,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.10",
+    "date": "2026-05-10",
+    "line": "3.0",
+    "prev": "v3.0.9",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.11",
+    "date": "2026-05-11",
+    "line": "3.0",
+    "prev": "v3.0.10",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.12",
+    "date": "2026-05-13",
+    "line": "3.0",
+    "prev": "v3.0.11",
+    "files": 3,
+    "modules": [
+     "kernel",
+     "module:accounts",
+     "module:trusted-match"
+    ],
+    "modules_nonadditive": [
+     "kernel",
+     "module:trusted-match"
+    ],
+    "layers": [
+     "kernel",
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.13",
+    "date": "2026-05-22",
+    "line": "3.0",
+    "prev": "v3.0.12",
+    "files": 2,
+    "modules": [
+     "module:trusted-match"
+    ],
+    "modules_nonadditive": [
+     "module:trusted-match"
+    ],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.14",
+    "date": "2026-05-30",
+    "line": "3.0",
+    "prev": "v3.0.13",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.15",
+    "date": "2026-05-31",
+    "line": "3.0",
+    "prev": "v3.0.14",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.16",
+    "date": "2026-06-14",
+    "line": "3.0",
+    "prev": "v3.0.15",
+    "files": 2,
+    "modules": [
+     "module:trusted-match"
+    ],
+    "modules_nonadditive": [
+     "module:trusted-match"
+    ],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.17",
+    "date": "2026-06-16",
+    "line": "3.0",
+    "prev": "v3.0.16",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.18",
+    "date": "2026-06-16",
+    "line": "3.0",
+    "prev": "v3.0.17",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.19",
+    "date": "2026-06-17",
+    "line": "3.0",
+    "prev": "v3.0.18",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.20",
+    "date": "2026-07-02",
+    "line": "3.0",
+    "prev": "v3.0.19",
+    "files": 2,
+    "modules": [
+     "module:governance"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.21",
+    "date": "2026-07-02",
+    "line": "3.0",
+    "prev": "v3.0.20",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.22",
+    "date": "2026-07-24",
+    "line": "3.0",
+    "prev": "v3.0.21",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.23",
+    "date": "2026-08-15",
+    "line": "3.0",
+    "prev": "v3.0.22",
+    "files": 2,
+    "modules": [
+     "module:buying"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.0.24",
+    "date": "2026-08-16",
+    "line": "3.0",
+    "prev": "v3.0.23",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.25",
+    "date": "2026-08-20",
+    "line": "3.0",
+    "prev": "v3.0.24",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.26",
+    "date": "2026-08-21",
+    "line": "3.0",
+    "prev": "v3.0.25",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.27",
+    "date": "2026-10-01",
+    "line": "3.0",
+    "prev": "v3.0.26",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.0.28",
+    "date": "2026-10-07",
+    "line": "3.0",
+    "prev": "v3.0.27",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.0",
+    "date": "2026-06-18",
+    "line": "3.1",
+    "prev": "v3.0.19",
+    "files": 375,
+    "modules": [
+     "extension:request-signing-rfc9421",
+     "extension:response-signing-jws",
+     "kernel",
+     "kernel-types",
+     "module:accounts",
+     "module:buying",
+     "module:compliance-testing",
+     "module:creative",
+     "module:governance",
+     "module:identity",
+     "module:media-vocabulary",
+     "module:reporting",
+     "module:signals",
+     "module:sponsored-intelligence",
+     "module:trusted-match",
+     "retire"
+    ],
+    "modules_nonadditive": [
+     "kernel",
+     "module:accounts",
+     "module:buying",
+     "module:compliance-testing",
+     "module:creative",
+     "module:governance",
+     "module:identity",
+     "module:media-vocabulary",
+     "module:reporting",
+     "module:signals",
+     "module:sponsored-intelligence",
+     "module:trusted-match"
+    ],
+    "layers": [
+     "extension",
+     "kernel",
+     "module",
+     "retire"
+    ]
+   },
+   {
+    "tag": "v3.1.1",
+    "date": "2026-06-30",
+    "line": "3.1",
+    "prev": "v3.1.0",
+    "files": 20,
+    "modules": [
+     "module:buying",
+     "module:governance",
+     "module:trusted-match"
+    ],
+    "modules_nonadditive": [
+     "module:buying",
+     "module:trusted-match"
+    ],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.2",
+    "date": "2026-07-08",
+    "line": "3.1",
+    "prev": "v3.1.1",
+    "files": 4,
+    "modules": [
+     "module:buying",
+     "module:media-vocabulary",
+     "module:signals"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.3",
+    "date": "2026-07-13",
+    "line": "3.1",
+    "prev": "v3.1.2",
+    "files": 2,
+    "modules": [
+     "module:buying"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.4",
+    "date": "2026-07-18",
+    "line": "3.1",
+    "prev": "v3.1.3",
+    "files": 2,
+    "modules": [
+     "module:buying"
+    ],
+    "modules_nonadditive": [
+     "module:buying"
+    ],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.5",
+    "date": "2026-07-24",
+    "line": "3.1",
+    "prev": "v3.1.4",
+    "files": 8,
+    "modules": [
+     "module:buying"
+    ],
+    "modules_nonadditive": [
+     "module:buying"
+    ],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.6",
+    "date": "2026-07-27",
+    "line": "3.1",
+    "prev": "v3.1.5",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.7",
+    "date": "2026-07-27",
+    "line": "3.1",
+    "prev": "v3.1.6",
+    "files": 2,
+    "modules": [
+     "module:creative"
+    ],
+    "modules_nonadditive": [
+     "module:creative"
+    ],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.8",
+    "date": "2026-07-28",
+    "line": "3.1",
+    "prev": "v3.1.7",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.9",
+    "date": "2026-08-03",
+    "line": "3.1",
+    "prev": "v3.1.8",
+    "files": 6,
+    "modules": [
+     "module:trusted-match"
+    ],
+    "modules_nonadditive": [
+     "module:trusted-match"
+    ],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.10",
+    "date": "2026-08-04",
+    "line": "3.1",
+    "prev": "v3.1.9",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.11",
+    "date": "2026-08-07",
+    "line": "3.1",
+    "prev": "v3.1.10",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.12",
+    "date": "2026-08-08",
+    "line": "3.1",
+    "prev": "v3.1.11",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.13",
+    "date": "2026-08-11",
+    "line": "3.1",
+    "prev": "v3.1.12",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.14",
+    "date": "2026-08-15",
+    "line": "3.1",
+    "prev": "v3.1.13",
+    "files": 4,
+    "modules": [
+     "module:buying",
+     "module:creative"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.15",
+    "date": "2026-08-16",
+    "line": "3.1",
+    "prev": "v3.1.14",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.16",
+    "date": "2026-08-20",
+    "line": "3.1",
+    "prev": "v3.1.15",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.17",
+    "date": "2026-08-20",
+    "line": "3.1",
+    "prev": "v3.1.16",
+    "files": 3,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.18",
+    "date": "2026-08-20",
+    "line": "3.1",
+    "prev": "v3.1.17",
+    "files": 3,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.19",
+    "date": "2026-08-21",
+    "line": "3.1",
+    "prev": "v3.1.18",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.20",
+    "date": "2026-09-02",
+    "line": "3.1",
+    "prev": "v3.1.19",
+    "files": 2,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.21",
+    "date": "2026-09-09",
+    "line": "3.1",
+    "prev": "v3.1.20",
+    "files": 11,
+    "modules": [
+     "module:buying"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.22",
+    "date": "2026-09-13",
+    "line": "3.1",
+    "prev": "v3.1.21",
+    "files": 3,
+    "modules": [
+     "module:creative"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.23",
+    "date": "2026-09-14",
+    "line": "3.1",
+    "prev": "v3.1.22",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.24",
+    "date": "2026-09-23",
+    "line": "3.1",
+    "prev": "v3.1.23",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.25",
+    "date": "2026-10-01",
+    "line": "3.1",
+    "prev": "v3.1.24",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.26",
+    "date": "2026-10-07",
+    "line": "3.1",
+    "prev": "v3.1.25",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.27",
+    "date": "2026-10-08",
+    "line": "3.1",
+    "prev": "v3.1.26",
+    "files": 8,
+    "modules": [
+     "module:creative"
+    ],
+    "modules_nonadditive": [],
+    "layers": [
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.1.28",
+    "date": "2026-10-16",
+    "line": "3.1",
+    "prev": "v3.1.27",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.1.29",
+    "date": "2026-10-16",
+    "line": "3.1",
+    "prev": "v3.1.28",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.2.1",
+    "date": "2026-10-01",
+    "line": "3.2",
+    "prev": "v3.1.24",
+    "files": 628,
+    "modules": [
+     "extension:aao-verification-token",
+     "extension:request-signing-rfc9421",
+     "extension:webhook-signing",
+     "kernel",
+     "kernel-types",
+     "module:accounts",
+     "module:buying",
+     "module:compliance-testing",
+     "module:creative",
+     "module:governance",
+     "module:identity",
+     "module:media-vocabulary",
+     "module:reporting",
+     "module:signals",
+     "module:trusted-match",
+     "retire"
+    ],
+    "modules_nonadditive": [
+     "extension:request-signing-rfc9421",
+     "extension:webhook-signing",
+     "kernel",
+     "module:accounts",
+     "module:buying",
+     "module:compliance-testing",
+     "module:creative",
+     "module:governance",
+     "module:media-vocabulary",
+     "module:reporting",
+     "module:signals",
+     "module:trusted-match"
+    ],
+    "layers": [
+     "extension",
+     "kernel",
+     "module",
+     "retire"
+    ]
+   },
+   {
+    "tag": "v3.2.2",
+    "date": "2026-10-04",
+    "line": "3.2",
+    "prev": "v3.2.1",
+    "files": 13,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.2.3",
+    "date": "2026-10-07",
+    "line": "3.2",
+    "prev": "v3.2.2",
+    "files": 4,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   },
+   {
+    "tag": "v3.2.4",
+    "date": "2026-10-12",
+    "line": "3.2",
+    "prev": "v3.2.3",
+    "files": 14,
+    "modules": [
+     "kernel",
+     "module:accounts",
+     "module:buying",
+     "module:reporting"
+    ],
+    "modules_nonadditive": [
+     "kernel",
+     "module:buying",
+     "module:reporting"
+    ],
+    "layers": [
+     "kernel",
+     "module"
+    ]
+   },
+   {
+    "tag": "v3.2.5",
+    "date": "2026-10-16",
+    "line": "3.2",
+    "prev": "v3.2.4",
+    "files": 1,
+    "modules": [],
+    "modules_nonadditive": [],
+    "layers": []
+   }
+  ],
+  "table_header": [
+   "view",
+   "2.5 line (1 GA)",
+   "3.0 line (29 GA)",
+   "3.1 line (30 GA)",
+   "3.2 line (5 GA)",
+   "all"
+  ],
+  "table": [
+   [
+    "GA releases",
+    1,
+    29,
+    30,
+    5,
+    65
+   ],
+   [
+    "\u2026with any non-annotation schema change",
+    1,
+    10,
+    12,
+    2,
+    25
+   ],
+   [
+    "\u2026with a kernel change",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "\u2026with a non-additive kernel change",
+    0,
+    3,
+    1,
+    2,
+    6
+   ],
+   [
+    "module:accounts: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "module:accounts: module changed",
+    0,
+    3,
+    1,
+    2,
+    6
+   ],
+   [
+    "module:buying: module or kernel changed",
+    1,
+    5,
+    8,
+    2,
+    16
+   ],
+   [
+    "module:buying: module changed",
+    1,
+    3,
+    8,
+    2,
+    14
+   ],
+   [
+    "module:compliance-testing: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "module:compliance-testing: module changed",
+    0,
+    2,
+    1,
+    1,
+    4
+   ],
+   [
+    "module:creative: module or kernel changed",
+    1,
+    5,
+    5,
+    2,
+    13
+   ],
+   [
+    "module:creative: module changed",
+    1,
+    3,
+    5,
+    1,
+    10
+   ],
+   [
+    "module:governance: module or kernel changed",
+    1,
+    5,
+    2,
+    2,
+    10
+   ],
+   [
+    "module:governance: module changed",
+    0,
+    3,
+    2,
+    1,
+    6
+   ],
+   [
+    "module:identity: module or kernel changed",
+    1,
+    5,
+    1,
+    2,
+    9
+   ],
+   [
+    "module:identity: module changed",
+    0,
+    2,
+    1,
+    1,
+    4
+   ],
+   [
+    "module:media-vocabulary: module or kernel changed",
+    1,
+    4,
+    2,
+    2,
+    9
+   ],
+   [
+    "module:media-vocabulary: module changed",
+    0,
+    1,
+    2,
+    1,
+    4
+   ],
+   [
+    "module:reporting: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "module:reporting: module changed",
+    0,
+    1,
+    1,
+    2,
+    4
+   ],
+   [
+    "module:signals: module or kernel changed",
+    1,
+    4,
+    2,
+    2,
+    9
+   ],
+   [
+    "module:signals: module changed",
+    0,
+    1,
+    2,
+    1,
+    4
+   ],
+   [
+    "module:sponsored-intelligence: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "module:sponsored-intelligence: module changed",
+    0,
+    1,
+    1,
+    0,
+    2
+   ],
+   [
+    "module:trusted-match: module or kernel changed",
+    1,
+    6,
+    3,
+    2,
+    12
+   ],
+   [
+    "module:trusted-match: module changed",
+    0,
+    5,
+    3,
+    1,
+    9
+   ],
+   [
+    "extension:aao-verification-token: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "extension:aao-verification-token: module changed",
+    0,
+    0,
+    0,
+    1,
+    1
+   ],
+   [
+    "extension:adcp-ext-namespace: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "extension:adcp-ext-namespace: module changed",
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    "extension:request-signing-rfc9421: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "extension:request-signing-rfc9421: module changed",
+    0,
+    0,
+    1,
+    1,
+    2
+   ],
+   [
+    "extension:response-signing-jws: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "extension:response-signing-jws: module changed",
+    0,
+    0,
+    1,
+    0,
+    1
+   ],
+   [
+    "extension:spot-lifecycle: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "extension:spot-lifecycle: module changed",
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    "extension:webhook-signing: module or kernel changed",
+    1,
+    4,
+    1,
+    2,
+    8
+   ],
+   [
+    "extension:webhook-signing: module changed",
+    0,
+    0,
+    0,
+    1,
+    1
+   ]
+  ]
+ },
+ "experimental": {
+  "stable file|file_changes": 4514,
+  "stable file|annotation": 1334,
+  "stable node|annotation": 3687,
+  "stable file|additive": 2311,
+  "stable node|additive": 4357,
+  "stable file|non-additive": 809,
+  "stable node|non-additive": 1461,
+  "stable file|no-op": 60,
+  "experimental file|file_changes": 514,
+  "experimental file|additive": 247,
+  "exp-marked node|additive": 575,
+  "exp-marked node|annotation": 398,
+  "experimental file|annotation": 159,
+  "experimental file|non-additive": 108,
+  "exp-marked node|non-additive": 229,
+  "layer:kernel": {
+   "file_changes": 307,
+   "exp_file_changes": 0,
+   "nonadd": 27,
+   "exp_nonadd": 0
+  },
+  "layer:module": {
+   "file_changes": 4110,
+   "exp_file_changes": 513,
+   "nonadd": 820,
+   "exp_nonadd": 108
+  },
+  "layer:extension": {
+   "file_changes": 4,
+   "exp_file_changes": 1,
+   "nonadd": 0,
+   "exp_nonadd": 0
+  },
+  "layer:assembly": {
+   "file_changes": 602,
+   "exp_file_changes": 0,
+   "nonadd": 70,
+   "exp_nonadd": 0
+  },
+  "layer:retire": {
+   "file_changes": 5,
+   "exp_file_changes": 0,
+   "nonadd": 0,
+   "exp_nonadd": 0
+  }
+ },
+ "experimental_by_window": {
+  "pre-3.0": {
+   "file_changes": 2002,
+   "exp_file_changes": 206,
+   "nonadd": 436,
+   "exp_nonadd": 35,
+   "files": 508,
+   "exp_files": 39
+  },
+  "3.0->3.1": {
+   "file_changes": 1184,
+   "exp_file_changes": 95,
+   "nonadd": 193,
+   "exp_nonadd": 19,
+   "files": 420,
+   "exp_files": 42
+  },
+  "3.1->3.2": {
+   "file_changes": 1564,
+   "exp_file_changes": 188,
+   "nonadd": 242,
+   "exp_nonadd": 50,
+   "files": 647,
+   "exp_files": 91
+  },
+  "3.2->now": {
+   "file_changes": 278,
+   "exp_file_changes": 25,
+   "nonadd": 46,
+   "exp_nonadd": 4,
+   "files": 170,
+   "exp_files": 18
+  }
+ },
+ "experimental_files_now": 125,
+ "unplaced_paths": 29
+}

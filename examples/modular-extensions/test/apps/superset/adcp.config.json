@@ -1,0 +1,11 @@
+{
+  "$comment": "A test app: one generated layer that is the superset of the extensions any tenant of a deployment may enable. It enables two versions of seller-adjustable-terms side by side (each its own attribute, keyed by uri@digest), the linear-TV indexed-CPP pricing model (a branch of the pricing_model union), and the rate card (the pricing_option extension point).",
+  "core": "3.3.0",
+  "extensions": {
+    "linear_tv_indexed_cpp": "https://extensions.adcontextprotocol.org/linear-tv-indexed-cpp@^1",
+    "makegood_units": "https://extensions.adcontextprotocol.org/makegood-units@^1.4",
+    "rate_card_index": "https://extensions.adcontextprotocol.org/rate-card-index@^1",
+    "seller_adjustable_terms": "https://extensions.adcontextprotocol.org/seller-adjustable-terms@^1",
+    "seller_adjustable_terms_v1_0": "https://extensions.adcontextprotocol.org/seller-adjustable-terms@1.0.0"
+  }
+}

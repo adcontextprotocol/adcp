@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/disclosure-persistence.json",
+  "title": "Disclosure Persistence",
+  "description": "How long a disclosure must persist during content playback or display. Different jurisdictions and regulations require different persistence behaviors for AI-generated content labels. When multiple sources specify persistence for the same jurisdiction (e.g., brief and provenance), the most restrictive mode applies: continuous > initial > flexible.",
+  "type": "string",
+  "enum": [
+    "continuous",
+    "initial",
+    "flexible"
+  ],
+  "enumDescriptions": {
+    "continuous": "Disclosure must remain visible or audible throughout the entire content display duration. For video and audio, this means the full playback duration. For static formats (display, DOOH), this means the full display slot. For DOOH specifically, 'content duration' means the ad's display slot within the rotation, not the screen's full rotation cycle.",
+    "initial": "Disclosure must appear at the start of content for a minimum duration before it may be removed. Pair with min_duration_ms in render_guidance or creative brief to specify the required duration.",
+    "flexible": "Disclosure presence is sufficient; placement timing and duration are at the publisher's discretion"
+  }
+}

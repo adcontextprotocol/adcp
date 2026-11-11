@@ -1,0 +1,1717 @@
+{
+ "aao/agent-publishers.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/ad-inventory-config.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/app-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/applicable-package-id.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "core/audience-activation-method.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/audience-selector.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/bidding-policy-capability.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "core/bidding-policy.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "core/budget-allocation.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/budget-range.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "core/cancellation-policy.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/canonical-audience-evidence-selection.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-audience-evidence.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-budget-allocation.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/canonical-delivery-forecast.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-forecast-point.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-forecast-vendor-metric-value.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-media-buy-action-fields.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "core/canonical-media-buy-action.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "core/canonical-media-buy-features.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-optimization-goal.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "G-lowest-consumer"
+ },
+ "core/canonical-placement.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/canonical-pricing-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "core/canonical-product-action.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-product.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/canonical-proposal.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "core/canonical-reporting-capabilities.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/catalog-field-mapping.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-ingestion-capability.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-item-availability-error.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-item-availability-ref.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-item-availability-state.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-item-availability-update-result.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-item-availability-update.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-item-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/catalog-item-reference-not-found-error.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog-selection.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catalog.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/catchment.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/collection-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/collection-distribution.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/collection-property-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/collection-selection.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "G-sole-layer"
+ },
+ "core/collection-selector.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/collection.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/content-rating.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/creative-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/creative-policy.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/daypart-target.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/deadline-policy.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/definition-pin.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/delivery-breakdown-controls.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-anchor"
+ },
+ "core/delivery-forecast.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/demographic-reporting-capability.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/demographic-targeting-capability.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/demographic-targeting-intent.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/demographic-targeting-resolution.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/destination-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/dooh-inventory-summary.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/education-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/flight-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/forecast-rate-range.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/frequency-cap-constraints.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/frequency-cap-duration-unit.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/frequency-cap-impression-constraints.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/frequency-cap-interval-constraints.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/frequency-cap-requirements.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/frequency-cap.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-breakdown-support.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/geo-metro.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-area.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-catalog-capability.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-catalog-entry.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-requirement.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-resolver.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-support.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-system.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-place-type.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-region-requirement.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/geo-region-support.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/get-geo-place-resolution-request.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/get-geo-place-resolution-response.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/hold-policy.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/hotel-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/impairment.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "core/indicators-changed-webhook.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "core/insertion-order.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/installment-deadlines.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/installment-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/installment-property-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/installment.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/inventory-list-application.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "core/job-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/keyword-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/keyword-target.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/limited-series.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/material-deadline.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/measurement-readiness.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/media-buy-available-action-id.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/media-buy-available-action.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "core/media-buy-change-term-id.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/media-buy-features.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/media-buy-frequency-cap-capability.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/media-buy-frequency-cap-requirement.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/media-buy-frequency-cap-support.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/media-buy-frequency-cap.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/media-buy-legacy-terms-ref.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/media-buy-support-requirements.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/media-buy-support.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/media-buy.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "core/negative-keyword.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/offering-asset-group.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/offering.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/opportunity-context.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "core/optimization-goal.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "commitment",
+  "reason": "G-lowest-consumer"
+ },
+ "core/outcome-target-cost-per.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "core/package-delivery-metric-value.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/package-format-snapshot.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "core/package-signal-targeting-group.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/package-signal-targeting-groups.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/package-signal-targeting.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/package-targeting-resolution.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "core/package.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "core/placement-definition.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/placement-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/placement-identity.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/placement-presentation.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/placement-property-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/placement-selection.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "G-sole-layer"
+ },
+ "core/placement.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/planned-delivery.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "core/positive-postal-area-support.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/postal-area-support.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/postal-area.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "core/presentation-ref.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/preview-provider.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/pricing-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "core/product-allocation.json": {
+  "cut_10_sub_area": "products",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "core/product-allowed-action.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/product-audience-evidence-requirements.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/product-card-reference-asset.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/product-change-map.json": {
+  "cut_10_sub_area": "products",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "core/product-execution-requirement.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/product-filters.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/product-identity.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/product-offer-filters.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/product-signal-targeting-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/product-targeting-resolution.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/product.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/property-delivery-metrics.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "core/property-ref.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/property-tag.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/property.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/proposal.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "core/publisher-property-selector.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/real-estate-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/registry-event.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/registry-feed-response.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/reporting-capabilities.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/reporting-delivery-offering-id.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "core/reporting-webhook.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "supply",
+  "reason": "G-lowest-consumer"
+ },
+ "core/response-collection.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-lowest-consumer"
+ },
+ "core/seller-agent-ref.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/signal-targeting-expression.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/signal-targeting-rules.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/sla-window.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/special.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/spot-reporting-capability.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/start-timing.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "core/store-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/talent.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "core/targeting-input.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/targeting-modification.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/targeting-overlay-requirements.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/targeting-overlay-support.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/targeting-unknown-age-eligibility-constraint.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/targeting-verified-age-basis-constraint.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/targeting.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "core/vehicle-item.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "core/wholesale-feed-event.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "core/wholesale-feed-webhook.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "enums/action-not-allowed-reason.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "enums/adjustment-kind.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "enums/age-verification-method.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/audio-distribution-type.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/browser-family.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "enums/canceled-by.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "enums/canonical-media-buy-action-mode.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "enums/canonical-media-buy-action.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "enums/catalog-action.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "enums/catalog-item-status.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "enums/co-branding-requirement.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "enums/collection-cadence.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/collection-kind.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/collection-relationship.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/collection-status.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/content-id-type.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "enums/content-rating-system.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/day-of-week.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/daypart-time-granularity.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/daypart-timezone-mode.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "enums/definition-pin-ref-kind.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "enums/delivery-status.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-lowest-consumer"
+ },
+ "enums/delivery-type.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "enums/demographic-system.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/derivative-type.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "enums/distance-unit.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/distribution-identifier-type.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/dooh-motion-type.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/exclusivity.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "enums/forecast-range-unit.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "enums/forecastable-metric.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "enums/frequency-cap-control-mode.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/frequency-cap-mutable-field.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/genre-taxonomy.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/impairment-offline-state.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "enums/impairment-reason-code.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "enums/installment-status.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "enums/landing-page-requirement.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "enums/match-type.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "enums/media-buy-action-mode.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "enums/media-buy-frequency-cap-control-mode.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/media-buy-health.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "enums/media-buy-status.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "enums/media-buy-valid-action.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "enums/outcome-target-cost-strength.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "enums/pacing.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "enums/pricing-structure.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "enums/production-quality.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/proposal-decline-reason.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "enums/proposal-refinement-reason.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "enums/proposal-status.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "enums/reach-aggregation.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-anchor"
+ },
+ "enums/reporting-frequency.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-lowest-consumer"
+ },
+ "enums/response-type.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "enums/seller-policy-decline-reason.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "supply",
+  "reason": "G-lowest-consumer"
+ },
+ "enums/social-placement-surface.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/sort-metric.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-metrics"
+ },
+ "enums/special-category.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/sponsored-placement-type.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "enums/transport-mode.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/travel-time-unit.json": {
+  "cut_10_sub_area": "targeting",
+  "layer": "targeting",
+  "reason": "T-vocab"
+ },
+ "enums/update-frequency.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "enums/video-placement-type.json": {
+  "cut_10_sub_area": "inventory",
+  "layer": "supply",
+  "reason": "S-inventory"
+ },
+ "error-details/action-not-allowed.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "error-details/budget-too-low.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-subarea-default"
+ },
+ "error-details/execution-requirement-unmet.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-subarea-default"
+ },
+ "error-details/policy-violation.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-subarea-default"
+ },
+ "error-details/reference-definition-changed.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "error-details/requote-required.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "error-details/unsupported-refinement-dimension.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "error-details/unsupported-targeting-dimension.json": {
+  "cut_10_sub_area": "products",
+  "layer": "targeting",
+  "reason": "T-anchor"
+ },
+ "media-buy/accept-proposal-async-response-input-required.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/accept-proposal-async-response-submitted.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/accept-proposal-async-response-working.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/accept-proposal-request.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/accept-proposal-response.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/acceptance-context.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "G-sole-layer"
+ },
+ "media-buy/buy-products-async-response-input-required.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/buy-products-async-response-submitted.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/buy-products-async-response-working.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/buy-products-request.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/buy-products-response.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/change-term-constraints.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "media-buy/change-term.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "media-buy/commercial-terms.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "media-buy/control-media-buy-async-response-input-required.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/control-media-buy-async-response-submitted.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/control-media-buy-async-response-working.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/control-media-buy-request.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/control-media-buy-response.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/create-media-buy-async-response-input-required.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/create-media-buy-async-response-submitted.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/create-media-buy-async-response-working.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/create-media-buy-request.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/create-media-buy-response.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/decline-proposals-async-response-input-required.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/decline-proposals-async-response-submitted.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/decline-proposals-async-response-working.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/decline-proposals-request.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/decline-proposals-response.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-media-buy-delivery-request.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-media-buy-delivery-response.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-media-buys-request.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-media-buys-response.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-products-async-response-input-required.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-products-async-response-submitted.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-products-async-response-working.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-products-rejected.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-products-request.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-products-response.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/get-products-targeting-resolution.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/legacy-purchase-continuation-input.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "media-buy/list-collections-request.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/list-collections-response.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/list-products-request.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/list-products-response.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "TASK-owner"
+ },
+ "media-buy/media-buy-commitment-response.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "media-buy/media-buy-delivery-webhook-result.json": {
+  "cut_10_sub_area": "delivery",
+  "layer": "delivery",
+  "reason": "D-anchor"
+ },
+ "media-buy/outcome-target.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "media-buy/package-control.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "media-buy/package-request.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "media-buy/package-update.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "E-anchor"
+ },
+ "media-buy/product-discovery-criteria.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "media-buy/product-fields.json": {
+  "cut_10_sub_area": "products",
+  "layer": "supply",
+  "reason": "S-anchor"
+ },
+ "media-buy/product-purchase-input.json": {
+  "cut_10_sub_area": "products",
+  "layer": "execution",
+  "reason": "G-sole-layer"
+ },
+ "media-buy/product-purchase.json": {
+  "cut_10_sub_area": "products",
+  "layer": "commitment",
+  "reason": "C-anchor"
+ },
+ "media-buy/proposal-budget-constraint.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "media-buy/proposal-decline.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "media-buy/proposal-refinement.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "O-anchor"
+ },
+ "media-buy/refine-proposals-async-response-input-required.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/refine-proposals-async-response-submitted.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/refine-proposals-async-response-working.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/refine-proposals-request.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/refine-proposals-response.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/request-proposals-async-response-input-required.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/request-proposals-async-response-submitted.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/request-proposals-async-response-working.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/request-proposals-request.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/request-proposals-response.json": {
+  "cut_10_sub_area": "proposals",
+  "layer": "offer",
+  "reason": "TASK-owner"
+ },
+ "media-buy/sync-catalogs-async-response-input-required.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "media-buy/sync-catalogs-async-response-submitted.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "media-buy/sync-catalogs-async-response-working.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "media-buy/sync-catalogs-request.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "media-buy/sync-catalogs-response.json": {
+  "cut_10_sub_area": "catalogs",
+  "layer": "catalogs",
+  "reason": "CAT-module"
+ },
+ "media-buy/update-media-buy-async-response-input-required.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/update-media-buy-async-response-submitted.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/update-media-buy-async-response-working.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/update-media-buy-request.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "media-buy/update-media-buy-response.json": {
+  "cut_10_sub_area": "media-buy",
+  "layer": "execution",
+  "reason": "TASK-owner"
+ },
+ "pricing-options/cpa-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/cpc-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/cpcv-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/cpm-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/cpp-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/cpv-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/flat-rate-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/price-breakdown.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/price-guidance.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/revenue-share-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/time-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ },
+ "pricing-options/vcpm-option.json": {
+  "cut_10_sub_area": "products",
+  "layer": "pricing",
+  "reason": "P-anchor"
+ }
+}

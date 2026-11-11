@@ -1,0 +1,318 @@
+{
+ "buying_layers": {
+  "buying_commits_all_no_sweeps": 303,
+  "buying_commits_post_no_sweeps": 198,
+  "cross_layer": 71,
+  "cross_layer_not_read": [],
+  "cross_layer_read": 71,
+  "fixes_localized": {
+   "caps": 18,
+   "commit": 1,
+   "discovery": 1,
+   "dual": 1,
+   "kernel": 5,
+   "metric": 4,
+   "metricreg": 7,
+   "place": 1,
+   "spend": 1,
+   "union": 1
+  },
+  "localized_by_fixes": 40,
+  "per_layer": {
+   "catalogs": [
+    9,
+    0
+   ],
+   "commitment": [
+    28,
+    8
+   ],
+   "delivery": [
+    44,
+    18
+   ],
+   "execution": [
+    74,
+    31
+   ],
+   "offer": [
+    16,
+    2
+   ],
+   "pricing": [
+    5,
+    1
+   ],
+   "supply": [
+    105,
+    56
+   ],
+   "targeting": [
+    25,
+    11
+   ]
+  },
+  "single_layer": 127,
+  "single_layer_after_fixes": 167,
+  "single_layer_after_fixes_pct": 84.3,
+  "single_layer_after_wire_identical_fixes": 165,
+  "single_layer_all_no_sweeps": 197,
+  "single_layer_pct": 64.1,
+  "three_plus_layers": 26,
+  "top_layer_pairs": [
+   [
+    "supply",
+    "execution",
+    28
+   ],
+   [
+    "supply",
+    "delivery",
+    14
+   ],
+   [
+    "offer",
+    "execution",
+    11
+   ],
+   [
+    "targeting",
+    "execution",
+    11
+   ],
+   [
+    "targeting",
+    "supply",
+    10
+   ],
+   [
+    "supply",
+    "offer",
+    10
+   ],
+   [
+    "commitment",
+    "supply",
+    10
+   ],
+   [
+    "commitment",
+    "delivery",
+    10
+   ],
+   [
+    "execution",
+    "delivery",
+    9
+   ],
+   [
+    "commitment",
+    "execution",
+    9
+   ]
+  ]
+ },
+ "cross_all_no_sweeps": {
+  "commits": 598,
+  "cross": 145,
+  "pct": 24.2
+ },
+ "cross_post_no_sweeps": {
+  "commits": 393,
+  "cross": 80,
+  "pct": 20.4
+ },
+ "cross_post_no_sweeps_modules_only": {
+  "commits": 393,
+  "cross": 73,
+  "pct": 18.6
+ },
+ "cross_post_no_sweeps_no_ct": {
+  "commits": 393,
+  "cross": 68,
+  "pct": 17.3
+ },
+ "cross_post_with_sweeps": {
+  "commits": 397,
+  "cross": 84,
+  "pct": 21.2
+ },
+ "five_plus_post_no_sweeps": 4,
+ "ga_releases": 65,
+ "implementers": {
+  "accounts": {
+   "own": 6,
+   "own_nonadditive": 2,
+   "own_or_kernel": 9
+  },
+  "buying (all layers)": {
+   "own": 14,
+   "own_nonadditive": 8,
+   "own_or_kernel": 17
+  },
+  "buying without offer and catalogs": {
+   "own": 14,
+   "own_nonadditive": 8,
+   "own_or_kernel": 17
+  },
+  "creative": {
+   "own": 10,
+   "own_nonadditive": 5,
+   "own_or_kernel": 13
+  },
+  "governance": {
+   "own": 6,
+   "own_nonadditive": 2,
+   "own_or_kernel": 11
+  },
+  "identity": {
+   "own": 4,
+   "own_nonadditive": 2,
+   "own_or_kernel": 10
+  },
+  "reporting": {
+   "own": 4,
+   "own_nonadditive": 4,
+   "own_or_kernel": 9
+  },
+  "signals": {
+   "own": 4,
+   "own_nonadditive": 3,
+   "own_or_kernel": 10
+  },
+  "sponsored-intelligence": {
+   "own": 2,
+   "own_nonadditive": 1,
+   "own_or_kernel": 9
+  },
+  "trusted-match": {
+   "own": 9,
+   "own_nonadditive": 8,
+   "own_or_kernel": 13
+  }
+ },
+ "kernel_releases": 9,
+ "kernel_share_post_ga_fc": [
+  262,
+  3026,
+  8.7
+ ],
+ "kernel_share_post_ga_nonadd_fc": [
+  18,
+  481,
+  3.7
+ ],
+ "layer_releases": {
+  "catalogs": {
+   "own": 3,
+   "own_nonadditive": 2,
+   "own_or_kernel": 9,
+   "with_lower_layers_and_kernel": 9
+  },
+  "commitment": {
+   "own": 5,
+   "own_nonadditive": 4,
+   "own_or_kernel": 10,
+   "with_lower_layers_and_kernel": 10
+  },
+  "delivery": {
+   "own": 4,
+   "own_nonadditive": 3,
+   "own_or_kernel": 10,
+   "with_lower_layers_and_kernel": 17
+  },
+  "execution": {
+   "own": 7,
+   "own_nonadditive": 5,
+   "own_or_kernel": 11,
+   "with_lower_layers_and_kernel": 16
+  },
+  "offer": {
+   "own": 4,
+   "own_nonadditive": 2,
+   "own_or_kernel": 9,
+   "with_lower_layers_and_kernel": 15
+  },
+  "pricing": {
+   "own": 2,
+   "own_nonadditive": 1,
+   "own_or_kernel": 9,
+   "with_lower_layers_and_kernel": 9
+  },
+  "supply": {
+   "own": 10,
+   "own_nonadditive": 6,
+   "own_or_kernel": 14,
+   "with_lower_layers_and_kernel": 15
+  },
+  "targeting": {
+   "own": 4,
+   "own_nonadditive": 3,
+   "own_or_kernel": 9,
+   "with_lower_layers_and_kernel": 9
+  }
+ },
+ "name": "final-v2",
+ "top_pairs_post_no_sweeps": [
+  [
+   "module:buying",
+   "module:creative",
+   21
+  ],
+  [
+   "module:buying",
+   "module:signals",
+   14
+  ],
+  [
+   "module:buying",
+   "module:compliance-testing",
+   12
+  ],
+  [
+   "module:accounts",
+   "module:buying",
+   12
+  ],
+  [
+   "module:buying",
+   "module:reporting",
+   9
+  ],
+  [
+   "module:buying",
+   "module:governance",
+   8
+  ],
+  [
+   "extension:request-signing-rfc9421",
+   "module:buying",
+   5
+  ],
+  [
+   "module:accounts",
+   "module:compliance-testing",
+   5
+  ],
+  [
+   "extension:reliable-reporting-account-attachments",
+   "module:reporting",
+   4
+  ],
+  [
+   "module:compliance-testing",
+   "module:reporting",
+   4
+  ],
+  [
+   "module:accounts",
+   "module:creative",
+   4
+  ],
+  [
+   "module:creative",
+   "module:identity",
+   4
+  ]
+ ]
+}

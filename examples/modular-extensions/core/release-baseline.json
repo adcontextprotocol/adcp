@@ -1,0 +1,115 @@
+{
+  "$comment": "Per layer, the core/patches.json entries in force at its last release (count and JCS digest), written by build-core.mjs --freeze. The next re-stamp rebuilds that state and refuses any non-additive change within the same major.",
+  "layers": {
+    "_assembly": {
+      "version": "3.3",
+      "patches": 2,
+      "digest": "sha256:52b5c0798dc4a912396217698cf4cf4b7663a0dfbe9704b455a70936b8d172ae"
+    },
+    "_compat": {
+      "version": "3.3",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "accounts": {
+      "version": "1.0",
+      "patches": 1,
+      "digest": "sha256:c56dc50967c7835e6f61b3a486a40e38991bb7f3041d3ca0fb091e99cdff4448"
+    },
+    "buying/catalogs": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "buying/commitment": {
+      "version": "1.0",
+      "patches": 5,
+      "digest": "sha256:ddcb1304821c4d3ed03a73f24fc1f21cce14ef2416696499d68b131be74e60f0"
+    },
+    "buying/execution": {
+      "version": "1.0",
+      "patches": 11,
+      "digest": "sha256:73b276b38273e2b88bb2cb4407a85ec8d897fb13024af4088d33783320156ca3"
+    },
+    "buying/offer": {
+      "version": "0.1",
+      "patches": 2,
+      "digest": "sha256:3059eb7f8191ce5c24085d2cab0cc7a0e3df43c0bcb015a5075e4242765ce93b"
+    },
+    "buying/pricing": {
+      "version": "1.0",
+      "patches": 8,
+      "digest": "sha256:ea572713f4b9e7a7ea3c9487bbbbe8abad3da136a0825216d4bf86fcd66bc5a9"
+    },
+    "buying/supply": {
+      "version": "1.0",
+      "patches": 21,
+      "digest": "sha256:b19cc8abe1859b0deabdd9b4fff967f643f5f5649d1a94a8707cda9f55b21cd1"
+    },
+    "buying/targeting": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "core": {
+      "version": "3.3",
+      "patches": 5,
+      "digest": "sha256:e42b69225d3d6dd59d8335820fdf9e69ef430471a3cc95723417c86ca2477045"
+    },
+    "creative": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "governance": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "identity": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "kernel-types": {
+      "version": "3.3",
+      "patches": 5,
+      "digest": "sha256:338e9acdb77326fae4283f7fdb6cd7a04d342070a01f968b1df779fe492e8b03"
+    },
+    "reporting": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "signals": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "sponsored-intelligence": {
+      "version": "1.0",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "x-audience-evidence-on-products": {
+      "version": "0.1",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "x-format-declarations-on-products": {
+      "version": "0.1",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "x-reliable-reporting-account-attachments": {
+      "version": "0.1",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "x-spot-lifecycle": {
+      "version": "0.1",
+      "patches": 0,
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  }
+}

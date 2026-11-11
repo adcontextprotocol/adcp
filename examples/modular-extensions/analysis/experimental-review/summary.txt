@@ -1,0 +1,51 @@
+## UNREG:accessibility_violation markers=1 owned=1 inline=0 nested=0 first=2026-08-16 reg=2026-08-16 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=6169,6595
+## UNREG:ooh_metrics markers=1 owned=0 inline=1 nested=0 first=2026-08-25 reg=2026-08-25 changes=1 filechanges=1 sweeps=0 post_reg=1 PRs=6241,7190
+## UNREG:placement_evidence markers=1 owned=1 inline=0 nested=0 first=2026-08-25 reg=2026-08-25 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=6241
+## UNREG:print_metrics markers=1 owned=0 inline=1 nested=0 first=2026-10-06 reg=2026-10-06 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=7936
+## UNREG:search_brands markers=2 owned=2 inline=0 nested=0 first=2026-04-30 reg=2026-04-30 changes=2 filechanges=2 sweeps=1 post_reg=2 PRs=3486,4896,6161
+## account.change_feed markers=4 owned=3 inline=1 nested=0 first=2026-08-28 reg=2026-09-29 changes=2 filechanges=5 sweeps=0 post_reg=2 PRs=6811,7727,7946
+## brand.collection_links markers=2 owned=0 inline=2 nested=0 first=2026-10-13 reg=2026-10-13 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8141
+## brand.rights_lifecycle markers=14 owned=10 inline=4 nested=0 first=2026-03-14 reg=2026-04-19 changes=17 filechanges=52 sweeps=3 post_reg=14 PRs=1415,1622,1959,2315,2422,2425,2660,2668,2675,2690,3072,3144,3148,3493,3923,4896,6125,6136,6214,6246
+   NA 43586d69cc 2026-04-18|feat(schemas)!: require idempotency_key on all mutating requests (#2315) 33 ['added required /idempotency_key', 'added required /idempotency_key'] 2
+   NA 487df50c47 2026-08-06|feat: add issuer-bound rights attestations (#6246) 10 ['added required /generation_credentials', 'added required /rights_constraint'] 2
+## creative.broadcast_loudness markers=1 owned=0 inline=1 nested=0 first=2026-10-08 reg=2026-10-08 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8019
+## creative.evaluator markers=4 owned=1 inline=3 nested=0 first=2026-06-03 reg=2026-06-03 changes=2 filechanges=6 sweeps=0 post_reg=2 PRs=5305,5350,5372
+## creative.signal_fanout markers=9 owned=1 inline=8 nested=0 first=2026-06-03 reg=2026-06-03 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=5304
+## governance.campaign markers=12 owned=11 inline=1 nested=0 first=2026-03-13 reg=2026-04-19 changes=41 filechanges=125 sweeps=4 post_reg=29 PRs=1351,1389,1448,1593,1605,1622,1772,1959,2014,2194,2310,2315,2316,2322,2338,2422,2486,2612,2675,2678,2690,2724,2795,2839,2862,3010,3015,3160,3163,3169,3174,3201,3493,4631,4796,4896,4897,4902,6136,6212,6214,6218,6305,6794,7383,7965
+   NA 5ecc29d0c0 2026-03-23|feat!: seller-assigned IDs, opaque governance context, explicit idempotency (#1 43 ['removed prop /buyer_campaign_ref', 'removed prop /buyer_ref', 'removed prop /buyer_campaign_ref', 'removed prop /buyer_campaign_ref', 'removed enum /plans[]/campaigns[]/status="active"', 'removed enum /plans[]/campaigns[]/status="completed"'] 14
+   NA 0777cfe6bc 2026-04-01|Governance cross-refs and protocol simplifications (#1772) 4 ['removed enum /binding="committed"', 'removed enum /binding="proposed"', 'removed prop /binding', 'removed enum /binding="committed"', 'removed enum /binding="proposed"', 'removed enum /status="escalated"'] 19
+   NA 60f2a9ec0e 2026-04-10|feat: generalize governance to all purchase types (#2014) 9 ['removed prop /media_buy_id', 'removed enum /plans[]/media_buys[]/status="active"', 'removed enum /plans[]/media_buys[]/status="completed"', 'removed enum /plans[]/media_buys[]/status="suspended"', 'removed prop /plans[]/entries[]/media_buy_id', 'removed prop /plans[]/media_buys'] 12
+   NA e6dd73a086 2026-04-18|feat(governance)!: enforce Art 22 / Annex III as schema invariants (#2310) (#23 7 ['added required /plans[]/budget/reallocation_threshold', 'removed prop /plans[]/budget/authority_level'] 2
+   NA 43586d69cc 2026-04-18|feat(schemas)!: require idempotency_key on all mutating requests (#2315) 33 ['added required /idempotency_key'] 1
+   NA 3f1bfeb861 2026-08-05|feat(governance): enforce cross-role authorization (#6214) 17 ['added required /delivery_metrics', 'added required /governance_context', 'added required /planned_delivery'] 3
+   NA 0bb862e076 2026-08-14|feat(schema): add resource-scoped indicators and warnings (#6212) 126 ['const changed /tasks[]/task="accept_proposal"', 'const changed /tasks[]/task="buy_products"', 'const changed /tasks[]/task="control_media_buy"'] 3
+   NA 77d17df828 2026-08-17|feat(governance): reconcile delivery and plan adjustments (#6305) 10 ['added required /delivery/reporting_period', 'closed /delivery'] 2
+## identity.trust_json markers=2 owned=2 inline=0 nested=0 first=2026-10-09 reg=2026-10-09 changes=2 filechanges=2 sweeps=0 post_reg=2 PRs=8067,8121,8147
+   NA 110adf30ff 2026-10-13|feat(schema): trust.json v1 identifies agents by origin and carries no keys (#8 1 ['removed prop #agent/jwks_uri'] 1
+## measurement.core markers=20 owned=1 inline=7 nested=12 first=2026-04-30 reg=2026-05-30 changes=3 filechanges=3 sweeps=0 post_reg=3 PRs=3612,3652,6245,7177
+## measurement.gateway markers=1 owned=0 inline=1 nested=0 first=2026-08-13 reg=2026-08-13 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=6245
+## media_buy.audience_activation markers=6 owned=2 inline=4 nested=0 first=2026-08-25 reg=2026-08-25 changes=1 filechanges=1 sweeps=0 post_reg=1 PRs=4324,6540,6549,6857
+## media_buy.collection_cards markers=14 owned=1 inline=13 nested=0 first=2026-10-13 reg=2026-10-13 changes=3 filechanges=10 sweeps=0 post_reg=3 PRs=8094,8098,8141,8279
+## media_buy.collection_catalog markers=5 owned=2 inline=3 nested=0 first=2026-10-17 reg=2026-10-17 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8279
+## media_buy.daypart_granularity markers=5 owned=1 inline=4 nested=0 first=2026-10-08 reg=2026-10-08 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8025
+## media_buy.delegated_composition markers=3 owned=0 inline=3 nested=0 first=2026-10-13 reg=2026-10-13 changes=1 filechanges=1 sweeps=0 post_reg=1 PRs=7954,8140
+## media_buy.execution_requirements markers=2 owned=2 inline=2 nested=0 first=2026-09-30 reg=2026-09-30 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=7774
+## media_buy.hold_extension markers=4 owned=0 inline=2 nested=2 first=2026-10-14 reg=2026-10-14 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8097
+## media_buy.hold_policy markers=8 owned=1 inline=4 nested=3 first=2026-10-13 reg=2026-10-13 changes=3 filechanges=6 sweeps=0 post_reg=3 PRs=8097,8140,8255,8257
+## media_buy.hold_ranking markers=2 owned=0 inline=1 nested=1 first=2026-10-17 reg=2026-10-17 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8255
+## media_buy.installment_holds markers=1 owned=0 inline=1 nested=0 first=2026-10-17 reg=2026-10-17 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8257
+## media_buy.product_identity markers=3 owned=1 inline=2 nested=0 first=2026-09-03 reg=2026-09-03 changes=2 filechanges=2 sweeps=0 post_reg=2 PRs=7195,7438,7449
+## media_buy.reporting_delivery markers=45 owned=41 inline=4 nested=0 first=2026-08-31 reg=2026-08-31 changes=13 filechanges=53 sweeps=0 post_reg=13 PRs=6953,7200,7228,7254,7264,7267,7436,7465,7593,7626,7658,7946,8099,8100
+## media_buy.spot_lifecycle markers=7 owned=1 inline=6 nested=0 first=2026-10-08 reg=2026-10-08 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=8017
+## protocol.principal markers=14 owned=13 inline=1 nested=0 first=2026-08-31 reg=2026-08-31 changes=3 filechanges=11 sweeps=0 post_reg=3 PRs=6966,7110,7124,7127
+   NA 8b0980db28 2026-09-01|feat(principal): expose recognized identity before configuration (#7127) 2 ['const changed /result/kind="recognized"'] 1
+## sponsored_intelligence.core markers=15 owned=14 inline=1 nested=0 first=2026-01-25 reg=2026-04-19 changes=17 filechanges=66 sweeps=4 post_reg=8 PRs=859,906,1113,1144,1622,1684,1695,1959,2194,2315,2446,2675,2690,2705,2774,2791,3493,4896,5282,5501
+   NA 892da1df24 2026-02-18|feat!: Unify brand identity — delete brand-manifest.json, use brand refs (#1113 22 ['removed prop /brand_manifest_url'] 1
+   NA bb60926a32 2026-03-25|feat: formalize lifecycle state machines across protocol specs (#1684) 8 ['removed prop /acp_handoff/product'] 1
+   NA 43586d69cc 2026-04-18|feat(schemas)!: require idempotency_key on all mutating requests (#2315) 33 ['added required /idempotency_key'] 1
+## trusted_match.core markers=16 owned=15 inline=1 nested=0 first=2026-04-01 reg=2026-04-19 changes=18 filechanges=24 sweeps=0 post_reg=17 PRs=1797,2143,2199,2422,2984,3063,3067,5729,5741,5971,6125,6136,6170,6225,6251,6281,6283,6555,6593,6786,7396,7881
+   NA 80ecf76a8e 2026-04-14|feat!: simplify capabilities model for 3.0 (#2143) 3 ['removed prop /supported'] 1
+   NA 847b0b2e56 2026-08-03|feat(trusted-match): publisher-owned TMPX macro mapping (#5971) 6 ['removed prop /tmpx_macros'] 1
+   NA 3785751107 2026-08-16|Rename TMP offer macros to creative_data (#2199) (#6593) 2 ['removed prop /macros'] 1
+## trusted_match.verified_identity markers=0 owned=1 inline=5 nested=0 first=2026-06-09 reg=2026-06-09 changes=0 filechanges=0 sweeps=0 post_reg=0 PRs=5387,5741
+TOTAL change commits over 27 ids: 128; five large areas: 106 (83%); other 22 ids: 22; ids with none: 12

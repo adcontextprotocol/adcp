@@ -1,0 +1,154 @@
+{
+ "kernel": [],
+ "kernel-types": [
+  "kernel"
+ ],
+ "module:notifications": [],
+ "module:account": [
+  "module:notifications"
+ ],
+ "module:account-onboarding": [
+  "module:account"
+ ],
+ "module:account-change-feed": [
+  "module:account"
+ ],
+ "module:metrics": [],
+ "module:formats": [
+  "module:metrics"
+ ],
+ "module:catalogs": [
+  "module:metrics",
+  "module:formats",
+  "module:targeting"
+ ],
+ "module:brand": [
+  "module:formats"
+ ],
+ "module:agent-trust": [
+  "module:brand",
+  "module:formats"
+ ],
+ "module:principal": [
+  "module:account",
+  "module:agent-trust"
+ ],
+ "module:inventory": [
+  "module:brand",
+  "module:formats",
+  "module:agent-trust"
+ ],
+ "module:targeting": [
+  "module:inventory",
+  "module:metrics"
+ ],
+ "module:policy": [],
+ "module:signals": [
+  "module:account",
+  "module:targeting",
+  "module:policy"
+ ],
+ "module:creative": [
+  "module:formats",
+  "module:brand",
+  "module:account",
+  "module:metrics",
+  "module:signals",
+  "module:agent-trust",
+  "module:inventory"
+ ],
+ "module:brand-rights": [
+  "module:creative"
+ ],
+ "module:audiences-events": [
+  "module:account",
+  "module:signals",
+  "module:metrics",
+  "module:agent-trust",
+  "module:catalogs"
+ ],
+ "module:products": [
+  "module:targeting",
+  "module:signals",
+  "module:audiences-events",
+  "module:catalogs",
+  "module:policy",
+  "module:formats",
+  "module:inventory"
+ ],
+ "module:media-buy": [
+  "module:products",
+  "module:creative"
+ ],
+ "module:proposal-negotiation": [
+  "module:media-buy"
+ ],
+ "module:delivery-reporting": [
+  "module:media-buy"
+ ],
+ "module:reliable-reporting": [
+  "module:delivery-reporting",
+  "module:account-onboarding",
+  "module:principal"
+ ],
+ "module:measurement": [
+  "module:delivery-reporting"
+ ],
+ "module:governance-lists": [
+  "module:inventory"
+ ],
+ "module:content-standards": [
+  "module:creative",
+  "module:governance-lists",
+  "module:policy"
+ ],
+ "module:campaign-governance": [
+  "module:proposal-negotiation",
+  "module:content-standards"
+ ],
+ "module:sponsored-intelligence": [
+  "module:brand"
+ ],
+ "module:trusted-match": [
+  "module:media-buy",
+  "module:content-standards"
+ ],
+ "module:compliance-testing": [
+  "module:notifications",
+  "module:account",
+  "module:account-onboarding",
+  "module:account-change-feed",
+  "module:metrics",
+  "module:formats",
+  "module:catalogs",
+  "module:brand",
+  "module:agent-trust",
+  "module:principal",
+  "module:inventory",
+  "module:targeting",
+  "module:policy",
+  "module:signals",
+  "module:creative",
+  "module:brand-rights",
+  "module:audiences-events",
+  "module:products",
+  "module:media-buy",
+  "module:proposal-negotiation",
+  "module:delivery-reporting",
+  "module:reliable-reporting",
+  "module:measurement",
+  "module:governance-lists",
+  "module:content-standards",
+  "module:campaign-governance",
+  "module:sponsored-intelligence",
+  "module:trusted-match"
+ ],
+ "extension:response-signing-jws": [],
+ "extension:aao-verification-token": [],
+ "extension:adcp-ext-namespace": [
+  "module:proposal-negotiation"
+ ],
+ "extension:spot-lifecycle": [
+  "module:delivery-reporting"
+ ]
+}

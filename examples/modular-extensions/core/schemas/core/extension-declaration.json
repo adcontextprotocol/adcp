@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/extension-declaration.json",
+  "title": "Extension Declaration",
+  "description": "An agent's declaration that it emits or understands one extension definition, pinned by digest. Sellers list what they may emit; buyers send what they understand so a seller can omit must-understand data the buyer cannot process. A seller MAY declare several digests of one uri.",
+  "type": "object",
+  "properties": {
+    "uri": {
+      "$ref": "/schemas/core/platform-extension-ref.json#/properties/uri"
+    },
+    "digest": {
+      "$ref": "/schemas/core/platform-extension-ref.json#/properties/digest"
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/extension-hook.json#/definitions/HookName"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Hooks at which this agent uses the extension. Hook names come from the layers' release manifests; the kernel does not enumerate them."
+    },
+    "capabilities": {
+      "type": "object",
+      "x-adcp-extension-point": {
+        "name": "capabilities",
+        "must_understand": "never",
+        "identity": "enclosing"
+      },
+      "description": "This agent's capability fragment for the extension, validated against the extension definition's schema for the `capabilities` hook. The kernel's capabilities response carries one fragment per declared extension; modules contribute their own top-level blocks."
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ExtensionTask"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Tasks the extension contributes that this agent serves, each under a transport name. A caller that understands the extension calls the transport name; a caller that does not ignores the entry."
+    }
+  },
+  "required": [
+    "uri",
+    "digest"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "ExtensionTask": {
+      "title": "Extension Task",
+      "description": "Maps a transport name (the MCP tool name or A2A skill id) to a task an extension contributes. The task id is a branch of the kernel's `task` union: the extension uri, '#', and the task name. The request and response schemas are the definitions that the extension's manifest registers for that branch. A caller sends the request definition as the task arguments under `name`, and receives the response definition, which carries the kernel's task status. Both sides validate against the definitions of the declared uri@digest.",
+      "type": "object",
+      "x-adcp-open-union": {
+        "name": "task",
+        "discriminator": "task",
+        "identity": "enclosing",
+        "must_understand": "never",
+        "branch_requires": [
+          "response"
+        ]
+      },
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^x_[a-z0-9_]{1,62}$",
+          "description": "Transport name. The `x_` prefix keeps it clear of every task a module defines; the agent picks the rest and keeps it unique among the tasks it serves."
+        },
+        "task": {
+          "$ref": "/schemas/core/extension-branch-id.json"
+        }
+      },
+      "required": [
+        "name",
+        "task"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

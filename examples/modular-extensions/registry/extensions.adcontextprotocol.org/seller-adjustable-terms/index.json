@@ -1,0 +1,95 @@
+{
+  "uri": "https://extensions.adcontextprotocol.org/seller-adjustable-terms",
+  "versions": {
+    "1.0.0": {
+      "digest": "sha256:856330354341524a6b3246e48527cca92b27d2eedeb474305da60dbc64f20b66",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/duration.json": 1
+        },
+        "points": {
+          "commercial_terms": 1
+        }
+      }
+    },
+    "1.1.0": {
+      "digest": "sha256:d3f17d0131caeaf1d6a8dd1886ee5faf75211059cb1ec28b2c8ba774ca0b04e3",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/duration.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.2.0": {
+      "digest": "sha256:c3cf4543c212a92e67e4251a3a0d0a88057dbe9db2b22e43d44b317d9a6d93dc",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/duration.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.3.0": {
+      "digest": "sha256:c50e30547d397e500795e6e1fce5a4d68fb29110a96c2571ac9d8946f50586c6",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/duration.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.4.0": {
+      "digest": "sha256:a77eab08fbea50c9b8826f5399aff2d9fc0f4716674d13b7bfb448e8bc22c69e",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/duration.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.5.0": {
+      "digest": "sha256:636d39f86f3b8df4ecb6ae536ff65883c010e397ef014c8a086c47676c738ae3",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/duration.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.6.0": {
+      "digest": "sha256:41d05441540d02b84aafa4fa26d94094250c8337a45f3509f7c55ef7867773a9",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/duration.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    }
+  }
+}

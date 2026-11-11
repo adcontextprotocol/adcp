@@ -1,0 +1,8 @@
+{
+  "$comment": "The developer's whole choice: which core, and which extensions (by uri + version range or digest pin). Each key is the attribute the app reads and writes: proposal.commercial_terms.makegood_units. `npm run sdk` turns this into adcp.lock.json and the app's typed layer, adcp-sdk/.",
+  "core": "3.3.0",
+  "extensions": {
+    "seller_adjustable_terms": "https://extensions.adcontextprotocol.org/seller-adjustable-terms@^1",
+    "makegood_units": "https://extensions.adcontextprotocol.org/makegood-units@^1"
+  }
+}

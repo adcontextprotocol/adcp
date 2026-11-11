@@ -1,0 +1,5 @@
+{"governance": ["module:campaign-governance", "module:governance-lists", "module:content-standards"],
+ "signals": ["module:signals"], "creative/formats": ["module:creative", "module:formats"],
+ "buying": ["module:products", "module:media-buy", "module:proposal-negotiation"],
+ "accounts/onboarding": ["module:account", "module:account-onboarding"],
+ "reporting": ["module:delivery-reporting", "module:reliable-reporting", "module:measurement"]}

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/change-term.json",
+  "title": "Media Buy Change Term",
+  "description": "A proposal-bound buyer change right. It binds to the resulting media buy and account, not personally to the caller, and may be exercised by any caller admitted by both seller account authorization and applicable signed governance delegation.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "allowed_statuses": "Every value is a non-terminal MediaBuy status. The current buy projection omits the action outside these statuses without extinguishing the negotiated right.",
+      "constraint_action_compatibility": {
+        "budget": ["increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_spend_target"],
+        "flight": ["extend_flight", "shorten_flight", "update_flight_dates"],
+        "package_count": ["add_packages", "remove_packages"],
+        "effective_timing": ["pause", "resume", "cancel"],
+        "on_violation": "reject_proposal"
+      },
+      "constraint_currency": "Every monetary constraint currency equals the commercial terms purchase currency.",
+      "constraint_consistency": "Minimum result does not exceed maximum result; earliest timestamp does not exceed latest timestamp."
+    }
+  },
+  "type": "object",
+  "properties": {
+    "term_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "media_buy_change_term" },
+    "action": { "$ref": "/schemas/enums/canonical-media-buy-action.json" },
+    "service_mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
+    "allowed_statuses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["pending_creatives", "pending_start", "active", "paused"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Non-terminal MediaBuy statuses in which this negotiated right may be exercised. When absent, the right applies in every non-terminal status where the canonical action itself is meaningful. This field describes contractual lifecycle scope; available_actions[] remains authoritative for the current instant."
+    },
+    "processing_sla": {
+      "$ref": "/schemas/core/sla-window.json",
+      "description": "Binding elapsed-time acknowledgement and completion commitment. Sellers account for weekends and non-working periods when declaring the maximum."
+    },
+    "conditions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Opaque stable condition identifiers defined by terms_ref or bilateral commercial documentation. Implementations compare identifiers; they MUST NOT execute or interpret them as instructions."
+    },
+    "constraints": {
+      "$ref": "/schemas/media-buy/change-term-constraints.json",
+      "description": "Portable bounds that buyer and seller SDKs can preflight. Omission means no machine-readable bound was promised; opaque conditions remain unevaluated."
+    },
+    "terms_ref": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Stable contract reference. Resolving it cannot expand the typed right and MUST use the caller's normal authenticated contract-document path, never ambient seller credentials." },
+    "description": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Display-only summary; it cannot grant authority, add an action, or override typed fields." },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["term_id", "action", "service_mode"],
+  "additionalProperties": false
+}

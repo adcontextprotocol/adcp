@@ -1,0 +1,60 @@
+file,came_from,star_reason,layer,final_reason,buying_referrer_layers
+core/postal-country-system.json,module:media-vocabulary,star-dissolve,targeting,F-star-into-buying/G-lowest-consumer,targeting supply delivery
+core/signal-selection-group-rule.json,module:signals,star-e,targeting,F-star-into-buying/G-sole-layer,targeting
+enums/device-platform.json,module:media-vocabulary,star-dissolve,targeting,F-star-into-buying/G-lowest-consumer,targeting supply delivery
+enums/device-type.json,module:media-vocabulary,star-dissolve,targeting,F-star-into-buying/G-lowest-consumer,targeting supply delivery
+enums/legacy-postal-system.json,module:media-vocabulary,star-dissolve,targeting,F-star-into-buying/G-lowest-consumer,targeting supply delivery
+enums/postal-system.json,module:media-vocabulary,star-dissolve,targeting,F-star-into-buying/G-lowest-consumer,targeting delivery
+enums/reach-unit.json,module:media-vocabulary,star-dissolve,targeting,F-star-into-buying/G-lowest-consumer,targeting commitment supply delivery
+core/attribution-window.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-lowest-consumer,commitment delivery
+core/audience-evidence-pin.json,module:signals,star-e,commitment,F-star-into-buying/G-lowest-consumer,commitment execution
+core/canonical-measurement-terms.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-lowest-consumer,commitment supply execution
+core/canonical-metric-qualifier.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-sole-layer,commitment
+core/canonical-performance-standard.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-lowest-consumer,commitment supply
+core/canonical-reporting-commitment.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-sole-layer,commitment
+enums/attribution-model.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-lowest-consumer,commitment delivery
+enums/available-metric.json,module:media-vocabulary,star-a-split,commitment,F-star-into-buying/G-lowest-consumer,commitment supply execution delivery
+enums/makegood-remedy.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-lowest-consumer,commitment supply
+enums/performance-standard-metric.json,module:media-vocabulary,star-dissolve,commitment,F-star-into-buying/G-lowest-consumer,commitment supply
+core/acceptance-policy-profile-ids.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/audience-evidence-requirements.json,module:signals,star-e,supply,F-star-into-buying/G-lowest-consumer,supply execution
+core/audience-evidence-selection.json,module:signals,star-e,supply,F-star-into-buying/G-lowest-consumer,supply execution
+core/data-provider-signal-selector.json,module:signals,star-e,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-dimension-audience.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-dimension-device-platform.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-dimension-device-type.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-dimension-geo.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-dimension-placement.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-dimension-signal.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-dimension-time.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-point-dimensions.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-point.json,module:media-vocabulary,star-a-split,supply,F-star-into-buying/G-sole-layer,supply
+core/forecast-vendor-metric-value.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/measurement-terms.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-lowest-consumer,supply execution
+core/measurement-window.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/outcome-measurement.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/performance-standard.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-lowest-consumer,supply execution
+core/vendor-metric-optimization-supported-metric.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+core/vendor-metric-optimization.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+enums/audience-source.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-lowest-consumer,supply delivery
+enums/availability-status.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-sole-layer,supply
+enums/geo-level.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-lowest-consumer,supply delivery
+enums/vendor-relationship.json,module:media-vocabulary,star-dissolve,supply,F-star-into-buying/G-lowest-consumer,supply delivery
+media-buy/acceptance-policy-catalog.json,module:media-vocabulary,star-e,supply,F-star-into-buying/seller-policy-supply,
+media-buy/acceptance-policy-profile.json,module:media-vocabulary,star-e,supply,F-star-into-buying/seller-policy-supply,supply
+media-buy/acceptance-policy-requirement.json,module:media-vocabulary,star-e,supply,F-star-into-buying/seller-policy-supply,supply
+media-buy/acceptance-policy-rule.json,module:media-vocabulary,star-e,supply,F-star-into-buying/seller-policy-supply,supply
+core/later-proposals-state.json,(added by #8103),star-new-sole-referrer,offer,F-star-into-buying/G-sole-layer,offer
+core/proposal-created-webhook.json,(added by #8103),star-new-dir,offer,F-8103-offer,
+enums/later-proposal-reason.json,(added by #8103),star-new-dir,offer,F-star-into-buying/G-sole-layer,offer
+enums/proposal-disposition.json,(added by #8103),star-new-dir,offer,F-star-into-buying/G-sole-layer,offer
+media-buy/list-proposals-request.json,(added by #8103),star-new-dir,offer,F-star-into-buying/TASK-owner,
+media-buy/list-proposals-response.json,(added by #8103),star-new-dir,offer,F-star-into-buying/TASK-owner,
+core/committed-metric.json,module:media-vocabulary,star-e,execution,F-star-into-buying/G-sole-layer,execution
+core/creative-assignment.json,module:creative,star-e,execution,F-star-into-buying/G-sole-layer,execution
+core/delivery-metric-aggregate.json,module:media-vocabulary,star-dissolve,delivery,F-star-into-buying/G-sole-layer,delivery
+core/delivery-metrics.json,module:media-vocabulary,star-a-split,delivery,F-star-into-buying/G-sole-layer,delivery
+core/missing-metric.json,module:media-vocabulary,star-dissolve,delivery,F-star-into-buying/G-sole-layer,delivery
+core/placement-evidence.json,module:media-vocabulary,star-dissolve,delivery,F-star-into-buying/G-sole-layer,delivery
+core/vendor-metric-value.json,module:media-vocabulary,star-dissolve,delivery,F-star-into-buying/G-sole-layer,delivery
+enums/view-threshold-basis.json,module:media-vocabulary,star-dissolve,delivery,F-star-into-buying/G-sole-layer,delivery

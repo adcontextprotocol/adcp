@@ -1,0 +1,386 @@
+{
+ "name": "cut-29",
+ "kernel_share_post_ga_fc": [
+  198,
+  3026,
+  6.5
+ ],
+ "kernel_share_post_ga_nonadd_fc": [
+  15,
+  481,
+  3.1
+ ],
+ "all": {
+  "commits": 611,
+  "cross": 247,
+  "cross_pct": 40.4,
+  "five_plus": 42
+ },
+ "all_no_sweeps": {
+  "commits": 598,
+  "cross": 234,
+  "cross_pct": 39.1,
+  "five_plus": 29
+ },
+ "post": {
+  "commits": 397,
+  "cross": 144,
+  "cross_pct": 36.3,
+  "five_plus": 18
+ },
+ "post_no_sweeps": {
+  "commits": 393,
+  "cross": 140,
+  "cross_pct": 35.6,
+  "five_plus": 14
+ },
+ "post_no_sweeps_no_ct": {
+  "commits": 393,
+  "cross": 131,
+  "cross_pct": 33.3,
+  "five_plus": 12
+ },
+ "top_pairs_post_no_sweeps": [
+  [
+   "module:media-buy",
+   "module:products",
+   33,
+   "media-buy → products"
+  ],
+  [
+   "module:products",
+   "module:targeting",
+   15,
+   "products → targeting"
+  ],
+  [
+   "module:creative",
+   "module:media-buy",
+   14,
+   "media-buy → creative"
+  ],
+  [
+   "module:creative",
+   "module:formats",
+   13,
+   "creative → formats"
+  ],
+  [
+   "module:products",
+   "module:signals",
+   12,
+   "products → signals"
+  ],
+  [
+   "module:media-buy",
+   "module:proposal-negotiation",
+   12,
+   "proposal-negotiation → media-buy"
+  ],
+  [
+   "module:products",
+   "module:proposal-negotiation",
+   12,
+   "proposal-negotiation → products"
+  ],
+  [
+   "module:inventory",
+   "module:products",
+   12,
+   "products → inventory"
+  ],
+  [
+   "module:delivery-reporting",
+   "module:products",
+   10,
+   "delivery-reporting → products"
+  ],
+  [
+   "module:media-buy",
+   "module:targeting",
+   9,
+   "media-buy → targeting"
+  ],
+  [
+   "module:formats",
+   "module:products",
+   8,
+   "products → formats"
+  ],
+  [
+   "module:delivery-reporting",
+   "module:metrics",
+   7,
+   "delivery-reporting → metrics"
+  ],
+  [
+   "module:media-buy",
+   "module:metrics",
+   7,
+   "media-buy → metrics"
+  ],
+  [
+   "module:formats",
+   "module:media-buy",
+   7,
+   "media-buy → formats"
+  ],
+  [
+   "module:delivery-reporting",
+   "module:media-buy",
+   6,
+   "delivery-reporting → media-buy"
+  ]
+ ],
+ "top_pairs_all_no_sweeps": [
+  [
+   "module:media-buy",
+   "module:products",
+   58,
+   "media-buy → products"
+  ],
+  [
+   "module:creative",
+   "module:formats",
+   29,
+   "creative → formats"
+  ],
+  [
+   "module:creative",
+   "module:media-buy",
+   26,
+   "media-buy → creative"
+  ],
+  [
+   "module:products",
+   "module:targeting",
+   24,
+   "products → targeting"
+  ],
+  [
+   "module:delivery-reporting",
+   "module:products",
+   22,
+   "delivery-reporting → products"
+  ],
+  [
+   "module:creative",
+   "module:products",
+   20,
+   "none"
+  ],
+  [
+   "module:formats",
+   "module:products",
+   19,
+   "products → formats"
+  ],
+  [
+   "module:inventory",
+   "module:products",
+   18,
+   "products → inventory"
+  ],
+  [
+   "module:media-buy",
+   "module:targeting",
+   17,
+   "media-buy → targeting"
+  ],
+  [
+   "module:delivery-reporting",
+   "module:media-buy",
+   16,
+   "delivery-reporting → media-buy"
+  ],
+  [
+   "module:products",
+   "module:signals",
+   15,
+   "products → signals"
+  ],
+  [
+   "module:products",
+   "module:proposal-negotiation",
+   14,
+   "proposal-negotiation → products"
+  ],
+  [
+   "module:delivery-reporting",
+   "module:metrics",
+   14,
+   "delivery-reporting → metrics"
+  ],
+  [
+   "module:metrics",
+   "module:products",
+   13,
+   "products → metrics"
+  ],
+  [
+   "module:media-buy",
+   "module:proposal-negotiation",
+   13,
+   "proposal-negotiation → media-buy"
+  ]
+ ],
+ "pair_incidences_unrelated_post_no_sweeps": [
+  75,
+  456
+ ],
+ "implementers": {
+  "governance": {
+   "modules": [
+    "module:campaign-governance",
+    "module:governance-lists",
+    "module:content-standards"
+   ],
+   "changed": 6,
+   "or_kernel": 10,
+   "patch_changed": 3,
+   "patch_or_kernel": 6,
+   "deps": [
+    "module:account",
+    "module:agent-trust",
+    "module:audiences-events",
+    "module:brand",
+    "module:catalogs",
+    "module:creative",
+    "module:formats",
+    "module:inventory",
+    "module:media-buy",
+    "module:metrics",
+    "module:notifications",
+    "module:policy",
+    "module:products",
+    "module:proposal-negotiation",
+    "module:signals",
+    "module:targeting"
+   ],
+   "with_deps": 21,
+   "with_deps_or_kernel": 22
+  },
+  "signals": {
+   "modules": [
+    "module:signals"
+   ],
+   "changed": 4,
+   "or_kernel": 9,
+   "patch_changed": 1,
+   "patch_or_kernel": 5,
+   "deps": [
+    "module:account",
+    "module:agent-trust",
+    "module:brand",
+    "module:formats",
+    "module:inventory",
+    "module:metrics",
+    "module:notifications",
+    "module:policy",
+    "module:targeting"
+   ],
+   "with_deps": 12,
+   "with_deps_or_kernel": 14
+  },
+  "creative/formats": {
+   "modules": [
+    "module:creative",
+    "module:formats"
+   ],
+   "changed": 10,
+   "or_kernel": 13,
+   "patch_changed": 6,
+   "patch_or_kernel": 9,
+   "deps": [
+    "module:account",
+    "module:agent-trust",
+    "module:brand",
+    "module:inventory",
+    "module:metrics",
+    "module:notifications",
+    "module:policy",
+    "module:signals",
+    "module:targeting"
+   ],
+   "with_deps": 13,
+   "with_deps_or_kernel": 15
+  },
+  "buying": {
+   "modules": [
+    "module:products",
+    "module:media-buy",
+    "module:proposal-negotiation"
+   ],
+   "changed": 13,
+   "or_kernel": 15,
+   "patch_changed": 9,
+   "patch_or_kernel": 11,
+   "deps": [
+    "module:account",
+    "module:agent-trust",
+    "module:audiences-events",
+    "module:brand",
+    "module:catalogs",
+    "module:creative",
+    "module:formats",
+    "module:inventory",
+    "module:metrics",
+    "module:notifications",
+    "module:policy",
+    "module:signals",
+    "module:targeting"
+   ],
+   "with_deps": 20,
+   "with_deps_or_kernel": 21
+  },
+  "accounts/onboarding": {
+   "modules": [
+    "module:account",
+    "module:account-onboarding"
+   ],
+   "changed": 5,
+   "or_kernel": 8,
+   "patch_changed": 2,
+   "patch_or_kernel": 4,
+   "deps": [
+    "module:notifications"
+   ],
+   "with_deps": 5,
+   "with_deps_or_kernel": 8
+  },
+  "reporting": {
+   "modules": [
+    "module:delivery-reporting",
+    "module:reliable-reporting",
+    "module:measurement"
+   ],
+   "changed": 5,
+   "or_kernel": 9,
+   "patch_changed": 2,
+   "patch_or_kernel": 5,
+   "deps": [
+    "module:account",
+    "module:account-onboarding",
+    "module:agent-trust",
+    "module:audiences-events",
+    "module:brand",
+    "module:catalogs",
+    "module:creative",
+    "module:formats",
+    "module:inventory",
+    "module:media-buy",
+    "module:metrics",
+    "module:notifications",
+    "module:policy",
+    "module:principal",
+    "module:products",
+    "module:signals",
+    "module:targeting"
+   ],
+   "with_deps": 20,
+   "with_deps_or_kernel": 21
+  }
+ },
+ "ga_releases": 65,
+ "kernel_releases": 8
+}

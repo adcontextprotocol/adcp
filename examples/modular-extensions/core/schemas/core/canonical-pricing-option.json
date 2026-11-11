@@ -1,0 +1,236 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-pricing-option.json",
+  "title": "Canonical Pricing Option",
+  "description": "Self-contained selected pricing terms for compact product offers and accepted commercial snapshots. Deprecated execution hints such as max_bid are absent; bidding intent lives in BiddingPolicy.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product_pricing_option"
+    },
+    "pricing_model": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "cpm",
+            "vcpm",
+            "cpc",
+            "cpcv",
+            "cpv",
+            "cpp",
+            "cpa",
+            "revenue_share",
+            "flat_rate",
+            "time"
+          ]
+        },
+        {
+          "$ref": "/schemas/core/extension-branch-id.json"
+        }
+      ],
+      "description": "A core pricing model, or the branch id of an extension pricing model (open union pricing_model)."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "fixed_price": {
+      "type": "number",
+      "minimum": 0
+    },
+    "floor_price": {
+      "type": "number",
+      "minimum": 0
+    },
+    "price_guidance": {
+      "$ref": "/schemas/pricing-options/price-guidance.json"
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "minimum": 0
+    },
+    "price_breakdown": {
+      "$ref": "/schemas/pricing-options/price-breakdown.json"
+    },
+    "eligible_adjustments": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/adjustment-kind.json"
+      },
+      "uniqueItems": true
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "event_type": {
+      "$ref": "/schemas/enums/event-type.json"
+    },
+    "custom_event_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_source_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "event_source"
+    },
+    "commission_rate": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "commission_basis_description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "extension_model": {
+      "$ref": "/schemas/core/extension-entry.json",
+      "description": "The extension pricing model's data, under terms_digest when inside commercial_terms. Present exactly when pricing_model is an extension branch id."
+    }
+  },
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "currency"
+  ],
+  "allOf": [
+    {
+      "not": {
+        "required": [
+          "fixed_price",
+          "floor_price"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_model": {
+            "const": "cpa"
+          }
+        },
+        "required": [
+          "pricing_model"
+        ]
+      },
+      "then": {
+        "required": [
+          "event_type",
+          "fixed_price"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_model": {
+            "const": "revenue_share"
+          }
+        },
+        "required": [
+          "pricing_model"
+        ]
+      },
+      "then": {
+        "required": [
+          "event_type",
+          "event_source_id",
+          "commission_rate",
+          "commission_basis_description"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_model": {
+            "enum": [
+              "cpv",
+              "cpp",
+              "time"
+            ]
+          }
+        },
+        "required": [
+          "pricing_model"
+        ]
+      },
+      "then": {
+        "required": [
+          "parameters"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "custom_event_name"
+        ]
+      }
+    },
+    {
+      "description": "An extension pricing model carries its body and no core price; a core model carries no extension body.",
+      "if": {
+        "properties": {
+          "pricing_model": {
+            "$ref": "/schemas/core/extension-branch-id.json"
+          }
+        },
+        "required": [
+          "pricing_model"
+        ]
+      },
+      "then": {
+        "required": [
+          "extension_model"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "fixed_price"
+              ]
+            },
+            {
+              "required": [
+                "floor_price"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "extension_model"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "x-adcp-open-union": {
+    "name": "pricing_model",
+    "discriminator": "pricing_model",
+    "body": "extension_model",
+    "branch_requires": [
+      "reports_as"
+    ],
+    "unknown_in_list": "drop_option"
+  }
+}

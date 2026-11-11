@@ -1,0 +1,52 @@
+{
+  "id": "https://ext.acmetv.example.com/adcp/daypart-codes",
+  "name": "daypart-codes",
+  "version": "2.6.0",
+  "title": "AcmeTV daypart codes",
+  "description": "Vendor namespace example. AcmeTV labels its pricing options with its own daypart grid. Informational: a buyer without this extension loses nothing it needs to transact.",
+  "owner": "AcmeTV (vendor)",
+  "status": "vendor",
+  "origin": [],
+  "requires": {
+    "core": ">=3.3",
+    "points": {
+      "pricing_option": 1
+    }
+  },
+  "extends": [
+    {
+      "point": "pricing_option",
+      "definition": "DaypartCodes",
+      "must_understand": "optional",
+      "semantics": "Display labels for the dayparts the option covers."
+    }
+  ],
+  "adopters": [
+    {
+      "party": "AcmeTV",
+      "since": "2026-06-01"
+    }
+  ],
+  "changelog": [
+    {
+      "version": "2.6.0",
+      "change": "Current version: daypart codes with a minimal spec, one conformance storyboard, and the reference code, all pinned by the digest. Uses the kernel container ExtensionEntry with `data`, and the host properties `extensions` and `extensions_state`. The spec and manifest text follow the documentation style guide; the rules and their IDs are unchanged."
+    },
+    {
+      "version": "2.5.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "2.4.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "2.3.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "2.2.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    }
+  ]
+}

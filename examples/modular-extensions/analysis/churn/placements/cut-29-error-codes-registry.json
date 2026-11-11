@@ -1,0 +1,4162 @@
+{
+ "a2ui/bound-value.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "a2ui/component.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "a2ui/si-catalog.json": {
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "a2ui/surface.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "a2ui/user-action.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "aao/agent-publishers.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "account/get-account-financials-request.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "account/get-account-financials-response.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "account/list-account-changes-request.json": {
+  "label": "module:account-change-feed",
+  "reason": "M-anchor"
+ },
+ "account/list-account-changes-response.json": {
+  "label": "module:account-change-feed",
+  "reason": "M-anchor"
+ },
+ "account/list-accounts-request.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "account/list-accounts-response.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "account/report-usage-request.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "account/report-usage-response.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "account/sync-accounts-request.json": {
+  "label": "module:account-onboarding",
+  "reason": "M-anchor"
+ },
+ "account/sync-accounts-response.json": {
+  "label": "module:account-onboarding",
+  "reason": "M-anchor"
+ },
+ "account/sync-governance-request.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "account/sync-governance-response.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "adagents.json": {
+  "label": "assembly",
+  "reason": "A-wellknown-document"
+ },
+ "brand.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/acquire-rights-request.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/acquire-rights-response.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/creative-approval-request.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/creative-approval-response.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/get-brand-identity-request.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/get-brand-identity-response.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/get-rights-request.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/get-rights-response.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/revocation-notification.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/rights-pricing-option.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/rights-terms.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/search-brands-request.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/search-brands-response.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/update-rights-request.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/update-rights-response.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "brand/verification-status.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/verify-brand-claim-request.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/verify-brand-claim-response.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/verify-brand-claims-request.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "brand/verify-brand-claims-response.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "collection/base-collection-source.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/collection-list-changed-webhook.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/collection-list-filters.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/collection-list.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/create-collection-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/create-collection-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/delete-collection-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/delete-collection-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/get-collection-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/get-collection-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/list-collection-lists-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/list-collection-lists-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/update-collection-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "collection/update-collection-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "compliance/comply-test-controller-request.json": {
+  "label": "module:compliance-testing",
+  "reason": "M-anchor"
+ },
+ "compliance/comply-test-controller-response.json": {
+  "label": "module:compliance-testing",
+  "reason": "M-anchor"
+ },
+ "compliance/get-creative-features-completion.json": {
+  "label": "module:compliance-testing",
+  "reason": "M-anchor"
+ },
+ "compliance/task-completion-data.json": {
+  "label": "module:compliance-testing",
+  "reason": "M-anchor"
+ },
+ "content-standards/artifact-webhook-payload.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/artifact.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "content-standards/calibrate-content-request.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/calibrate-content-response.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/content-standards.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/create-content-standards-request.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/create-content-standards-response.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/get-content-standards-request.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/get-content-standards-response.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/get-media-buy-artifacts-request.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/get-media-buy-artifacts-response.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/list-content-standards-request.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/list-content-standards-response.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/update-content-standards-request.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/update-content-standards-response.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/validate-content-delivery-request.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "content-standards/validate-content-delivery-response.json": {
+  "label": "module:content-standards",
+  "reason": "M-anchor"
+ },
+ "core/acceptance-policy-profile-ids.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "core/account-authorization.json": {
+  "label": "module:account",
+  "reason": "M-meet"
+ },
+ "core/account-change-recorded-webhook.json": {
+  "label": "module:account-change-feed",
+  "reason": "M-anchor"
+ },
+ "core/account-change.json": {
+  "label": "module:account-change-feed",
+  "reason": "M-anchor"
+ },
+ "core/account-identity-change-preview.json": {
+  "label": "module:account-onboarding",
+  "reason": "M-sole-user"
+ },
+ "core/account-identity-change.json": {
+  "label": "module:account",
+  "reason": "M-meet"
+ },
+ "core/account-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/account-status-changed-webhook.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "core/account-timezone-capability.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "core/account-with-authorization.json": {
+  "label": "module:account",
+  "reason": "M-sole-user"
+ },
+ "core/account.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "core/activation-key.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "core/ad-inventory-config.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/agent-encryption-key.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "core/agent-notification-config-state.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/agent-notification-config.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/agent-reporting-destination-state.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/agent-reporting-destination.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/agent-signing-key.json": {
+  "label": "kernel",
+  "reason": "K-auth-signature-extension-point"
+ },
+ "core/agent-webhook-challenge.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/app-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/applicable-package-id.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "core/asset-group-vocabulary.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/asset-union.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/audio-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/brief-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/card-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/catalog-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/css-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/daast-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/daast-tracker-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/display-tag-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/html-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/image-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/javascript-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/markdown-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/pixel-tracker-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/published-post-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/text-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/url-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/vast-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/vast-tracker-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/video-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/video-brief-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/webhook-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assets/zip-asset.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/assignment-tracker.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "core/async-response-data.json": {
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/attestation-capabilities.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "core/attestation-evaluation.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "core/attestation-issuer.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "core/attestation-reference.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "core/attestation-subject.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "core/attribution-window.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/audience-activation-method.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/audience-characteristic.json": {
+  "label": "module:audiences-events",
+  "reason": "M-meet"
+ },
+ "core/audience-evidence-pin.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/audience-evidence-requirements.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/audience-evidence-selection.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/audience-evidence.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/audience-member.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/audience-selector.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/audience-size.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "core/audience-source.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/authorized-agent-base.json": {
+  "label": "module:agent-trust",
+  "reason": "M-deps-only"
+ },
+ "core/bidding-policy-capability.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/bidding-policy.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "core/brand-id.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/brand-key.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/brand-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/brand-response-authorization-result.json": {
+  "label": "module:brand",
+  "reason": "M-anchor"
+ },
+ "core/budget-allocation.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/budget-range.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/business-entity.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "core/cancellation-policy.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-account-ref.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "core/canonical-audience-evidence-selection.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-audience-evidence.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-budget-allocation.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/canonical-delivery-forecast.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/canonical-forecast-point.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/canonical-forecast-vendor-metric-value.json": {
+  "label": "module:targeting",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-format-kind.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/canonical-format-option.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/canonical-measurement-terms.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/canonical-media-buy-action-fields.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-media-buy-action.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "core/canonical-media-buy-features.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-metric-qualifier.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/canonical-optimization-goal.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "core/canonical-performance-standard.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/canonical-placement.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/canonical-pricing-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/canonical-product-action.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/canonical-product.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/canonical-projection-ref.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-projection-slot-override.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-proposal.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "core/canonical-reporting-capabilities.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/canonical-reporting-commitment.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/canvas-constraint.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/capabilities-changed-webhook.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/catalog-field-mapping.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-ingestion-capability.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-item-availability-error.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-item-availability-ref.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-item-availability-state.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-item-availability-update-result.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-item-availability-update.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-item-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/catalog-item-reference-not-found-error.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog-selection.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catalog.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/catchment.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/collection-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/collection-distribution.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/collection-list-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/collection-property-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/collection-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/collection-selection.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/collection-selector.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/collection.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/committed-metric.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/compact-task-input-required.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/compact-task-submitted.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/compact-task-working.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/content-rating.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "core/context.json": {
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/creative-approval-scope.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-asset.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-assets.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-assignment.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-brief.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/creative-consumption.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/creative-filters.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-item.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-locale-policy.json": {
+  "label": "module:formats",
+  "reason": "M-meet"
+ },
+ "core/creative-localization-readback.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-localization.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-manifest.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-operation-format-declaration.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/creative-policy.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/creative-representation-set.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-representation.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-revision-id.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-variable.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/creative-variant.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/daast-tracker-constraints.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/data-provider-signal-selector.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/date-range.json": {
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/datetime-range.json": {
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/daypart-target.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/deadline-policy.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "core/definition-pin.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-sole-user"
+ },
+ "core/delivery-breakdown-controls.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-anchor"
+ },
+ "core/delivery-forecast.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/delivery-metric-aggregate.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/delivery-metrics.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/delivery-provider.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/delivery-recipient.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/demographic-age-range.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/demographic-predicate.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/demographic-reporting-capability.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/demographic-targeting-capability.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/demographic-targeting-intent.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/demographic-targeting-resolution.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/deployment.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "core/destination-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/destination.json": {
+  "label": "module:signals",
+  "reason": "M-sole-user"
+ },
+ "core/diagnostic-issue.json": {
+  "label": "module:audiences-events",
+  "reason": "M-meet"
+ },
+ "core/dooh-inventory-summary.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/downstream-connection-requirement.json": {
+  "label": "kernel",
+  "reason": "K-auth-signature-extension-point"
+ },
+ "core/duration.json": {
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/education-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/error.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "core/evaluator-spec.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "core/event-custom-data.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/event-source-health.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/event-surface.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/event.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "core/experimental-feature-id.json": {
+  "label": "kernel",
+  "reason": "K-capability-discovery"
+ },
+ "core/ext.json": {
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/feature-requirement.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "core/flight-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/forecast-dimension-audience.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-dimension-device-platform.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-dimension-device-type.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-dimension-geo.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-dimension-placement.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-dimension-signal.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-dimension-time.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-point-dimensions.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-point.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-range.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-rate-range.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/forecast-vendor-metric-value.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/format-id.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/format-option-ref.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/format-shape-vocabulary.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/format.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/frequency-cap-constraints.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/frequency-cap-duration-unit.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/frequency-cap-impression-constraints.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/frequency-cap-interval-constraints.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/frequency-cap-requirements.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/frequency-cap.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/generation-credential.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "core/geo-breakdown-support.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/geo-metro.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-area.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-catalog-capability.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-catalog-entry.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-requirement.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-resolver.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-support.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-system.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-place-type.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-region-requirement.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/geo-region-support.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/get-geo-place-resolution-request.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/get-geo-place-resolution-response.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/hold-policy.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "core/hotel-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/iana-timezone.json": {
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/identifier.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/identity-relying-party.json": {
+  "label": "module:brand",
+  "reason": "M-meet"
+ },
+ "core/impairment.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "core/indicator-bearing.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "core/indicator-scope.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "core/indicator.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "core/indicators-changed-webhook.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "core/industry-identifier.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/insertion-order.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-sole-user"
+ },
+ "core/installment-deadlines.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/installment-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/installment-property-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/installment-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/installment.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/inventory-list-application.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/job-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/keyword-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/keyword-target.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "core/limited-series.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "core/locale-tag.json": {
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/localized-creative-asset.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/macro-bearing-url.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/macro-declaration.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/macro-encoding.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/macro-resolution-capability.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/macro-resolution-result.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/macro-translation-target.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/material-deadline.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/mcp-webhook-payload.json": {
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/measurement-readiness.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/measurement-terms.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/measurement-window.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/media-buy-available-action-id.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "core/media-buy-available-action.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "core/media-buy-change-term-id.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/media-buy-features.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/media-buy-frequency-cap-capability.json": {
+  "label": "module:targeting",
+  "reason": "M-deps-only"
+ },
+ "core/media-buy-frequency-cap-requirement.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/media-buy-frequency-cap-support.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/media-buy-frequency-cap.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "core/media-buy-legacy-terms-ref.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "core/media-buy-support-requirements.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/media-buy-support.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/media-buy.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "core/missing-metric.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/negative-keyword.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/notification-config.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/offering-asset-group.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/offering.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/operator-identity.json": {
+  "label": "module:account",
+  "reason": "M-meet"
+ },
+ "core/operator-unit.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/opportunity-context.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/optimization-goal.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "core/outcome-measurement.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/outcome-target-cost-per.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/overlay.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/package-delivery-metric-value.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/package-format-snapshot.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/package-signal-targeting-group.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/package-signal-targeting-groups.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/package-signal-targeting.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/package-targeting-resolution.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "core/package.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "core/pagination-request.json": {
+  "label": "kernel-types",
+  "reason": "KT-pagination"
+ },
+ "core/pagination-response.json": {
+  "label": "kernel-types",
+  "reason": "KT-pagination"
+ },
+ "core/performance-feedback-assertion.json": {
+  "label": "module:measurement",
+  "reason": "M-anchor"
+ },
+ "core/performance-feedback-metric.json": {
+  "label": "module:measurement",
+  "reason": "M-anchor"
+ },
+ "core/performance-feedback.json": {
+  "label": "module:measurement",
+  "reason": "M-anchor"
+ },
+ "core/performance-standard.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/placement-definition.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/placement-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/placement-evidence.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/placement-identity.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/placement-presentation.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/placement-property-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/placement-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/placement-selection.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/placement.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/planned-delivery.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/platform-extension-ref.json": {
+  "label": "kernel",
+  "reason": "K-extension-mechanism"
+ },
+ "core/positive-postal-area-support.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/postal-area-support.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/postal-area.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/postal-country-system.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "core/presentation-ref.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "core/preview-provider.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "core/preview-renderer-metadata.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/price.json": {
+  "label": "kernel-types",
+  "reason": "KT-money"
+ },
+ "core/pricing-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/principal-changed-webhook.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "core/principal-declarations-state.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "core/principal-declarations.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "core/principal-state.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "core/product-allocation.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-allowed-action.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-audience-evidence-requirements.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-card-reference-asset.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-change-map.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-execution-requirement.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-filters.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-format-declaration.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/product-identity.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-offer-filters.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-signal-targeting-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product-targeting-resolution.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/product.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/property-delivery-metrics.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/property-id.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/property-list-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/property-ref.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/property-tag.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/property.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/proposal.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "core/protocol-envelope.json": {
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/provenance.json": {
+  "label": "module:formats",
+  "reason": "M-meet"
+ },
+ "core/publisher-property-selector.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/push-notification-config.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/real-estate-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/reference-asset.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/reference-renderer.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/registry-event.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/registry-feed-response.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/reporting-adjustment-receipt.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-adjustment.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-canonical-content-digest.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-canonicalization-contract.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-capabilities.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/reporting-consumer-status.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-control-total.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-coverage.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-dataset-share-destination.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-delivery-capabilities.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-delivery-config-state.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-delivery-config.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-delivery-method.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-delivery-offering-id.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/reporting-delivery-offering.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-delivery-ready-webhook.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-file-compression.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-file-entry.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-file-manifest.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-file-object-ref.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-ledger-changed-webhook.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-materialization.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-native-version-ref.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-obligation.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-receipt.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-reconciliation-mode.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-reliability-statistics.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-report-definition.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-resource.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-revision.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-schedule-offering.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-schedule.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-status-changed-webhook.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-status-issue.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-verification-profile-set.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-sole-user"
+ },
+ "core/reporting-verification-profile.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-verification.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/reporting-webhook.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/reporting-write-destination.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "core/representation-destination.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/representation-rejection.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/representation-selection.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/requirements/asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/audio-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/catalog-field-binding.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/catalog-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/css-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/daast-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/html-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/image-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/javascript-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/markdown-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/offering-asset-constraint.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/text-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/url-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/vast-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/video-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/requirements/webhook-asset-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "core/response-collection.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "core/response-payload-jws-envelope.json": {
+  "label": "extension:response-signing-jws",
+  "reason": "X-signing-profile"
+ },
+ "core/response.json": {
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/rights-attestation-evaluation.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/rights-constraint.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "core/seller-agent-ref.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/signal-coverage-forecast.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-definition-enrichment.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-definition.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-filters.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-id.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/signal-listing.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-modeling-disclosure.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-pricing-option.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-pricing.json": {
+  "label": "kernel-types",
+  "reason": "KT-vendor-pricing"
+ },
+ "core/signal-ref.json": {
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/signal-selection-group-rule.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "core/signal-targeting-expression.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/signal-targeting-rules.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/signal-targeting.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "core/sla-window.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "core/special.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "core/spot-reporting-capability.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "core/start-timing.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "core/store-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/talent.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "core/targeting-input.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/targeting-modification.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/targeting-overlay-requirements.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/targeting-overlay-support.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/targeting-unknown-age-eligibility-constraint.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/targeting-verified-age-basis-constraint.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/targeting.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/tasks-get-request.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/tasks-get-response.json": {
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/tasks-list-request.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/tasks-list-response.json": {
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/tracker-execution-contract.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/tracker-execution-selector.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/transformer-param.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/transformer.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "core/truncation-sentinel.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/user-match.json": {
+  "label": "module:audiences-events",
+  "reason": "M-sole-user"
+ },
+ "core/vast-media-file-requirements.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/vast-tracker-constraints.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "core/vehicle-item.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "core/vendor-metric-id.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/vendor-metric-optimization-supported-metric.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/vendor-metric-optimization.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/vendor-metric-value.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "core/vendor-pricing-option.json": {
+  "label": "kernel-types",
+  "reason": "KT-vendor-pricing"
+ },
+ "core/verification-token-claims.json": {
+  "label": "extension:aao-verification-token",
+  "reason": "X-registry-vocabulary"
+ },
+ "core/version-envelope.json": {
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/warning-resource.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "core/warning.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "core/webhook-activity-record.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/webhook-challenge-response.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/webhook-challenge.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "core/wholesale-feed-event.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/wholesale-feed-webhook.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "core/x-entity-types.json": {
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "creative/asset-types/index.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "creative/audit-observation.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/creative-assignment-changed-webhook.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/creative-feature-result.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/creative-purged-webhook.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/creative-status-changed-webhook.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/get-creative-delivery-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/get-creative-delivery-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/get-creative-features-async-response-submitted.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/get-creative-features-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/get-creative-features-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/get-creative-features-terminal-success.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/list-creative-formats-request.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "creative/list-creative-formats-response.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "creative/list-creatives-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/list-creatives-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/list-transformers-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/list-transformers-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/preview-creative-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/preview-creative-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/preview-render.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/sync-creatives-async-response-input-required.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/sync-creatives-async-response-submitted.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/sync-creatives-async-response-working.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/sync-creatives-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/sync-creatives-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/validate-input-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/validate-input-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/validate-input-result.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "creative/video-brief.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/account-currency-mode.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "enums/account-scope.json": {
+  "label": "module:account",
+  "reason": "M-meet"
+ },
+ "enums/account-status.json": {
+  "label": "module:account",
+  "reason": "M-sole-user"
+ },
+ "enums/action-not-allowed-reason.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "enums/action-source.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/activation-method.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/adcp-protocol.json": {
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/adjustment-kind.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/advertiser-industry.json": {
+  "label": "module:brand",
+  "reason": "M-meet"
+ },
+ "enums/age-determination-basis.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/age-verification-method.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/assessment-status.json": {
+  "label": "module:audiences-events",
+  "reason": "M-meet"
+ },
+ "enums/asset-content-type.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/attestation-claim.json": {
+  "label": "module:trusted-match",
+  "reason": "M-sole-user"
+ },
+ "enums/attribution-methodology.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/attribution-model.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/audience-evidence-methodology.json": {
+  "label": "module:audiences-events",
+  "reason": "M-meet"
+ },
+ "enums/audience-match-rate-basis.json": {
+  "label": "module:audiences-events",
+  "reason": "M-sole-user"
+ },
+ "enums/audience-resolution-method.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "enums/audience-size-precision.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "enums/audience-source.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/audience-status.json": {
+  "label": "module:audiences-events",
+  "reason": "M-sole-user"
+ },
+ "enums/audience-subject-type.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "enums/audio-channel-layout.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/audio-distribution-type.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/auth-scheme.json": {
+  "label": "kernel",
+  "reason": "K-auth-signature-extension-point"
+ },
+ "enums/availability-status.json": {
+  "label": "module:targeting",
+  "reason": "M-sole-user"
+ },
+ "enums/available-metric.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/billing-party.json": {
+  "label": "module:account",
+  "reason": "M-meet"
+ },
+ "enums/binary-verdict.json": {
+  "label": "module:content-standards",
+  "reason": "M-sole-user"
+ },
+ "enums/brand-agent-type.json": {
+  "label": "module:brand",
+  "reason": "M-sole-user"
+ },
+ "enums/browser-family.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/c2pa-watermark-action.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/canceled-by.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "enums/canonical-media-buy-action-mode.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/canonical-media-buy-action.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/catalog-action.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "enums/catalog-item-status.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "enums/catalog-type.json": {
+  "label": "module:formats",
+  "reason": "M-meet"
+ },
+ "enums/channels.json": {
+  "label": "kernel-types",
+  "reason": "KT-vocabulary"
+ },
+ "enums/cloud-storage-protocol.json": {
+  "label": "module:account",
+  "reason": "M-meet"
+ },
+ "enums/co-branding-requirement.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/collection-cadence.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "enums/collection-kind.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/collection-relationship.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "enums/collection-status.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/completion-source.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/consent-basis.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "enums/content-id-type.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "enums/content-rating-system.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-action.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-agent-capability.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-approval-status.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "enums/creative-event-reason-code.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-identifier-type.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-merge-rejection-reason.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-quality.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-selection-strategy.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-sort-field.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/creative-status.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/ctv-ad-experience.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/daast-tracking-event.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/daast-version.json": {
+  "label": "module:formats",
+  "reason": "M-meet"
+ },
+ "enums/day-of-week.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/daypart-time-granularity.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/daypart-timezone-mode.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/definition-pin-ref-kind.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-sole-user"
+ },
+ "enums/delegation-authority.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-sole-user"
+ },
+ "enums/delivery-recipient-cloud.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "enums/delivery-status.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "enums/delivery-type.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/demographic-system.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/derivative-type.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/device-platform.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/device-type.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/digital-source-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/dimension-unit.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/disclosure-persistence.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/disclosure-position.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/distance-unit.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/distribution-identifier-type.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/dooh-motion-type.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "enums/embedded-provenance-method.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/error-code.json": {
+  "label": "assembly",
+  "reason": "A-registry (variant: module-owned error codes)"
+ },
+ "enums/error-scope.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "enums/escalation-severity.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-sole-user"
+ },
+ "enums/event-type.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/exclusivity.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/feature-check-status.json": {
+  "label": "module:governance-lists",
+  "reason": "M-meet"
+ },
+ "enums/feed-format.json": {
+  "label": "module:formats",
+  "reason": "M-meet"
+ },
+ "enums/feedback-source.json": {
+  "label": "module:measurement",
+  "reason": "M-sole-user"
+ },
+ "enums/forecast-method.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/forecast-range-unit.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/forecastable-metric.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/format-id-parameter.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/frame-rate-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/frequency-cap-control-mode.json": {
+  "label": "module:targeting",
+  "reason": "M-sole-user"
+ },
+ "enums/frequency-cap-mutable-field.json": {
+  "label": "module:targeting",
+  "reason": "M-sole-user"
+ },
+ "enums/frequency-cap-scope.json": {
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/genre-taxonomy.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/geo-level.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/gop-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/governance-decision.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-sole-user"
+ },
+ "enums/governance-domain.json": {
+  "label": "module:policy",
+  "reason": "M-sole-user"
+ },
+ "enums/governance-mode.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-sole-user"
+ },
+ "enums/governance-phase.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-sole-user"
+ },
+ "enums/history-entry-type.json": {
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/http-method.json": {
+  "label": "kernel",
+  "reason": "K-auth-signature-extension-point"
+ },
+ "enums/identifier-types.json": {
+  "label": "module:inventory",
+  "reason": "M-anchor"
+ },
+ "enums/impairment-offline-state.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "enums/impairment-reason-code.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "enums/indicator-type.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "enums/installment-status.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/javascript-module-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/landing-page-requirement.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/legacy-postal-system.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/lift-dimension.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/logo-slot.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/macro-dialect.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/macro-mapping-status.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/macro-processing-operation.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/macro-resolution-reason.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/macro-resolver.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/macro-value-context.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/makegood-remedy.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/markdown-flavor.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/match-id-type.json": {
+  "label": "module:audiences-events",
+  "reason": "M-sole-user"
+ },
+ "enums/match-type.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/media-buy-action-mode.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/media-buy-frequency-cap-control-mode.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/media-buy-health.json": {
+  "label": "module:media-buy",
+  "reason": "M-sole-user"
+ },
+ "enums/media-buy-status.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/media-buy-valid-action.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/metric-scope.json": {
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/metric-type.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/metro-system.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/moov-atom-position.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/motion-level.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/notification-type.json": {
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/offering-availability-status.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-sole-user"
+ },
+ "enums/outcome-target-cost-strength.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/outcome-type.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-sole-user"
+ },
+ "enums/pacing.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/payment-terms.json": {
+  "label": "module:account",
+  "reason": "M-meet"
+ },
+ "enums/performance-baseline.json": {
+  "label": "module:measurement",
+  "reason": "M-sole-user"
+ },
+ "enums/performance-standard-metric.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/pixel-tracking-event.json": {
+  "label": "module:formats",
+  "reason": "M-meet"
+ },
+ "enums/policy-category.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "enums/policy-enforcement.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "enums/postal-system.json": {
+  "label": "module:targeting",
+  "reason": "M-anchor"
+ },
+ "enums/preview-output-format.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/pricing-model.json": {
+  "label": "kernel-types",
+  "reason": "KT-vocabulary"
+ },
+ "enums/pricing-structure.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/principal-kind.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "enums/production-quality.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/property-type.json": {
+  "label": "module:brand",
+  "reason": "M-meet"
+ },
+ "enums/proposal-decline-reason.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "enums/proposal-refinement-reason.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "enums/proposal-status.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "enums/publisher-identifier-types.json": {
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/purchase-type.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-sole-user"
+ },
+ "enums/reach-aggregation.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "enums/reach-unit.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/reporting-destination-setup-state.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "enums/reporting-finality.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-sole-user"
+ },
+ "enums/reporting-frequency.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "enums/reporting-health.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-sole-user"
+ },
+ "enums/representation-selection-strategy.json": {
+  "label": "module:creative",
+  "reason": "M-sole-user"
+ },
+ "enums/request-signing-error-code.json": {
+  "label": "kernel",
+  "reason": "K-auth-signature-extension-point"
+ },
+ "enums/response-type.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "enums/restricted-attribute.json": {
+  "label": "module:policy",
+  "reason": "M-meet"
+ },
+ "enums/right-type.json": {
+  "label": "module:brand",
+  "reason": "M-meet"
+ },
+ "enums/right-use.json": {
+  "label": "module:brand",
+  "reason": "M-meet"
+ },
+ "enums/rights-billing-period.json": {
+  "label": "module:brand-rights",
+  "reason": "M-anchor"
+ },
+ "enums/scan-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/seller-policy-decline-reason.json": {
+  "label": "module:media-buy",
+  "reason": "M-meet"
+ },
+ "enums/si-session-status.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-sole-user"
+ },
+ "enums/signal-catalog-type.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "enums/signal-source.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "enums/signal-value-type.json": {
+  "label": "module:signals",
+  "reason": "M-meet"
+ },
+ "enums/snapshot-unavailable-reason.json": {
+  "label": "module:creative",
+  "reason": "M-meet"
+ },
+ "enums/social-placement-surface.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/sort-direction.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "enums/sort-metric.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-sole-user"
+ },
+ "enums/special-category.json": {
+  "label": "module:inventory",
+  "reason": "M-sole-user"
+ },
+ "enums/specialism.json": {
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/sponsored-placement-type.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/spot-status.json": {
+  "label": "extension:spot-lifecycle",
+  "reason": "X-market-variation"
+ },
+ "enums/talent-role.json": {
+  "label": "module:brand",
+  "reason": "M-meet"
+ },
+ "enums/task-status.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "enums/task-type.json": {
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/tracker-execution-actor.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/tracker-firing-path.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/transport-mode.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/travel-time-unit.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/uid-type.json": {
+  "label": "module:audiences-events",
+  "reason": "M-meet"
+ },
+ "enums/universal-macro.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "enums/update-frequency.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "enums/url-asset-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/validation-mode.json": {
+  "label": "module:targeting",
+  "reason": "M-meet"
+ },
+ "enums/vast-media-delivery-method.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/vast-tracking-event.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/vast-version.json": {
+  "label": "module:formats",
+  "reason": "M-meet"
+ },
+ "enums/vendor-relationship.json": {
+  "label": "module:metrics",
+  "reason": "M-meet"
+ },
+ "enums/video-placement-type.json": {
+  "label": "module:inventory",
+  "reason": "M-meet"
+ },
+ "enums/view-threshold-basis.json": {
+  "label": "module:metrics",
+  "reason": "M-sole-user"
+ },
+ "enums/viewability-standard.json": {
+  "label": "module:metrics",
+  "reason": "M-anchor"
+ },
+ "enums/warning-code.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "enums/watermark-media-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/wcag-level.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/webhook-response-type.json": {
+  "label": "module:formats",
+  "reason": "M-sole-user"
+ },
+ "enums/webhook-security-method.json": {
+  "label": "kernel",
+  "reason": "K-auth-signature-extension-point"
+ },
+ "error-details/accessibility-violation.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "error-details/account-moved.json": {
+  "label": "module:account",
+  "reason": "M-anchor"
+ },
+ "error-details/account-setup-required.json": {
+  "label": "module:account-onboarding",
+  "reason": "M-anchor"
+ },
+ "error-details/action-not-allowed.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "error-details/agent-permission-denied.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/audience-too-small.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "error-details/authorization-required.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/billing-not-permitted-for-agent.json": {
+  "label": "module:account-onboarding",
+  "reason": "M-anchor"
+ },
+ "error-details/billing-not-supported.json": {
+  "label": "module:account-onboarding",
+  "reason": "M-anchor"
+ },
+ "error-details/budget-too-low.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "error-details/conflict.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/creative-merge-rejected.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "error-details/creative-rejected.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "error-details/creative-representation-unresolved.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "error-details/creative-revision-content-mismatch.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "error-details/execution-requirement-unmet.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "error-details/governance-agent-not-accepted.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "error-details/macro-resolution-failed.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "error-details/policy-violation.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "error-details/rate-limited.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/reference-definition-changed.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "error-details/requote-required.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "error-details/stale-response.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/unsupported-refinement-dimension.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "error-details/unsupported-targeting-dimension.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "error-details/vast-version-mismatch.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "error-details/vendor-error-codes.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/version-unsupported.json": {
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "extensions/adcp.json": {
+  "label": "extension:adcp-ext-namespace",
+  "reason": "X-existing-ext-namespace"
+ },
+ "extensions/extension-meta.json": {
+  "label": "kernel",
+  "reason": "K-extension-mechanism"
+ },
+ "extensions/index.json": {
+  "label": "assembly",
+  "reason": "A-registry"
+ },
+ "formats/canonical/_base.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/agent_placement.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/audio_daast.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/audio_hosted.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/audio_vast.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/coordinated_placements.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/display_tag.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/html5.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/image.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/image_carousel.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/native_in_feed.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/responsive_creative.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/seller_rendered_stateful_display.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/sponsored_placement.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/video_hosted.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "formats/canonical/video_vast.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "governance/accepted-governance-agents.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/attribute-definition.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "governance/audience-constraints.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/check-governance-request.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/check-governance-response.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/get-plan-audit-logs-request.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/get-plan-audit-logs-response.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/policy-category-definition.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "governance/policy-entry.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "governance/policy-ref.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "governance/report-plan-adjustment-request.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/report-plan-adjustment-response.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/report-plan-outcome-request.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/report-plan-outcome-response.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/reported-outcome-error.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/sync-plans-request.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "governance/sync-plans-response.json": {
+  "label": "module:campaign-governance",
+  "reason": "M-anchor"
+ },
+ "index.json": {
+  "label": "assembly",
+  "reason": "A-registry"
+ },
+ "manifest.schema.json": {
+  "label": "assembly",
+  "reason": "A-registry"
+ },
+ "media-buy/accept-proposal-async-response-input-required.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/accept-proposal-async-response-submitted.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/accept-proposal-async-response-working.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/accept-proposal-request.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/accept-proposal-response.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/acceptance-context.json": {
+  "label": "module:products",
+  "reason": "M-sole-user"
+ },
+ "media-buy/acceptance-policy-catalog.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "media-buy/acceptance-policy-profile-ref.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "media-buy/acceptance-policy-profile.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "media-buy/acceptance-policy-requirement.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "media-buy/acceptance-policy-rule.json": {
+  "label": "module:policy",
+  "reason": "M-anchor"
+ },
+ "media-buy/build-creative-async-response-input-required.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "media-buy/build-creative-async-response-submitted.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "media-buy/build-creative-async-response-working.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "media-buy/build-creative-request.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "media-buy/build-creative-response.json": {
+  "label": "module:creative",
+  "reason": "M-anchor"
+ },
+ "media-buy/buy-products-async-response-input-required.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/buy-products-async-response-submitted.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/buy-products-async-response-working.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/buy-products-request.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/buy-products-response.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/change-term-constraints.json": {
+  "label": "module:products",
+  "reason": "M-meet"
+ },
+ "media-buy/change-term.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-sole-user"
+ },
+ "media-buy/commercial-terms.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/control-media-buy-async-response-input-required.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/control-media-buy-async-response-submitted.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/control-media-buy-async-response-working.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/control-media-buy-request.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/control-media-buy-response.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/create-media-buy-async-response-input-required.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/create-media-buy-async-response-submitted.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/create-media-buy-async-response-working.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/create-media-buy-request.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/create-media-buy-response.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/decline-proposals-async-response-input-required.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/decline-proposals-async-response-submitted.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/decline-proposals-async-response-working.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/decline-proposals-request.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/decline-proposals-response.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-media-buy-delivery-request.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-media-buy-delivery-response.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-media-buys-request.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-media-buys-response.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-products-async-response-input-required.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-products-async-response-submitted.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-products-async-response-working.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-products-rejected.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-products-request.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-products-response.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-products-targeting-resolution.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-reporting-status-request.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/get-reporting-status-response.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/legacy-purchase-continuation-input.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/list-collections-request.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/list-collections-response.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/list-creative-formats-request.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "media-buy/list-creative-formats-response.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "media-buy/list-products-request.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/list-products-response.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/log-event-request.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "media-buy/log-event-response.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "media-buy/media-buy-commitment-response.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/media-buy-delivery-webhook-result.json": {
+  "label": "module:delivery-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/outcome-target.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/package-control.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/package-request.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/package-update.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/product-discovery-criteria.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/product-fields.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/product-purchase-input.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/product-purchase.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "media-buy/product-refinement.json": {
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "media-buy/proposal-budget-constraint.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/proposal-decline.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/proposal-refinement.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/provide-performance-feedback-request.json": {
+  "label": "module:measurement",
+  "reason": "M-anchor"
+ },
+ "media-buy/provide-performance-feedback-response.json": {
+  "label": "module:measurement",
+  "reason": "M-anchor"
+ },
+ "media-buy/refine-proposals-async-response-input-required.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/refine-proposals-async-response-submitted.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/refine-proposals-async-response-working.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/refine-proposals-request.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/refine-proposals-response.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/request-proposals-async-response-input-required.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/request-proposals-async-response-submitted.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/request-proposals-async-response-working.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/request-proposals-request.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/request-proposals-response.json": {
+  "label": "module:proposal-negotiation",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-audiences-request.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-audiences-response.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-catalogs-async-response-input-required.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-catalogs-async-response-submitted.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-catalogs-async-response-working.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-catalogs-request.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-catalogs-response.json": {
+  "label": "module:catalogs",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-event-sources-request.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-event-sources-response.json": {
+  "label": "module:audiences-events",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-reporting-receipts-request.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-reporting-receipts-response.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-reporting-status-request.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/sync-reporting-status-response.json": {
+  "label": "module:reliable-reporting",
+  "reason": "M-anchor"
+ },
+ "media-buy/update-media-buy-async-response-input-required.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/update-media-buy-async-response-submitted.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/update-media-buy-async-response-working.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/update-media-buy-request.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "media-buy/update-media-buy-response.json": {
+  "label": "module:media-buy",
+  "reason": "M-anchor"
+ },
+ "pricing-options/cpa-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/cpc-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/cpcv-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/cpm-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/cpp-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/cpv-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/flat-rate-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/price-breakdown.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/price-guidance.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/revenue-share-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/time-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "pricing-options/vcpm-option.json": {
+  "label": "module:products",
+  "reason": "M-anchor"
+ },
+ "property/authorization-result.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/base-property-source.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/create-property-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/create-property-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/delete-property-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/delete-property-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/delivery-record.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/get-property-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/get-property-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/list-property-lists-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/list-property-lists-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-error.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-feature-definition.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-feature-result.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-feature-value.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-feature.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-list-changed-webhook.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-list-filters.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/property-list.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/update-property-list-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/update-property-list-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/validate-property-delivery-request.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/validate-property-delivery-response.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "property/validation-result.json": {
+  "label": "module:governance-lists",
+  "reason": "M-anchor"
+ },
+ "protocol/get-adcp-capabilities-request.json": {
+  "label": "kernel",
+  "reason": "K-capability-discovery"
+ },
+ "protocol/get-adcp-capabilities-response.json": {
+  "label": "assembly",
+  "reason": "A-caps-god-object"
+ },
+ "protocol/get-principal-request.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "protocol/get-principal-response.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "protocol/get-task-status-request.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "protocol/get-task-status-response.json": {
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "protocol/list-tasks-request.json": {
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "protocol/list-tasks-response.json": {
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "protocol/sync-agent-notification-configs-request.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "protocol/sync-agent-notification-configs-response.json": {
+  "label": "module:notifications",
+  "reason": "M-anchor"
+ },
+ "protocol/sync-principal-request.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "protocol/sync-principal-response.json": {
+  "label": "module:principal",
+  "reason": "M-anchor"
+ },
+ "registries/v1-canonical-mapping.json": {
+  "label": "module:formats",
+  "reason": "M-anchor"
+ },
+ "signals/activate-signal-request.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "signals/activate-signal-response.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "signals/get-signals-async-response-submitted.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "signals/get-signals-async-response-working.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "signals/get-signals-request.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "signals/get-signals-response.json": {
+  "label": "module:signals",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-capabilities.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-context-use.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-get-offering-request.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-get-offering-response.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-identity.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-initiate-session-request.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-initiate-session-response.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-send-message-request.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-send-message-response.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-sponsored-context-receipt.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-sponsored-context.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-terminate-session-request.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-terminate-session-response.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "sponsored-intelligence/si-ui-element.json": {
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor"
+ },
+ "trust/v1/trust-acknowledgements.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "trust/v1/trust.json": {
+  "label": "module:agent-trust",
+  "reason": "M-anchor"
+ },
+ "trusted-match/available-package.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/context-match-request.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/context-match-response.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/error.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/identity-match-request.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/identity-match-response.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/offer-price.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/offer.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/provider-context-match-response.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/provider-identity-match-response.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/provider-registration.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/publisher-targeting-kv-config.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/publisher-tmpx-config.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ },
+ "trusted-match/tmpx-chunk.json": {
+  "label": "module:trusted-match",
+  "reason": "M-anchor"
+ }
+}

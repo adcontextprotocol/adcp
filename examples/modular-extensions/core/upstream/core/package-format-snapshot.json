@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/package-format-snapshot.json",
+  "title": "Package Format Snapshot",
+  "description": "Immutable package-time snapshot of one selected Product format declaration. Product-format fields remain flattened at the root for 3.x compatibility; product, placement, exact execution-version, and digest fields bind the seller's package-time decision. A contract-bearing snapshot is durably identified even when no preview or observation feature is offered.",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product",
+      "description": "Product whose effective selected format was snapshotted. Required whenever tracker_execution_contract is present."
+    },
+    "placement_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/placement-ref.json" },
+          { "required": ["publisher_domain"] }
+        ]
+      },
+      "description": "Nonempty, duplicate-free effective placement set, sorted by publisher_domain then placement_id using ascending UTF-8 bytes without Unicode normalization. Omission binds the product-wide common effective contract; it never means an inferred list of all current placements."
+    },
+    "execution_vast_version": {
+      "$ref": "/schemas/enums/vast-version.json",
+      "description": "Exact VAST execution version selected for first-class VAST tracker matching when no sibling delivery document supplies one. The value is immutable for the package."
+    },
+    "execution_daast_version": {
+      "$ref": "/schemas/enums/daast-version.json",
+      "description": "Exact DAAST execution version selected for first-class DAAST tracker matching when no sibling delivery document supplies one. The value is immutable for the package."
+    },
+    "tracker_execution_contract_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of RFC 8785 canonical JSON for tracker_execution_contract alone. Required if and only if the snapshot contains that contract."
+    },
+    "product_snapshot_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Immutable SHA-256 digest of the package format snapshot's closed product-binding preimage. Required for every contract-bearing snapshot and paired with product_id whenever present."
+    }
+  },
+  "required": ["format_kind", "params"],
+  "allOf": [
+    { "$ref": "/schemas/core/product-format-declaration.json" },
+    {
+      "if": { "required": ["tracker_execution_contract"] },
+      "then": {
+        "required": [
+          "format_option_id",
+          "product_id",
+          "tracker_execution_contract_digest",
+          "product_snapshot_digest"
+        ]
+      },
+      "else": {
+        "not": { "required": ["tracker_execution_contract_digest"] }
+      }
+    },
+    {
+      "if": { "required": ["product_snapshot_digest"] },
+      "then": { "required": ["product_id"] }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "tracker_execution_contract_digest": "lowercase-hex SHA-256 of RFC 8785 canonical JSON of tracker_execution_contract alone, with transmitted values and no materialized defaults",
+      "product_snapshot_digest": "lowercase-hex SHA-256 of RFC 8785 canonical JSON of the closed object {product_id, format, placement_refs?, execution_vast_version?, execution_daast_version?, tracker_execution_contract_digest?}; format contains every transmitted ProductFormatDeclaration field and excludes every package-only field",
+      "placement_order": "placement_refs sorted by publisher_domain then placement_id using ascending transmitted UTF-8 bytes without Unicode normalization",
+      "execution_version": "when a first-class VAST or DAAST tracker selector has no sibling exact-version delivery document, the matching execution_*_version is required and belongs to the selected option acceptance set",
+      "immutability": "changing selected format, placement set, execution version, or tracker contract requires a replacement package_id; never mutate this snapshot in place"
+    }
+  },
+  "additionalProperties": true
+}

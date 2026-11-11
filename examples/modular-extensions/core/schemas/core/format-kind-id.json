@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/format-kind-id.json",
+  "title": "Format Kind Id",
+  "description": "Open id of a format kind. Creative keeps the known values in its registry (core/canonical-format-kind.json); the build composes them into every published field typed with this id, so validation stays the same.",
+  "type": "string"
+}

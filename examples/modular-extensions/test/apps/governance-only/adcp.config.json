@@ -1,0 +1,6 @@
+{
+  "$comment": "A test app that implements governance only: no buying layer, no extension. It names its modules, so its lock pins the kernel layer and governance, one version and digest each, and its generated layer covers only the messages those own. A release of any buying layer leaves this lock and this layer byte-identical (scripts/module-release.mjs).",
+  "core": "3.3.0",
+  "modules": ["governance"],
+  "extensions": {}
+}
