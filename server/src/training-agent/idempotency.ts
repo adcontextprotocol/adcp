@@ -95,6 +95,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   'delete_collection_list',
   'delete_property_list',
   'decline_proposals',
+  'get_creative_addons',
   'log_event',
   'provide_performance_feedback',
   'request_proposals',

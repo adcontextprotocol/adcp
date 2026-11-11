@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-addon-registration.json",
+  "title": "Creative Addon Registration",
+  "description": "Operator-local configuration, never a buyer mutation surface. Exactly one live agent URL or static reference is required. Required mode has a finite deadline measured from the first failed attempt of the invoking operation.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "agent_name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$",
+      "description": "Canonical agent_name, normalized by trimming surrounding whitespace and converting to lowercase. Identity is checked against the selected vendor, never inferred from this label alone."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_url": {
+      "type": "string",
+      "minLength": 1,
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "notification_url": {
+      "type": "string",
+      "minLength": 1,
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "required",
+        "best_effort"
+      ]
+    },
+    "max_hold_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "static_reference": {
+      "type": "object",
+      "properties": {
+        "format_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "image",
+              "html5",
+              "display_tag"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "position": {
+          "type": "string",
+          "enum": [
+            "prepend",
+            "append"
+          ]
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail_url": {
+          "type": "string",
+          "minLength": 1,
+          "format": "uri",
+          "pattern": "^https://"
+        }
+      },
+      "required": [
+        "format_kinds",
+        "position",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "description": "Operator-local credential configuration. Never serialized into disclosure, vendor context, or reporting. Storage and supported credential mechanisms are implementation-specific."
+    }
+  },
+  "required": [
+    "agent_name",
+    "mode"
+  ],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "agent_url"
+      ]
+    },
+    {
+      "required": [
+        "static_reference"
+      ]
+    }
+  ],
+  "not": {
+    "required": [
+      "agent_url",
+      "static_reference"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "required"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "max_hold_seconds"
+        ]
+      }
+    }
+  ]
+}

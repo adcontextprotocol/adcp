@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/get-creative-addons-request.json",
+  "title": "Get Creative Addons Request",
+  "description": "One operation-scoped batch from an authorized Sales Agent to a registered addon vendor. Authentication establishes operator identity; operator_name is informational.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "operator_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operator_url": {
+      "type": "string",
+      "minLength": 1,
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "publisher_domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Vendor-assigned account identity; not the buyer execution account."
+    },
+    "placement": {
+      "type": "object",
+      "properties": {
+        "property_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "product_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "product"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "creatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "creative"
+          },
+          "format_kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "html5",
+              "display_tag"
+            ]
+          },
+          "dimensions": {
+            "type": "object",
+            "properties": {
+              "w": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "h": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "w",
+              "h"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "creative_id",
+          "format_kind"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "prior_failures": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/creative-addon-failure.json"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "operator_name",
+    "operator_url",
+    "publisher_domain",
+    "creatives"
+  ],
+  "additionalProperties": false,
+  "x-tool-summary": "Return seller-adjacent fragments from creative context without receiving buyer creative content.",
+  "x-mutates-state": true,
+  "x-idempotency-key-required": true,
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "privacy": "No creative payload, markup, asset URL, or buyer secrets may appear anywhere, including context and ext.",
+      "creative_identity": "creative_id values are unique within one batch; every returned creative_id MUST be a member of this batch.",
+      "idempotency": "The key identifies one vendor evaluation attempt. Ambiguous/in-flight retries preserve key and exact payload. After a definitive unusable result, a fresh attempt may use a new key and new failure feedback within the same seller task and original hold deadline. Distinct addon operations never reuse live fragments."
+    }
+  }
+}

@@ -25,6 +25,13 @@
           "items": {
             "type": "object",
             "properties": {
+              "creative_addons": {
+                "allOf": [
+                  { "$ref": "/schemas/core/creative-addon-disclosure.json" },
+                  { "properties": { "scope": { "const": "account" } } }
+                ],
+                "description": "Account-scoped current configuration for this successful response row. Completeness is relative to this account, not all product-specific rules. No credentials or loader bodies are disclosed."
+              },
               "account_id": {
                 "type": "string",
                 "description": "Seller-assigned account identifier and the account's identity. A seller never issues an account_id it might later change. Sellers MUST return it on every non-failed provisioning result, except a pending_approval row that may still resolve to a different account: that row carries request_id (experimental, account.requests) and no account_id. Sellers MUST accept account_id as an AccountRef on every account-scoped task and MUST NOT change it for the life of the account. Buyers store it and send it on subsequent create_media_buy and other account-scoped operations.",
@@ -247,6 +254,10 @@
               ]
             },
             "allOf": [
+              {
+                "if": { "properties": { "action": { "const": "failed" } }, "required": ["action"] },
+                "then": { "not": { "required": ["creative_addons"] } }
+              },
               {
                 "description": "Settings-update-mode results (echoing the request's `account` field) anchor the row on `account` alone; provisioning-mode results anchor it on the buyer-declared `brand` + `operator` instead, never both. Mirrors the same discriminator sync_governance's response rows already use.",
                 "if": {

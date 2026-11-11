@@ -125,7 +125,7 @@ const MCP_ROLE_PROFILE_LINE_TOOLS = {
     '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue', 'request_account'],
   },
   creative: {
-    '3.3.0': ['request_account'],
+    '3.3.0': ['request_account', 'get_creative_addons'],
   },
 };
 

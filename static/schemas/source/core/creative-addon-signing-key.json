@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-addon-signing-key.json",
+  "title": "Creative Addon Signing Key",
+  "description": "Dedicated public key for adcp/addon-chain/v1, resolved through trusted Sales Agent identity and existing publisher pins. This schema does not establish authorization or a trust anchor.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "kid": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kty": {
+      "type": "string",
+      "const": "OKP"
+    },
+    "crv": {
+      "type": "string",
+      "const": "Ed25519"
+    },
+    "alg": {
+      "type": "string",
+      "const": "EdDSA"
+    },
+    "use": {
+      "type": "string",
+      "const": "sig"
+    },
+    "key_ops": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "const": "verify"
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "adcp_use": {
+      "type": "string",
+      "const": "addon-chain-signing"
+    },
+    "x": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "kid",
+    "kty",
+    "crv",
+    "alg",
+    "use",
+    "key_ops",
+    "adcp_use",
+    "x"
+  ],
+  "additionalProperties": false
+}

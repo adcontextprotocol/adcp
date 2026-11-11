@@ -1,0 +1,291 @@
+---
+title: Get Creative Addons
+description: Operator-registered fragments adjacent to an unchanged buyer creative, with pre-commit disclosure and signed execution evidence.
+---
+
+<Warning>
+Proposed for AdCP 3.3 under [#6700](https://github.com/adcontextprotocol/adcp/issues/6700).
+This specification draft implements the proposed
+[decision addendum](https://github.com/adcontextprotocol/adcp/issues/6700#issuecomment-6179907162).
+Working Group approval, the signing-profile decision, and release readiness remain pending.
+</Warning>
+
+`get_creative_addons` returns fragments to a Sales Agent that controls the adjacent
+execution container. The buyer creative remains the authoritative library asset.
+The Sales Agent MUST NOT rewrite it or replace it with the assembled container.
+Addon vendors MUST NOT receive its payload, including through `context`, `ext`,
+asset URLs, or diagnostics. Vendors that need the creative for evaluation use the
+existing creative-governance contract.
+
+The v1 formats are `image`, `html5`, and `display_tag`. An image executes within a
+seller container; an HTML5 bundle or document remains unchanged inside that
+container; a third-party display tag remains opaque and byte-preserved. A seller
+MUST NOT advertise a route unless it controls an adjacent container, can preserve
+the buyer asset, and can support any prerequisite required by its registered addons.
+Video and audio tracker insertion are outside this task.
+
+The addon operation occurs when materializing a delivery or trafficking
+representation. It is not an impression-time network call. One stored creative
+can therefore have different addon chains on different served variants.
+
+## Discovery and registration
+
+An addon vendor MUST declare `creative` in `supported_protocols`,
+`creative-addon` in `specialisms`, its `agent_name`, and the top-level
+`creative_addon` capability. The latter is separate from
+`creative.supported_formats`, which describes creative operations.
+
+```json
+{
+  "$schema": "/schemas/core/creative-addon-capability.json",
+  "supported_format_kinds": ["image", "html5", "display_tag"],
+  "positions": ["prepend", "append"],
+  "signed_chain": { "required": true, "profile": "adcp/addon-chain/v1" }
+}
+```
+
+A Sales Agent advertising assembly support also publishes `creative_addon` and
+`creative` protocol support. It claims the `creative-addon` vendor specialism only
+if it exposes the fragment task itself. The new obligations apply when participants
+negotiate AdCP 3.3 or later and addon support. An older or non-supporting participant
+MUST NOT be treated as acknowledging undisclosed addon configuration. Ordinary
+transactions outside this feature keep their existing contract.
+
+Registration is an operator action, outside buyer task inputs. The
+[registration schema](https://adcontextprotocol.org/schemas/latest/core/creative-addon-registration.json) describes the
+configuration; it creates no registration API. Each entry has exactly one
+`agent_url` or `static_reference`. A live registration's `agent_name` MUST match the
+vendor declaration after trimming surrounding whitespace and lowercasing. Names
+MUST be unique within a registration list after that normalization; URLs and
+normal agent authentication establish identity, not the label alone.
+
+`mode` is `required` or `best_effort`. Required entries MUST configure a positive,
+finite integer `max_hold_seconds`. Authentication stays operator-local. Credentials
+MUST NOT enter buyer disclosure or reporting. Removing a registration stops new
+calls on the next operation and does not erase past chains. A registration or
+policy change during a held operation requires re-resolution against the seller's
+current policy; it cannot extend the original deadline or silently remove a
+required obligation from that operation.
+
+A static registration supplies a fixed `content` and `position`, with supported
+`format_kinds` and optional `detail_url`. It makes no vendor call. The Sales Agent
+computes its content hash and applies the same validation and signing obligations
+as for live fragments. Seller first-party measurement loaders use this same
+registration contract. A chain attributes the seller's assembly claim; it does not
+assign counting authority, which remains governed by `billing_measurement`.
+Disclosure of broader trackers is coordinated through
+[#6878](https://github.com/adcontextprotocol/adcp/issues/6878).
+
+## Request and response
+
+The Sales Agent MUST send one batch per vendor for all creative contexts sharing
+an operation and placement. It MUST exclude undeclared format kinds before calling.
+Separate placement contexts require separate batches. `operator_url` is verified
+through normal agent authentication; `operator_name` is an informational label.
+`account_id`, if present, is the vendor-assigned account, not a buyer execution
+account. Duplicate `creative_id` values within a batch are invalid.
+
+```json
+{
+  "$schema": "/schemas/creative/get-creative-addons-request.json",
+  "adcp_version": "3.3",
+  "idempotency_key": "addon-operation-0001",
+  "operator_name": "Example Sales",
+  "operator_url": "https://sales.example/agent",
+  "publisher_domain": "publisher.example",
+  "placement": { "property_id": "homepage", "product_id": "display" },
+  "creatives": [
+    { "creative_id": "creative-1", "format_kind": "image", "dimensions": { "w": 300, "h": 250 } }
+  ]
+}
+```
+
+The vendor returns `addons`, whose items follow the
+[fragment schema](https://adcontextprotocol.org/schemas/latest/core/creative-addon-fragment.json). Each contains a
+requested `creative_id`, a declared `position`, exact UTF-8 `content`, and its
+`content_hash`. Optional `vendor_ref` is an opaque policy/version reference.
+Optional `detail_url` MUST use HTTPS and enforce access control before exposing
+nonpublic evidence. It confers no right to retrieve fragment source.
+
+```json
+{
+  "$schema": "/schemas/creative/get-creative-addons-response.json", "status": "completed", "adcp_version": "3.3", "addons": [] }
+```
+
+An empty array is a valid vendor response. For a best-effort registration it means
+a deliberate omission; for a required registration it fails the seller requirement.
+Vendors cannot exempt themselves from required mode with a `not_applicable` result.
+The vendor task is synchronous in v1. Terminal vendor errors use `status: failed`
+and `errors`, without `addons`, following the existing transport error mapping.
+Async holds belong to the invoking seller task.
+
+The new task requires `idempotency_key` and follows the protocol's idempotency
+contract. A seller operation may contain several vendor evaluation attempts.
+The vendor key identifies one evaluation attempt; the seller's existing `task_id`
+and original required-hold deadlines identify the enclosing operation.
+
+An ambiguous transport outcome or an in-flight evaluation MUST be retried with the
+same key and identical payload, including `prior_failures` and `context`. The
+seller MUST NOT use a new key to bypass an unresolved attempt. Once that attempt
+has definitively completed with an empty, failed, or seller-invalidated response,
+the seller MAY start a fresh evaluation with a new key if the original hold still
+permits recovery. That new request can carry the prior attempt's failure feedback.
+It retains the same seller task and original per-vendor deadline. A key MUST NOT
+be reused with new feedback or other changed request content.
+
+For example, an empty required result is recorded under vendor key A. A new
+attempt under key B can report that failure and obtain repaired fragments while
+the seller task remains working. A timeout of attempt B retries B unchanged; it
+does not start C until B's outcome is resolved. At the deadline the seller task
+fails even if a vendor attempt remains unresolved; a late response cannot resume
+the failed task or authorize delivery.
+
+A distinct addon operation uses fresh vendor keys. Exact replays of one attempt
+reuse its recorded outcome; live fragments MUST NOT be cached across distinct
+operations. The seller MUST avoid copying buyer correlation data into vendor
+context; it supplies vendor-safe correlation and receives that `context` echoed
+unchanged.
+
+## Validation, ordering, and failure
+
+The Sales Agent MUST verify each fragment's hash before placement and validate
+membership in the request batch, the declared format, and allowed position. It
+also checks compatibility with its execution container. A malformed response or
+unknown creative identity fails the vendor batch. An invalid fragment attributable
+to a known creative discards all of that vendor's fragments for that creative;
+valid fragments from unrelated creative contexts can remain eligible. The seller
+MUST NOT partially apply a vendor's response to an affected creative.
+
+For each creative, final placement is all `prepend` fragments in registration
+order, the unchanged buyer creative, then all `append` fragments in registration
+order. Fragments from the same vendor and position preserve response order.
+`fragment_index` is the zero-based index within that vendor's fragments for this
+creative before sorting by position. Indices MUST be unique and contiguous from zero for each applied vendor/creative set, even when fragments occupy different positions. Static references use index zero.
+
+Placement order does not promise completion order of asynchronous scripts. If a
+required addon needs a prerequisite before creative invocation, the seller MUST
+provide that prerequisite on the advertised route, or mark the route unsupported.
+This task defines no general dependency scheduler.
+
+| Failure | Classification |
+| --- | --- |
+| [`ADDON_UNREACHABLE`](/docs/building/verification/compliance-catalog#error-code-addon-unreachable) | Connection failure or call timeout |
+| [`ADDON_AUTH_FAILED`](/docs/building/verification/compliance-catalog#error-code-addon-auth-failed) | Vendor rejected operator credentials |
+| [`ADDON_HASH_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-addon-hash-mismatch) | Content bytes do not match the declared hash |
+| [`ADDON_INVALID_POSITION`](/docs/building/verification/compliance-catalog#error-code-addon-invalid-position) | Unsupported or undeclared relative position |
+| [`ADDON_UNDECLARED_FORMAT`](/docs/building/verification/compliance-catalog#error-code-addon-undeclared-format) | Undeclared format or unknown creative identity |
+| [`ADDON_MALFORMED_FRAGMENT`](/docs/building/verification/compliance-catalog#error-code-addon-malformed-fragment) | Invalid container content or a required vendor supplied no valid fragment |
+
+For `best_effort`, the seller proceeds and records one omission for the affected
+registration, with `reason: vendor_omission` for a valid empty response or
+`reason: failure` and `error_code` for a failure. These states MUST remain distinct.
+
+For `required`, the affected execution MUST NOT be trafficked or delivered without
+the required fragments. If its invoking task supports async execution, it uses
+that task's existing `submitted`/`working` flow and stable `task_id`. The deadline is
+the first failed attempt time plus `max_hold_seconds`; retries, restarts, and policy
+re-resolution MUST NOT extend it. If multiple required vendors fail, each retains
+its own original deadline; expiry of any unresolved requirement fails the affected
+execution. Successful recovery before all applicable deadlines resumes the same
+operation. Expiry, or an invoking task without async support, returns the normal
+terminal error arm with [`ADDON_REQUIRED_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-addon-required-unavailable) and `recovery: terminal`.
+
+The error SHOULD identify affected `creative_ids` and the disclosed `agent_name`
+in structured details, without credential or internal diagnostic leakage. The
+buyer creative's lifecycle MUST remain unchanged. The seller MUST NOT silently
+downgrade required mode. Buyers follow task status while nonterminal; later retries
+use the invoking task's existing idempotency contract and grant no policy override.
+
+The operator MAY impose vendor-count, fragment-size, and latency limits. Exceeding
+a local limit follows the same required/best-effort behavior. Silent truncation is
+prohibited. V1 declares no universal numerical cap or `max_latency_ms` capability.
+
+### Vendor failure feedback
+
+`prior_failures` carries only the receiving vendor's pending failures using the
+[failure schema](https://adcontextprotocol.org/schemas/latest/core/creative-addon-failure.json). The seller clears an
+echoed batch only after receiving a successful task response that acknowledges
+receipt by completing that call. A failed or ambiguous call retains the entries;
+vendors MUST tolerate duplicate feedback. Optional `notification_url` receives
+`{ "prior_failures": [...] }` POST bodies using the same entry shape and configured
+operator authentication. A successful 2xx notification acknowledges that batch;
+failed pushes retain it for retry or the next task call. No separate AdCP task is
+introduced. URLs follow existing outbound safe-fetch and credential-scoping rules.
+
+## Disclosure before commitment
+
+`creative_addons` on [`get_products`](/docs/media-buy/task-reference/get_products) product rows describes known product scope;
+canonical [`list_products`](/docs/media-buy/task-reference/list_products) rows expose the same field for direct purchase.
+[`sync_accounts`](/docs/accounts/tasks/sync_accounts) may return account-scoped configuration on each successful account
+row. A failed row MUST NOT present configuration as resolved. Account scope inherits
+the identity of that row and does not imply completeness for a particular product.
+The account `revision` is not an addon acknowledgment token.
+
+A disclosure states `scope`, `complete`, and its ordered `vendors`, with the signing
+profile. Omission means undeclared. Only `complete: true` with an empty `vendors`
+array means an explicitly empty set. Each vendor discloses its normalized identity,
+source, mode, declared formats and positions, and required hold period if applicable.
+Static references also disclose their fixed `static_content_hash`, without content.
+The seller resolves account and product rules into one complete product-scoped
+snapshot; the buyer MUST NOT concatenate partial disclosures or infer precedence.
+
+Before spend commitment the seller MUST establish that the complete configuration
+seen by the buyer still applies. V1 uses these existing binding mechanisms:
+
+| Purchase path | Binding and freshness rule |
+| --- | --- |
+| [`request_proposals`](/docs/media-buy/task-reference/request_proposals) / [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) → [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) | Each `commercial_terms.purchases[]` carries its complete resolved `creative_addons`. Existing `terms_digest` covers this field. At finalize and atomically at acceptance, the seller compares the snapshot with current effective configuration. A change requires a successor proposal; return [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected) before commitment. |
+| `list_products` → [`buy_products`](/docs/media-buy/task-reference/buy_products) | The returned product feed must be resolved for the authenticated account and include complete product disclosures. The existing `feed_version` identifies that immutable account-scoped view and changes whenever an effective addon rule changes. At purchase, the seller checks that version and current configuration atomically, records the exact disclosure in the accepted proposal, and rejects stale terms with `TERMS_REJECTED`. A global or partial feed that cannot bind account-specific configuration cannot support this route. |
+| Legacy [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) / [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), or any path lacking either binding | Addon-enabled spend commitments return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation. The caller can use a supported canonical path. A future binding needs explicit schema and WG review before the path is advertised. |
+
+This adds no buyer-echoed configuration token. `get_products` or `sync_accounts`
+can inform compatibility, but a successful read alone does not prove freshness at
+commitment. The check, accepted snapshot, and commitment MUST be atomic with respect
+to configuration changes. The same rule applies to amendments that add or change
+addon-enabled delivery obligations. Non-spend operations and cancellation retain
+their existing lifecycle contracts.
+
+A buyer can decline a transaction before commitment. No request may disable,
+substitute, or reorder a seller-required addon.
+
+### Changes after commitment
+
+The accepted snapshot records the configuration disclosed at purchase. Publisher
+authority continues after purchase: the seller MAY change its execution
+configuration after commitment. It MUST retain the
+accepted snapshot and each actual execution's later configuration; a new
+configuration cannot overwrite historical evidence or create a runtime buyer veto.
+Each changed execution configuration is reported on a distinct immutable variant
+with its own signed chain, as specified below. The purchase binding establishes
+freshness at commitment; it does not promise the same addon set for the entire buy.
+Code deployed outside this addon mechanism remains outside its completeness claim.
+
+## Signed delivery reporting
+
+Every execution represented by negotiated addon support carries an `addon_chain`
+on its [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) variant, including an empty configured set,
+static-only chains, and best-effort omissions. The reporting row MUST identify the
+source creative and its `media_buy_id`. A change in applied content, omissions, or
+effective configuration creates a distinct immutable `variant_id`; reporting MUST
+NOT aggregate different chains under one variant. The chain is never written back
+to [`list_creatives`](/docs/creative/task-reference/list_creatives) or the buyer's creative asset.
+
+The chain contains the actual complete configuration and ordered applied/omitted
+entries. Applied entries expose their fragment hash and UTF-8 byte count. Fragment
+bodies and credentials MUST NOT appear. Entries include their `registration_index`
+so a verifier can match them to the disclosed configuration. Applied entries appear
+first in deterministic placement order; omitted entries follow in registration
+order. `order` is each entry's zero-based index in that serialized list, not a
+claim that an omitted fragment executed.
+
+Every applicable registered vendor MUST have either its applied fragments or one
+omission; required vendors cannot be omitted on a delivered execution. Each entry's
+identity and source MUST match its registration. Vendors whose declared formats do
+not cover the creative are outside that execution's applicable set.
+
+The [addon-chain signing profile](/docs/creative/addon-chain-signing) defines the
+exact hash and trust checks. The signature attributes the Sales Agent's assembly
+claim. It does not independently prove browser execution or measurement accuracy.
+Retain chains and the verification evidence for the existing reporting/audit
+retention period. Independent vendor signatures and a separate audit retrieval
+task are deferred.

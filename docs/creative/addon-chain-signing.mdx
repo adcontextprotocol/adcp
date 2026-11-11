@@ -1,0 +1,185 @@
+---
+title: Addon-chain signing
+description: Proposed AdCP 3.3 Ed25519 object-signature profile for seller-adjacent execution evidence.
+---
+
+<Warning>
+This is the proposed `adcp/addon-chain/v1` profile for
+[#6700](https://github.com/adcontextprotocol/adcp/issues/6700).
+[DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md)
+keeps legacy discovery working through 3.x and schedules broader JWS document
+signing for 3.4. This bounded use in 3.3 requires explicit human approval and a
+recorded decision on that sequencing. No approval is implied by this draft.
+</Warning>
+
+This profile signs the Sales Agent's assembly claim from
+[`get_creative_addons`](/docs/creative/task-reference/get_creative_addons).
+Its signature covers the ordered entries and actual effective configuration, bound
+to the unchanged creative and its delivery context. It does not change Web Bot
+Auth or substitute a transport signature for retained object evidence.
+
+## Encoding and hashes
+
+V1 uses SHA-256, encoded as `sha256:` followed by 64 lowercase hexadecimal digits.
+Every JSON hash input uses [RFC 8785 JCS](https://www.rfc-editor.org/rfc/rfc8785)
+and UTF-8 with no BOM. Producers and verifiers MUST reject duplicate object keys,
+invalid Unicode, non-finite numbers, or data outside JCS's supported domain.
+No Unicode, whitespace, newline, or URL normalization is performed on string
+values. Hashing and parsing MUST use the same input bytes.
+
+- `content_hash`: SHA-256 of the exact UTF-8 fragment `content` bytes. `bytes` is
+  their byte count, not the number of characters. The seller validates the hash
+  before assembly. Static references use the same rule.
+- `chain_hash`: SHA-256 of the JCS encoding of the complete `entries` array,
+  including order and every optional metadata field present. It excludes the
+  surrounding object and signature.
+- `configuration_hash`: SHA-256 of the JCS encoding of the complete
+  `configuration` object carried beside the entries.
+- `creative_hash`: SHA-256 of a format-specific JCS object defined below. It
+  identifies the selected buyer creative material immediately before addon
+  assembly, excluding the seller container and all addon fragments.
+
+| Format | Exact `creative_hash` input |
+| --- | --- |
+| `image` | `{ "format_kind": "image", "content_hash": H }`, where `H` hashes the exact selected image entity bytes before addon assembly, after transport content decoding and before any addon processing. A URL alone is insufficient. |
+| `html5` | `{ "format_kind": "html5", "content_type": T, "content_hash": H }`. `T` is `application/zip` for the exact accepted bundle archive bytes, or `text/html` for the exact UTF-8 buyer document bytes. `H` hashes those bytes. Do not re-zip, normalize markup, or hash the seller wrapper. A route that cannot retain the source bytes is unsupported. |
+| `display_tag` | `{ "format_kind": "display_tag", "asset": A }`, where `A` is the complete selected canonical display-tag asset object, including its `delivery_type` and every supplied field. Include both URLs for `paired_redirect`. Preserve macro tokens; hash before the existing authorized macro-resolution step. Do not parse or rewrite tag markup. |
+
+For remote images or bundles, the seller MUST retain the exact material associated
+with that execution so later URL changes cannot redefine it. Buyers verify the
+creative hash against the independently known selected material and source
+revision. If they cannot obtain that material, they may verify the seller signature
+but MUST NOT describe the creative-content binding as independently verified.
+A display-tag or addon loader hash commits to the tag/loader, not to code fetched
+later from a mutable URL. This profile does not make that remote code immutable.
+
+## JWS shape
+
+`signed_attestation` carries `profile: adcp/addon-chain/v1` and the flattened
+[JWS](https://www.rfc-editor.org/rfc/rfc7515) members `protected`, `payload`, and
+`signature`. All three use canonical, unpadded base64url. The profile member is
+AdCP metadata beside the flattened JWS; no unprotected JWS header is allowed.
+Detached payloads and `b64: false` are unsupported.
+
+The protected header has exactly these members:
+
+```json
+{
+  "$schema": "/schemas/core/creative-addon-chain.json#/definitions/ProtectedHeader", "alg": "EdDSA", "kid": "seller-addon-key", "typ": "adcp-addon-chain+jws" }
+```
+
+`EdDSA` means Ed25519 in v1. Verifiers MUST reject every other algorithm or type,
+unknown header members, and any embedded `jwk`, `jku`, or `x5u` trust source.
+The header need not be JCS-serialized; its transmitted bytes are signed verbatim.
+
+`payload` is base64url of the exact UTF-8 JCS encoding of the claims object.
+After decoding and parsing, a verifier MUST compare its JCS serialization to the
+decoded bytes. The signing input is ASCII
+`BASE64URL(protected-header-bytes) + "." + BASE64URL(payload-bytes)`.
+The 64-byte Ed25519 signature is base64url-encoded.
+
+The [claims schema](https://adcontextprotocol.org/schemas/latest/core/creative-addon-chain.json#/definitions/Claims)
+requires `typ`, `agent_url`, `publisher_domain`, `creative_id`, `creative_hash`,
+`chain_hash`, `configuration_hash`, `format_kind`, `variant_id`, `media_buy_id`,
+and integer NumericDate `iat`. Include `package_id`, `placement_id`, `revision_id`,
+and `locale_variant_id` whenever applicable to the associated reporting context.
+A verifier MUST compare both presence and value against trusted reporting context,
+including identifiers inherited from the containing creative or media-buy row.
+It MUST reject a missing, extra, or mismatched scoped identifier. Unknown claims
+are rejected in v1; extensions require a reviewed profile version.
+
+A chain cannot be moved between variants, revisions, media buys, or publishers.
+Any execution requiring additional scoping that v1 cannot unambiguously express
+is unsupported until a reviewed profile supplies it.
+
+## Signing authority
+
+V1 uses a dedicated public Ed25519 key conforming to the
+[addon signing-key schema](https://adcontextprotocol.org/schemas/latest/core/creative-addon-signing-key.json): `kty`
+`OKP`, `crv` `Ed25519`, `alg` `EdDSA`, `use` `sig`, `key_ops` `["verify"]`, and
+`adcp_use` `addon-chain-signing`, plus `kid` and the public `x` value. Public JWKs
+MUST NOT include private `d`. The key MUST NOT reuse transport-signing material.
+Introducing this purpose requires the signing-profile approval noted above.
+
+The verifier starts with the expected Sales Agent and publisher from its trusted
+transaction context, not from the attestation. It resolves the agent through the
+existing supported 3.x identity rules, including the selected
+`identity.brand_json_url` entry and that agent's JWKS. The signed `agent_url` must
+exactly match the selected agent identity under those rules. Preserve existing
+safe-fetch, endpoint-authorization, and key-refresh requirements; a presented
+attestation cannot select a replacement identity or arbitrary key URL.
+
+Where publisher pins apply, the signing public key MUST match both the authorized
+agent JWKS and the publisher's applicable pin by key material, using the existing
+[RFC 7638](https://www.rfc-editor.org/rfc/rfc7638) JWK-thumbprint comparison.
+A shared `kid` is insufficient. Conflicting duplicate key IDs or purpose metadata
+fail verification. The publisher is derived from trusted inventory/transaction
+context; the signed `publisher_domain` must agree. Pin absence follows the existing
+trust rules and MUST NOT be interpreted as permission to bypass a required pin.
+
+## Verification and retained history
+
+A verifier MUST:
+
+1. Validate the chain and decoded header/claims schemas. Enforce canonical encoding
+   and the profile identifier.
+2. Resolve authorized key material from trusted identity and publisher context.
+   Enforce dedicated purpose, algorithm, and revocation checks.
+3. Verify the JWS signature and exact canonical payload bytes.
+4. Recompute `chain_hash` and `configuration_hash`; compare every covered identity
+   to the reporting context and the creative hash to independently known material.
+5. Validate configuration coverage and ordering. Each applicable required vendor
+   has applied entries only; each applicable best-effort vendor has fragments or
+   exactly one omission. Entry identities, source, declared position, and static
+   hash agree with the indexed registration. No fragment body is exposed.
+
+`iat` is a nonnegative integer number of seconds since the Unix epoch. Reject an
+issuance more than 60 seconds in the future relative to the trusted verification
+clock. Historical chains do not expire solely because they are old; retention and
+key authority still govern whether they can be verified.
+
+Rotation adds a fresh `kid` and distinct key material. Sellers SHOULD overlap
+public keys through the reporting retention period and MUST retain verifiable key
+authority evidence for historical chains. A verifier may use a retained key only
+with a trusted record that it was authorized for this agent and publisher at the
+relevant time. Archiving a bare key or trusting a key embedded in a chain is
+insufficient. Do not reuse a `kid` for different material.
+
+Either the agent JWKS or the publisher pin can revoke authorization. Apply every applicable `revoked_at`, so the earliest revocation controls; conflicting purpose metadata also fails verification. Reject chains with `iat` at or after any applicable revocation. A compromised
+key could backdate `iat`, so an earlier timestamp alone cannot establish validity.
+Historical verification after revocation additionally requires a trusted record
+that the exact signed JWS was observed and verified before revocation, together
+with the then-valid agent authorization and applicable publisher pin. The
+observation time must be at or after `iat` and before revocation. Store a digest of
+the exact JWS and the covered chain/configuration alongside that evidence so it
+cannot be transplanted to another signature. A publisher's explicit compromise
+policy may invalidate earlier evidence as well; that policy takes precedence.
+
+Without sufficient historical authority or observation evidence, report the chain
+as unverifiable. Do not silently trust a removed key, an old cache without authority
+evidence, or a self-asserted signing time. Refreshing JWKS follows existing bounded
+refresh rules and does not permit redirecting discovery through the JWS.
+
+Missing evidence or any failed check MUST NOT be reported as a verified addon
+chain. An optional `detail_url` can expose authorized evidence but cannot override
+these checks. A signature is the seller's claim about assembly, not independent
+proof that JavaScript ran or that a measurement counted correctly.
+
+## Reproducible evidence and migration
+
+Published vectors live at
+`static/compliance/source/test-vectors/creative-addon-chain.json`. They cover each
+format, static/live sources, best-effort omission, and retained history. Negative
+vectors cover altered metadata, unauthorized key purposes, mismatched key pins,
+wrong delivery identities, noncanonical payloads, and revocation. The test key is
+public RFC 8032 sample material and cannot be used for an operational signer.
+
+Run `node scripts/generate-creative-addon-vectors.cjs --check` and
+`node --test tests/creative-addon-vectors.test.cjs` to reproduce the evidence.
+These executable reference checks do not replace the required seller/buyer partner
+integration against exact protocol versions.
+
+A later migration to the 3.4 document-signing framework requires explicit profile
+or version negotiation. Previously issued v1 chains retain their original
+interpretation and verification rules. This draft makes no change to DR-0023's
+transport identity or Web Bot Auth behavior.

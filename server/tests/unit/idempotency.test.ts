@@ -77,6 +77,7 @@ describe('idempotency facade', () => {
         'report_media_buy_issue',
         'si_initiate_session', 'si_send_message',
         'acquire_rights', 'update_rights', 'creative_approval',
+        'get_creative_addons',
       ]) {
         expect(isMutatingTool(name), `${name} should be mutating`).toBe(true);
       }

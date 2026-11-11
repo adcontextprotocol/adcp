@@ -1,0 +1,119 @@
+id: creative_addon
+version: "1.0.0"
+title: "Creative addon vendor"
+protocol: creative
+category: creative_addon
+summary: "Fragment-only vendor discovery and operation-scoped generation for seller-controlled adjacent execution."
+status: preview
+track: creative
+required_tools:
+  - get_adcp_capabilities
+  - get_creative_addons
+
+narrative: |
+  A Sales Agent asks a registered addon vendor for fragments using creative
+  context only. The vendor has no buyer asset or markup. This specialism checks
+  the vendor wire contract; it does not certify a seller's assembly runtime,
+  key resolution, signing implementation, or spend-commitment atomicity.
+  Seller signing and failure cases are published separately in
+  test-vectors/creative-addon-chain.json. A named seller/buyer integration is
+  still a release gate for the proposed 3.3 feature.
+
+agent:
+  interaction_model: stateless_transform
+  capabilities:
+    - creative_addon
+caller:
+  role: sales_agent
+  example: "Example Sales"
+prerequisites:
+  description: |
+    Use an authenticated operator identity authorized to request fragments.
+    The example image context must be supported by the registered vendor.
+    Vendors supporting only another declared format substitute that format
+    when exercising the same contract. No buyer creative payload is supplied.
+
+phases:
+  - id: discovery
+    title: "Discover the vendor contract"
+    steps:
+      - id: capabilities
+        title: "Verify addon capability and mandatory signing profile"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        expected: "Declare the creative protocol and creative-addon specialism, with the mandatory signed-chain profile."
+        sample_request:
+          context:
+            correlation_id: "creative_addon--capabilities"
+        validations:
+          - check: response_schema
+            description: "Capability response conforms to the public schema"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "creative"
+            description: "Vendor participates in the creative protocol"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "creative-addon"
+            description: "Vendor claims fragment-only addon support"
+          - check: field_present
+            path: "agent_name"
+            description: "Operator can check the declared vendor identity"
+          - check: field_value
+            path: "creative_addon.signed_chain.required"
+            value: true
+            description: "Signed assembly evidence is mandatory"
+          - check: field_value
+            path: "creative_addon.signed_chain.profile"
+            value: "adcp/addon-chain/v1"
+            description: "Vendor declares the supported signature profile"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_addon--capabilities"
+            description: "Caller context is echoed unchanged"
+  - id: fragments
+    title: "Request operation-scoped fragments"
+    steps:
+      - id: image_context
+        title: "Return fragments without receiving creative content"
+        task: get_creative_addons
+        schema_ref: "creative/get-creative-addons-request.json"
+        response_schema_ref: "creative/get-creative-addons-response.json"
+        doc_ref: "/creative/task-reference/get_creative_addons"
+        stateful: true
+        expected: |
+          Return a completed addons response. An empty array is a deliberate
+          vendor omission; seller-required handling is exercised separately.
+          Every returned creative_id must be creative-1, and every fragment's
+          content_hash must hash its exact UTF-8 content. The automated checks
+          below cover wire shape; membership and hash checks need the seller
+          integration evidence and are not claimed by response_schema.
+        sample_request:
+          adcp_version: "3.3"
+          idempotency_key: "$generate:uuid_v4#creative_addon_fragments"
+          operator_name: "Example Sales"
+          operator_url: "https://sales.example/agent"
+          publisher_domain: "publisher.example"
+          creatives:
+            - creative_id: "creative-1"
+              format_kind: "image"
+              dimensions: { w: 300, h: 250 }
+          context:
+            correlation_id: "creative_addon--fragments"
+        validations:
+          - check: response_schema
+            description: "Fragment response conforms to the public schema"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "The vendor completed this batch"
+          - check: field_present
+            path: "addons"
+            description: "The completed response includes the fragments or an explicit empty array"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_addon--fragments"
+            description: "Caller context is echoed unchanged"

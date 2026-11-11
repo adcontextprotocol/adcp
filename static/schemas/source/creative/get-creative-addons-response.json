@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/get-creative-addons-response.json",
+  "title": "Get Creative Addons Response",
+  "description": "Terminal vendor result. addons=[] is an intentional vendor omission, which the seller MUST treat as failure for a required registration. A terminal errors result supplies no fragments.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "required": [
+          "addons"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "completed"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "addons": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/creative-addon-fragment.json"
+      },
+      "minItems": 0
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "addons"
+      ]
+    },
+    {
+      "required": [
+        "errors"
+      ]
+    }
+  ],
+  "not": {
+    "required": [
+      "addons",
+      "errors"
+    ]
+  },
+  "additionalProperties": true
+}

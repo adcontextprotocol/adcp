@@ -1,0 +1,1220 @@
+{
+  "$schema": "creative-addon-chain.schema.json",
+  "profile": "adcp/addon-chain/v1",
+  "note": "Public RFC 8032 test key only. Reference vectors are not production integration evidence.",
+  "test_private_key": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A"
+  },
+  "valid": [
+    {
+      "id": "live-image",
+      "creative_hash_input": {
+        "format_kind": "image",
+        "content_hash": "sha256:4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6"
+      },
+      "fragment": "<script src=\"https://measurement.example/loader.js\"></script>",
+      "fragment_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+      "chain": {
+        "creative_id": "creative-0",
+        "creative_hash": "sha256:749731ec1830ea3a59a517479b60ae955b54929fb38ebe2b81a444b7a4bc388d",
+        "configuration": {
+          "scope": "product",
+          "product_id": "display",
+          "complete": true,
+          "signed_chain_profile": "adcp/addon-chain/v1",
+          "vendors": [
+            {
+              "agent_name": "measure",
+              "source": "live",
+              "mode": "required",
+              "format_kinds": [
+                "image",
+                "html5",
+                "display_tag"
+              ],
+              "positions": [
+                "append"
+              ],
+              "agent_url": "https://measurement.example/agent",
+              "max_hold_seconds": 60
+            }
+          ]
+        },
+        "entries": [
+          {
+            "order": 0,
+            "registration_index": 0,
+            "agent_name": "measure",
+            "source": "live",
+            "agent_url": "https://measurement.example/agent",
+            "timestamp": "2026-10-14T12:00:00Z",
+            "status": "applied",
+            "position": "append",
+            "fragment_index": 0,
+            "content_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+            "bytes": 61
+          }
+        ],
+        "chain_hash": "sha256:42781004a452d65343e590f72c4c47dc431baec0cbacbbc19b3e5adc40a85c15",
+        "signed_attestation": {
+          "profile": "adcp/addon-chain/v1",
+          "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImFkZG9uLXZlY3Rvci1rZXkiLCJ0eXAiOiJhZGNwLWFkZG9uLWNoYWluK2p3cyJ9",
+          "payload": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjQyNzgxMDA0YTQ1MmQ2NTM0M2U1OTBmNzJjNGM0N2RjNDMxYmFlYzBjYmFjYmJjMTliM2U1YWRjNDBhODVjMTUiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9",
+          "signature": "UvuimFPxx79MVfKbPEd6DvXvqGHGK26FpMuD5kQ2rM8vw4qXKgxtaUItx1N2pJyHoxD2KjMXYjdc0RJnq4JLDw"
+        }
+      },
+      "trust": {
+        "key": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        },
+        "publisher_pin": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        },
+        "expected": {
+          "agent_url": "https://sales.example/agent",
+          "publisher_domain": "publisher.example",
+          "creative_id": "creative-0",
+          "format_kind": "image",
+          "variant_id": "variant-0",
+          "media_buy_id": "buy-1",
+          "package_id": "package-1",
+          "revision_id": "revision-1",
+          "product_id": "display",
+          "creative_hash": "sha256:749731ec1830ea3a59a517479b60ae955b54929fb38ebe2b81a444b7a4bc388d"
+        },
+        "now": 1791979230
+      }
+    },
+    {
+      "id": "static-html5",
+      "creative_hash_input": {
+        "format_kind": "html5",
+        "content_type": "text/html",
+        "content_hash": "sha256:e52b8569e88070ceab86c5dedcc82d01df6ab3211ebabcc88a1940dc84a01207"
+      },
+      "fragment": "<script src=\"https://measurement.example/loader.js\"></script>",
+      "fragment_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+      "chain": {
+        "creative_id": "creative-1",
+        "creative_hash": "sha256:57ce6fe02588e83b2a80eb153bf7d29419c18539f32de89f9e36e03ff0871eb5",
+        "configuration": {
+          "scope": "product",
+          "product_id": "display",
+          "complete": true,
+          "signed_chain_profile": "adcp/addon-chain/v1",
+          "vendors": [
+            {
+              "agent_name": "measure",
+              "source": "static_reference",
+              "mode": "required",
+              "format_kinds": [
+                "image",
+                "html5",
+                "display_tag"
+              ],
+              "positions": [
+                "append"
+              ],
+              "static_content_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+              "max_hold_seconds": 60
+            }
+          ]
+        },
+        "entries": [
+          {
+            "order": 0,
+            "registration_index": 0,
+            "agent_name": "measure",
+            "source": "static_reference",
+            "timestamp": "2026-10-14T12:00:00Z",
+            "status": "applied",
+            "position": "append",
+            "fragment_index": 0,
+            "content_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+            "bytes": 61
+          }
+        ],
+        "chain_hash": "sha256:7dae8229ac74444076a764412bb013bce1963d8613bdcb0f403488f000624977",
+        "signed_attestation": {
+          "profile": "adcp/addon-chain/v1",
+          "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImFkZG9uLXZlY3Rvci1rZXkiLCJ0eXAiOiJhZGNwLWFkZG9uLWNoYWluK2p3cyJ9",
+          "payload": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjdkYWU4MjI5YWM3NDQ0NDA3NmE3NjQ0MTJiYjAxM2JjZTE5NjNkODYxM2JkY2IwZjQwMzQ4OGYwMDA2MjQ5NzciLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6M2U1OGYwYjNlZmJlMzkxMDYyMWY0NWY1MzU1YmU4MWFkNjVlNzIzYzc1MDgyMjM0MmZjMTI3MDNlYTBiNDBmMiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NTdjZTZmZTAyNTg4ZTgzYjJhODBlYjE1M2JmN2QyOTQxOWMxODUzOWYzMmRlODlmOWUzNmUwM2ZmMDg3MWViNSIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMSIsImZvcm1hdF9raW5kIjoiaHRtbDUiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMSJ9",
+          "signature": "cnEP9Eycpgb-Jur3W-yoC66Ca8HHd6Ut7Sk6HcalfiUIq3-qCO6__rRGeOyK7lmAYUjE9C9GFKXbW8HQX9x_DA"
+        }
+      },
+      "trust": {
+        "key": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        },
+        "publisher_pin": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        },
+        "expected": {
+          "agent_url": "https://sales.example/agent",
+          "publisher_domain": "publisher.example",
+          "creative_id": "creative-1",
+          "format_kind": "html5",
+          "variant_id": "variant-1",
+          "media_buy_id": "buy-1",
+          "package_id": "package-1",
+          "revision_id": "revision-1",
+          "product_id": "display",
+          "creative_hash": "sha256:57ce6fe02588e83b2a80eb153bf7d29419c18539f32de89f9e36e03ff0871eb5"
+        },
+        "now": 1791979230
+      }
+    },
+    {
+      "id": "omitted-display-tag",
+      "creative_hash_input": {
+        "format_kind": "display_tag",
+        "asset": {
+          "asset_type": "display_tag",
+          "delivery_type": "inline_markup",
+          "markup_type": "javascript",
+          "markup": "<script src=\"https://creative.example/tag.js\"></script>"
+        }
+      },
+      "fragment": "<script src=\"https://measurement.example/loader.js\"></script>",
+      "fragment_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+      "chain": {
+        "creative_id": "creative-2",
+        "creative_hash": "sha256:01c38412f035a6c4b8db2519b705aeef63d7bc7ca832675c96cbd0487398faa2",
+        "configuration": {
+          "scope": "product",
+          "product_id": "display",
+          "complete": true,
+          "signed_chain_profile": "adcp/addon-chain/v1",
+          "vendors": [
+            {
+              "agent_name": "measure",
+              "source": "live",
+              "mode": "best_effort",
+              "format_kinds": [
+                "image",
+                "html5",
+                "display_tag"
+              ],
+              "positions": [
+                "append"
+              ],
+              "agent_url": "https://measurement.example/agent"
+            }
+          ]
+        },
+        "entries": [
+          {
+            "order": 0,
+            "registration_index": 0,
+            "agent_name": "measure",
+            "source": "live",
+            "agent_url": "https://measurement.example/agent",
+            "timestamp": "2026-10-14T12:00:00Z",
+            "status": "omitted",
+            "reason": "vendor_omission"
+          }
+        ],
+        "chain_hash": "sha256:c4b6cc12dd74b8bc0aa97661fc7fcb180f84fcea8b5fe37d6fb3414a981f614b",
+        "signed_attestation": {
+          "profile": "adcp/addon-chain/v1",
+          "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImFkZG9uLXZlY3Rvci1rZXkiLCJ0eXAiOiJhZGNwLWFkZG9uLWNoYWluK2p3cyJ9",
+          "payload": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OmM0YjZjYzEyZGQ3NGI4YmMwYWE5NzY2MWZjN2ZjYjE4MGY4NGZjZWE4YjVmZTM3ZDZmYjM0MTRhOTgxZjYxNGIiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6YmUxODNjODA1OTI0NmRiNTYyZDg4NDZiZTAzZDE5MjE0NjBlYzkwNTJjMTExOTA2MDUyZTc1YzIyMWNlYmJkOSIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6MDFjMzg0MTJmMDM1YTZjNGI4ZGIyNTE5YjcwNWFlZWY2M2Q3YmM3Y2E4MzI2NzVjOTZjYmQwNDg3Mzk4ZmFhMiIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMiIsImZvcm1hdF9raW5kIjoiZGlzcGxheV90YWciLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMiJ9",
+          "signature": "8Ex1UrQzVbr7pXjsTcF-NtCjglqCwLp08sa4apPAZ_RmnLNH7MGfFlhKXuA8wqadeXhXvQ_BvJ02i16sqbgEDg"
+        }
+      },
+      "trust": {
+        "key": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        },
+        "publisher_pin": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        },
+        "expected": {
+          "agent_url": "https://sales.example/agent",
+          "publisher_domain": "publisher.example",
+          "creative_id": "creative-2",
+          "format_kind": "display_tag",
+          "variant_id": "variant-2",
+          "media_buy_id": "buy-1",
+          "package_id": "package-1",
+          "revision_id": "revision-1",
+          "product_id": "display",
+          "creative_hash": "sha256:01c38412f035a6c4b8db2519b705aeef63d7bc7ca832675c96cbd0487398faa2"
+        },
+        "now": 1791979230
+      }
+    },
+    {
+      "id": "historical-after-rotation-and-revocation",
+      "creative_hash_input": {
+        "format_kind": "image",
+        "content_hash": "sha256:4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6"
+      },
+      "fragment": "<script src=\"https://measurement.example/loader.js\"></script>",
+      "fragment_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+      "chain": {
+        "creative_id": "creative-0",
+        "creative_hash": "sha256:749731ec1830ea3a59a517479b60ae955b54929fb38ebe2b81a444b7a4bc388d",
+        "configuration": {
+          "scope": "product",
+          "product_id": "display",
+          "complete": true,
+          "signed_chain_profile": "adcp/addon-chain/v1",
+          "vendors": [
+            {
+              "agent_name": "measure",
+              "source": "live",
+              "mode": "required",
+              "format_kinds": [
+                "image",
+                "html5",
+                "display_tag"
+              ],
+              "positions": [
+                "append"
+              ],
+              "agent_url": "https://measurement.example/agent",
+              "max_hold_seconds": 60
+            }
+          ]
+        },
+        "entries": [
+          {
+            "order": 0,
+            "registration_index": 0,
+            "agent_name": "measure",
+            "source": "live",
+            "agent_url": "https://measurement.example/agent",
+            "timestamp": "2026-10-14T12:00:00Z",
+            "status": "applied",
+            "position": "append",
+            "fragment_index": 0,
+            "content_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+            "bytes": 61
+          }
+        ],
+        "chain_hash": "sha256:42781004a452d65343e590f72c4c47dc431baec0cbacbbc19b3e5adc40a85c15",
+        "signed_attestation": {
+          "profile": "adcp/addon-chain/v1",
+          "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImFkZG9uLXZlY3Rvci1rZXkiLCJ0eXAiOiJhZGNwLWFkZG9uLWNoYWluK2p3cyJ9",
+          "payload": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjQyNzgxMDA0YTQ1MmQ2NTM0M2U1OTBmNzJjNGM0N2RjNDMxYmFlYzBjYmFjYmJjMTliM2U1YWRjNDBhODVjMTUiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9",
+          "signature": "UvuimFPxx79MVfKbPEd6DvXvqGHGK26FpMuD5kQ2rM8vw4qXKgxtaUItx1N2pJyHoxD2KjMXYjdc0RJnq4JLDw"
+        }
+      },
+      "trust": {
+        "key": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "revoked_at": "2026-10-14T12:01:00Z"
+        },
+        "publisher_pin": {
+          "kid": "addon-vector-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "alg": "EdDSA",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "adcp_use": "addon-chain-signing",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        },
+        "expected": {
+          "agent_url": "https://sales.example/agent",
+          "publisher_domain": "publisher.example",
+          "creative_id": "creative-0",
+          "format_kind": "image",
+          "variant_id": "variant-0",
+          "media_buy_id": "buy-1",
+          "package_id": "package-1",
+          "revision_id": "revision-1",
+          "product_id": "display",
+          "creative_hash": "sha256:749731ec1830ea3a59a517479b60ae955b54929fb38ebe2b81a444b7a4bc388d"
+        },
+        "now": 1792065600,
+        "observed_at": 1791979220,
+        "observed_chain_hash": "sha256:42781004a452d65343e590f72c4c47dc431baec0cbacbbc19b3e5adc40a85c15",
+        "observed_attestation_hash": "sha256:2946301a346536615159adc3ad2fd41951a8f342cd3a1d2da2263ed46fee61fe"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "id": "altered-fragment-hash",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.entries.0.content_hash",
+          "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "expected": "chain_hash"
+    },
+    {
+      "id": "altered-configuration",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.configuration.vendors.0.mode",
+          "value": "best_effort"
+        }
+      ],
+      "expected": "configuration_hash"
+    },
+    {
+      "id": "wrong-key-purpose",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.key.adcp_use",
+          "value": "request-signing"
+        }
+      ],
+      "expected": "key_purpose"
+    },
+    {
+      "id": "same-kid-wrong-publisher-material",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.publisher_pin.x",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      ],
+      "expected": "publisher_pin"
+    },
+    {
+      "id": "wrong-variant",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.expected.variant_id",
+          "value": "another-variant"
+        }
+      ],
+      "expected": "context"
+    },
+    {
+      "id": "wrong-publisher",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.expected.publisher_domain",
+          "value": "other.example"
+        }
+      ],
+      "expected": "context"
+    },
+    {
+      "id": "wrong-creative",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.expected.creative_hash",
+          "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "expected": "creative_hash"
+    },
+    {
+      "id": "wrong-revision",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.expected.revision_id",
+          "value": "revision-2"
+        }
+      ],
+      "expected": "context"
+    },
+    {
+      "id": "missing-delivery-binding",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjQyNzgxMDA0YTQ1MmQ2NTM0M2U1OTBmNzJjNGM0N2RjNDMxYmFlYzBjYmFjYmJjMTliM2U1YWRjNDBhODVjMTUiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicHVibGlzaGVyX2RvbWFpbiI6InB1Ymxpc2hlci5leGFtcGxlIiwicmV2aXNpb25faWQiOiJyZXZpc2lvbi0xIiwidHlwIjoiYWRjcC1hZGRvbi1jaGFpbitqd3MiLCJ2YXJpYW50X2lkIjoidmFyaWFudC0wIn0"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "kNpwmX7tiffEvX6CUThSAouShIRrTX_w2FLVjQUX5iCpR0qlHPcQ_zez9-zuJ6zH1rL7dFhnKq_avi3zbehiAw"
+        }
+      ],
+      "expected": "context"
+    },
+    {
+      "id": "jws-key-url-not-a-trust-root",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.signed_attestation.protected",
+          "value": "eyJhbGciOiJFZERTQSIsImprdSI6Imh0dHBzOi8vYXR0YWNrZXIuZXhhbXBsZS9qd2tzIiwia2lkIjoiYWRkb24tdmVjdG9yLWtleSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIn0"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "je-zScRhk5j-LDjUFythR_WaaSkDfSIqLiS4Zc306AIsb0cSER-wqP19gHsZrXjqmCYOg2aegI8C86QV4Au6BA"
+        }
+      ],
+      "expected": "header"
+    },
+    {
+      "id": "noncanonical-payload",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "ewogICJhZ2VudF91cmwiOiAiaHR0cHM6Ly9zYWxlcy5leGFtcGxlL2FnZW50IiwKICAiY2hhaW5faGFzaCI6ICJzaGEyNTY6NDI3ODEwMDRhNDUyZDY1MzQzZTU5MGY3MmM0YzQ3ZGM0MzFiYWVjMGNiYWNiYmMxOWIzZTVhZGM0MGE4NWMxNSIsCiAgImNvbmZpZ3VyYXRpb25faGFzaCI6ICJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsCiAgImNyZWF0aXZlX2hhc2giOiAic2hhMjU2Ojc0OTczMWVjMTgzMGVhM2E1OWE1MTc0NzliNjBhZTk1NWI1NDkyOWZiMzhlYmUyYjgxYTQ0NGI3YTRiYzM4OGQiLAogICJjcmVhdGl2ZV9pZCI6ICJjcmVhdGl2ZS0wIiwKICAiZm9ybWF0X2tpbmQiOiAiaW1hZ2UiLAogICJpYXQiOiAxNzkxOTc5MjAwLAogICJtZWRpYV9idXlfaWQiOiAiYnV5LTEiLAogICJwYWNrYWdlX2lkIjogInBhY2thZ2UtMSIsCiAgInB1Ymxpc2hlcl9kb21haW4iOiAicHVibGlzaGVyLmV4YW1wbGUiLAogICJyZXZpc2lvbl9pZCI6ICJyZXZpc2lvbi0xIiwKICAidHlwIjogImFkY3AtYWRkb24tY2hhaW4randzIiwKICAidmFyaWFudF9pZCI6ICJ2YXJpYW50LTAiCn0"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "0ygZiUh8Gw_fwLofa2Q7XwYWyZxHqf0Dq_Wbj3qt-wlwNufFT5XcBNzxuisZAssrpv5qXyBRKAqiDSgbjlYhBw"
+        }
+      ],
+      "expected": "canonicalization"
+    },
+    {
+      "id": "corrupt-signature",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      ],
+      "expected": "signature"
+    },
+    {
+      "id": "padded-base64url",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.signed_attestation.protected",
+          "value": "eyJhbGciOiJFZERTQSIsImtpZCI6ImFkZG9uLXZlY3Rvci1rZXkiLCJ0eXAiOiJhZGNwLWFkZG9uLWNoYWluK2p3cyJ9="
+        }
+      ],
+      "expected": "encoding"
+    },
+    {
+      "id": "future-issuance",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjQyNzgxMDA0YTQ1MmQ2NTM0M2U1OTBmNzJjNGM0N2RjNDMxYmFlYzBjYmFjYmJjMTliM2U1YWRjNDBhODVjMTUiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkzMjAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "41FK4gHr4ehN8ieNLMkyr0nz3AzvY4VG6saDOGsgwmBspM1_wEB6f6AmtrUqT_hSN6ARJfvN-qMo8DrNBphLAA"
+        }
+      ],
+      "expected": "time"
+    },
+    {
+      "id": "revoked-at-issuance",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.key.revoked_at",
+          "value": "2026-10-14T12:00:00Z"
+        }
+      ],
+      "expected": "revocation"
+    },
+    {
+      "id": "backdated-without-observed-history",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.key.revoked_at",
+          "value": "2026-10-14T12:01:00Z"
+        },
+        {
+          "path": "trust.now",
+          "value": 1791979320
+        }
+      ],
+      "expected": "revocation"
+    },
+    {
+      "id": "rewritten-observation-history",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.key.revoked_at",
+          "value": "2026-10-14T12:01:00Z"
+        },
+        {
+          "path": "trust.observed_at",
+          "value": 1791979220
+        },
+        {
+          "path": "trust.observed_chain_hash",
+          "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "expected": "revocation"
+    },
+    {
+      "id": "signed-required-omission",
+      "base": 2,
+      "edits": [
+        {
+          "path": "chain.configuration.vendors.0.mode",
+          "value": "required"
+        },
+        {
+          "path": "chain.configuration.vendors.0.max_hold_seconds",
+          "value": 60
+        },
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OmM0YjZjYzEyZGQ3NGI4YmMwYWE5NzY2MWZjN2ZjYjE4MGY4NGZjZWE4YjVmZTM3ZDZmYjM0MTRhOTgxZjYxNGIiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6MDFjMzg0MTJmMDM1YTZjNGI4ZGIyNTE5YjcwNWFlZWY2M2Q3YmM3Y2E4MzI2NzVjOTZjYmQwNDg3Mzk4ZmFhMiIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMiIsImZvcm1hdF9raW5kIjoiZGlzcGxheV90YWciLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMiJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "8-WYqDhoPIMw53nB5xBolEHml_B-PD3CxOJcGWzKiI4dYdj56cgqH0_W-CbkUbYikO1iiC2tERw061XQunu_DQ"
+        }
+      ],
+      "expected": "required_omission"
+    },
+    {
+      "id": "signed-registration-mismatch",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.entries.0.agent_name",
+          "value": "other-vendor"
+        },
+        {
+          "path": "chain.chain_hash",
+          "value": "sha256:d3ead4079358d552a47c24dc3f9b3eafab74b8b72547abfcec0c468d94d25d98"
+        },
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OmQzZWFkNDA3OTM1OGQ1NTJhNDdjMjRkYzNmOWIzZWFmYWI3NGI4YjcyNTQ3YWJmY2VjMGM0NjhkOTRkMjVkOTgiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "xxAJc5KZXfCroenUGBeZiy94M35bGRjI4qu4UFp1HjD0Kn42Yfpz1pESc52KBxrGpWpJ0X2d05VB7SuPE0EdDQ"
+        }
+      ],
+      "expected": "entry"
+    },
+    {
+      "id": "signed-invalid-order",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.entries.0.order",
+          "value": 1
+        },
+        {
+          "path": "chain.chain_hash",
+          "value": "sha256:c041763c53c4b16d434924d5871857a209f02a2cd332bf84627b595295240d85"
+        },
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OmMwNDE3NjNjNTNjNGIxNmQ0MzQ5MjRkNTg3MTg1N2EyMDlmMDJhMmNkMzMyYmY4NDYyN2I1OTUyOTUyNDBkODUiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "1wlUsByPkWwEdFNQ85ObtgJXX-HXFbbPCkEqJXgRpWJzOZoSIOE2NiipIGCq-qbOcHMBSDSkCtGzVSXV6dG6CA"
+        }
+      ],
+      "expected": "entry"
+    },
+    {
+      "id": "publisher-pin-revoked-at-issuance",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.publisher_pin.revoked_at",
+          "value": "2026-10-14T12:00:00Z"
+        }
+      ],
+      "expected": "revocation"
+    },
+    {
+      "id": "publisher-pin-purpose-conflict",
+      "base": 0,
+      "edits": [
+        {
+          "path": "trust.publisher_pin.adcp_use",
+          "value": "request-signing"
+        }
+      ],
+      "expected": "publisher_pin"
+    },
+    {
+      "id": "signed-missing-byte-count",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.entries.0.bytes",
+          "remove": true
+        },
+        {
+          "path": "chain.chain_hash",
+          "value": "sha256:7ea0f8c6400acefdde46c0b5c0a7726170c4725461fb9c4d5760d207b53e827a"
+        },
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjdlYTBmOGM2NDAwYWNlZmRkZTQ2YzBiNWMwYTc3MjYxNzBjNDcyNTQ2MWZiOWM0ZDU3NjBkMjA3YjUzZTgyN2EiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "W9C-9S4uZdnK9uPgYlkh8-vbF2umuEPyUkIdkiQtUrlysDODVkwjtJN4n61jLGGky9T3Fm4VG8rV-mzqJlfhBA"
+        }
+      ],
+      "expected": "schema"
+    },
+    {
+      "id": "unknown-signed-claim",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjQyNzgxMDA0YTQ1MmQ2NTM0M2U1OTBmNzJjNGM0N2RjNDMxYmFlYzBjYmFjYmJjMTliM2U1YWRjNDBhODVjMTUiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidW5yZWNvZ25pemVkIjoiY2xhaW0iLCJ2YXJpYW50X2lkIjoidmFyaWFudC0wIn0"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "1MysOVMqWoB0ssw9Vu7EF4gtbnFwbf-JRFYbkqfMgQuEUJuJdBBNAdYVj0P68h2EWRw1qPMV6ykz7mVR1Rb1DA"
+        }
+      ],
+      "expected": "schema"
+    },
+    {
+      "id": "signed-fragment-index-gap",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.entries.0.fragment_index",
+          "value": 1
+        },
+        {
+          "path": "chain.chain_hash",
+          "value": "sha256:64a3173f8ce60a786d957e38c11cd8a486f184069034da6ed99cfe318bc33a7c"
+        },
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjY0YTMxNzNmOGNlNjBhNzg2ZDk1N2UzOGMxMWNkOGE0ODZmMTg0MDY5MDM0ZGE2ZWQ5OWNmZTMxOGJjMzNhN2MiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZmM5MTJiODAyZmRhNTZmZGFhZTIyMjhiZTM2OTVlZTkxY2Q2YTY4ZGM3YWE5M2Y4OTlmNGE1NDYwOTZiM2Y3ZiIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "VTrI2TtGFgQIhz8fzYVIHFPjpCBXQtKPqtddLza4fli2w9ofP9Eawrp568c6DmizTxNYM31W1ADqK6DwlxH3Dg"
+        }
+      ],
+      "expected": "entry"
+    },
+    {
+      "id": "signed-reversed-omission-order",
+      "base": 2,
+      "edits": [
+        {
+          "path": "chain.configuration.vendors.1",
+          "value": {
+            "agent_name": "second",
+            "source": "live",
+            "mode": "best_effort",
+            "format_kinds": [
+              "image",
+              "html5",
+              "display_tag"
+            ],
+            "positions": [
+              "append"
+            ],
+            "agent_url": "https://second.example/agent"
+          }
+        },
+        {
+          "path": "chain.entries.0.registration_index",
+          "value": 1
+        },
+        {
+          "path": "chain.entries.0.agent_name",
+          "value": "second"
+        },
+        {
+          "path": "chain.entries.0.agent_url",
+          "value": "https://second.example/agent"
+        },
+        {
+          "path": "chain.entries.1",
+          "value": {
+            "order": 1,
+            "registration_index": 0,
+            "agent_name": "measure",
+            "source": "live",
+            "agent_url": "https://measurement.example/agent",
+            "timestamp": "2026-10-14T12:00:00Z",
+            "status": "omitted",
+            "reason": "vendor_omission"
+          }
+        },
+        {
+          "path": "chain.chain_hash",
+          "value": "sha256:4981dc7ee322641c28bd05018359dfad11813303360d7df8799b159697560953"
+        },
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjQ5ODFkYzdlZTMyMjY0MWMyOGJkMDUwMTgzNTlkZmFkMTE4MTMzMDMzNjBkN2RmODc5OWIxNTk2OTc1NjA5NTMiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6MzI4M2FmZDgzMGZlZmE1ODBkODg3ZWIxZjk5NzYwYjQwNGI5OWY5N2RmNTNkOGYxZmFmYTVhNTk2ODNjMTkyOSIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6MDFjMzg0MTJmMDM1YTZjNGI4ZGIyNTE5YjcwNWFlZWY2M2Q3YmM3Y2E4MzI2NzVjOTZjYmQwNDg3Mzk4ZmFhMiIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMiIsImZvcm1hdF9raW5kIjoiZGlzcGxheV90YWciLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMiJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "ekBYpIzXufRrNKtsFroMIXLlCK42mffO5gywP4Sw3YcvODk08qTMPgoKcANSOP14xpHuIqCCY5PX-8FPvK6LBg"
+        }
+      ],
+      "expected": "order"
+    },
+    {
+      "id": "signed-duplicate-fragment-index-across-positions",
+      "base": 0,
+      "edits": [
+        {
+          "path": "chain.configuration.vendors.0.positions.0",
+          "value": "prepend"
+        },
+        {
+          "path": "chain.configuration.vendors.0.positions.1",
+          "value": "append"
+        },
+        {
+          "path": "chain.entries.0.position",
+          "value": "prepend"
+        },
+        {
+          "path": "chain.entries.1",
+          "value": {
+            "order": 1,
+            "registration_index": 0,
+            "agent_name": "measure",
+            "source": "live",
+            "agent_url": "https://measurement.example/agent",
+            "timestamp": "2026-10-14T12:00:00Z",
+            "status": "applied",
+            "position": "append",
+            "fragment_index": 0,
+            "content_hash": "sha256:1a80add994605ab8ceebe062b3a2014ab0170388bb12bbfcee4f276154622a39",
+            "bytes": 61
+          }
+        },
+        {
+          "path": "chain.chain_hash",
+          "value": "sha256:0a53ca7066358b14218f9b27f64664ea71e273d2653cf9399f34148c22d4a6d6"
+        },
+        {
+          "path": "chain.signed_attestation.payload",
+          "value": "eyJhZ2VudF91cmwiOiJodHRwczovL3NhbGVzLmV4YW1wbGUvYWdlbnQiLCJjaGFpbl9oYXNoIjoic2hhMjU2OjBhNTNjYTcwNjYzNThiMTQyMThmOWIyN2Y2NDY2NGVhNzFlMjczZDI2NTNjZjkzOTlmMzQxNDhjMjJkNGE2ZDYiLCJjb25maWd1cmF0aW9uX2hhc2giOiJzaGEyNTY6ZDRlMzE2MDVkMzFjOTFjMTI2ZWJkZTJiMWRlY2E3YWY1OGIyYTQ5ODU3OWU4YTRhNjI4OTM4MTg3ZTNjNDFkYyIsImNyZWF0aXZlX2hhc2giOiJzaGEyNTY6NzQ5NzMxZWMxODMwZWEzYTU5YTUxNzQ3OWI2MGFlOTU1YjU0OTI5ZmIzOGViZTJiODFhNDQ0YjdhNGJjMzg4ZCIsImNyZWF0aXZlX2lkIjoiY3JlYXRpdmUtMCIsImZvcm1hdF9raW5kIjoiaW1hZ2UiLCJpYXQiOjE3OTE5NzkyMDAsIm1lZGlhX2J1eV9pZCI6ImJ1eS0xIiwicGFja2FnZV9pZCI6InBhY2thZ2UtMSIsInB1Ymxpc2hlcl9kb21haW4iOiJwdWJsaXNoZXIuZXhhbXBsZSIsInJldmlzaW9uX2lkIjoicmV2aXNpb24tMSIsInR5cCI6ImFkY3AtYWRkb24tY2hhaW4randzIiwidmFyaWFudF9pZCI6InZhcmlhbnQtMCJ9"
+        },
+        {
+          "path": "chain.signed_attestation.signature",
+          "value": "SHgEW66J6mwKeDk_Lw5KCLu_5PUEjVQef6w61HopHZS5ZtKWkIrf9AV4rKJCDVYM1ETKmoN3V63UskXntOIeCw"
+        }
+      ],
+      "expected": "entry"
+    }
+  ],
+  "behavior": [
+    {
+      "id": "required-empty-keeps-original-task",
+      "input": {
+        "async": true,
+        "task_id": "task-1",
+        "elapsed_seconds": 59,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": []
+          }
+        ]
+      },
+      "expected": {
+        "status": "working",
+        "task_id": "task-1"
+      }
+    },
+    {
+      "id": "required-empty-at-deadline-fails",
+      "input": {
+        "async": true,
+        "task_id": "task-1",
+        "elapsed_seconds": 60,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": []
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "ADDON_REQUIRED_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "required-without-async-fails",
+      "input": {
+        "async": false,
+        "task_id": "task-1",
+        "elapsed_seconds": 0,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": []
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "ADDON_REQUIRED_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "best-effort-deliberate-omission",
+      "input": {
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "best_effort",
+            "max_hold_seconds": 60,
+            "fragments": []
+          }
+        ]
+      },
+      "expected": {
+        "status": "completed",
+        "fragments": [],
+        "omitted": [
+          {
+            "registration_index": 0,
+            "reason": "vendor_omission"
+          }
+        ]
+      }
+    },
+    {
+      "id": "best-effort-network-failure",
+      "input": {
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "best_effort",
+            "max_hold_seconds": 60,
+            "fragments": [],
+            "error_code": "ADDON_UNREACHABLE"
+          }
+        ]
+      },
+      "expected": {
+        "status": "completed",
+        "fragments": [],
+        "omitted": [
+          {
+            "registration_index": 0,
+            "reason": "failure"
+          }
+        ]
+      }
+    },
+    {
+      "id": "required-bad-hash-fails",
+      "input": {
+        "async": false,
+        "elapsed_seconds": 0,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": [
+              {
+                "position": "append",
+                "content": "x",
+                "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "ADDON_REQUIRED_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "static-does-not-call-vendor",
+      "input": {
+        "vendors": [
+          {
+            "source": "static_reference",
+            "mode": "required",
+            "position": "append",
+            "content": "static"
+          }
+        ]
+      },
+      "expected": {
+        "status": "completed",
+        "fragments": [
+          "static"
+        ],
+        "omitted": []
+      }
+    },
+    {
+      "id": "prepend-order-is-not-reversed",
+      "input": {
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "fragments": [
+              {
+                "position": "append",
+                "content": "A1",
+                "content_hash": "sha256:16a36e86f6fed5d465ff332511a0ce1a863b55d364b25a7cdaa25db19abf9648"
+              },
+              {
+                "position": "prepend",
+                "content": "A0",
+                "content_hash": "sha256:aa508c2187fca56f397ff75adc52b94e02f38122cdd48bd42105106e5e0f8e14"
+              }
+            ]
+          },
+          {
+            "source": "live",
+            "mode": "required",
+            "fragments": [
+              {
+                "position": "prepend",
+                "content": "B0",
+                "content_hash": "sha256:05816a1560db947d6ff798e30909816f400f14230e9a06afac8f8b213127aa21"
+              },
+              {
+                "position": "append",
+                "content": "B1",
+                "content_hash": "sha256:5b950e77941d01cdf246d00b1ece546bc95234b77d98b44c9187e2733afa696a"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "completed",
+        "fragments": [
+          "A0",
+          "B0",
+          "A1",
+          "B1"
+        ],
+        "omitted": []
+      }
+    },
+    {
+      "id": "late-recovery-cannot-resume-expired-operation",
+      "input": {
+        "async": true,
+        "task_id": "task-1",
+        "elapsed_seconds": 61,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": [
+              {
+                "position": "append",
+                "content": "repaired",
+                "content_hash": "sha256:3baf75ce884746c426cafdff7e0a3ed3a52b4d70fb6dbf94bc754be4273a868a"
+              }
+            ],
+            "first_failure_seconds": 0
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "ADDON_REQUIRED_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "later-expired-vendor-overrides-earlier-pending",
+      "input": {
+        "async": true,
+        "task_id": "task-1",
+        "elapsed_seconds": 30,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": []
+          },
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 10,
+            "fragments": []
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "ADDON_REQUIRED_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "per-vendor-original-deadline-survives-restart",
+      "input": {
+        "async": true,
+        "task_id": "task-1",
+        "elapsed_seconds": 90,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": [],
+            "first_failure_seconds": 30
+          },
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": [],
+            "first_failure_seconds": 70
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "ADDON_REQUIRED_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "later-first-failure-keeps-its-own-deadline",
+      "input": {
+        "async": true,
+        "task_id": "task-1",
+        "elapsed_seconds": 90,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": [],
+            "first_failure_seconds": 50
+          }
+        ]
+      },
+      "expected": {
+        "status": "working",
+        "task_id": "task-1"
+      }
+    },
+    {
+      "id": "recovered-earlier-vendor-cannot-mask-expired-other-vendor",
+      "input": {
+        "async": true,
+        "task_id": "task-1",
+        "elapsed_seconds": 30,
+        "vendors": [
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 60,
+            "fragments": [
+              {
+                "position": "append",
+                "content": "repaired",
+                "content_hash": "sha256:3baf75ce884746c426cafdff7e0a3ed3a52b4d70fb6dbf94bc754be4273a868a"
+              }
+            ]
+          },
+          {
+            "source": "live",
+            "mode": "required",
+            "max_hold_seconds": 10,
+            "fragments": []
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "ADDON_REQUIRED_UNAVAILABLE"
+      }
+    }
+  ]
+}
