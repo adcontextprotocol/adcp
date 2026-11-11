@@ -8,13 +8,17 @@
     "content_mismatch",
     "format_mismatch",
     "not_on_package",
-    "not_supported"
+    "not_supported",
+    "not_in_account",
+    "already_merged"
   ],
   "enumDescriptions": {
     "content_mismatch": "The seller judges that merged_creative_id is not the same creative as creative_id: its content differs. The seller's copy is a different creative; to run creative_id on the package, use replace.",
     "format_mismatch": "creative_id cannot take over the serving object because its format differs from merged_creative_id's (for example, a different format kind or dimensions). The buyer can sync a matching format of creative_id and retry.",
     "not_on_package": "merged_creative_id is not a seller-assigned creative currently assigned to package_id in this account. Covers unknown IDs, buyer-assigned creatives, and creatives assigned elsewhere, so the response does not reveal whether an ID exists outside this package.",
-    "not_supported": "The seller supports merge but cannot merge this pairing on this package (for example, a channel or object type the seller cannot hand over without re-trafficking). Use replace."
+    "not_supported": "The seller supports merge but cannot merge this pairing on this package (for example, a channel or object type the seller cannot hand over without re-trafficking). Use replace. For a library-level merge, the rejection names the blocking package_id.",
+    "not_in_account": "Library-level merge only: merged_creative_id is not a seller-assigned creative in this account. Covers unknown IDs and buyer-assigned creatives, so the response does not reveal whether an ID exists in another account.",
+    "already_merged": "Library-level merge only: an earlier library-level merge already bound merged_creative_id to a different creative_id. A seller-assigned creative is bound to at most one buyer creative."
   },
   "x-added-in": "3.3.0"
 }

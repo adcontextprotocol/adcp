@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add a library-level `merge` to `sync_creatives` `assignment_operations` (adcp#8897). A `merge` without `package_id` declares that a seller-assigned creative is the buyer's creative everywhere in the account. The seller merges every current assignment of it, makes every later assignment under the buyer's `creative_id`, and keeps listing the seller-assigned creative in `list_creatives` with the new `merged_into_creative_id`, which gives buyers a durable record for joining delivery from before the merge. Gated by the new `creative.supports_library_merge` capability, which requires `supports_assignment_merge`; a seller without it rejects a `merge` without `package_id` with `UNSUPPORTED_FEATURE`. `merges[]` reports the account-wide binding as an entry without `package_id`, followed by one entry per moved assignment. `CREATIVE_MERGE_REJECTED` details may omit `package_id` and gain the `not_in_account` and `already_merged` reasons. Package merges are unchanged, and delivery before any merge is still not restated.

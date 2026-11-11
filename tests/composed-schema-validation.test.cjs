@@ -4711,6 +4711,100 @@ async function runTests() {
     },
     'CREATIVE_MERGE_REJECTED reasons are a closed set'
   );
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    {
+      idempotency_key: 'assignment-operations-merge-0004',
+      account: { account_id: 'account-clean-1' },
+      assignment_operations: [
+        { operation: 'merge', creative_id: 'creative-buyer', merged_creative_id: 'slr_1234' }
+      ]
+    },
+    'sync_creatives accepts a library-level merge without package_id'
+  );
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-response.json',
+    {
+      status: 'completed',
+      creatives: [],
+      merges: [
+        { creative_id: 'creative-buyer', merged_creative_id: 'slr_1234' },
+        { creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234', approval_status: 'approved' },
+        { creative_id: 'creative-buyer', package_id: 'package-2', merged_creative_id: 'slr_1234', approval_status: 'pending_review' }
+      ]
+    },
+    'a library-level merge reports the account binding, then each moved assignment'
+  );
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-response.json',
+    {
+      status: 'completed',
+      creatives: [],
+      merges: [
+        { creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234' }
+      ]
+    },
+    'a merges[] entry for a package carries the inherited approval_status'
+  );
+  await testSchemaValidation(
+    '/schemas/error-details/creative-merge-rejected.json',
+    {
+      rejections: [
+        { operation_index: 0, creative_id: 'creative-buyer', merged_creative_id: 'slr_1234', reason: 'not_in_account' },
+        { operation_index: 1, creative_id: 'creative-buyer-2', merged_creative_id: 'slr_5678', reason: 'already_merged' },
+        { operation_index: 2, creative_id: 'creative-buyer-3', package_id: 'package-9', merged_creative_id: 'slr_9999', reason: 'not_supported' }
+      ]
+    },
+    'CREATIVE_MERGE_REJECTED details cover library-level merges, naming a blocking package when there is one'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: { major_versions: [3], idempotency: { supported: false } },
+      supported_protocols: ['creative'],
+      creative: {
+        has_creative_library: true,
+        stable_creative_ids: true,
+        supports_assignment_merge: true,
+        supports_library_merge: true
+      }
+    },
+    'creative.supports_library_merge is declared alongside supports_assignment_merge'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: { major_versions: [3], idempotency: { supported: false } },
+      supported_protocols: ['creative'],
+      creative: {
+        has_creative_library: true,
+        stable_creative_ids: true,
+        supports_library_merge: true
+      }
+    },
+    'creative.supports_library_merge requires supports_assignment_merge'
+  );
+  await testSchemaValidation(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [{
+        creative_id: 'slr_1234',
+        platform_id: '8814402271',
+        merged_into_creative_id: 'creative-buyer',
+        name: 'Spring carousel',
+        format_id: { agent_url: 'https://creatives.adcontextprotocol.org', id: 'display_300x250' },
+        status: 'approved',
+        created_date: '2026-04-01T00:00:00Z',
+        updated_date: '2026-04-20T00:00:00Z'
+      }]
+    },
+    'list_creatives shows the buyer creative a library-level merge bound a seller creative to'
+  );
   await testSchemaRejection(
     '/schemas/creative/sync-creatives-request.json',
     {
