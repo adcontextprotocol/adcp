@@ -1527,8 +1527,9 @@ async function runTests() {
       "refine": [{ "scope": "product", "id": "prod_video_premium", "action": "include" }]
     },
     '/schemas/media-buy/get-products-request.json',
-    'refine[] product with old `id` field is rejected and error flags the unknown property',
-    ['product_id', /additionalProperties|must NOT have additional propert/i]
+    'refine[] product with old `id` field is rejected and error flags the missing product_id',
+    // Open by default (DR-0036): the unknown `id` key is no longer named; the missing `product_id` is.
+    ['product_id', /must have required property 'product_id'/]
   );
 
   await expectInvalid(
@@ -1538,8 +1539,9 @@ async function runTests() {
       "refine": [{ "scope": "proposal", "id": "prop_balanced_v1", "action": "finalize" }]
     },
     '/schemas/media-buy/get-products-request.json',
-    'refine[] proposal with old `id` field is rejected and error flags the unknown property',
-    ['proposal_id', /additionalProperties|must NOT have additional propert/i]
+    'refine[] proposal with old `id` field is rejected and error flags the missing proposal_id',
+    // Open by default (DR-0036): the unknown `id` key is no longer named; the missing `proposal_id` is.
+    ['proposal_id', /must have required property 'proposal_id'/]
   );
 
   // Happy path — optional `action` defaults to include server-side; schema must accept the minimal shape.

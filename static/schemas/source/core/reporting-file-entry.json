@@ -18,5 +18,5 @@
     }
   },
   "required": ["object_ref", "size_bytes", "sha256", "row_count"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

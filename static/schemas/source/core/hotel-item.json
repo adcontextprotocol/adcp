@@ -35,7 +35,7 @@
         }
       },
       "required": ["lat", "lng"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "address": {
       "type": "object",
@@ -63,7 +63,7 @@
           "description": "ISO 3166-1 alpha-2 country code."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "star_rating": {
       "type": "integer",

@@ -789,7 +789,7 @@ Two qualifications matter in practice.
 
 ### Buying a product that names installments
 
-A purchase buys the product as offered: run-of-collection when the product names no installments, and the product's complete installment set when it does. In 3.3 a purchase cannot name the exact slots it buys, and `refine_proposals` cannot drop or swap one. `commercial_terms` is closed in 3.x, so a slot selection a buyer could not read, but would be bound by through `terms_digest`, cannot be added in a minor release. Installment selection is planned for 4.0, where `commercial_terms` gets a declared extension point with must-understand; see [Planned for 4.0](/docs/reference/migration/v4-compatibility#installment_selection_required_in_4_0).
+A purchase buys the product as offered: run-of-collection when the product names no installments, and the product's complete installment set when it does. In 3.3 a purchase cannot name the exact slots it buys, and `refine_proposals` cannot drop or swap one. `commercial_terms` is held closed until 4.0, so a slot selection waits for 4.0's declared extension point. Installment selection is planned for 4.0, where `commercial_terms` gets a declared extension point with must-understand; see [Planned for 4.0](/docs/reference/migration/v4-compatibility#installment_selection_required_in_4_0).
 
 A committed proposal can read back which installments its hold covers, in `holds[]` (experimental, `media_buy.installment_holds`); see [Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental). `holds[]` is readback about the hold finalize placed, not contract, and is not covered by `terms_digest`.
 

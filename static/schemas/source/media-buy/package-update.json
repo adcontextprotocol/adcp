@@ -132,7 +132,7 @@
           }
         },
         "required": ["keyword", "match_type"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -152,7 +152,7 @@
           }
         },
         "required": ["keyword", "match_type"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -172,7 +172,7 @@
           }
         },
         "required": ["keyword", "match_type"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -192,7 +192,7 @@
           }
         },
         "required": ["keyword", "match_type"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },

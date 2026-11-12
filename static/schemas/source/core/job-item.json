@@ -61,7 +61,7 @@
         }
       },
       "required": ["currency", "period"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "date_posted": {
       "type": "string",

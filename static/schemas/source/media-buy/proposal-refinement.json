@@ -37,7 +37,7 @@
             "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
           },
           "required": ["max", "currency"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "impressions": {
           "type": "object",
@@ -46,7 +46,7 @@
             "min": { "type": "number", "exclusiveMinimum": 0 }
           },
           "required": ["min"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "flight": {
           "type": "object",
@@ -59,11 +59,11 @@
             { "required": ["start_no_later_than"] },
             { "required": ["end_no_earlier_than"] }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "minProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "product_changes": {
       "$ref": "/schemas/core/product-change-map.json",
@@ -81,7 +81,7 @@
         }
       },
       "required": ["count"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ask": {
       "type": "string",

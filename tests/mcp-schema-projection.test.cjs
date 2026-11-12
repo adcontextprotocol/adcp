@@ -51,10 +51,19 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
-// The canonical Product's `not`, as the projection serializes it.
-const CANONICAL_PRODUCT_PROHIBITION = JSON.stringify({
-  not: JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, 'core', 'canonical-product.json'), 'utf8')).not,
-}).slice(1, -1);
+// A named rejection (`not: { required: [...] }`) forbids a legacy key without
+// exposing it, and its schema description may name the key it rejects. Drops
+// every `not` keyword and description string so a legacy-graph scan sees only
+// what a schema accepts, whatever the rejection's shape or serialization.
+function withoutNamedRejections(node, parentKey) {
+  if (Array.isArray(node)) return node.map((item) => withoutNamedRejections(item, parentKey));
+  if (!node || typeof node !== 'object') return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key, value]) => parentKey === 'properties' || !(key === 'not' || (key === 'description' && typeof value === 'string')))
+      .map(([key, value]) => [key, withoutNamedRejections(value, key)]),
+  );
+}
 // The generated profiles describe the active surface of the package's release
 // line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
 // manifest declares via added_in; once the line has a stable release it is the
@@ -129,6 +138,8 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
 // top of main). Bound at 476 KiB once for the window; resume per-PR bounding
 // after the beta.1 cut.
+// Named rejections (DR-0036) are validation, so the model-context view omits
+// them with the bounds; the budget is unchanged.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 476,
   creative: 410,
@@ -203,7 +214,16 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
 // image_carousel `card_image_sizes` (#8911) reaches the seeded Product's
 // format_options: 1_384_855 bytes. Bound at 1_385_000.
-const PARITY_COMPILE_LIMIT = 1_385_000;
+// Opening the 3.3 schemas and naming the fields closure used to reject (DR-0036)
+// adds 395 bytes to the comply-test-controller-request closure
+// (account-identity-change 30, attestation-reference 72, audience-source 113,
+// collection 40, inventory-list-application 68, placement-selection 38,
+// product-allowed-action 34): 1_383_804 → 1_384_081 bytes. Bound at 1_385_000.
+// The later named rejections and their descriptions measure 1_385_027 bytes;
+// bound at 1_386_000.
+// With both on main (#8911 and the named rejections), the controller measures
+// 1_386_397 bytes; bound at 1_387_000.
+const PARITY_COMPILE_LIMIT = 1_387_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -422,6 +442,13 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.extensions.additionalProperties, undefined);
   assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
+  // A named rejection beside declared properties is validation-only.
+  const named = stripModelContextAnnotations({
+    type: 'object',
+    properties: { a: { type: 'string' } },
+    not: { anyOf: [{ required: ['b'] }, { required: ['c'] }] },
+  });
+  assert.equal(named.not, undefined);
 
   const negotiated = stripModelContextAnnotations({
     type: 'object',
@@ -1119,9 +1146,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      // The canonical Product forbids the legacy Product's keys by name;
-      // forbidding them does not expose them.
-      const exposed = output.replaceAll(CANONICAL_PRODUCT_PROHIBITION, '');
+      // The canonical Product forbids the legacy Product's keys by name and
+      // says so in descriptions; forbidding them does not expose them.
+      const exposed = JSON.stringify(withoutNamedRejections(JSON.parse(output)));
       assert.doesNotMatch(exposed, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }

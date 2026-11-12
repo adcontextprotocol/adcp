@@ -33,5 +33,5 @@
       "then": { "properties": { "minimum_value": { "type": "integer" } } }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

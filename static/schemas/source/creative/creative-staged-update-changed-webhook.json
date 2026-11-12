@@ -93,7 +93,7 @@
     "observed_at",
     "initiator"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": { "properties": { "outcome": { "const": "promoted" } }, "required": ["outcome"] },

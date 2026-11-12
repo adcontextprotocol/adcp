@@ -3583,13 +3583,14 @@ async function runTests() {
     },
     'SignalCoverageForecast scope accepts seller-specific extra qualifier (inventory_class)'
   );
-  await testSchemaRejection(
+  // Open by default (DR-0036): the typo is an unknown key and is ignored.
+  await testSchemaValidation(
     '/schemas/core/signal-coverage-forecast.json',
     {
       ...signalCoverageForecast,
       bucket_completness: 'partial'
     },
-    'SignalCoverageForecast rejects unknown top-level field (bucket_completness typo)'
+    'SignalCoverageForecast ignores unknown top-level field (bucket_completness typo)'
   );
   log('');
 
@@ -6768,7 +6769,8 @@ async function runTests() {
     },
     'Rejects DSR routing that declares no access, erasure, or objection channel'
   );
-  await testSchemaRejection(
+  // Open by default (DR-0036): signal-level gpc_honored is an unknown key and validates (ignored).
+  await testSchemaValidation(
     '/schemas/core/signal-definition.json',
     {
       id: 'dsr_gpc_not_signal_level',
@@ -6784,7 +6786,7 @@ async function runTests() {
         gpc_honored: true
       }
     },
-    'Rejects signal-level gpc_honored in DSR routing'
+    'Ignores signal-level gpc_honored in DSR routing (unknown key)'
   );
   log('');
 

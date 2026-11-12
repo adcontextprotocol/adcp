@@ -114,7 +114,7 @@
           "width": { "type": "integer", "minimum": 1 },
           "height": { "type": "integer", "minimum": 1 }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "description": "List of accepted logical (width, height) render pairs for a multi-size flexible slot. The buyer ships an asset matching one logical size multiplied by one accepted `pixel_ratios` entry (or by 1 when `pixel_ratios` is absent). SDKs MUST treat size and density as separate axes: a 600×500 intrinsic asset at 2x satisfies a logical 300×250 size; it does not create a logical 600×500 placement. Mirrors OpenRTB `banner.format[]` semantics. Mutually exclusive with `(width, height)` and with responsive ranges."
     },

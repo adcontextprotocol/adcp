@@ -22,7 +22,7 @@
     }
   },
   "required": ["amount", "currency"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "One-time purchase price",

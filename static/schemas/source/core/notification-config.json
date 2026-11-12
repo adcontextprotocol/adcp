@@ -80,7 +80,7 @@
       "required": [
         "schemes"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "signing_profile": {
       "x-status": "experimental",
@@ -115,7 +115,7 @@
     }
   ],
   "not": { "required": ["authentication", "signing_profile"] },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Single subscriber receiving creative lifecycle events",

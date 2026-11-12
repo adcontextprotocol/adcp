@@ -77,7 +77,7 @@
     "change_kind",
     "observed_at"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Assignment approval changed",

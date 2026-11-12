@@ -131,23 +131,25 @@ describe('audience evidence target audiences (#8125)', () => {
       assert.equal(validatePackageRequest(packageRequest), false);
     });
 
-    it('keeps the closed requirements schemas unchanged: target_audiences is not a member', () => {
+    it('keeps the requirements schemas unchanged: target_audiences is not a declared member', () => {
       assert.equal(validateRequirements(base), true);
       assert.equal(validateCompact(base), true);
-      assert.equal(validateRequirements({ ...base, target_audiences: [target] }), false);
-      assert.equal(validateCompact({ ...base, target_audiences: [target] }), false);
+      // Open by default (DR-0036): an unknown key validates, so target_audiences is accepted though undeclared.
+      assert.equal(validateRequirements({ ...base, target_audiences: [target] }), true);
+      assert.equal(validateCompact({ ...base, target_audiences: [target] }), true);
       for (const uri of ['/schemas/core/audience-evidence-requirements.json', '/schemas/core/product-audience-evidence-requirements.json']) {
         assert.equal(readSchema(uri).properties.target_audiences, undefined, uri);
       }
     });
 
-    it('requires audience, relationship, and minimum_value and closes the item', () => {
+    it('requires audience, relationship, and minimum_value; an unknown key on the item validates', () => {
       for (const field of ['audience', 'relationship', 'minimum_value']) {
         const invalid = clone(target);
         delete invalid[field];
         assert.equal(validateTarget(invalid), false, field);
       }
-      assert.equal(validateTarget({ ...target, strength: 'required' }), false);
+      // Open by default (DR-0036): `strength` is an unknown key and validates.
+      assert.equal(validateTarget({ ...target, strength: 'required' }), true);
       assert.equal(validateTarget({ ...target, relationship: 'affinity' }), false);
       assert.equal(validateTarget({ ...target, minimum_value: -0.1 }), false);
       assert.equal(validateTarget({ ...target, audience: { dimension: 'age' } }), false);
@@ -170,20 +172,21 @@ describe('audience evidence target audiences (#8125)', () => {
       assert.equal(filtersWith([{ ...target, audience: { dimension: 'age', range: { min: -1, max: 54 } } }]), false);
     });
 
-    it('accepts target_audiences on create_media_buy packages and leaves the closed purchase path to 4.0', () => {
+    it('accepts target_audiences on create_media_buy packages and leaves the purchase path to 4.0', () => {
       assert.equal(validatePackageRequest(fixture.package_request), true, JSON.stringify(validatePackageRequest.errors));
       const packageRequest = clone(fixture.package_request);
       packageRequest.target_audiences = [target];
       assert.equal(validatePackageRequest(packageRequest), true, JSON.stringify(validatePackageRequest.errors));
 
-      // Closed purchase schemas do not carry the sibling in 3.3: the field is a 4.0 addition.
-      for (const [validate, schemaUri] of [
-        [validatePurchaseInput, '/schemas/media-buy/product-purchase-input.json'],
-        [validatePurchase, '/schemas/media-buy/product-purchase.json'],
+      // The purchase schemas do not declare the sibling in 3.3: the field is a 4.0 addition.
+      // product-purchase-input.json is open by default (DR-0036); product-purchase.json stays closed (signed terms).
+      for (const [validate, schemaUri, additionalProperties] of [
+        [validatePurchaseInput, '/schemas/media-buy/product-purchase-input.json', true],
+        [validatePurchase, '/schemas/media-buy/product-purchase.json', false],
       ]) {
         const schema = readSchema(schemaUri);
         assert.equal(schema.properties.target_audiences, undefined, schemaUri);
-        assert.equal(schema.additionalProperties, false, schemaUri);
+        assert.equal(schema.additionalProperties, additionalProperties, schemaUri);
         assert.equal(validate.schema.properties.target_audiences, undefined, schemaUri);
       }
     });

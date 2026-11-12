@@ -28,5 +28,5 @@
     }
   },
   "required": ["countries", "catalog"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

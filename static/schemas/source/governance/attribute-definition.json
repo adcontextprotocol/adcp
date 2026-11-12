@@ -39,7 +39,7 @@
           }
         },
         "required": ["name", "summary"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "includes": {
@@ -63,5 +63,5 @@
     }
   },
   "required": ["attribute_id", "name", "description"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

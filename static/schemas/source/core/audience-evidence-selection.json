@@ -54,7 +54,7 @@
                       }
                     },
                     "required": ["action_type", "action_id", "action_digest"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 },
                 "required": ["action_binding"]
@@ -63,7 +63,7 @@
           }
         },
         "required": ["reference", "evaluation"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "maxItems": 10
@@ -71,5 +71,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["evidence_id", "snapshot_id", "version", "content_digest", "decision_use"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

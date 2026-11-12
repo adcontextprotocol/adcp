@@ -15,5 +15,5 @@
     }
   },
   "required": ["creative_id", "revision_id"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

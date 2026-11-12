@@ -111,7 +111,7 @@
           "required": ["action_digest"]
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -141,7 +141,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "reference_digest": "sha256:6a09e667bb67ae853c6ef372a54ff53a510e527fade682d1b05688c2b3e6c1f0",

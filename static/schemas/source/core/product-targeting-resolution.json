@@ -20,5 +20,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["modifications"],
-  "additionalProperties": false
+  "additionalProperties": true
 }
