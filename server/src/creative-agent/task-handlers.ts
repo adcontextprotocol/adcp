@@ -220,7 +220,8 @@ function matchesAssetTypes(format: Format, assetTypes: string[]): boolean {
       }
     }
   }
-  return assetTypes.some(t => formatAssetTypes.has(t));
+  // All-of, per list-creative-formats-request `asset_types` (#8630).
+  return assetTypes.every(t => formatAssetTypes.has(t));
 }
 
 function matchesNameSearch(format: Format, search: string): boolean {
@@ -948,7 +949,7 @@ const TOOLS = [
         adcp_major_version: ADCP_MAJOR_VERSION_PROP,
         format_ids: { type: 'array', description: 'Return only these specific format IDs', items: FORMAT_ID_SCHEMA, minItems: 1 },
         type: { type: 'string', description: 'Filter by format type', enum: ['audio', 'video', 'display', 'dooh'] },
-        asset_types: { type: 'array', description: 'Filter to formats that include these asset types', items: { type: 'string', enum: ['image', 'video', 'audio', 'text', 'html', 'javascript', 'url'] }, minItems: 1 },
+        asset_types: { type: 'array', description: 'Filter to formats that declare every one of these asset types, counting optional assets and assets inside repeatable groups', items: { type: 'string', enum: ['image', 'video', 'audio', 'text', 'html', 'javascript', 'url'] }, minItems: 1 },
         name_search: { type: 'string', description: 'Case-insensitive partial match on name or description' },
         min_width: { type: 'integer', description: 'Minimum width in pixels (inclusive)' },
         max_width: { type: 'integer', description: 'Maximum width in pixels (inclusive)' },

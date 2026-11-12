@@ -53,7 +53,7 @@ Replace `format_types` filters with `asset_types` (what the format needs) or `fo
 }
 ```
 
-`asset_types` returns any format that includes at least one asset of that type — so a video format with companion banners appears in both `["video"]` and `["image"]` results.
+`asset_types` returns formats that declare every requested type. An asset counts whether it is required or optional, and whether it sits at the top level or inside a `repeatable_group`. A video format with companion banners appears in `["video"]`, `["image"]` and `["video", "image"]` results. To find formats with any of several types, make one call per type and union the results.
 
 ---
 
