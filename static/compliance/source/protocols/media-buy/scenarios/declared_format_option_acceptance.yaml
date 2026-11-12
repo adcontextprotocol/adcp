@@ -1,0 +1,171 @@
+id: media_buy_seller/declared_format_option_acceptance
+version: "1.0.0"
+title: "Seller accepts a creative built to its declared format option"
+category: media_buy_seller
+summary: "sync_creatives accepts a creative that conforms to every parameter of the product format option it targets: a declared main_image size, a free-text CTA on an option that declares no cta_values, and no optional icon."
+track: creative
+introduced_in: "3.3"
+requires:
+  - controller
+
+required_tools:
+  - sync_creatives
+
+requires_capability:
+  path: creative.has_creative_library
+  equals: true
+
+narrative: |
+  Buyers and certification build creatives from what a product's format option
+  declares. Per docs/creative/task-reference/sync_creatives#format-conformance,
+  a seller MUST NOT refuse with a conformance code a creative that satisfies a
+  parameter the targeted option declares, and an absent narrowing parameter
+  does not narrow its slot: with no cta_values, the cta slot takes free text.
+
+  The runner seeds one product whose native_in_feed option declares a
+  336x280 main_image, title and body character limits, no cta_values, no
+  icon_size, and technical_requirements_complete: true. The buyer then syncs a
+  creative built exactly to that option and references it with
+  format_option_ref. A seller that refuses it because the image is not one of
+  its own preferred sizes, because the CTA is not on an undeclared list, or
+  because the optional icon is missing fails this scenario.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Native ad platforms"
+    - "Publisher platforms with a creative library"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  controller_seeding: true
+  description: |
+    The runner seeds a product with one native_in_feed format option. Sellers
+    that do not implement seed_product grade this scenario not_applicable.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_5d0c7a91e2b4"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_declared_format_option_acceptance-7b2e19c4"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "declared_native_option_product"
+      name: "Declared native in-feed option"
+      channels: ["display"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_kind: "native_in_feed"
+          format_option_id: "declared_native_card_336x280"
+          canonical_formats_only: true
+          technical_requirements_complete: true
+          params:
+            title_max_chars: 90
+            body_text_max_chars: 200
+            main_image_sizes:
+              - width: 336
+                height: 280
+
+phases:
+  - id: sync_declared_option_creative
+    title: "Sync a creative built to the declared option"
+    narrative: |
+      The buyer submits a native creative whose every asset satisfies the
+      seeded option's declared parameters and nothing more.
+
+    steps:
+      - id: sync_conforming_creative
+        title: "Submit a creative that conforms to the declared native_in_feed option"
+        narrative: |
+          main_image is 336x280, the only declared size. The title is exactly
+          the declared 90-character limit and the body is within its limit.
+          The CTA is free text, which the option
+          allows because it declares no cta_values. The optional icon is
+          omitted. The seller MUST accept the creative rather than refuse it
+          with CREATIVE_SIZE_MISMATCH, CREATIVE_VALUE_NOT_ALLOWED,
+          CREATIVE_VALIDATION_FAILED_GENERIC, VALIDATION_ERROR, or
+          INVALID_REQUEST. A pending_review status is acceptable; review is
+          not format conformance.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#format-conformance"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the creative:
+          - no operation-level errors
+          - creatives[0].action is created, updated, or unchanged (not failed)
+          - creatives[0] carries no errors
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_declared_format_option_acceptance-7b2e19c4"
+            sandbox: true
+          creatives:
+            - creative_id: "declared_option_native_001"
+              name: "Trail Pro 3000 — native card built to the declared option"
+              format_kind: "native_in_feed"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "declared_native_card_336x280"
+              assets:
+                title:
+                  asset_type: "text"
+                  content: "Trail Pro 3000: built for the summit, tested at altitude, trusted on every trail you climb"
+                body_text:
+                  asset_type: "text"
+                  content: "Tested at altitude and trusted by expedition teams."
+                main_image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-336x280.jpg"
+                  width: 336
+                  height: 280
+                  mime_type: "image/jpeg"
+                cta:
+                  asset_type: "text"
+                  content: "Shop the summit sale"
+                advertiser_name:
+                  asset_type: "text"
+                  content: "Acme Outdoor"
+                landing_page_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro-3000"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_declared_format_option_acceptance_sync_conforming_creative"
+          context:
+            correlation_id: "media_buy_seller_declared_format_option_acceptance--sync_conforming_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_absent
+            path: "errors"
+            description: "No operation-level error refuses the conforming creative"
+          - check: field_value
+            path: "creatives[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "The creative built to the declared option is accepted, not failed"
+          - check: field_absent
+            path: "creatives[0].errors"
+            description: "The accepted creative carries no conformance errors"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller_declared_format_option_acceptance--sync_conforming_creative"
+            description: "Context correlation_id returned unchanged"

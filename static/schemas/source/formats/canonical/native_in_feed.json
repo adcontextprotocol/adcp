@@ -99,7 +99,7 @@
     "cta_values": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD']). When set, narrows the cta slot to a closed enum."
+      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD']). When set, narrows the cta slot to a closed enum. When absent, the cta slot takes free text within any declared `cta_max_chars`, and a seller does not refuse a CTA value as `CREATIVE_VALUE_NOT_ALLOWED`."
     },
     "main_image_sizes": {
       "type": "array",
