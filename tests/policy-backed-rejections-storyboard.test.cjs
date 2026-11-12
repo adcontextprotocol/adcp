@@ -9,6 +9,17 @@ const assert = require('node:assert/strict');
 const yaml = require('js-yaml');
 const { runValidations } = require('@adcp/sdk/testing');
 
+// The maintenance runner pinned by this line and the private modern runner
+// used by other 3.2.x storyboard tests must both honour the applicability gate.
+const RUNNERS = [
+  ['@adcp/sdk (maintenance pin)', require('@adcp/sdk/testing')],
+  ['fixture-test-sdk (modern runner)', require('@adcp-protocol/fixture-test-sdk/testing')],
+];
+
+const POLICY_GATE = '!context.policy_products.0.enforced_policies.0';
+const FIXTURE_PRODUCT_ID = 'test-product-policy-backed-rejections';
+const FIXTURE_POLICIES = ['creative_security_auto_redirect', 'creative_security_https_only'];
+
 const STORYBOARD_PATH = path.join(
   __dirname,
   '..',
@@ -128,3 +139,163 @@ test('runtime validations reject combined, duplicate, ambiguous, and extra entri
     );
   }
 });
+
+// adcp#8850: the 3.2 schemas have no capability a seller can use to opt out
+// of registry policy enforcement, so this line gates the enforcement phases on
+// what the seller publishes. The controller seeds `enforced_policies`; the
+// gate reads the seller's get_products response, never the seed.
+test('enforcement phases are gated on the enforced_policies the seller publishes', () => {
+  const storyboard = loadStoryboard();
+  const [discover, ...gated] = storyboard.phases;
+
+  assert.equal(discover.id, 'discover_policy_applicability');
+  assert.equal(discover.skip_if, undefined, 'discovery always runs');
+  assert.deepEqual(discover.steps.map(step => step.task), ['get_products']);
+  assert.deepEqual(discover.steps[0].context_outputs, [{ key: 'policy_products', path: 'products' }]);
+  assert.deepEqual(
+    discover.steps[0].validations.map(validation => validation.check),
+    ['response_schema'],
+    'the ungated read must not assert policy enforcement',
+  );
+
+  assert.deepEqual(gated.map(phase => phase.id), ['confirm_enforced_policies', 'reject_multiple_policies']);
+  for (const phase of gated) {
+    assert.equal(phase.skip_if, POLICY_GATE, `${phase.id} runs only for a seller that publishes enforced_policies`);
+  }
+  const confirm = gated[0].steps[0];
+  assert.equal(confirm.task, 'get_products');
+  assert.deepEqual(
+    confirm.validations.filter(v => v.path?.startsWith('products[0].enforced_policies')).map(v => v.check),
+    ['array_length', 'field_contains', 'field_contains'],
+    'an enforcing seller is still graded on the exact policy universe',
+  );
+  assert.equal(
+    confirm.validations.find(v => v.check === 'field_value').value,
+    FIXTURE_PRODUCT_ID,
+  );
+});
+
+function executableStoryboard() {
+  const source = loadStoryboard();
+  // Response-schema conformance has its own coverage; these mock sellers
+  // return only the fields the gate and the enforcement checks read.
+  return {
+    ...source,
+    prerequisites: undefined,
+    fixtures: undefined,
+    requires: undefined,
+    phases: source.phases.map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({
+        ...step,
+        validations: (step.validations ?? []).filter(validation => validation.check !== 'response_schema'),
+      })),
+    })),
+  };
+}
+
+function policyErrorFor(policyId) {
+  return { code: 'CREATIVE_REJECTED', message: `Rejected by ${policyId}`, details: { policy_id: policyId } };
+}
+
+async function runAgainstSeller(runner, { products, rejectWith }) {
+  const storyboard = executableStoryboard();
+  const calls = [];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const result = await runner.runStoryboard('https://seller.example/mcp', storyboard, {
+    _profile: { tools, raw_capabilities: { creative: { has_creative_library: true } } },
+    agentTools: tools,
+    _client: {
+      resetContext() {},
+      async getProducts(request) {
+        calls.push('get_products');
+        return { success: true, data: { products, context: request.context } };
+      },
+      async syncCreatives(request) {
+        calls.push('sync_creatives');
+        const creative_id = request.creatives[0].creative_id;
+        const creatives = rejectWith
+          ? [{ creative_id, action: 'failed', errors: rejectWith.map(policyErrorFor) }]
+          : [{ creative_id, action: 'created' }];
+        return { success: true, data: { creatives, context: request.context } };
+      },
+    },
+  });
+  const steps = result.phases.flatMap(phase => phase.steps);
+  return {
+    result,
+    calls,
+    failed: steps.filter(step => !step.passed).map(step => step.step_id),
+    executedSteps: steps.filter(step => !step.skipped).map(step => step.step_id),
+    executedPhases: result.phases.filter(phase => phase.steps.length > 0).map(phase => phase.phase_id),
+  };
+}
+
+function fixtureProduct(extra = {}) {
+  return {
+    product_id: FIXTURE_PRODUCT_ID,
+    name: 'Policy-Backed Creative Rejection Test Product',
+    pricing_options: [{ pricing_option_id: 'policy-backed-rejections-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 5 }],
+    ...extra,
+  };
+}
+
+const NON_ENFORCING_SELLERS = [
+  ['omits enforced_policies on the seeded product', [fixtureProduct()]],
+  ['publishes an empty enforced_policies list', [fixtureProduct({ enforced_policies: [] })]],
+  ['filters every product out under required_policies', []],
+];
+
+for (const [runnerName, runner] of RUNNERS) {
+  for (const [label, products] of NON_ENFORCING_SELLERS) {
+    test(`${runnerName}: a seller that ${label} skips enforcement and is not failed`, async () => {
+      const run = await runAgainstSeller(runner, { products });
+
+      assert.deepEqual(run.failed, [], JSON.stringify(run.result.phases));
+      assert.equal(run.result.failed_count, 0);
+      assert.equal(run.result.overall_passed, true);
+      assert.deepEqual(run.calls, ['get_products'], 'the violating creative must not be sent');
+      assert.deepEqual(run.executedPhases, ['discover_policy_applicability']);
+      const skipped = run.result.phases.filter(phase => phase.phase_id !== 'discover_policy_applicability');
+      assert.deepEqual(skipped.map(phase => phase.phase_id), ['confirm_enforced_policies', 'reject_multiple_policies']);
+      assert.ok(skipped.every(phase => phase.passed && phase.steps.length === 0), 'gated phases skip neutrally');
+    });
+  }
+
+  test(`${runnerName}: a seller that publishes enforced_policies runs every step`, async () => {
+    const run = await runAgainstSeller(runner, {
+      products: [fixtureProduct({ enforced_policies: FIXTURE_POLICIES })],
+      rejectWith: FIXTURE_POLICIES,
+    });
+
+    assert.deepEqual(run.failed, [], JSON.stringify(run.result.phases));
+    assert.equal(run.result.overall_passed, true);
+    assert.deepEqual(run.calls, ['get_products', 'get_products', 'sync_creatives']);
+    assert.deepEqual(run.executedSteps, [
+      'get_product_policies',
+      'get_product_policies_confirm',
+      'sync_dual_violation_creative',
+    ]);
+  });
+
+  test(`${runnerName}: a seller that publishes enforced_policies but accepts the violating creative fails`, async () => {
+    const run = await runAgainstSeller(runner, {
+      products: [fixtureProduct({ enforced_policies: FIXTURE_POLICIES })],
+    });
+
+    assert.equal(run.result.overall_passed, false);
+    assert.deepEqual(run.failed, ['sync_dual_violation_creative']);
+    assert.deepEqual(run.calls, ['get_products', 'get_products', 'sync_creatives']);
+  });
+
+  test(`${runnerName}: a seller that publishes a different policy universe fails the confirmation`, async () => {
+    const run = await runAgainstSeller(runner, {
+      products: [fixtureProduct({ enforced_policies: ['seller_specific_policy'] })],
+      rejectWith: FIXTURE_POLICIES,
+    });
+
+    assert.equal(run.result.overall_passed, false);
+    assert.ok(run.failed.includes('get_product_policies_confirm'), JSON.stringify(run.failed));
+    assert.ok(run.calls.includes('sync_creatives'), 'publishing any enforced policy keeps the seller in scope');
+  });
+}
