@@ -1967,26 +1967,46 @@ test('product_coverage_filters skips its wholesale get_products phase for brief-
   assert.notEqual(compactResult.steps[0].skip_reason, 'prerequisite_failed');
 });
 
-test('portfolio_routing_scope reads declared channels in brief mode', async () => {
-  const storyboard = loadMediaBuyStoryboard('portfolio_routing_scope');
-  const capabilities = {
-    adcp: { major_versions: [3] },
+function portfolioCapabilities(buyingModes) {
+  return {
+    adcp: { major_versions: [3], idempotency: { supported: false } },
     supported_protocols: ['media_buy'],
     media_buy: {
-      buying_modes: ['brief', 'refine'],
-      portfolio: { primary_countries: ['US'], primary_channels: ['display'] },
+      buying_modes: buyingModes,
+      portfolio: { publisher_domains: ['acmeoutdoor.example'], primary_countries: ['US'], primary_channels: ['display'] },
     },
   };
+}
 
-  const { dispatched } = await runWithStubbedSeller(storyboard, capabilities, (task, request) => {
+async function runPortfolioRoutingScope(capabilities) {
+  // parseStoryboard maps context_outputs `name` to the context key that skip_if reads.
+  const source = path.join(mediaBuyScenariosPath, 'portfolio_routing_scope.yaml');
+  const storyboard = parseStoryboard(fs.readFileSync(source, 'utf8'));
+  return runWithStubbedSeller(storyboard, capabilities, (task, request) => {
     if (task === 'get_adcp_capabilities') {
       return { success: true, status: 'completed', data: { ...capabilities, context: request.context } };
     }
     return { success: true, status: 'completed', data: { products: [], context: request.context } };
   });
+}
 
+test('portfolio_routing_scope reads declared channels in wholesale mode for wholesale sellers', async () => {
+  const { dispatched } = await runPortfolioRoutingScope(portfolioCapabilities(['brief', 'wholesale']));
   const reads = dispatched.filter(call => call.task === 'get_products');
   assert.equal(reads.length, 1);
-  assert.equal(reads[0].request.buying_mode, 'brief');
-  assert.equal(typeof reads[0].request.brief, 'string');
+  assert.equal(reads[0].request.buying_mode, 'wholesale');
+});
+
+test('portfolio_routing_scope skips the product read when no channel scope is declared', async () => {
+  const capabilities = portfolioCapabilities(['brief', 'wholesale']);
+  delete capabilities.media_buy.portfolio.primary_channels;
+  const { dispatched, result } = await runPortfolioRoutingScope(capabilities);
+  assert.deepEqual(dispatched.filter(call => call.task === 'get_products'), []);
+  assert.equal(result.failed_count, 0);
+});
+
+test('portfolio_routing_scope skips the product read for brief-only sellers', async () => {
+  const { dispatched, result } = await runPortfolioRoutingScope(portfolioCapabilities(['brief', 'refine']));
+  assert.deepEqual(dispatched.filter(call => call.task === 'get_products'), []);
+  assert.equal(result.failed_count, 0);
 });
