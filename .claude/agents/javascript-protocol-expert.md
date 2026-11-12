@@ -456,7 +456,7 @@ describe("Campaign MCP Server", () => {
 5. Test error paths: what happens when your backend is down?
 
 ### A2A Debugging Checklist
-1. Verify Agent Card: `GET /.well-known/agent.json` returns valid card
+1. Verify Agent Card: `GET /.well-known/agent-card.json` returns valid card
 2. Check CORS: Agent Card endpoint must be accessible cross-origin
 3. Test task lifecycle: submit a task, verify state transitions
 4. Check streaming: SSE connection stays alive, events are properly formatted
