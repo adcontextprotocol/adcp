@@ -30,7 +30,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 
 ## Upgrade checklist
 
-{/* depends on the #8501 withdrawals (#8758, #8767, #8854): row 45 */}
+{/* depends on the #8501 withdrawals (#8767, #8854): row 45 */}
 
 | Step | Who | Action |
 |---|---|---|
@@ -115,7 +115,7 @@ The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration
 
 ## Closed-schema triage: what stays in 3.3
 
-{/* depends on #8854 (metric_id, evaluator), #8758 (get_products and sync_creatives assignments) and #8767 (create_media_buy and update_media_buy). Re-check every row against what merged before the rc.0 cut */}
+{/* depends on #8854 (metric_id, evaluator) and #8767 (create_media_buy and update_media_buy). Re-check every row against what merged before the rc.0 cut */}
 
 On 2026-11-09 the working group decided that 3.x opens the schemas that were closed by accident ([Schemas are open by default](#schemas-are-open-by-default)). The [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) triage then re-checked every beta feature that had been withdrawn, or proposed for withdrawal, because its schema was closed. It applied three reasons, in this order:
 
@@ -170,7 +170,7 @@ Only the fields below change between beta.5 and rc.0 because of the triage. The 
 | `clock`, `business_calendar_id` | `core/sla-window.json`, which returns to its 3.2 shape because it sits inside the commercial terms held closed until 4.0 (`change_terms[].processing_sla`) | The creative-review SLA (`creative-review-sla`) |
 | `available_installment_statuses` | `core/reporting-capabilities.json` | `core/canonical-reporting-capabilities.json` (`media_buy.installment_lifecycle`) |
 
-**If you built from a beta bundle.** Stop emitting and accepting the fields that leave, and move the ones that change home. Regenerate from the rc.0 bundle. An open schema ignores a field it no longer defines, so a stale sender is not rejected there, but the field carries no 3.3 meaning. A schema that stays closed, such as the canonical performance standard, rejects it. The fields that stay need no action.
+**If you built from a beta bundle.** Stop emitting and accepting the fields that leave, and move the ones that change home. Regenerate from the rc.0 bundle. An open schema ignores a field it no longer defines, so a stale sender is not rejected there, but the field carries no 3.3 meaning. Two cases reject it: a schema that stays closed, such as the canonical performance standard, and a deprecated row that names the field, such as `sync_creatives` `assignments[]`, which rejects `trackers` and `landing_page_url`. The fields that stay need no action.
 
 ## Required to claim 3.3 behavior
 
@@ -679,7 +679,7 @@ These change generated types or bundle shape without changing what a conformant 
 - **Local-alignment durations (#8718, beta.4).** `core/reporting-schedule.json` and `core/reporting-schedule-offering.json` reject a `period_duration` with both a non-zero date and a non-zero time component under `account_timezone`, `source_timezone`, or `billing_cycle`. Generated validators reject `P1DT12H` there; `P1DT0H`, `P0DT12H`, and `utc` mixed durations stay valid.
 - **New error codes and shapes (beta.4 and beta.5).** `SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY` (recovery `correctable`) for a managed-delivery offering without `account_id` in its primary keys (#8718); `budget_field`, `basis`, `constraint`, and `related_field` on `BUDGET_TOO_LOW` details (#8710); `SetAccountTimezoneResult` on the controller response (#8717); and `core/match-key.json` with `enums/match-key-use.json` (#8446).
 
-{/* depends on the #8501 withdrawals (#8758, #8767, #8854): the second bullet */}
+{/* depends on the #8501 withdrawals (#8767, #8854): the second bullet */}
 
 - **Opened schemas ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), rc.0).** `additionalProperties` goes from `false` to `true` at 744 of the 859 closed locations, and nothing else in those schemas changes. Generated types change: json-schema-to-typescript gives an opened object an index signature, Pydantic models stop forbidding extra fields, and Zod validators accept unknown keys where the schema opened. Where closure also rejected a specific field, the opened schema names it in `not: { anyOf: [{ required: [...] }] }`, so a validator keeps that rejection. Code that relied on a type or validation error for any other unknown key needs its own check. See [Schemas are open by default](#schemas-are-open-by-default).
 - **Withdrawn and moved beta fields (rc.0).** Regenerate to drop the fields the [closed-schema triage](#closed-schema-triage-what-stays-in-3-3) removes and to pick up the ones that change home, such as `execution_readiness` on `list_products`.
