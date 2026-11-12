@@ -223,7 +223,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // bound at 1_386_000.
 // With both on main (#8911 and the named rejections), the controller measures
 // 1_386_397 bytes; bound at 1_387_000.
-const PARITY_COMPILE_LIMIT = 1_387_000;
+// #8501 entries 11-12 restore sla-window to its 3.2.8 text and give the
+// creative review SLA its own clock, durations and calendar constraints in
+// place of a $ref; the controller measures 1_387_457 bytes, bound at 1_388_000.
+const PARITY_COMPILE_LIMIT = 1_388_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
