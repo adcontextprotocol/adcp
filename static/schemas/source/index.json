@@ -276,10 +276,6 @@
           "$ref": "/schemas/core/audience-evidence-requirements.json",
           "description": "Buyer-authored audience-evidence admissibility and ranking policy"
         },
-        "audience-evidence-target": {
-          "$ref": "/schemas/core/audience-evidence-target.json",
-          "description": "Experimental. Buyer-named audience and minimum evidence value inside audience-evidence requirements"
-        },
         "audience-size": {
           "$ref": "/schemas/core/audience-size.json",
           "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
@@ -1850,10 +1846,6 @@
         "daypart-timezone-mode": {
           "$ref": "/schemas/enums/daypart-timezone-mode.json",
           "description": "Supported clock mode for daypart targeting"
-        },
-        "audience-evidence-relationship": {
-          "$ref": "/schemas/enums/audience-evidence-relationship.json",
-          "description": "What an audience-evidence estimate says: composition, index, or reach_estimate"
         },
         "daypart-time-granularity": {
           "$ref": "/schemas/enums/daypart-time-granularity.json",

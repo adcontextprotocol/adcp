@@ -784,6 +784,19 @@ type LegacyCreativeAssignmentRow = {
   [key: string]: unknown;
 };
 
+/** A create_media_buy or update_media_buy assignment row, as stored from a
+ * request and as returned in their responses. `trackers` and `landing_page_url`
+ * are not fields of that row in 3.3 (adcp#8501): they are set through
+ * sync_creatives `assign` and read back on get_media_buys and list_creatives, so
+ * a request value is ignored rather than stored, and an assign-set value is not
+ * echoed here. */
+function requestAssignmentRow<T extends Record<string, unknown>>(row: T): T {
+  const stored: Record<string, unknown> = structuredClone(row);
+  delete stored.trackers;
+  delete stored.landing_page_url;
+  return stored as T;
+}
+
 function inlineCreativeAssignmentRows(creatives: InlineCreativeInput[] | undefined): LegacyCreativeAssignmentRow[] {
   if (!Array.isArray(creatives)) return [];
   return creatives.map(creative => ({
@@ -1884,7 +1897,7 @@ function validateCreateAssignmentSemantics(
   session: SessionState,
   fieldPrefix: string,
   packageRequirements: CanonicalPackageFormat[] = [],
-  options: { declaresAssignmentSettings?: boolean } = {},
+  options: { storedAssignmentSettings?: boolean } = {},
 ): TaskError[] {
   const errors: TaskError[] = [];
   const effectiveModes = new Set(assignments.map(assignment => assignment.rotation_mode ?? 'weighted'));
@@ -1938,18 +1951,11 @@ function validateCreateAssignmentSemantics(
     const creative = typeof assignment.creative_id === 'string'
       ? session.creatives.get(assignment.creative_id)
       : undefined;
-    const settings = assignment as unknown as { trackers?: unknown; landing_page_url?: unknown };
-    if (options.declaresAssignmentSettings === false) {
-      for (const field of ['trackers', 'landing_page_url'] as const) {
-        if (settings[field] !== undefined) {
-          errors.push({
-            code: 'UNSUPPORTED_FEATURE',
-            message: `${fieldPrefix}[${index}].${field} requires creative.supports_assignment_${field === 'trackers' ? 'trackers' : 'landing_page'}`,
-            field: `${fieldPrefix}[${index}].${field}`,
-          });
-        }
-      }
-    } else if (Array.isArray(settings.trackers) && settings.trackers.length > 0) {
+    // Assignment trackers and landing pages are set only through sync_creatives
+    // assignment_operations (adcp#8501). Request rows never carry them (see
+    // requestAssignmentRow); rows stored through assign keep their tracker-slot check.
+    const settings = assignment as unknown as { trackers?: unknown };
+    if (options.storedAssignmentSettings && Array.isArray(settings.trackers) && settings.trackers.length > 0) {
       const slotProblem = assignmentTrackerSlotProblem(
         { formatsToProvide: packageRequirements },
         creative?.manifest,
@@ -2063,22 +2069,19 @@ function packageReadinessFields(pkg: PackageState, session: SessionState, ctx: T
 
 /** The reference seller serves approved assignments independently and does not
  * implement an initial all-creatives gate. Never acknowledge a requested hold
- * that delivery simulation would ignore. */
+ * that delivery simulation would ignore. The gate is set only through
+ * control_media_buy; create_media_buy and update_media_buy do not define it in
+ * 3.3 (adcp#8501), so they ignore it like any unknown field. */
 function unsupportedCreativeStartPolicyError(request: unknown): TaskError | undefined {
-  if (!isRecord(request)) return undefined;
-  for (const field of ['packages', 'new_packages'] as const) {
-    const packages = request[field];
-    if (!Array.isArray(packages)) continue;
-    const index = packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
-    if (index < 0) continue;
-    return {
-      code: 'UNSUPPORTED_FEATURE',
-      message: 'This seller does not support holding package startup until every assigned creative is approved.',
-      field: `${field}[${index}].start_requires_all_creatives_approved`,
-      recovery: 'correctable',
-    };
-  }
-  return undefined;
+  if (!isRecord(request) || !Array.isArray(request.packages)) return undefined;
+  const index = request.packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
+  if (index < 0) return undefined;
+  return {
+    code: 'UNSUPPORTED_FEATURE',
+    message: 'This seller does not support holding package startup until every assigned creative is approved.',
+    field: `packages[${index}].start_requires_all_creatives_approved`,
+    recovery: 'correctable',
+  };
 }
 
 function creativeStartPolicyForWire(ctx: TrainingContext): Record<string, boolean> {
@@ -15745,8 +15748,6 @@ export async function handleCreateMediaBuy(
 ) {
   const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages']);
   if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
-  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
-  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
   if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
@@ -17012,7 +17013,6 @@ async function handleCreateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${i}].creative_assignments`,
         formatSnapshot.formats ?? [],
-        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       ));
     }
 
@@ -17102,7 +17102,7 @@ async function handleCreateMediaBuyUnlocked(
         formatsToProvide: formatSnapshot.formats,
       }),
       creativeAssignments,
-      creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
+      creativeAssignmentDetails: requestedAssignmentRows.map(assignment => requestAssignmentRow(assignment)),
       targeting: targetingResult.targeting,
       ...(targetingResolution && { targetingResolution }),
       ...(propertyListApplication && { propertyListApplication }),
@@ -17396,7 +17396,6 @@ async function handleCreateMediaBuyUnlocked(
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
       ...packageReadinessFields(pkg, session, ctx),
-      ...creativeStartPolicyForWire(ctx),
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
@@ -17404,7 +17403,7 @@ async function handleCreateMediaBuyUnlocked(
         ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
       }),
       ...(pkg.committedMetrics && mediaBuy.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
-      creative_assignments: pkg.creativeAssignmentDetails
+      creative_assignments: pkg.creativeAssignmentDetails?.map(row => requestAssignmentRow(row))
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
     ...(isRecord(req.context) && { context: req.context }),
@@ -19931,9 +19930,6 @@ async function handleUpdateMediaBuyUnlocked(
     };
   }
 
-  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(req);
-  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
-
   if (
     !options.acceptedProposalExecution
     && Object.hasOwn(req as unknown as Record<string, unknown>, 'invoice_recipient')
@@ -20289,7 +20285,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `packages[${pkgId}].creative_assignments`,
           (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
-          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
+          { storedAssignmentSettings: update.creatives === undefined && assignments === undefined },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20548,7 +20544,7 @@ async function handleUpdateMediaBuyUnlocked(
       if (creativeAssignments !== undefined) {
         const creativeIds = creativeAssignments.map(a => a.creative_id);
         pkg.creativeAssignments = creativeIds;
-        pkg.creativeAssignmentDetails = structuredClone(creativeAssignments);
+        pkg.creativeAssignmentDetails = creativeAssignments.map(assignment => requestAssignmentRow(assignment));
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
@@ -20708,7 +20704,6 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `new_packages[${i}].creative_assignments`,
           formatSnapshot.formats ?? [],
-          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20745,7 +20740,7 @@ async function handleUpdateMediaBuyUnlocked(
           formatsToProvide: formatSnapshot.formats,
         }),
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
-        creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
+        creativeAssignmentDetails: assignmentRows.map(row => requestAssignmentRow(row)),
         targeting: targetingResult.targeting,
         targetingResolution: packageTargetingResolution(product, targetingResult.targeting),
         ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
@@ -20905,7 +20900,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${pkg.packageId}].creative_assignments`,
         (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
-        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
+        { storedAssignmentSettings: true },
       );
       if (assignmentErrors.length) return { errors: assignmentErrors };
     }
@@ -20984,7 +20979,6 @@ async function handleUpdateMediaBuyUnlocked(
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
     ...packageReadinessFields(pkg, session, ctx),
-    ...creativeStartPolicyForWire(ctx),
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
@@ -20992,7 +20986,7 @@ async function handleUpdateMediaBuyUnlocked(
       ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
     }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
-    creative_assignments: pkg.creativeAssignmentDetails
+    creative_assignments: pkg.creativeAssignmentDetails?.map(row => requestAssignmentRow(row))
       ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     ...(pkg.canceledAt && {
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },

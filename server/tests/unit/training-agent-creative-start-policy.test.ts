@@ -109,42 +109,39 @@ describe('reference seller creative start policy', () => {
 
   afterAll(stopSessionCleanup);
 
-  it('rejects a true create before creating a buy, library creative, or assignment', async () => {
-    const before = await snapshot();
+  it('ignores the gate on create packages: no rejection, no echo, effective false on readback', async () => {
     const result = await direct(handleCreateMediaBuy, createArgs({
       packages: [
-        { ...PRODUCT, budget: 10_000, creatives: [inlineCreative] },
         { ...PRODUCT, budget: 10_000, [FIELD]: true },
+        { ...PRODUCT, budget: 10_000, [FIELD]: false },
       ],
     }));
-    expect(result).toMatchObject({ errors: [{ code: 'UNSUPPORTED_FEATURE', field: `packages[1].${FIELD}` }] });
-    expect(result.media_buy_id).toBeUndefined();
-    expect(await snapshot()).toEqual(before);
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    for (const pkg of result.packages as Result[]) expect(pkg).not.toHaveProperty(FIELD);
+    const current = await read(result.media_buy_id as string);
+    expect((current.packages as Result[]).map(pkg => pkg[FIELD])).toEqual([false, false]);
   });
 
-  it.each(['packages', 'new_packages'])('rejects true in update.%s without any sibling mutations', async field => {
+  it.each(['packages', 'new_packages'])('ignores the gate in update.%s without rejecting the update', async field => {
     const created = await direct(handleCreateMediaBuy, createArgs());
     expect(created.errors).toBeUndefined();
     const [firstId, secondId] = packageIds(created);
-    const before = await snapshot();
     const result = await direct(handleUpdateMediaBuy, {
       media_buy_id: created.media_buy_id,
       revision: created.revision,
-      name: 'A name that must not commit',
-      packages: [{ package_id: firstId, budget: 5_000, creatives: [inlineCreative] }],
       ...(field === 'packages' ? {
         packages: [
-          { package_id: firstId, budget: 5_000, creatives: [inlineCreative] },
+          { package_id: firstId, budget: 5_000 },
           { package_id: secondId, [FIELD]: true },
         ],
       } : {
-        new_packages: [{ ...PRODUCT, budget: 1_000 }, { ...PRODUCT, budget: 1_000, [FIELD]: true }],
+        new_packages: [{ ...PRODUCT, budget: 1_000, [FIELD]: true }],
       }),
     });
-    expect(result).toMatchObject({ errors: [{ code: 'UNSUPPORTED_FEATURE', field: `${field}[1].${FIELD}` }] });
-    // Covers the name, package budgets, revision, inline library entries, and
-    // all package assignment sets, rather than only the response shape.
-    expect(await snapshot()).toEqual(before);
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    for (const pkg of (result.affected_packages ?? []) as Result[]) expect(pkg).not.toHaveProperty(FIELD);
+    const current = await read(created.media_buy_id as string);
+    expect((current.packages as Result[]).every(pkg => pkg[FIELD] === false)).toBe(true);
   });
 
   it('preserves root cancellation precedence over an ignored unsupported gate', async () => {
@@ -169,12 +166,12 @@ describe('reference seller creative start policy', () => {
   it.each([
     ['3.3 candidate', CANDIDATE_CTX, false],
     ['3.2 stable', STABLE_CTX, undefined],
-  ] as const)('reports only the effective policy defined by the %s served release', async (_label, ctx, expected) => {
+  ] as const)('echoes the effective policy only on get_media_buys, and only on the %s served release', async (_label, ctx, expected) => {
     const created = await direct(handleCreateMediaBuy, createArgs({
       packages: [{ ...PRODUCT, budget: 10_000, [FIELD]: false }],
     }), ctx);
     expect(created.errors).toBeUndefined();
-    expect((created.packages as Result[])[0]![FIELD]).toBe(expected);
+    expect(created.packages as Result[]).not.toContainEqual(expect.objectContaining({ [FIELD]: expect.anything() }));
     const [packageId] = packageIds(created);
     const updated = await direct(handleUpdateMediaBuy, {
       media_buy_id: created.media_buy_id,
@@ -182,7 +179,7 @@ describe('reference seller creative start policy', () => {
       packages: [{ package_id: packageId, budget: 8_000, [FIELD]: false }],
     }, ctx);
     expect(updated.errors).toBeUndefined();
-    expect((updated.affected_packages as Result[])[0]![FIELD]).toBe(expected);
+    expect(updated.affected_packages as Result[]).not.toContainEqual(expect.objectContaining({ [FIELD]: expect.anything() }));
     const current = await read(created.media_buy_id as string, ctx);
     expect((current.packages as Result[])[0]![FIELD]).toBe(expected);
   });
