@@ -1,5 +1,5 @@
 id: creative/policy_backed_rejections
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Policy-backed creative rejections"
 category: creative
@@ -26,6 +26,17 @@ narrative: |
   the conformance surface. Lifecycle event reasons remain orthogonal because this
   test covers the immediate sync_creatives result, not a later status transition.
 
+  **Applicability.** The controller seeds `enforced_policies` on the fixture
+  product, but only a seller that enforces registry policies publishes that
+  list back on `get_products`. The enforcement phases therefore run only when
+  the discovered product carries a non-empty `enforced_policies` list. A seller
+  that does not echo the field is not sent the violating creative and is not
+  failed for policies it never claimed to enforce (adcp#8850). A seller that
+  does echo it runs every step. The 3.3 line gates this storyboard on the
+  `creative.supports_registry_policy_enforcement` capability (adcp#8857); that
+  field does not exist in the 3.2 schemas, so this line reads the product the
+  seller actually returns.
+
 agent:
   interaction_model: stateful_push
   capabilities:
@@ -44,7 +55,9 @@ prerequisites:
     contains exactly creative_security_auto_redirect and
     creative_security_https_only. Discovery proves applicability before the buyer
     submits the hosted display-tag fixture. No other policy applies to this closed
-    fixture, so exactly two policy error entries are expected.
+    fixture, so exactly two policy error entries are expected. A seller whose
+    discovered product does not publish enforced_policies skips the enforcement
+    phases.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -77,22 +90,25 @@ fixtures:
 
 phases:
   - id: discover_policy_applicability
-    title: "Discover the seller's enforced policies"
+    title: "Discover whether the seller publishes enforced policies"
     narrative: |
-      The buyer confirms that the selected product declares both registry policy
-      IDs before submitting a creative. This makes the rejection test applicable
-      only when the seller has explicitly selected the two shared policies.
+      The buyer reads the seeded product before submitting a creative. This read
+      decides applicability: the enforcement phases below run only when the
+      first discovered product carries a non-empty enforced_policies list. The
+      gate reads the seller's response, not the controller seed, so a seller
+      that does not enforce registry policies is not graded on them.
     steps:
       - id: get_product_policies
-        title: "Read enforced_policies from the selected product"
+        title: "Discover the seeded product and its enforced_policies"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
-          Return the controller-seeded product with exactly the two policy IDs
-          exercised by the hosted rejection fixture.
+          Return a schema-valid product list. A seller that enforces registry
+          policies returns the controller-seeded product with its
+          enforced_policies; the next phase asserts that list.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_policy_backed_rejections_discover"
           buying_mode: "brief"
@@ -111,6 +127,54 @@ phases:
             sandbox: true
           context:
             correlation_id: "creative_policy_backed_rejections--discover"
+        context_outputs:
+          # `products` is required on every get_products response, so this
+          # capture never fails the step. The phases below read
+          # `policy_products.0.enforced_policies.0` to decide applicability.
+          - key: "policy_products"
+            path: "products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+
+  - id: confirm_enforced_policies
+    title: "Confirm the seller enforces exactly the fixture's two policies"
+    # Runs only when the seller published at least one enforced policy on the
+    # discovered product (adcp#8850). An empty or absent list skips it.
+    skip_if: "!context.policy_products.0.enforced_policies.0"
+    narrative: |
+      The seller published enforced_policies, so it is graded on them. The
+      selected product must be the isolated fixture and declare both registry
+      policy IDs, and only those, before the buyer submits a creative.
+    steps:
+      - id: get_product_policies_confirm
+        title: "Read enforced_policies from the selected product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the controller-seeded product with exactly the two policy IDs
+          exercised by the hosted rejection fixture.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#creative_policy_backed_rejections_confirm"
+          buying_mode: "brief"
+          brief: "Policy-Backed Creative Rejection Test Product display inventory"
+          required_policies:
+            - "creative_security_auto_redirect"
+            - "creative_security_https_only"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_policy_backed_rejections-90067557"
+            sandbox: true
+          context:
+            correlation_id: "creative_policy_backed_rejections--confirm"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -133,11 +197,13 @@ phases:
 
   - id: reject_multiple_policies
     title: "Reject one creative for two policies"
+    skip_if: "!context.policy_products.0.enforced_policies.0"
     narrative: |
       The hosted test tag assigns window.location without user interaction and
       separately fetches an HTTP resource. The response must preserve the
       one-policy-per-entry invariant; a synthesized combined code or one entry
-      carrying an ambiguous multi-policy reference is non-conformant.
+      carrying an ambiguous multi-policy reference is non-conformant. Runs only
+      when the seller published enforced_policies on the discovered product.
     steps:
       - id: sync_dual_violation_creative
         title: "Submit a creative with two deterministic policy violations"
