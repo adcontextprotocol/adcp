@@ -544,7 +544,7 @@ Meta Reels is a useful test of canonical-formats coverage: a platform-specific f
 | --- | --- | --- |
 | Vertical 9:16, 3-90s, 1080×1920, h264/aac, mp4 | `params` on `video_hosted` | Standard canonical parameters. |
 | Headline (40ch), Primary text (125ch) | `params.headline_max_chars`, `params.primary_text_max_chars` + inherited `headline` / `primary_text` slots | Buyer ships text content via the slots; the param narrows the constraint. |
-| CTA from a fixed enum | `params.cta_values[]` + inherited `cta` slot | Buyer ships `assets.cta.text`; validator checks against the enum. |
+| CTA from a fixed enum | `params.cta_values[]` + inherited `cta` slot | Buyer ships `assets.cta.content`; validator checks against the enum. |
 | Landing page URL | Inherited `landing_page_url` slot on `video_hosted` | No special handling. |
 | Brand name overlay | NOT in the format. Auto-applied by Meta from the linked Page (auth context outside AdCP). | The inherited `brand_name` slot exists in the canonical; products that need explicit content (publisher-direct video, CTV) populate it. Meta doesn't consume it for Reels. |
 | Logo overlay | NOT in the format. Auto-applied by Meta from the linked Page. | `BrandRef.brand_kit_override.logo` exists for formats whose seller-side renderer overlays a logo (host-read podcasts, CTV bumpers, publisher direct). Meta doesn't use it. |

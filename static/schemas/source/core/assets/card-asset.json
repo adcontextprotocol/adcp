@@ -29,7 +29,7 @@
     },
     "cta": {
       "type": "string",
-      "description": "Optional per-card call-to-action label (e.g., 'SHOP_NOW', 'LEARN_MORE'). When the parent format declares `cta_values` (allowed CTA labels), the per-card `cta` MUST be one of those values. Lets a Meta or TikTok carousel show different CTAs per card."
+      "description": "Optional per-card call-to-action label (e.g., 'SHOP_NOW', 'LEARN_MORE'). When the parent format declares `cta_values` (allowed CTA labels), the per-card `cta` MUST be one of those values; a seller refuses any other value with `CREATIVE_VALUE_NOT_ALLOWED`, with `error.field` pointing at the card's `cta`. Lets a Meta or TikTok carousel show different CTAs per card."
     },
     "landing_page_url": {
       "$ref": "/schemas/core/assets/url-asset.json",
