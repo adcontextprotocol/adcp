@@ -576,10 +576,12 @@ If unsure, default to no changeset and discuss whether the change belongs on
 
 #### Pre mode (prereleases)
 
-During the beta phase, `.changeset/pre.json` put `main` in **beta pre mode**,
-so each Version Packages cut produced `3.2.0-beta.N`. The current file uses
-`"tag": "rc"` and produces `3.2.0-rc.N`; the stable cut (shipped as `3.2.1`
-over the withdrawn `3.2.0`) requires the reviewed pre-mode exit below. The original beta entry procedure was:
+During a line's beta phase, `.changeset/pre.json` puts `main` in **beta pre
+mode**, so each Version Packages cut produces `X.Y.0-beta.N` (`main` is in 3.3
+beta pre mode now). After the RC promotion below it uses `"tag": "rc"` and
+produces `X.Y.0-rc.N`; the stable cut requires the reviewed pre-mode exit below
+(3.2 shipped as `3.2.1` over the withdrawn `3.2.0`). The original 3.2 beta
+entry procedure was:
 
 ```bash
 npx changeset pre enter beta
@@ -600,7 +602,8 @@ npm run promote:rc -- --prepare
 ```
 
 This creates reviewed release state for the Version Packages workflow to cut
-`3.2.0-rc.0`. The marker locks the exact pending root changeset pool by filename
+`X.Y.0-rc.0` for the line in `package.json` (for 3.3, `3.3.0-beta.N` to
+`3.3.0-rc.0`). The marker locks the exact pending root changeset pool by filename
 and digest; the trusted versioning job consumes that pool through Changesets,
 preserves its generated changelog, and performs the beta-to-RC phase change. An
 empty pool remains valid. Changesets otherwise carries the beta sequence number
