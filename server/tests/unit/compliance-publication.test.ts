@@ -1,9 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import { complianceResultToDbInput, type ComplianceResult } from '../../src/addie/services/compliance-testing.js';
 import { classifyComplianceStep } from '../../src/compliance/step-disposition.js';
+
+// Copied from @adcp/sdk DETAILED_SKIP_TO_CANONICAL (17.0.0-beta.21). It is not
+// a public export and private SDK reach-ins are not allowed
+// (scripts/lint-sdk-shims.cjs), so add new SDK reasons here when the pin moves.
+const DETAILED_SKIP_TO_CANONICAL: Record<string, string> = {
+  probe_skipped: 'not_applicable',
+  not_in_only_vectors: 'not_applicable',
+  grader_skipped: 'not_applicable',
+  capability_profile_mismatch: 'not_applicable',
+  transport_ungradable: 'not_applicable',
+  signing_transport_unavailable: 'not_applicable',
+  mcp_mode_flattens_url_edges: 'not_applicable',
+  oauth_not_advertised: 'not_applicable',
+  rate_limit_not_triggered: 'not_applicable',
+  force_scenario_unsupported: 'not_applicable',
+  fixture_seed_unsupported: 'not_applicable',
+  fixture_unsatisfied: 'fixture_unsatisfied',
+  session_probe_ungradable: 'not_applicable',
+  capability_unsupported: 'not_applicable',
+  capability_prerequisite_unavailable: 'not_applicable',
+  rate_abuse_opt_out: 'unsatisfied_contract',
+  missing_test_kit_contract: 'unsatisfied_contract',
+  live_side_effect_opt_in_required: 'unsatisfied_contract',
+  operator_skip: 'unsatisfied_contract',
+  controller_seeding_failed: 'prerequisite_failed',
+};
 
 const SDK_PACKAGE_VERSION = (
   JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
@@ -145,17 +169,6 @@ describe('hosted compliance publication policy', () => {
   it('classifies every detailed SDK skip reason without a canonical skip.reason', () => {
     // The SDK projection keeps only the detailed reason, so a reason missing
     // from the hosted lists silently grades as a failed step (#8830).
-    // DETAILED_SKIP_TO_CANONICAL is not a public export; load it by path so an
-    // SDK bump that adds a reason fails here rather than in production.
-    const require = createRequire(import.meta.url);
-    const sdkRoot = dirname(require.resolve('@adcp/sdk/package.json'));
-    let DETAILED_SKIP_TO_CANONICAL: Record<string, string> | undefined;
-    try {
-      ({ DETAILED_SKIP_TO_CANONICAL } = require(join(sdkRoot, 'dist/lib/testing/storyboard/types.js')));
-    } catch (error) {
-      throw new Error(`SDK moved DETAILED_SKIP_TO_CANONICAL; update this guard (${String(error)})`);
-    }
-    if (!DETAILED_SKIP_TO_CANONICAL) throw new Error('SDK moved DETAILED_SKIP_TO_CANONICAL; update this guard');
     // Graded in classifyRunStep from the pinned storyboard's requires_contract.
     const handledWithStoryboardMetadata = new Set(['missing_test_kit_contract']);
     // Unverified signing is a coverage gap, never a pass (adcp-client#2954).
