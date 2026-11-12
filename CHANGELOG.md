@@ -1120,6 +1120,17 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
 
+## 3.1.33
+
+### Patch Changes
+
+- a740dd9: Gate `product_signal_targeting` on wholesale support in both `media_buy.buying_modes` and `signals.discovery_modes`. A seller that advertises only brief discovery no longer runs it. Its negative probe now cascade-skips when product discovery fails, instead of sending an unresolved `$context.product_id`.
+- 7237866: Stop the 3.1 creative storyboards from failing sellers whose catalog offers only third-party display tags and VAST tags (adcp#8770).
+
+  - `dependency_impairment`, `dependency_impairment_cardinality` and `media_buy_seller`'s `creative_sync` build their test creatives from the product format's own declaration with `$build_assets_from_format`, as `creative_fate_after_cancellation` already does. A format whose required assets the test kit cannot supply is graded `not_applicable` with `fixture_unavailable` instead of being sent a fixed image (or, in `media_buy_seller`, a fixed video plus a placeholder image). `media_buy_seller`'s `creative_sync` now runs after `delivery_monitoring`, so that coverage gap cannot drop delivery grading.
+  - `creative_lifecycle`, `creative/creative_lifecycle_webhooks` and `deterministic_testing`'s creative state machine push a fixed display image only when the seller declares a format that accepts image assets.
+  - `creative/native_in_feed` and `media_buy_seller/creative_reception` push their fixed native bundle only when the seller declares a format that accepts text and image assets.
+
 ## 3.1.32
 
 ### Patch Changes

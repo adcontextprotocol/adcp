@@ -319,7 +319,7 @@ describe('wrapper contract', () => {
     // manifest cannot silently lose a hosted release.
     const aliases: Array<{ alias: string; channel: RegExp; floor: string }> = [
       { alias: '3.0', channel: /^3\.0\.\d+$/, floor: '3.0.25' },
-      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.32' },
+      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.33' },
       { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.5' },
       { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
       { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
@@ -362,7 +362,7 @@ describe('wrapper contract', () => {
     expect(signing?.phases.find(phase => phase.id === 'negative_vectors')?.steps).toHaveLength(28);
   });
 
-  it.each(['3.0.25', '3.1.20', '3.1.22', '3.1.23', '3.1.24', '3.1.29', '3.1.30',
+  it.each(['3.0.25', '3.1.20', '3.1.22', '3.1.23', '3.1.24', '3.1.29', '3.1.30', '3.1.32',
     '3.2.1', '3.2.2', '3.2.3', '3.2.4', '3.2.5'])('keeps explicit hosted target %s exact after 3.1 advancement', version => {
     const target = hostedComplianceTarget(version);
     const options = hostedComplianceOptions(target);
