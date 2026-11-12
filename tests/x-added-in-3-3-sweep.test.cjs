@@ -80,6 +80,7 @@ const PROPERTIES_3_3 = [
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'governance', 'properties', 'supports_budget_periods']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'operation_sources']],
   ['formats/canonical/video_hosted.json', ['properties', 'loudness']],
+  ['formats/canonical/image_carousel.json', ['properties', 'card_image_sizes']],
   ['core/installment-deadlines.json', ['properties', 'change_cutoff']],
   ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
   ['governance/check-governance-request.json', ['properties', 'budget_period_id']],

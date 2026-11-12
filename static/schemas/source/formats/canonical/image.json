@@ -178,7 +178,7 @@
     "cta_values": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW'])."
+      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW']). When set, narrows the cta slot to a closed enum. When absent, the cta slot takes free text, and a seller does not refuse a CTA value as `CREATIVE_VALUE_NOT_ALLOWED`."
     },
     "asset_source": {
       "type": "string",

@@ -212,6 +212,8 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_376_000.
 // Experimental match keys (#8375) reach the seeded Product through
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
+// image_carousel `card_image_sizes` (#8911) reaches the seeded Product's
+// format_options: 1_384_855 bytes. Bound at 1_385_000.
 // Opening the 3.3 schemas and naming the fields closure used to reject (DR-0036)
 // adds 395 bytes to the comply-test-controller-request closure
 // (account-identity-change 30, attestation-reference 72, audience-source 113,
@@ -219,7 +221,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // product-allowed-action 34): 1_383_804 → 1_384_081 bytes. Bound at 1_385_000.
 // The later named rejections and their descriptions measure 1_385_027 bytes;
 // bound at 1_386_000.
-const PARITY_COMPILE_LIMIT = 1_386_000;
+// With both on main (#8911 and the named rejections), the controller measures
+// 1_386_397 bytes; bound at 1_387_000.
+const PARITY_COMPILE_LIMIT = 1_387_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

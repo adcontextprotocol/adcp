@@ -92,7 +92,7 @@ Each rule lands in the PR named, in the page named, and nowhere else. R9 was add
 The canonical origin of a URL is its scheme and authority after steps 1 to 4 of the [URL canonicalization algorithm](../docs/reference/url-canonicalization.mdx), with no path, query, or fragment. That page defines it once, with vectors, and its "Where it applies" table states which form each comparison uses:
 - WBA identity and trust.json agent URLs compare canonical origins.
 - `format-id.agent_url` stays a canonical URL. A WBA signer matches it when the canonical origin of `agent_url` equals `O`.
-- `adagents.json` `authorized_agents[].url` stays a canonical URL under the 3.2 profile, and matches a WBA signer by canonical origin.
+- `adagents.json` `authorized_agents[].url` stays a canonical URL under the 3.2 profile, and matches a WBA signer by canonical origin. *Amended by #8862: an origin-only entry (root path, no query) matches any agent URL with the same canonical origin, because an origin hosts one agent; an entry with a path stays an exact canonical-URL match.*
 
 No other rule restates the definition.
 

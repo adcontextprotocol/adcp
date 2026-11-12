@@ -1444,9 +1444,11 @@ function projectTenantCapabilities(
       structured.creative = {
         ...creative,
         bills_through_adcp: false,
-        // The seller publishes creative policies and enforces provenance
-        // during sync_creatives. Older release shapes omit this 3.3 flag below.
+        // The seller publishes creative policies, enforces provenance, and
+        // rejects per registry policy during sync_creatives. Older release
+        // shapes omit these 3.3 flags below.
         supports_provenance: true,
+        supports_registry_policy_enforcement: true,
         supported_formats: supportedFormats,
         preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',

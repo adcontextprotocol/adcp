@@ -211,7 +211,7 @@
     "eval:addie-gemini-direct-ablation": "tsx --import dotenv/config server/tests/manual/gemini-direct-ablation-eval.ts",
     "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts",
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts",
-    "test:auction-only-compliance": "node --import tsx --test --test-concurrency=1 --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/creative-format-gate-compliance.test.cjs tests/currency-filter-compliance.test.cjs tests/optional-seller-capabilities.test.cjs tests/product-filter-auction-compliance.test.cjs tests/canonical-compatibility-slices.test.cjs tests/governance-recovery-pricing-scope.test.cjs tests/literal-auction-bid-compliance.test.cjs tests/optional-discovery-contract.test.cjs tests/storyboard-exclusion-compat.test.cjs"
+    "test:auction-only-compliance": "node --import tsx --test --test-concurrency=1 --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/creative-format-gate-compliance.test.cjs tests/currency-filter-compliance.test.cjs tests/optional-seller-capabilities.test.cjs tests/product-filter-auction-compliance.test.cjs tests/canonical-compatibility-slices.test.cjs tests/governance-recovery-pricing-scope.test.cjs tests/literal-auction-bid-compliance.test.cjs tests/optional-discovery-contract.test.cjs tests/storyboard-exclusion-compat.test.cjs tests/operator-fee-seller-exclusion.test.cjs"
   },
   "dependencies": {
     "@adcp/reporting-storage": "0.3.0-beta.1",
