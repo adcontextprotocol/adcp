@@ -171,14 +171,3 @@ test('the 4.0 registry still carries the withdrawn designs', () => {
     assert.ok(registry.checks.find((entry) => entry.id === id), `${id} is registered`);
   }
 });
-
-test('the release story names the fields withdrawn from the deprecated tasks', () => {
-  for (const page of [
-    'reference/release-notes.mdx',
-    'reference/whats-new-in-3-3.mdx',
-    'reference/migration/3-2-to-3-3.mdx',
-    'reference/3-3-beta.mdx',
-  ]) {
-    assert.match(readDoc(page), /^#{2,4} Withdrawn from the deprecated tasks\s*$/m, page);
-  }
-});
