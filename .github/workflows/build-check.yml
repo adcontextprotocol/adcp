@@ -27,11 +27,20 @@ jobs:
           # dist/protocol/ are ~1.1 GiB of the ~1.9 GiB HEAD payload and no
           # step in this job reads them from disk (build:protocol-tarball only
           # writes latest.tgz; the immutable-artifact check reads git trees).
+          # History stays because the immutable-artifact check diffs
+          # base...HEAD and treats a version without a local v<version> tag as
+          # unreleased, so a shallow, tagless clone would skip its protection.
           filter: blob:none
           sparse-checkout: |
             /*
             !/dist/protocol/
           sparse-checkout-cone-mode: false
+
+      - name: Report checkout footprint
+        # With the checkout step's duration, these counts show what it fetched (#8559).
+        run: |
+          git rev-parse --is-shallow-repository
+          git count-objects -vH
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -188,7 +197,16 @@ jobs:
           # checked out (no sparse set), so every committed archive, doc and
           # schema stays on disk. Deferring historical-only blobs reduces
           # Git storage without omitting current release fixtures.
+          # Refs and history stay: the docs navigation test reads the stable
+          # maintenance branch and the withdrawn-release marker test checks
+          # real history, and both only weaken on a shallow clone.
           filter: blob:none
+
+      - name: Report checkout footprint
+        # With the checkout step's duration, these counts show what it fetched (#8559).
+        run: |
+          git rev-parse --is-shallow-repository
+          git count-objects -vH
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -289,12 +307,18 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          # History blobs are fetched on demand; the whole tip tree is still
-          # checked out (no sparse set), so every committed archive, doc and
-          # schema stays on disk. Deferring historical-only blobs reduces
-          # Git storage without omitting current release fixtures.
-          filter: blob:none
+          # The server suites read no Git history (only `git rev-parse HEAD`),
+          # so only the tested commit is fetched. A full-history fetch of every
+          # branch and tag used most of this job's budget (#8559). The whole tip
+          # tree is still checked out, so every committed archive, doc and
+          # schema stays on disk.
+          fetch-depth: 1
+
+      - name: Report checkout footprint
+        # With the checkout step's duration, these counts show what it fetched (#8559).
+        run: |
+          git rev-parse --is-shallow-repository
+          git count-objects -vH
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -362,17 +386,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          # Same partial checkout as build-worker. Full history, refs and tags
-          # stay; only the committed release tarballs under dist/protocol/
+          # Same sparse set as build-worker, without history: the integration
+          # suites read no Git history, so only the tested commit is fetched
+          # (#8559). The committed release tarballs under dist/protocol/
           # (~1.1 GiB) are left unmaterialized. Integration setup builds
           # schemas/latest from source, and the one /protocol assertion
           # (schema-routing.test.ts) builds and mounts its own temp tarball.
+          fetch-depth: 1
           filter: blob:none
           sparse-checkout: |
             /*
             !/dist/protocol/
           sparse-checkout-cone-mode: false
+
+      - name: Report checkout footprint
+        # With the checkout step's duration, these counts show what it fetched (#8559).
+        run: |
+          git rev-parse --is-shallow-repository
+          git count-objects -vH
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
