@@ -21074,7 +21074,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
-      ...(!isThreeZeroStoryboardCompat(ctx) && { supports_provenance: true }),
+      ...(!isThreeZeroStoryboardCompat(ctx) && {
+        supports_provenance: true,
+        supports_registry_policy_enforcement: true,
+      }),
       ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
       ...(declaresAssignmentSettings(ctx) && {
         supports_assignment_trackers: true,
