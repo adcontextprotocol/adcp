@@ -129,40 +129,8 @@
                 "$ref": "/schemas/enums/account-scope.json"
               },
               "setup": {
-                "type": "object",
-                "description": "Setup information for pending accounts. Provides the agent (or human) with next steps to complete account activation.",
-                "properties": {
-                  "url": {
-                    "type": "string",
-                    "format": "uri",
-                    "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)"
-                  },
-                  "message": {
-                    "type": "string",
-                    "description": "Human-readable description of what's needed"
-                  },
-                  "expires_at": {
-                    "type": "string",
-                    "format": "date-time",
-                    "description": "When this setup link expires"
-                  },
-                  "waiting_on": {
-                    "$ref": "/schemas/enums/pending-action-party.json",
-                    "x-status": "experimental",
-                    "x-added-in": "3.3.0",
-                    "description": "Whose turn it is."
-                  },
-                  "kind": {
-                    "$ref": "/schemas/enums/pending-action-kind.json",
-                    "x-status": "experimental",
-                    "x-added-in": "3.3.0",
-                    "description": "What is needed."
-                  }
-                },
-                "required": [
-                  "message"
-                ],
-                "additionalProperties": true
+                "$ref": "/schemas/core/setup-step.json",
+                "description": "Setup information for pending accounts. Provides the agent (or human) with next steps to complete account activation."
               },
               "rate_card": {
                 "type": "string",

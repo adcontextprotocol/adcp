@@ -17,38 +17,8 @@
       "description": "When the relationship lapses unless renewed. Absent means no scheduled expiry. principal.changed fires with reason relationship_expiring at a seller-chosen lead time before this instant."
     },
     "setup": {
-      "type": "object",
-      "description": "The caller's next step while status is pending_approval, in the same shape as sync_accounts setup. Specific to the authenticated caller, never seller-wide.",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL where a human at the buyer completes the step."
-        },
-        "message": {
-          "type": "string",
-          "description": "Human-readable description of what is needed."
-        },
-        "expires_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "When this step expires."
-        },
-        "waiting_on": {
-          "$ref": "/schemas/enums/pending-action-party.json",
-          "x-status": "experimental",
-          "x-added-in": "3.3.0",
-          "description": "Experimental (account.requests). Whose turn it is: seller (application under review) or buyer (a human must complete url). Same meaning as pending-action.json."
-        },
-        "kind": {
-          "$ref": "/schemas/enums/pending-action-kind.json",
-          "x-status": "experimental",
-          "x-added-in": "3.3.0",
-          "description": "What is needed. Same meaning as pending-action.json."
-        }
-      },
-      "required": ["message"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/setup-step.json",
+      "description": "The caller's next step while status is pending_approval. Specific to the authenticated caller, never seller-wide."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
