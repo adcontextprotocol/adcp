@@ -331,14 +331,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["catalogs"] },
-          { "required": ["item_availability_updates"] },
-          { "required": ["item_availability_states"] }
-        ]
-      }
+      "additionalProperties": true
     }
   ],
   "properties": {}

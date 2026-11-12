@@ -280,26 +280,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "media_buy_id"
-            ]
-          },
-          {
-            "required": [
-              "packages"
-            ]
-          },
-          {
-            "required": [
-              "warnings"
-            ]
-          }
-        ]
-      }
+      "additionalProperties": true
     }
   ],
   "properties": {}
