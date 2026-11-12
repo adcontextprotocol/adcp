@@ -51,19 +51,19 @@ for (const scenarioName of SCENARIOS) {
 const NON_GOVERNANCE_STORYBOARDS = [
   {
     path: 'static/compliance/source/protocols/media-buy/index.yaml',
-    operator: 'media-buy-lifecycle.pinnacle-agency.example',
+    operator: 'pinnacle-media-buy-lifecycle.example',
   },
   {
     path: 'static/compliance/source/specialisms/creative-generative/generative-seller.yaml',
-    operator: 'generative-seller.pinnacle-agency.example',
+    operator: 'pinnacle-generative-seller.example',
   },
   {
     path: 'static/compliance/source/specialisms/sales-broadcast-tv/index.yaml',
-    operator: 'broadcast-tv.pinnacle-agency.example',
+    operator: 'pinnacle-broadcast-tv.example',
   },
   {
     path: 'static/compliance/source/specialisms/sales-catalog-driven/index.yaml',
-    operator: 'catalog-driven.pinnacle-agency.example',
+    operator: 'pinnacle-catalog-driven.example',
   },
 ];
 
@@ -96,7 +96,7 @@ test('base media-buy lifecycle loads with explicit, ungoverned account reference
   const provisioningEntry = syncAccount.sample_request.accounts[0];
   const expectedRef = {
     brand: { domain: 'acmeoutdoor.example' },
-    operator: 'media-buy-lifecycle.pinnacle-agency.example',
+    operator: 'pinnacle-media-buy-lifecycle.example',
     sandbox: true,
   };
   assert.deepEqual(createBuy.sample_request.account, expectedRef);

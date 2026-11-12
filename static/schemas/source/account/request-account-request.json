@@ -46,7 +46,7 @@
     "operator": {
       "type": "string",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
-      "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
+      "description": "Registrable domain (eTLD+1 under the Public Suffix List, ICANN and private sections) of the organization operating on the brand's behalf, not a subdomain of it. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent, and MAY refuse an operator that is neither a registrable domain nor the brand's domain, treating reserved .example names as account-ref.json says. Required unless account_id is sent."
     },
     "operator_unit": {
       "$ref": "/schemas/core/operator-unit.json",

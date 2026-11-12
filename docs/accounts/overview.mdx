@@ -52,7 +52,7 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator estab
 | Governance      | Content standards billing                                |
 | Creative        | Creative service billing                                 |
 
-The account reference is the seller-assigned `account_id` in both models. In this vocabulary, **brand identity** is the brand's `domain`, plus `brand_id` where its `brand.json` lists several brands. **Operator identity** is the operator's domain, and **account identity** is the `account_id`. `brand.countries`, `operator_unit`, `currency`, `timezone`, and `sandbox` are account attributes, not identity. `operator_unit.id` is deliberately separate from the seller's `account_id`. During 3.x, a buyer may still send the natural key for a buyer-declared account: `brand` + `operator`, with attributes as filters. It resolves only when exactly one account matches. See [Account identity](#account-identity) and [Account references](/docs/building/by-layer/L2/accounts-and-agents#account-references) for details.
+The account reference is the seller-assigned `account_id` in both models. In this vocabulary, **brand identity** is the brand's `domain`, plus `brand_id` where its `brand.json` lists several brands. **Operator identity** is the operator's registrable domain, and **account identity** is the `account_id`. `brand.countries`, `operator_unit`, `currency`, `timezone`, and `sandbox` are account attributes, not identity. `operator_unit.id` is deliberately separate from the seller's `account_id`. During 3.x, a buyer may still send the natural key for a buyer-declared account: `brand` + `operator`, with attributes as filters. It resolves only when exactly one account matches. See [Account identity](#account-identity) and [Account references](/docs/building/by-layer/L2/accounts-and-agents#account-references) for details.
 
 `billing` names the party the seller invoices for this account relationship. It is not a payment rail or settlement selector. AdCP does not currently standardize per-media-buy choice between an intermediary clearing flow and direct settlement; implementations must not encode that distinction by silently changing the meaning of `billing`.
 
@@ -79,6 +79,8 @@ Every party to an account is identified by a domain, verified by what that domai
 | Agent | Its origin | Its [Web Bot Auth](/docs/building/by-layer/L1/security#web-bot-auth-identities) key directory |
 | Operator | Its registrable domain | Its [`trust.json`](/docs/reference/trust-json) and the brand's `authorized_operators` |
 | Brand | Its domain, plus `brand_id` where that domain's `brand.json` lists several brands | Its [`brand.json`](/docs/brand-protocol/brand-json) |
+
+The operator is an organization, so `operator` is its registrable domain (eTLD+1 under the [Public Suffix List](https://publicsuffix.org/), ICANN and private sections), such as `pinnacle-media.com`, not a subdomain such as `team.pinnacle-media.com`. The brand's `authorized_operators` and trust.json grants name organizations the same way. When the brand operates directly, `operator` is the brand's domain. A seller MAY refuse an operator that is neither a registrable domain nor the brand's domain. For this check, a name under the reserved `.example` TLD ([RFC 2606](https://www.rfc-editor.org/rfc/rfc2606.html)), which the list doesn't name, takes the list's default rule: `pinnacle-agency.example`, which the compliance storyboards use, is a registrable domain, and `team.pinnacle-agency.example` is not.
 
 An account is identified by the `account_id` the seller issues when the account opens. Nothing else identifies it:
 
@@ -344,7 +346,7 @@ The Accounts Protocol operates with four party types. See [Accounts and agents](
 | Party        | Role                          | Identified by                                             |
 | ------------ | ----------------------------- | --------------------------------------------------------- |
 | Brand        | Whose products are advertised | `brand.domain` + optional `brand.brand_id` via brand.json |
-| Operator     | Who drives the buys           | Domain (e.g., `pinnacle-media.com`)                       |
+| Operator     | Who drives the buys           | Registrable domain (e.g., `pinnacle-media.com`)           |
 | Agent        | What software places the buys | Authenticated session                                     |
 | Vendor agent | The seller's AdCP agent       | `agent_url`                                               |
 
