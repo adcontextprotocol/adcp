@@ -714,6 +714,10 @@ Buyer SDKs and generic transport wrappers may send envelope-level fields admitte
 
 A wrapper that raises `unexpected_keyword_argument` on `idempotency_key` will fail compliance against any buyer SDK that follows the envelope contract. See [security.mdx > Server-side tool wrapper conformance](/docs/building/by-layer/L1/security#server-side-tool-wrapper-conformance) for the normative rule.
 
+### Let MCP discovery through without credentials
+
+A gateway or auth layer that allow-lists JSON-RPC methods SHOULD let `server/discover` (MCP `2026-07-28`), `initialize`, and `tools/list` through without credentials. A current MCP client calls them before any tool. If they require credentials, the client treats the agent as requiring sign-in and never reaches `get_adcp_capabilities`, which a seller SHOULD also serve without credentials ([Authentication](/docs/building/by-layer/L2/authentication)). Other tool calls keep their own authentication.
+
 ### Tool Discovery
 ```javascript
 // List available tools — use get_adcp_capabilities for runtime feature detection

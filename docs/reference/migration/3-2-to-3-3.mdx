@@ -81,6 +81,8 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 45 | Sellers, buyers, and SDKs built from a beta bundle | Stop emitting and accepting the beta fields that leave 3.3 at rc.0, and move the ones that change home ([closed-schema triage](#closed-schema-triage-what-stays-in-3-3)). |
 | 46 | SDK and codegen maintainers, and anyone with a hand-written validator | Regenerate from rc.0: most schemas are now open, so generated types gain index signatures and stop rejecting unknown fields. Keep any rejection you relied on as your own check ([SDK changes](#sdk-and-code-generator-maintainers)). |
 | 47 | Buyers and sellers that use overlay demographics | Send the object form `{ "age": true }`, not boolean `demographics: true`, and keep accepting `true` ([deprecations](#deprecations)). |
+| 48 | Buyers | Send a prerelease pin only to a peer that advertises it, send discovery `get_adcp_capabilities` unpinned, and retry unpinned or at a listed version on `VERSION_UNSUPPORTED` ([details](#prerelease-pins-unpinned-discovery-and-anonymous-capabilities)). |
+| 49 | Sellers | Serve `get_adcp_capabilities` without credentials (a MUST in 4.0). On MCP, let `server/discover`, `initialize`, and `tools/list` through your gateway without credentials ([details](#prerelease-pins-unpinned-discovery-and-anonymous-capabilities)). |
 
 ## Withdrawn from 3.3, planned for 4.0
 
@@ -396,6 +398,14 @@ Once you list 3.3 in `supported_versions`, every release you list is a promise a
 **Sellers.** Check each response against the published schema of the release you echo, and stop listing a release you can't serve that way. 3.2 sellers serving a `"3.1"` pin could emit six shapes a strict 3.1 validator rejects, led by the `sync_accounts` required-field flip; see the [3.1 to 3.2 list](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2).
 
 **Buyers.** Keep parsing tolerantly, because sellers that list no release later than 3.2 aren't bound by the rule.
+
+### Prerelease pins, unpinned discovery, and anonymous capabilities
+
+A 3.3 beta buyer pinned `get_adcp_capabilities` to `"3.3-beta.5"` against a seller that speaks only 3.0, got `VERSION_UNSUPPORTED`, and never retried, so the two never found the release they share. 3.3 states how each side avoids that ([Pre-release pins](/docs/reference/versioning#pre-release-pins)).
+
+- **Buyers** MUST send a prerelease `adcp_version` only to a peer whose `supported_versions` advertises that exact value; a prerelease pin never negotiates down. They SHOULD send the discovery `get_adcp_capabilities` call without a pin, and on `VERSION_UNSUPPORTED` SHOULD retry without a pin or at a value from `supported_versions`, the recovery the error code already names.
+- **Sellers** SHOULD serve `get_adcp_capabilities` without credentials, because buyers probe anonymously before they hold a key. This is a SHOULD in 3.3 and a MUST in 4.0 ([Authentication](/docs/building/by-layer/L2/authentication)).
+- **MCP sellers.** A gateway or auth layer that allow-lists JSON-RPC methods SHOULD let `server/discover` (MCP `2026-07-28`), `initialize`, and `tools/list` through without credentials. Otherwise a current MCP client treats the agent as requiring sign-in before it can read capabilities ([MCP guide](/docs/building/by-layer/L0/mcp-guide#let-mcp-discovery-through-without-credentials)).
 
 ### Refinement carries compliance forward
 
