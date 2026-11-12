@@ -2052,11 +2052,12 @@ function packageNeedsCreative(pkg: PackageState, session: SessionState, tracksCo
   return pkg.creativeAssignments.length === 0;
 }
 
-function packageReadinessFields(pkg: PackageState, session: SessionState): Record<string, unknown> {
+function packageReadinessFields(pkg: PackageState, session: SessionState, ctx: TrainingContext): Record<string, unknown> {
   if (!pkg.formatsToProvide?.length) return {};
+  const snapshot = 'core/package-format-snapshot.json';
   return {
-    formats_to_provide: pkg.formatsToProvide,
-    formats_pending: formatsPendingForPackage(pkg, session),
+    formats_to_provide: formatDeclarationsForServedRelease(pkg.formatsToProvide, snapshot, ctx.servedAdcpVersion),
+    formats_pending: formatDeclarationsForServedRelease(formatsPendingForPackage(pkg, session), snapshot, ctx.servedAdcpVersion),
   };
 }
 
@@ -3166,13 +3167,37 @@ function productForThreeZeroStoryboardCompat(product: Product): Product {
   return rest as Product;
 }
 
+/**
+ * Format declarations without the params a later release adds, such as the
+ * 3.3 `card_image_sizes` on `image_carousel`, for a buyer pinned to an earlier
+ * release (DR-0024). Each entry is graded against `schemaFile`.
+ */
+function formatDeclarationsForServedRelease<T>(
+  declarations: readonly T[],
+  schemaFile: string,
+  servedAdcpVersion: string | undefined,
+): T[] {
+  if (servedAdcpVersion === undefined) return declarations as T[];
+  return declarations.map(declaration => omitFieldsAddedAfterRelease(declaration, schemaFile, servedAdcpVersion));
+}
+
+function productFormatOptionsForServedRelease(product: Product, servedAdcpVersion: string | undefined): Product {
+  const declared = product.format_options;
+  if (!Array.isArray(declared)) return product;
+  const served = formatDeclarationsForServedRelease(declared, 'core/product-format-declaration.json', servedAdcpVersion);
+  return served.every((option, index) => option === declared[index])
+    ? product
+    : { ...product, format_options: served } as Product;
+}
+
 function productForServedAdcpVersion(product: Product, servedAdcpVersion: string | undefined): Product {
-  if (supportsGetProductsRejected(servedAdcpVersion)) return product;
+  const servedFormats = productFormatOptionsForServedRelease(product, servedAdcpVersion);
+  if (supportsGetProductsRejected(servedAdcpVersion)) return servedFormats;
   const {
     audience_activation: _audienceActivation,
     overlay_support: _overlaySupport,
     ...rest
-  } = product as Product & {
+  } = servedFormats as Product & {
     audience_activation?: unknown;
     overlay_support?: unknown;
   };
@@ -17391,7 +17416,7 @@ async function handleCreateMediaBuyUnlocked(
       start_time: pkg.startTime,
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
-      ...packageReadinessFields(pkg, session),
+      ...packageReadinessFields(pkg, session, ctx),
       ...creativeStartPolicyForWire(ctx),
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
@@ -17595,7 +17620,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             start_time: pkg.startTime,
             end_time: pkg.endTime,
             ...packageFormatSelectorForWire(pkg, ctx),
-            ...packageReadinessFields(pkg, session),
+            ...packageReadinessFields(pkg, session, ctx),
             ...creativeStartPolicyForWire(ctx),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
@@ -20961,7 +20986,7 @@ async function handleUpdateMediaBuyUnlocked(
     start_time: pkg.startTime,
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
-    ...packageReadinessFields(pkg, session),
+    ...packageReadinessFields(pkg, session, ctx),
     ...creativeStartPolicyForWire(ctx),
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
