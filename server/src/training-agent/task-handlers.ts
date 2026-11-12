@@ -12089,7 +12089,7 @@ async function handleGetProductsUnlocked(
   // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
-    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string; package?: Record<string, unknown> }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
     | {
         scope: 'proposal';
         proposal_id: string;
@@ -12121,7 +12121,6 @@ async function handleGetProductsUnlocked(
       : [],
   );
   const refinementApplied: RefinementAppliedEntry[] = [];
-  const unsupportedPackageForecastIds = new Set<string>();
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
@@ -12308,16 +12307,6 @@ async function handleGetProductsUnlocked(
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
-          if (op.package !== undefined) {
-            unsupportedPackageForecastIds.add(op.product_id);
-            refinementApplied.push({
-              scope: 'product',
-              product_id: op.product_id,
-              status: 'unable',
-              notes: 'The training agent cannot compute an availability forecast for an exact proposed package.',
-            });
-            continue;
-          }
           if (!passesFilters) {
             refinementApplied.push({
               scope: 'product',
@@ -13185,20 +13174,10 @@ async function handleGetProductsUnlocked(
   }
 
   // Store context for refine
-  const responseProducts = products.map(product => {
-    const servedProduct = productForServedAdcpVersion(
-      isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
-      ctx.servedAdcpVersion,
-    );
-    // Suppress ordinary/horizon forecasts after every generic forecast path;
-    // none is evidence that the unsupported exact package was evaluated.
-    const sourceProductId = discoverySourceProductIds.get(product.product_id) ?? product.product_id;
-    if (!unsupportedPackageForecastIds.has(sourceProductId)
-      && !unsupportedPackageForecastIds.has(product.product_id)) return servedProduct;
-    const withoutForecast = { ...servedProduct };
-    delete withoutForecast.forecast;
-    return withoutForecast;
-  });
+  const responseProducts = products.map(product => productForServedAdcpVersion(
+    isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
+    ctx.servedAdcpVersion,
+  ));
   const retainedCommittedProposals = new Map(
     (session.lastGetProductsContext?.proposals ?? [])
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
@@ -18564,6 +18543,24 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     return {
       errors: [{ code: 'INVALID_REQUEST', message: 'At least one of creatives, assignments, or assignment_operations is required' }] as TaskError[],
     };
+  }
+  // trackers and landing_page_url were withdrawn from the deprecated
+  // assignments[] row in 3.3 (adcp#8501); assignment_operations assign carries
+  // them. The row rejects them by name, and so does the agent, rather than
+  // silently dropping them.
+  const legacyAssignments = (req.assignments ?? []) as unknown as Array<Record<string, unknown>>;
+  for (let index = 0; index < legacyAssignments.length; index++) {
+    for (const field of ['trackers', 'landing_page_url'] as const) {
+      if (isRecord(legacyAssignments[index]) && legacyAssignments[index]![field] !== undefined) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: `assignments[${index}].${field} is not defined on the deprecated assignments row; send it on an assignment_operations assign operation.`,
+            field: `assignments[${index}].${field}`,
+          }] as TaskError[],
+        };
+      }
+    }
   }
   if (assignmentOperations?.length && (req as unknown as { validation_mode?: string }).validation_mode === 'lenient') {
     return {
@@ -25232,8 +25229,10 @@ function validateIdempotencyProtectedInput(
     return { message: 'brief must be a string when provided', field: 'brief' };
   }
   if (Array.isArray(args.refine) && args.refine.some(entry => isRecord(entry) && 'package' in entry)) {
-    // The pinned SDK preserves unknown entry fields. Validate structured
-    // packages against source before replay claims or downstream state changes.
+    // refine[].package was withdrawn from 3.3 (adcp#8501). The pinned SDK
+    // preserves unknown entry fields, so validate against source, whose
+    // entries reject it by name, before replay claims or state changes.
+    // A facade rejects a field it cannot honor rather than dropping it.
     const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
     if (sourceError) return sourceError;
   }

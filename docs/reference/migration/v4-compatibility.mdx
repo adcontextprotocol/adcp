@@ -134,7 +134,7 @@ No storyboard step inspects every annotated field, so the suite reports this che
 
 **Detects:** a seller that lists `media_buy.audience_evidence_targets` in `experimental_features` does not accept `target_audiences` on `buy_products` purchases and `list_products` `offer_filters`.
 
-In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `get_products` filters and on `create_media_buy` packages. A purchase records its terms in `product-purchase.json`, which is held closed with the commercial terms until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so `buy_products` purchases gain the field in 4.0, and `list_products` `offer_filters` gains it with them.
+In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `create_media_buy` packages. It was also on `get_products` filters through `3.3.0-beta.5` and is withdrawn from that deprecated task ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). A purchase records its terms in `product-purchase.json`, which is held closed with the commercial terms until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so `buy_products` purchases gain the field in 4.0, and `list_products` `offer_filters` gains it with them.
 
 **Fix:** accept the sibling on those surfaces and record it in the accepted purchase snapshot. Until 4.0, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
 
@@ -220,6 +220,24 @@ In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/doc
 In 3.3 the experimental `billing_measurement.counting_mechanisms[]` is carried on `core/measurement-terms.json` only. `core/canonical-measurement-terms.json` holds terms the buyer is bound by and is held closed until 4.0, so the canonical terms gain the field in 4.0.
 
 **Fix:** declare `counting_mechanisms` on the canonical terms as well. A 3.x run cannot observe this check, so it reports as not observable.
+
+<a id="canonical_price_adjustments_required_in_4_0"></a>
+### Canonical pricing options carry price adjustments
+
+**Check id:** `canonical_price_adjustments_required_in_4_0` · **Change:** new requirement · **Issue:** [#7659](https://github.com/adcontextprotocol/adcp/issues/7659)
+
+**What it was:** experimental `media_buy.price_adjustments`, an ordered table of fee and discount rows on a fixed-price pricing option, so a buyer can compute the binding rate for its format option and placement selections and its flight dates without another quote ([#7955](https://github.com/adcontextprotocol/adcp/pull/7955)). It shipped in `3.3.0-beta.1` through `3.3.0-beta.5` on the pricing options of the deprecated `get_products` and is withdrawn after beta.5 ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)): 3.3 adds no field that exists only on a deprecated task, and `core/canonical-pricing-option.json` is held closed with the commercial terms until 4.0.
+
+**Design to keep:**
+
+- Composition is one running total in declared order. Each firing row adds (`fee`) or subtracts (`discount`) the rounded product of the running total and its rate, or its amount. Selection rows fire once per dimension; `always` rows each fire; `valid_from` / `valid_until` bound a row at the purchase start.
+- Any change to the table mints a new `pricing_option_id`, so the accepted `pricing_option_id` identifies one immutable table that both parties price from.
+- When the buyer supplies `pricing`, a seller rejects a price that differs from the resolved result with `INVALID_REQUEST` and the resolved values in `error-details/price-adjustments-mismatch.json`.
+- A placement-selection row requires `overlay_support.placement_selection` on the product.
+
+**Where it is preserved:** commit `4c35f8ce1` (#7955) carries `pricing-options/price-adjustments.json`, `error-details/price-adjustments-mismatch.json`, the rule on the seven fixed-price pricing options, the vectors in `static/compliance/source/test-vectors/price-adjustments/` with `tests/price-adjustments-vectors.test.cjs`, and the section "Selection-dependent price adjustments" in `docs/media-buy/advanced-topics/pricing-models.mdx`. The `3.3.0-beta.1` to `3.3.0-beta.5` bundles under `dist/` keep the schemas.
+
+**Until then:** return a priced option per configured product. **What 4.0 needs:** the table on the canonical pricing option, and a rule for how `terms_digest` binds the table an accepted `pricing_option_id` names.
 
 ## Changes not checked yet
 

@@ -157,20 +157,28 @@ test('package create, update, and read assignments accept optional macro-bearing
   }
 });
 
-test('sync additive assignments and assign operations validate landing pages without creative upserts', async () => {
+test('assign operations validate landing pages without creative upserts; deprecated assignments[] rows reject them', async () => {
   const validate = await compile(syncSchema);
-  for (const field of ['assignments', 'assignment_operations']) {
-    const assignment = { creative_id: 'hero', package_id: 'pkg_display' };
-    if (field === 'assignment_operations') assignment.operation = 'assign';
-    assert.equal(validate({ ...requestBase, [field]: [assignment] }), true, JSON.stringify(validate.errors));
-    for (const landing_page_url of urls) {
-      assert.equal(validate({ ...requestBase, [field]: [{ ...assignment, landing_page_url }] }), true,
-        JSON.stringify(validate.errors));
-    }
-    for (const landing_page_url of invalidUrls) {
-      assert.equal(validate({ ...requestBase, [field]: [{ ...assignment, landing_page_url }] }), false, field);
-    }
+  const assignment = { operation: 'assign', creative_id: 'hero', package_id: 'pkg_display' };
+  assert.equal(validate({ ...requestBase, assignment_operations: [assignment] }), true, JSON.stringify(validate.errors));
+  for (const landing_page_url of urls) {
+    assert.equal(validate({ ...requestBase, assignment_operations: [{ ...assignment, landing_page_url }] }), true,
+      JSON.stringify(validate.errors));
   }
+  for (const landing_page_url of invalidUrls) {
+    assert.equal(validate({ ...requestBase, assignment_operations: [{ ...assignment, landing_page_url }] }), false);
+  }
+  // Withdrawn from the deprecated assignments[] row in 3.3 (adcp#8501).
+  const legacy = { creative_id: 'hero', package_id: 'pkg_display' };
+  assert.equal(validate({ ...requestBase, assignments: [legacy] }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...requestBase, assignments: [{ ...legacy, landing_page_url: urls[0] }] }), false,
+    'the assignments[] row rejects landing_page_url by name; use assignment_operations assign');
+  assert.equal(validate({ ...requestBase, assignments: [{ ...legacy, unrelated_extension: 'x' }] }), true,
+    'the row is open: unrelated unknown keys are accepted');
+  const legacyRow = syncSchema.properties.assignments.items;
+  assert.notEqual(legacyRow.additionalProperties, false);
+  assert.ok(legacyRow.not.anyOf.some(branch => branch.required?.includes('landing_page_url')),
+    'the row not names landing_page_url');
   for (const operation of ['unassign', 'replace']) {
     const assignment = { operation, creative_id: 'hero', package_id: 'pkg_display', landing_page_url: urls[0] };
     if (operation === 'replace') assignment.replaces_creative_id = 'old_hero';
@@ -222,7 +230,6 @@ test('all input and readback fields use the creative click-through URL rules and
   const clickthroughUrl = readSchema('core/assets/url-asset.json').properties.url;
   for (const schema of [
     readSchema('core/creative-assignment.json'),
-    syncSchema.properties.assignments.items,
     assignSchema,
     listAssignment,
     buyAssignment
