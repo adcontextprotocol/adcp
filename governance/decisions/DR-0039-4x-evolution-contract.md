@@ -45,7 +45,7 @@ major.
 
 ### 2. Schemas are open by default
 
-DR-0036, as rewritten in PR #8858, holds in 4.x. A schema is open unless it is
+DR-0036 (rewritten in #8858, merged) holds in 4.x. A schema is open unless it is
 closed for a structural reason, and a schema that stays closed changes only in
 a major. In 4.x the structural reasons are a fixed list: the reasons PR #8866
 approved for the schemas 3.3 keeps closed, grouped as eight.
@@ -128,8 +128,9 @@ major security patches only. The end-of-support date is published on a sunset
 page at the successor's GA.
 
 **This replaces the stable deprecation-notice rule.** The minimum 6 months'
-notice before a removal no longer applies. PR #8858 carries that doc change.
-When a deprecated node is modified, its `x-removed-in` major holds.
+notice before a removal no longer applies. The rule and the 12-month window
+are already in `versioning.mdx` (#8858, merged). When a deprecated node is
+modified, its `x-removed-in` major holds.
 
 ### 5. Experimental surfaces have a clock
 
@@ -227,7 +228,9 @@ served the release that defines it. Nothing in 4.x weakens it.
   - `docs/reference/versioning.mdx`: the support window adds corrections to
     its security-only promise.
   - `docs/reference/experimental-status.mdx`: add the clock.
-  - PR #8858 carries the removal of the 6-month deprecation notice.
+  - Already done: the 6-month deprecation notice is gone from
+    `versioning.mdx`, `specification-lifecycle.mdx` and
+    `experimental-status.mdx` (#8858, merged).
 - **Tooling for 4.0:**
   - `tests/schema-deprecation-metadata.test.cjs` reads the fields, not prose.
   - New checks for `x-closed-reason` and the experimental clock.
