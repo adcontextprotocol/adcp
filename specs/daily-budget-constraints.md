@@ -19,7 +19,7 @@ without the same planning information. Any legacy projection retained in 4.0
 should preserve the same constraints, subject to the negotiated schema. Do
 not add a temporary second home for minimums merely to fit them into 3.3.
 
-<!-- depends on #8866 (which schemas stay closed) and #8858 (the DR-0036 rewrite) -->
+<!-- depends on #8858 (the DR-0036 rewrite) -->
 `core/canonical-pricing-option.json`, `media-buy/product-purchase.json`, and
 `media-buy/commercial-terms.json` are held closed until 4.0 (DR-0036, decided
 2026-11-09). A minor adds nothing to them, and the additive-minor gate rejects

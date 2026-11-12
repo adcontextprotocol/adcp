@@ -179,7 +179,7 @@ After a prerelease is published, SDK maintainers ingest that signed bundle and p
 
 On 2026-11-09 the working group decided that 3.x opens the schemas that were closed by accident ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). A schema stays closed for a structural reason, such as `oneOf` disjointness or a closed key set. `commercial_terms` and the term objects inside it, and `proposal-budget-constraint`, are held closed until 4.0. The [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) triage then re-checked every beta feature that had been withdrawn because its schema was closed. A feature withdrawn only for that reason stays in 3.3. Two reasons still remove a field: it sits on a deprecated task or row (`get_products`, `create_media_buy`, `update_media_buy`, `sync_creatives` `assignments[]`), or it would extend a schema held closed until 4.0. The [migration guide](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3) lists every field, and what to do if you built from a beta.
 
-{/* depends on #8866 (schema opening), #8758, #8767, #8762 and #8854 (the withdrawals); the available_installment_statuses move has no PR yet. Re-check each row against what merged before the rc.0 cut */}
+{/* depends on #8758, #8767, #8762 and #8854 (the withdrawals); the available_installment_statuses move has no PR yet. Re-check each row against what merged before the rc.0 cut */}
 
 | | Fields | Why |
 |---|---|---|
@@ -223,7 +223,7 @@ Milestone assignment means **candidate for the 3.3 line**, not a commitment to a
 ### In review for 3.3
 
 <Info>
-**These are proposals, not features.** The first table lists the issues open in the 3.3.0 milestone on 2026-11-10 (seven, not counting the [GA tracking issue](https://github.com/adcontextprotocol/adcp/issues/8600)), with the open pull request for each where one exists. The second lists the issues that were open at beta.3 and have since moved to a later milestone. An issue stays open while part of it is still in review, so a row can list merged work. Issues whose work has fully merged have been closed and are not listed; see [What's new](/docs/reference/whats-new-in-3-3) and the [release notes](/docs/reference/release-notes#version-3-3-0) for what they shipped. None is part of a prerelease unless it merges before that prerelease's tag. "Merged so far" names the slice that already shipped on `main`; the rest of the issue is still in review. The live lists are the [open 3.3 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0) and [open pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Afalse) and [drafts](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Atrue).
+**These are proposals, not features.** The first table lists the issues open in the 3.3.0 milestone on 2026-11-12 (six, not counting the [GA tracking issue](https://github.com/adcontextprotocol/adcp/issues/8600)), with the open pull request for each where one exists. The second lists the issues that were open at beta.3 and have since moved to a later milestone. An issue stays open while part of it is still in review, so a row can list merged work. Issues whose work has fully merged have been closed and are not listed; see [What's new](/docs/reference/whats-new-in-3-3) and the [release notes](/docs/reference/release-notes#version-3-3-0) for what they shipped. None is part of a prerelease unless it merges before that prerelease's tag. "Merged so far" names the slice that already shipped on `main`; the rest of the issue is still in review. The live lists are the [open 3.3 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0) and [open pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Afalse) and [drafts](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Atrue).
 </Info>
 
 #### Decisions
@@ -253,19 +253,16 @@ Four records document surfaces merged for beta.0 and are accepted (decided 2026-
 
 | Area | Issue | Topic | Open PR | Merged so far |
 |---|---|---|---|---|
-{/* depends on #8758: the #7659 row assumes price_adjustments leaves 3.3 */}
-
-| Area | Issue | Topic | Open PR | Merged so far |
-|---|---|---|---|---|
-| Commercial flow | [#7659](https://github.com/adcontextprotocol/adcp/issues/7659) | Price adjustments for buyer-selectable product dimensions | — | Experimental selection-dependent `price_adjustments` on fixed-price pricing options (#7955) shipped in the betas and leaves 3.3 for 4.0 ([triage](#closed-schema-triage-before-rc-0)) |
-| Delivery and measurement | [#7253](https://github.com/adcontextprotocol/adcp/issues/7253) | DOOH impression basis: typed tier, effective multiplier, and derivation link | [#8736](https://github.com/adcontextprotocol/adcp/pull/8736) (draft) | — |
+| Delivery and measurement | [#7253](https://github.com/adcontextprotocol/adcp/issues/7253) | DOOH impression basis: typed tier, effective multiplier, and derivation link | [#8736](https://github.com/adcontextprotocol/adcp/pull/8736) | — |
 | Delivery and measurement | [#8149](https://github.com/adcontextprotocol/adcp/issues/8149) | Reliable Reporting HTTPS push authenticates as the seller and holds no buyer secret | [#8793](https://github.com/adcontextprotocol/adcp/pull/8793) (draft) | — |
-| Creative and brand | [#8107](https://github.com/adcontextprotocol/adcp/issues/8107) | `3gp`, `mpeg`, and `m4v` video containers | [#8668](https://github.com/adcontextprotocol/adcp/pull/8668) | — |
-| Conformance and governance | [#8398](https://github.com/adcontextprotocol/adcp/issues/8398) | URL validation is over-specified: eight patterns where `^https://` is enough | [#8792](https://github.com/adcontextprotocol/adcp/pull/8792) | `setup_url` pattern relaxed to `^https://` with `format: uri` (#8548) |
-| Conformance and governance | [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) | Minor releases sometimes break older buyers: the closed-schema triage | [#8866](https://github.com/adcontextprotocol/adcp/pull/8866), [#8858](https://github.com/adcontextprotocol/adcp/pull/8858), [#8854](https://github.com/adcontextprotocol/adcp/pull/8854), [#8758](https://github.com/adcontextprotocol/adcp/pull/8758) (draft), [#8767](https://github.com/adcontextprotocol/adcp/pull/8767) (draft), [#8762](https://github.com/adcontextprotocol/adcp/pull/8762) (draft) | The versioning rules ([#8704](https://github.com/adcontextprotocol/adcp/pull/8704)); the opened schemas and the withdrawals in the [triage](#closed-schema-triage-before-rc-0) |
+| Creative and brand | [#8107](https://github.com/adcontextprotocol/adcp/issues/8107) | `3gp`, `mpeg`, and `m4v` video containers | — | The three `containers` values ([#8668](https://github.com/adcontextprotocol/adcp/pull/8668)), in rc.0 |
+| Conformance and governance | [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) | Minor releases sometimes break older buyers: the closed-schema triage | [#8858](https://github.com/adcontextprotocol/adcp/pull/8858), [#8854](https://github.com/adcontextprotocol/adcp/pull/8854), [#8758](https://github.com/adcontextprotocol/adcp/pull/8758) (draft), [#8767](https://github.com/adcontextprotocol/adcp/pull/8767) (draft), [#8762](https://github.com/adcontextprotocol/adcp/pull/8762) (draft) | The versioning rules ([#8704](https://github.com/adcontextprotocol/adcp/pull/8704)) and the opened schemas ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866)); the withdrawals in the [triage](#closed-schema-triage-before-rc-0) |
 | Conformance and governance | [#8856](https://github.com/adcontextprotocol/adcp/issues/8856) | Inline `submitted` branches that disagree with their published status files | — | — |
+| Conformance and governance | [#8943](https://github.com/adcontextprotocol/adcp/issues/8943) | Origin-only `authorized_agents` matching in the AgenticAdvertising.org validator and registry | — | The protocol rule ([#8939](https://github.com/adcontextprotocol/adcp/pull/8939)), in rc.0 |
 
-Match keys ([#8375](https://github.com/adcontextprotocol/adcp/issues/8375)) closed after shipping in beta.5.
+{/* depends on #8758: price_adjustments leaving 3.3 */}
+
+Closed since beta.5: match keys ([#8375](https://github.com/adcontextprotocol/adcp/issues/8375)), which shipped in beta.5, and over-specified URL patterns ([#8398](https://github.com/adcontextprotocol/adcp/issues/8398)), loosened in rc.0 by [#8792](https://github.com/adcontextprotocol/adcp/pull/8792). Price adjustments ([#7659](https://github.com/adcontextprotocol/adcp/issues/7659)) moved to the 4.0 milestone: the experimental `price_adjustments` table (#7955) shipped in the betas and leaves 3.3 with the [triage](#closed-schema-triage-before-rc-0).
 
 #### Moved out of 3.3 since beta.3
 
@@ -293,7 +290,7 @@ These were open in the 3.3.0 milestone at beta.3 and have since moved, so they a
 | Conformance and governance | [#8093](https://github.com/adcontextprotocol/adcp/issues/8093) | Creator marketplace training fixtures | — | CreatorLoop seller and proposal fixtures (#8106) |
 | Conformance and governance | [#8201](https://github.com/adcontextprotocol/adcp/issues/8201) | 3.2 compact proposal storyboards and `sales-dooh` opt into fixture resolution | — | `olv` channel match for `outdoor_video_auction` discovery (#8211) |
 
-Also open, without a 3.3 milestone issue: [#7958](https://github.com/adcontextprotocol/adcp/pull/7958) composable delivery breakdowns and [#7957](https://github.com/adcontextprotocol/adcp/pull/7957) metric aggregation semantics (both drafts; their issues moved to 3.4.0), [#7446](https://github.com/adcontextprotocol/adcp/pull/7446) TMP Context Match cache isolation (on the 3.3.0 milestone), and [#8346](https://github.com/adcontextprotocol/adcp/pull/8346) signed creative addons (open; asks the working group to reconsider a 3.4 deferral, and WG approval is pending).
+Also open, without a 3.3 milestone issue: [#7958](https://github.com/adcontextprotocol/adcp/pull/7958) composable delivery breakdowns and [#7957](https://github.com/adcontextprotocol/adcp/pull/7957) metric aggregation semantics (both drafts; their issues moved to 3.4.0), and [#8346](https://github.com/adcontextprotocol/adcp/pull/8346) signed creative addons (open; asks the working group to reconsider a 3.4 deferral, and WG approval is pending).
 
 ## Known prerelease boundaries
 
