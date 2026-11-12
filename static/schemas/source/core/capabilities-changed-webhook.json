@@ -90,7 +90,7 @@
     "reason",
     "capabilities_version"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Seller enabled sandbox support",

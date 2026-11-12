@@ -878,7 +878,7 @@
         "implementation": {
           "x-added-in": "3.3.0",
           "type": "object",
-          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation.",
+          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation. Rejects `approved`, here and on each sdks entry: an agent can't assert its own approval.",
           "properties": {
             "sdks": {
               "type": "array",
@@ -922,14 +922,16 @@
                   }
                 },
                 "required": ["name", "version", "components"],
-                "additionalProperties": false
+                "additionalProperties": true,
+                "not": { "required": ["approved"] }
               },
               "uniqueItems": true,
               "maxItems": 16
             }
           },
           "required": ["sdks"],
-          "additionalProperties": false
+          "additionalProperties": true,
+          "not": { "required": ["approved"] }
         },
         "idempotency": {
           "type": "object",
@@ -1074,7 +1076,7 @@
                   }
                 },
                 "required": ["pattern", "transports", "verification_profiles"],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
             "suspension_interval_seconds": {
@@ -1135,7 +1137,7 @@
             "task_presence": "The agent's MCP tools/list or A2A skill list MUST include sync_principal and get_principal when this block is present.",
             "offering_boundary": "Requests are rejected atomically for schema violations, authorization failures, unsupported sections, and out-of-offering destinations. In-offering destinations that fail provider-side setup are reported per destination as validating, action_required, or rejected inside an applied response, never as a failed request."
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "capability_changes": {
           "type": "object",
@@ -1266,7 +1268,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1280,7 +1282,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1294,7 +1296,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1308,7 +1310,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1322,7 +1324,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1336,7 +1338,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1350,7 +1352,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1364,7 +1366,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1378,7 +1380,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 ]
               },
@@ -1393,7 +1395,7 @@
           },
           "required": ["tasks"],
           "x-status": "experimental",
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "attestations": {
           "$ref": "/schemas/core/attestation-capabilities.json",
@@ -1685,7 +1687,7 @@
                 "supported",
                 "supported_changes"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             {
               "title": "AccountIdentityUpdatesUnsupported",
@@ -1704,7 +1706,7 @@
                   "supported_changes"
                 ]
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           ]
         },
@@ -1762,7 +1764,7 @@
             }
           },
           "required": ["catalog_url", "catalog_digest"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "supported_pricing_models": {
           "type": "array",
@@ -1895,7 +1897,7 @@
                 "required": ["supported"]
               },
               "then": { "required": ["max_open_duration"] },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "if": {
@@ -1911,7 +1913,7 @@
             "properties": { "list_proposals": { "const": true } },
             "required": ["list_proposals"]
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "reporting_delivery_methods": {
           "type": "array",
@@ -2052,7 +2054,7 @@
             }
           },
           "required": ["supported", "registration_task", "event_types", "repair_tasks"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "features": {
           "allOf": [
@@ -2241,7 +2243,7 @@
                       "type": "boolean"
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "geo_postal_areas": {
                   "description": "Postal area targeting. Prefer the native country-keyed map where each ISO 3166-1 alpha-2 country lists supported country-local postal systems. Deprecated legacy country-fused postal-system boolean aliases may be emitted alongside native country keys during migration.",
@@ -2458,7 +2460,7 @@
             }
           },
           "required": ["requirement"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "audience_targeting": {
           "type": "object",
@@ -2515,7 +2517,7 @@
                   "minimum": 0
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "required": ["supported_identifier_types", "minimum_audience_size"],
@@ -3003,11 +3005,11 @@
                 }
               },
               "required": ["requirement", "claim_types"],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "required": ["signal_activation"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "aggregation_window_days": {
           "type": "integer",
@@ -3249,6 +3251,12 @@
           "default": false,
           "x-added-in": "3.3.0"
         },
+        "supports_registry_policy_enforcement": {
+          "type": "boolean",
+          "description": "When true, this seller supports registry-backed creative policy enforcement on sync_creatives: it publishes the registry policy IDs it enforces on products through enforced_policies and rejects a violating creative with one CREATIVE_REJECTED error entry per violated policy whose details.policy_id cites the registry policy. Merely hosting a creative library does not imply this capability. False or absent makes policy-backed rejection conformance storyboards not applicable; it does not exempt a seller from enforcing any policy it publishes in enforced_policies.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "stable_creative_ids": {
           "type": "boolean",
           "description": "When true, this agent gives every creative that entered its library outside sync_creatives (seller UI or API, automation, or another system) a creative_id that is stable for the creative's lifetime and unique within the account, so a buyer connecting to an existing advertiser can reference those creatives in later requests. The agent MUST keep such IDs stable, MUST NOT reuse a creative_id a buyer has used on the account, and under sync_creatives delete_missing MUST NOT archive those creatives. Requires has_creative_library: true. When false or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them.",
@@ -3477,7 +3485,7 @@
                     "description": "Informational implementation origin. platform_native means the route uses the serving platform's preview machinery; agent_approximation means the agent renders an approximation. Neither value grants authority without a publisher preview_provider delegation."
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "minItems": 1,
               "x-adcp-validation": {
@@ -3486,7 +3494,7 @@
               "x-max-items-4.0": 128
             }
           },
-          "additionalProperties": false,
+          "additionalProperties": true,
           "x-adcp-validation": {
             "verifier_constraints": {
               "routes": "capability_id_set_equals_routable_capability_ids_of_creative.supported_formats_entries_with_preview_operation"
@@ -3978,7 +3986,7 @@
               "description": "Origin (scheme + host) serving the TMP-signing JWKS, when this operator participates in TMP."
             }
           },
-          "additionalProperties": false,
+          "additionalProperties": true,
           "x-adcp-validation": {
             "verifier_constraints": {
               "purpose_anchoring": {
@@ -4006,7 +4014,7 @@
               "default": false
             }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "additionalProperties": true
@@ -4112,7 +4120,7 @@
                     }
                   },
                   "required": ["accrediting_body"],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "uniqueItems": true,
                 "maxItems": 8
@@ -4152,7 +4160,7 @@
               }
             },
             "required": ["metric_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "uniqueItems": true,

@@ -48,7 +48,7 @@
           "estimated_wait": { "$ref": "/schemas/core/duration.json" }
         },
         "required": ["scope", "description"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "context": { "$ref": "/schemas/core/context.json" },

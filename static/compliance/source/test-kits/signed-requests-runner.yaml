@@ -62,7 +62,8 @@ harness_mode: black_box
 # grading runs in black_box mode only.
 
 runner_signing_keys:
-  # Runner signs every non-negative-key vector with one of these keypairs. The
+  # Runner signs every non-negative-key vector, and every signed functional
+  # request (see `functional_dispatch`), with one of these keypairs. The
   # agent's verifier MUST treat these keyids as a registered test counterparty
   # whose JWKS contains the corresponding public keys with
   # adcp_use: "request-signing". Private keys for signing live in keys.json
@@ -73,6 +74,9 @@ runner_signing_keys:
   - keyid: test-es256-2026
     alg: ecdsa-p256-sha256
     jwks_source: /compliance/{version}/test-vectors/request-signing/keys.json
+  - keyid: test-functional-2026
+    alg: ed25519
+    jwks_source: /compliance/{version}/test-vectors/request-signing/keys.json
 
 functional_dispatch:
   # Functional storyboards retain their brand-specific test kits. This block
@@ -81,7 +85,13 @@ functional_dispatch:
   # step. The runner applies it only after capability discovery and only to
   # ordinary functional task dispatch; request-signing conformance vectors keep
   # their dedicated positive/negative construction path.
-  signing_keyid: test-ed25519-2026
+  #
+  # `signing_keyid` is a dedicated key that no conformance vector signs with.
+  # Functional requests therefore never consume the per-keyid replay-cache
+  # budget that vector 020-rate-abuse grades on its own keyid (see
+  # `stateful_vector_contract.rate_abuse`), however much signed functional
+  # traffic precedes the vectors within the signature lifetime.
+  signing_keyid: test-functional-2026
   signer_agent_url: https://compliance-runner.example
   operation_selection:
     capability_path: request_signing
@@ -148,15 +158,25 @@ stateful_vector_contract:
     #
     # The runner sends N+1 distinct-nonce requests signed by the same keyid
     # within the window. The agent MUST reject the (N+1)th with
-    # request_signature_rate_abuse once the per-keyid cap is hit.
+    # request_signature_rate_abuse once the per-keyid cap is hit. Vector 020
+    # signs with `test-ed25519-2026`.
     #
     # `grading_target_per_keyid_cap_requests` is the cap the runner will
-    # target during grading — NOT a production recommendation. Agents MAY
-    # configure a lower cap for the test-kit counterparty only so grading
-    # finishes in a reasonable time. Production caps MUST follow the spec
-    # recommendation at docs/building/implementation/security.mdx
-    # §per-keyid cap (at least 1,000,000 entries per keyid). Implementers
-    # copying a value from this file into production code SHOULD use
+    # target during grading — NOT a production recommendation. Under this
+    # test-kit grading contract, agents MAY lower the per-keyid cap to this
+    # value for the vector 020 keyid (`test-ed25519-2026`) only, so grading
+    # finishes in a reasonable time, and MUST NOT apply the lowered cap to
+    # `functional_dispatch.signing_keyid` or the other runner signing keys:
+    # ordinary functional traffic would otherwise exhaust it and fail with
+    # request_signature_rate_abuse. A replay store that takes one cap for
+    # every keyid (as the SDK reference stores do) needs a keyid-aware
+    # wrapper for this, for example one that routes the vector 020 keyid to a
+    # separately capped store.
+    #
+    # Production caps MUST follow the spec recommendation at
+    # docs/building/implementation/security.mdx §per-keyid cap (at least
+    # 1,000,000 entries per keyid). Implementers copying a value from this
+    # file into production code SHOULD use
     # `production_min_per_keyid_cap_requests` below as the floor, not
     # `grading_target_per_keyid_cap_requests`.
     vector_id: 020-rate-abuse

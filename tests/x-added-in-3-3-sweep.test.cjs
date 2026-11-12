@@ -80,6 +80,7 @@ const PROPERTIES_3_3 = [
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'governance', 'properties', 'supports_budget_periods']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'operation_sources']],
   ['formats/canonical/video_hosted.json', ['properties', 'loudness']],
+  ['formats/canonical/image_carousel.json', ['properties', 'card_image_sizes']],
   ['core/installment-deadlines.json', ['properties', 'change_cutoff']],
   ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
   ['governance/check-governance-request.json', ['properties', 'budget_period_id']],
@@ -191,6 +192,7 @@ test('added enum values are noted in the enum description', () => {
   const video = load('formats/canonical/video_hosted.json').properties;
   assert.match(video.video_codecs.description, /`mpeg2`, `avc_intra`, and `xavc`.*3\.3/);
   assert.match(video.containers.description, /`mxf`.*3\.3/);
+  assert.match(load('core/requirements/video-asset-requirements.json').properties.containers.description, /`3gp`, `mpeg`, and `m4v`.*3\.3/);
 });
 
 test('surfaces shipped in 3.2 are not marked 3.3', () => {

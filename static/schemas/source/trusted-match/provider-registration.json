@@ -113,5 +113,5 @@
     { "properties": { "context_match": { "const": true } }, "required": ["context_match"] },
     { "properties": { "identity_match": { "const": true } }, "required": ["identity_match"] }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

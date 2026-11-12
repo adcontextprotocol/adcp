@@ -92,9 +92,9 @@ prerequisites:
     The agent MUST advertise `request_signing.supported: true` in `get_adcp_capabilities`.
     The agent's verifier MUST be configured to accept requests signed by the test keypairs
     published in `keys.json` alongside the conformance vectors — specifically, the runner's
-    signing keys (`test-ed25519-2026`, `test-es256-2026`) should be treated as coming from
-    a registered test counterparty whose JWKS contains those public keys with
-    `adcp_use: "request-signing"`.
+    signing keys (`test-ed25519-2026`, `test-es256-2026`, and the functional-dispatch key
+    `test-functional-2026`) should be treated as coming from a registered test counterparty
+    whose JWKS contains those public keys with `adcp_use: "request-signing"`.
   test_kit: "test-kits/signed-requests-runner.yaml"
 
 phases:

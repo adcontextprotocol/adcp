@@ -169,7 +169,7 @@
                   }
                 },
                 "required": ["kind", "vendor"],
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "minimum_size": {
                 "type": "integer",

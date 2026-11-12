@@ -26,5 +26,5 @@
     "layer_derivation": "Publisher, placement, and seller effective-contract derivation is evaluated over atomic tuples of normalized non-version selector identity, one exact version (or null for pixel), execution_actor, and one firing_path. For a complete parent, every child tuple MUST exist in the parent, the child remains complete, and array compression MUST NOT create a version/path cross-product. An incomplete or omitted parent is not a ceiling: a child may add or omit affirmative tuples for its narrower scope, but remains incomplete until every applicable layer is complete. Omission from an incomplete child is undeclared, not an assertion that the tuple is unsupported.",
     "cardinality": "Each accepted manifest tracker instance is initiated exactly once in total for each logical event occurrence; identical URLs are not deduplicated."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

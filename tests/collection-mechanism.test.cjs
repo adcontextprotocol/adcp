@@ -50,9 +50,10 @@ describe("collection mechanism vocabulary", () => {
     assert.equal(sibling.items.$ref, "/schemas/core/vendor-metric-provenance.json");
   });
 
-  it("leaves the closed schemas unchanged (DR-0036): the fields live on open homes", () => {
+  it("leaves the row schemas unchanged (DR-0036): the fields live on open homes", () => {
     const row = readSchema("/schemas/core/vendor-metric-value.json");
-    assert.equal(row.additionalProperties, false);
+    // Open by default (DR-0036).
+    assert.equal(row.additionalProperties, true);
     assert.equal(row.properties.measurement_provenance, undefined);
     const canonical = readSchema("/schemas/core/canonical-measurement-terms.json");
     assert.equal(canonical.properties.billing_measurement.properties.counting_mechanisms, undefined);
@@ -96,9 +97,10 @@ describe("collection mechanism vocabulary", () => {
       assert.ok(!validateEntry(entry({ mechanisms: ["panel"], deduplicated: "yes" })));
       assert.ok(!validateMetrics({ vendor_metric_provenance: [] }));
     });
-    it("stays open per DR-0009 while the enclosing row stays closed", () => {
+    it("stays open per DR-0009, and so does the enclosing row", () => {
       assert.ok(validateEntry(entry({ mechanisms: ["panel"], vendor_note: "x" })));
-      assert.ok(!validateMetrics({ vendor_metric_values: [{ ...row, mechanisms: ["panel"] }] }));
+      // Open by default (DR-0036): an unknown key on the row validates.
+      assert.ok(validateMetrics({ vendor_metric_values: [{ ...row, mechanisms: ["panel"] }] }));
     });
   });
 

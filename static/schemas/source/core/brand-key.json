@@ -26,5 +26,5 @@
     }
   },
   "required": ["domain"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -43,7 +43,7 @@
           "description": "Total collections in the resolved list"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "resolved_at": {
       "type": "string",
@@ -64,5 +64,5 @@
     }
   },
   "required": ["idempotency_key", "event", "list_id", "resolved_at", "signature"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

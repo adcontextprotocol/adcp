@@ -220,12 +220,13 @@ test('sample_content role takes a url or video asset but not a published_post', 
   assert.equal(validate({ role: 'sample_content', asset: { asset_type: 'published_post', post_url: 'https://video.example.com/watch/1' } }), false);
 });
 
-test('collection card fields reject malformed entries and the registry lists the feature id', async () => {
+test('collection card fields reject malformed entries, accept unknown keys, and the registry lists the feature id', async () => {
   const validate = await compile('/schemas/core/collection.json');
   const base = { collection_id: 'retro_news', name: 'Acme Retro News' };
   assert.equal(validate({ ...base, images: [{ asset_type: 'video', url: 'https://cdn.example.com/a.mp4' }] }), false);
   assert.equal(validate({ ...base, sample_content: [{ asset_type: 'published_post' }] }), false);
-  assert.equal(validate({ ...base, talent: [{ role: 'host', name: 'Jordan Vega', brand_ref: { domain: 'jordanvega.example.com', bogus: true } }] }), false);
+  // Open by default (DR-0036): an unknown key on brand_ref validates.
+  assert.equal(validate({ ...base, talent: [{ role: 'host', name: 'Jordan Vega', brand_ref: { domain: 'jordanvega.example.com', bogus: true } }] }), true);
   const role = await compile('/schemas/core/product-card-reference-asset.json');
   assert.equal(role({ role: 'bogus_role', asset: { asset_type: 'url', url: 'https://example.com' } }), false);
   const registry = fs.readFileSync(path.join(__dirname, '../docs/reference/experimental-status.mdx'), 'utf8');
