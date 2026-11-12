@@ -544,32 +544,36 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     expect(out.tracks_partial).toBe(1);
   });
 
-  it('keeps unverified request-signing coverage out of a pass, with or without a runner fixture gap', () => {
+  describe('unverified request signing (#8830)', () => {
     // @adcp/sdk flattens the probe skip to skip_reason only (no canonical
-    // skip.reason), and the hosted classifier grades that reason as a failed
-    // step. The SDK grades the track partial (adcp-client#2954). Pin today's
-    // hosted grade: this change must not move it.
-    const signingTrack = {
+    // skip.reason). No vector reached the agent's verifier, so the SDK grades
+    // the track partial (adcp-client#2954): neither a pass nor an agent failure.
+    const capabilityStep = { step: 'Get capabilities', task: 'get_adcp_capabilities', passed: true, duration_ms: 5 };
+    const unverifiedProbe = {
+      step: 'Vector 001',
+      task: 'request_signing_probe',
+      passed: true,
+      skipped: true,
+      skip_reason: 'signing_transport_unavailable',
+      warnings: ['signing_transport_unavailable'],
+      duration_ms: 0,
+    };
+    const gradedProbe = {
+      step: 'Vector 002',
+      task: 'request_signing_probe',
+      passed: true,
+      observation_data: { status: 401 },
+      duration_ms: 5,
+    };
+    // A jwks_override negative vector grades in-library without the transport.
+    const selfCheckProbe = { ...gradedProbe, step: 'Vector 025', observation_data: { status: 0 } };
+    const signingTrack = (scenarios: Array<{ scenario: string; steps: object[] }>) => ({
       track: 'security',
       label: 'Security',
       status: 'partial',
       duration_ms: 1000,
-      scenarios: [
-        {
-          scenario: 'signed_requests/request_signing_vectors',
-          overall_passed: true,
-          steps: [{
-            step: 'Vector 001',
-            task: 'request_signing_probe',
-            passed: true,
-            skipped: true,
-            skip_reason: 'signing_transport_unavailable',
-            warnings: ['signing_transport_unavailable'],
-            duration_ms: 0,
-          }],
-        },
-      ],
-    };
+      scenarios: scenarios.map(scenario => ({ ...scenario, overall_passed: true })),
+    });
     const fixtureTrack = {
       track: 'creative',
       label: 'Creative',
@@ -594,23 +598,85 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
         },
       ],
     };
+    const grade = (tracks: unknown[]) => complianceResultToDbInput(
+      makeResult(tracks as any, 'partial') as any,
+      'https://agent.example.com/mcp',
+      'production',
+    );
+    const signingStoryboard = (out: ReturnType<typeof grade>) =>
+      out.storyboard_statuses?.find(entry => entry.storyboard_id === 'signed_requests');
 
-    for (const tracks of [[makeTrack('pass'), signingTrack], [makeTrack('pass'), signingTrack, fixtureTrack]]) {
-      const out = complianceResultToDbInput(
-        makeResult(tracks as any, 'partial') as any,
-        'https://agent.example.com/mcp',
-        'production',
-      );
+    it('grades probes that never reached the verifier partial, with or without a runner fixture gap', () => {
+      const unverifiedOnly = signingTrack([
+        { scenario: 'signed_requests/positive_vectors', steps: [unverifiedProbe] },
+      ]);
+      for (const tracks of [[makeTrack('pass'), unverifiedOnly], [makeTrack('pass'), unverifiedOnly, fixtureTrack]]) {
+        const out = grade(tracks);
+
+        expect(out.overall_status).toBe('partial');
+        expect(out.tracks_failed).toBe(0);
+        expect(out.tracks_partial).toBe(1);
+        expect(out.tracks_json).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            track: 'security',
+            status: 'partial',
+            has_coverage_gap_skip: true,
+            skipped_by_reason: { signing_transport_unavailable: 1 },
+          }),
+        ]));
+        expect(isCoverageIncomplete(out.tracks_json)).toBe(true);
+        expect(signingStoryboard(out)).toMatchObject({ status: 'untested', steps_total: 0 });
+      }
+    });
+
+    it('keeps a passed capability probe in front of unverified vectors out of a pass', () => {
+      const out = grade([makeTrack('pass'), signingTrack([
+        { scenario: 'signed_requests/capability_discovery', steps: [capabilityStep] },
+        { scenario: 'signed_requests/positive_vectors', steps: [unverifiedProbe, { ...unverifiedProbe, step: 'Vector 002' }] },
+      ])]);
+
+      expect(out.overall_status).toBe('partial');
+      expect(out.tracks_json).toEqual(expect.arrayContaining([
+        expect.objectContaining({ track: 'security', status: 'partial', has_coverage_gap_skip: true }),
+      ]));
+      expect(signingStoryboard(out)).toMatchObject({ status: 'untested', steps_total: 0 });
+    });
+
+    it('does not count an in-library self-check as reaching the verifier', () => {
+      const out = grade([makeTrack('pass'), signingTrack([
+        { scenario: 'signed_requests/capability_discovery', steps: [capabilityStep] },
+        { scenario: 'signed_requests/negative_vectors', steps: [unverifiedProbe, selfCheckProbe] },
+      ])]);
+
+      expect(out.overall_status).toBe('partial');
+      expect(out.tracks_json).toEqual(expect.arrayContaining([
+        expect.objectContaining({ track: 'security', status: 'partial', has_coverage_gap_skip: true }),
+      ]));
+      expect(signingStoryboard(out)).toMatchObject({ status: 'untested', steps_total: 0 });
+    });
+
+    it('grades the vectors that did reach the verifier, keeping the rest as missing coverage', () => {
+      const out = grade([makeTrack('pass'), signingTrack([
+        { scenario: 'signed_requests/capability_discovery', steps: [capabilityStep] },
+        { scenario: 'signed_requests/positive_vectors', steps: [unverifiedProbe, gradedProbe] },
+      ])]);
+
+      expect(out.overall_status).toBe('passing');
+      expect(out.tracks_json).toEqual(expect.arrayContaining([
+        expect.objectContaining({ track: 'security', status: 'pass', has_coverage_gap_skip: true }),
+      ]));
+      expect(isCoverageIncomplete(out.tracks_json)).toBe(true);
+      expect(signingStoryboard(out)).toMatchObject({ status: 'passing', steps_passed: 2, steps_total: 2 });
+    });
+
+    it('still fails a vector the verifier graded wrong', () => {
+      const out = grade([makeTrack('pass'), signingTrack([
+        { scenario: 'signed_requests/positive_vectors', steps: [unverifiedProbe, { ...gradedProbe, passed: false }] },
+      ])]);
 
       expect(out.overall_status).toBe('failing');
-      expect(out.tracks_json).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          track: 'security',
-          status: 'fail',
-          skipped_by_reason: { signing_transport_unavailable: 1 },
-        }),
-      ]));
-    }
+      expect(signingStoryboard(out)).toMatchObject({ status: 'failing' });
+    });
   });
 
   it('buckets skip reasons that are not runner codes as other', () => {

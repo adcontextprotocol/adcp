@@ -3,6 +3,32 @@ import { readFileSync } from 'node:fs';
 import { complianceResultToDbInput, type ComplianceResult } from '../../src/addie/services/compliance-testing.js';
 import { classifyComplianceStep } from '../../src/compliance/step-disposition.js';
 
+// Copied from @adcp/sdk DETAILED_SKIP_TO_CANONICAL (17.0.0-beta.21). It is not
+// a public export and private SDK reach-ins are not allowed
+// (scripts/lint-sdk-shims.cjs), so add new SDK reasons here when the pin moves.
+const DETAILED_SKIP_TO_CANONICAL: Record<string, string> = {
+  probe_skipped: 'not_applicable',
+  not_in_only_vectors: 'not_applicable',
+  grader_skipped: 'not_applicable',
+  capability_profile_mismatch: 'not_applicable',
+  transport_ungradable: 'not_applicable',
+  signing_transport_unavailable: 'not_applicable',
+  mcp_mode_flattens_url_edges: 'not_applicable',
+  oauth_not_advertised: 'not_applicable',
+  rate_limit_not_triggered: 'not_applicable',
+  force_scenario_unsupported: 'not_applicable',
+  fixture_seed_unsupported: 'not_applicable',
+  fixture_unsatisfied: 'fixture_unsatisfied',
+  session_probe_ungradable: 'not_applicable',
+  capability_unsupported: 'not_applicable',
+  capability_prerequisite_unavailable: 'not_applicable',
+  rate_abuse_opt_out: 'unsatisfied_contract',
+  missing_test_kit_contract: 'unsatisfied_contract',
+  live_side_effect_opt_in_required: 'unsatisfied_contract',
+  operator_skip: 'unsatisfied_contract',
+  controller_seeding_failed: 'prerequisite_failed',
+};
+
 const SDK_PACKAGE_VERSION = (
   JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
     dependencies: Record<string, string>;
@@ -138,6 +164,26 @@ describe('hosted compliance publication policy', () => {
   it('prefers canonical not_applicable over a future detailed reason', () => {
     expect(classifyComplianceStep({ skipped: true, skip_reason: 'new_reason', skip: { reason: 'not_applicable' } }))
       .toBe('not_applicable');
+  });
+
+  it('classifies every detailed SDK skip reason without a canonical skip.reason', () => {
+    // The SDK projection keeps only the detailed reason, so a reason missing
+    // from the hosted lists silently grades as a failed step (#8830).
+    // Graded in classifyRunStep from the pinned storyboard's requires_contract.
+    const handledWithStoryboardMetadata = new Set(['missing_test_kit_contract']);
+    // Unverified signing is a coverage gap, never a pass (adcp-client#2954).
+    const deliberateSetupGaps = new Set(['signing_transport_unavailable']);
+
+    const entries = Object.entries(DETAILED_SKIP_TO_CANONICAL)
+      .filter(([detailed]) => !handledWithStoryboardMetadata.has(detailed));
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [detailed, canonical] of entries) {
+      const disposition = classifyComplianceStep({ passed: true, skipped: true, skip_reason: detailed });
+      expect({ detailed, disposition }).not.toEqual({ detailed, disposition: 'failed' });
+      if (canonical !== 'not_applicable') continue;
+      const expected = deliberateSetupGaps.has(detailed) ? 'setup_gap' : 'not_applicable';
+      expect({ detailed, disposition }).toEqual({ detailed, disposition: expected });
+    }
   });
 
   it('retains genuine dependency failures after a passed producer and unrelated neutral skip', () => {

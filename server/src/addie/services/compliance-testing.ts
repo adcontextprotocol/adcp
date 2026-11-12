@@ -25,6 +25,7 @@ import {
   type TestOptions,
   type AgentCapabilities,
 } from '@adcp/sdk/testing';
+import { REQUEST_SIGNING_PROBE_TASK } from '@adcp/sdk/testing/storyboard/request-signing';
 import { getCachedComplianceStoryboardById } from '../../compliance/storyboard-cache.js';
 import {
   hostedComplianceTarget,
@@ -1094,6 +1095,37 @@ function trackHasNonFixtureCoverageGapSkip(result: ComplianceResult, track: Trac
     !isRunnerFixtureGap(result, String(scenario.scenario), step)));
 }
 
+/**
+ * Mirrors the SDK's signingCoverage "graded" test over the projected probe
+ * response (observation_data). An in-library self-check passes with status 0,
+ * so a non-skipped probe alone is no proof the agent's verifier was reached.
+ */
+function probeReachedVerifier(step: TrackStep): boolean {
+  const response = step.observation_data;
+  return step.skipped !== true && typeof response?.status === 'number' && response.status > 0 &&
+    response.probe_error !== true;
+}
+
+/**
+ * The SDK's signingCoverageUnverified, narrowed to the transport gap: probes ran,
+ * none reached the agent's verifier, and the run's transport could not carry
+ * them. Nothing was graded, so the storyboard neither passes nor fails.
+ */
+function signingCoverageUnverified(steps: readonly TrackStep[]): boolean {
+  const probes = steps.filter(step => step.task === REQUEST_SIGNING_PROBE_TASK);
+  return probes.some(step => step.skipped && step.skip_reason === 'signing_transport_unavailable') &&
+    !probes.some(probeReachedVerifier);
+}
+
+function trackHasUnverifiedSigningCoverage(track: TrackResult): boolean {
+  const stepsByStoryboard = new Map<string, TrackStep[]>();
+  for (const scenario of track.scenarios) {
+    const id = scenarioStoryboardIdForFallback(scenario.scenario) ?? String(scenario.scenario);
+    stepsByStoryboard.set(id, [...(stepsByStoryboard.get(id) ?? []), ...(scenario.steps ?? [])]);
+  }
+  return [...stepsByStoryboard.values()].some(signingCoverageUnverified);
+}
+
 function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
   return track.scenarios.some(scenario => scenario.steps?.some(step =>
     step.skipped && step.skip_reason === 'fixture_unavailable'));
@@ -1218,7 +1250,10 @@ function normalizeGradedTracks(result: ComplianceResult): ComplianceResult {
     const hasFailed = gradedSteps.some(d => d === 'failed' || d === 'dependency_failed') ||
       [...(track.observations ?? []), ...(result.observations ?? []).filter(observation => observation.track === track.track)]
         .some(observation => observation.source?.code === 'storyboard-assertion-failed');
+    // Unverified signing ranks below failures and above everything else, as in
+    // the SDK's computeTrackStatus: it is neither a pass nor a skip.
     const status: TrackResult['status'] = hasFailed ? hasPassed ? 'partial' : 'fail'
+      : trackHasUnverifiedSigningCoverage(track) ? 'partial'
       : !hasPassed ? 'skip' : track.status === 'silent' ? 'silent' : 'pass';
     if (status === track.status && scenarios.every((scenario, index) =>
       scenario.overall_passed === track.scenarios[index].overall_passed)) return track;
@@ -1357,6 +1392,7 @@ export function deriveStoryboardStatuses(
     stepLessPhasesTotal: number;
     controllerSkipped: number;
     fixtureUnavailable: boolean;
+    steps: TrackStep[];
     failureCount: number;
     skippedCount: number;
     firstFailure: FirstFailure | null;
@@ -1380,6 +1416,7 @@ export function deriveStoryboardStatuses(
           stepLessPhasesTotal: 0,
           controllerSkipped: 0,
           fixtureUnavailable: false,
+          steps: [],
           failureCount: 0,
           skippedCount: 0,
           firstFailure: null,
@@ -1401,6 +1438,7 @@ export function deriveStoryboardStatuses(
         }
         continue;
       }
+      agg.steps.push(...s.steps);
       for (const step of s.steps) {
         const disposition = classifyRunStep(result, String(s.scenario), step);
         if (disposition === 'not_applicable') continue;
@@ -1451,7 +1489,10 @@ export function deriveStoryboardStatuses(
     // Fixture availability is a whole-storyboard preflight disposition. The
     // producer step that captured the format may already have passed, but that
     // partial execution is not evidence that the seller behavior was tested.
-    if (agg.fixtureUnavailable && agg.failureCount === 0 && agg.skippedCount === 0) {
+    // Likewise a passed capability probe in front of request-signing vectors
+    // that never reached the agent's verifier.
+    const untestedSubject = agg.fixtureUnavailable || signingCoverageUnverified(agg.steps);
+    if (untestedSubject && agg.failureCount === 0 && agg.skippedCount === 0) {
       entries.push({
         storyboard_id: sbId,
         status: 'untested',
