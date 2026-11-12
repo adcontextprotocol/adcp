@@ -24,6 +24,8 @@ Read these first:
 
 Everything else is an optional declaration or a clarification. Agent identity (DR-0023) and demand-side grants (DR-0025) have their own role-by-role guide, [Migrating agent identity in AdCP 3.3](/docs/reference/migration/agent-identity-3-3). For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3).
 
+- **TMP routers:** adopt [evaluation-namespace cache isolation](/docs/reference/migration/trusted-match-context-cache); re-authorize warm hits, bypass when the trusted namespace is unavailable, and apply provider-owned TTL handling for model changes (#7446).
+
 ## Upgrade checklist
 
 | Step | Who | Action |
