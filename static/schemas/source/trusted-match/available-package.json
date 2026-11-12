@@ -52,5 +52,5 @@
     "media_buy_id",
     "seller_agent"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

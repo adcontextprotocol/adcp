@@ -63,7 +63,7 @@
             }
           },
           "required": ["human_oversight", "disclosure_required"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "observed_value": {
           "description": "Verifier observation relevant to the claim, when applicable.",
@@ -82,7 +82,7 @@
         }
       },
       "required": ["agent_url", "claimed_value"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -96,5 +96,5 @@
     "message",
     "details"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

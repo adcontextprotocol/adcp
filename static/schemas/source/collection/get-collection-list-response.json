@@ -59,7 +59,7 @@
                 "type",
                 "value"
               ],
-              "additionalProperties": false,
+              "additionalProperties": true,
               "not": {
                 "required": ["type"],
                 "properties": { "type": { "const": "platform_channel_id" } }
@@ -88,7 +88,7 @@
         "required": [
           "name"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "pagination": {
@@ -125,7 +125,7 @@
             "type",
             "value"
           ],
-          "additionalProperties": false,
+          "additionalProperties": true,
           "not": {
             "required": ["type"],
             "properties": { "type": { "const": "platform_channel_id" } }

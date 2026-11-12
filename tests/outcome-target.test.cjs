@@ -127,13 +127,14 @@ describe('outcome_target reverse-forecast criteria', () => {
     );
   });
 
-  it('rejects non-positive volumes and unknown outcome_target fields', () => {
+  it('rejects non-positive volumes; an unknown outcome_target field validates', () => {
     const goal = { kind: 'metric', metric: 'clicks' };
     assert.equal(validateCriteria({ outcome_target: { goal, volume: 0 } }), false);
     assert.equal(validateCriteria({ outcome_target: { goal, volume: -5 } }), false);
+    // Open by default (DR-0009): an unknown key (`currency`) beside `volume` validates.
     assert.equal(
       validateCriteria({ outcome_target: { goal, volume: 100, currency: 'USD' } }),
-      false,
+      true,
     );
   });
 

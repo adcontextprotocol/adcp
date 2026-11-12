@@ -22,6 +22,12 @@ function resolveLocalRef(root: JsonSchema, value: JsonSchema): JsonSchema {
   ), root);
 }
 
+// tools/list omits `additionalProperties: true` inside bundled definitions (it
+// is JSON Schema's default), so compare openness rather than the keyword.
+function openness(schema: JsonSchema): boolean {
+  return schema.additionalProperties !== false;
+}
+
 describe('product discovery MCP schema parity', () => {
   it('keeps runtime discovery constraints aligned with source schemas', () => {
     const tools = new Map(productDiscoveryAliasToolDefinitions().map(tool => [tool.name, tool.inputSchema as JsonSchema]));
@@ -64,34 +70,36 @@ describe('product discovery MCP schema parity', () => {
     expect(runtimeRefinement).toMatchObject({
       type: sourceRefinement.type,
       required: sourceRefinement.required,
-      additionalProperties: sourceRefinement.additionalProperties,
     });
+    expect(openness(runtimeRefinement)).toBe(openness(sourceRefinement));
 
     // Repository-local refs must be bundled because MCP consumers do not have
     // an AdCP schema registry attached to tools/list.
     for (const runtime of tools.values()) {
       expect(JSON.stringify(runtime)).not.toContain('"$ref":"/schemas/');
     }
-    expect(resolveLocalRef(list, list.properties.brand)).toMatchObject({ required: ['domain'], additionalProperties: false });
+    const brand = resolveLocalRef(list, list.properties.brand);
+    expect(brand).toMatchObject({ required: ['domain'] });
+    expect(openness(brand)).toBe(true);
     expect(resolveLocalRef(list, list.properties.fields)).toMatchObject({
       minItems: 1,
       uniqueItems: true,
       items: { enum: expect.arrayContaining(['product_id', 'format_options', 'pricing_options']) },
     });
-    expect(resolveLocalRef(list, list.properties.criteria))
-      .toMatchObject({ additionalProperties: sourceSchema('product-discovery-criteria').additionalProperties });
+    expect(openness(resolveLocalRef(list, list.properties.criteria)))
+      .toBe(openness(sourceSchema('product-discovery-criteria')));
     expect(resolveLocalRef(refineTool, refineTool.properties.refinements.items))
       .toMatchObject({
         required: ['proposal_id'],
-        additionalProperties: sourceRefinement.additionalProperties,
         // Definition annotations are intentionally stripped from tools/list;
         // dispatch still applies the source-schema default semantics.
         properties: { action: { enum: ['revise', 'finalize'] } },
         oneOf: expect.any(Array),
       });
     const declineTool = tools.get('decline_proposals')!;
-    expect(resolveLocalRef(declineTool, declineTool.properties.declines.items))
-      .toMatchObject({ required: ['proposal_id', 'reason'], additionalProperties: false });
+    const decline = resolveLocalRef(declineTool, declineTool.properties.declines.items);
+    expect(decline).toMatchObject({ required: ['proposal_id', 'reason'] });
+    expect(openness(decline)).toBe(openness(sourceSchema('decline-proposals-request').properties.declines.items));
   });
 
   it('bundles each tools/list input schema as a valid standalone document', () => {

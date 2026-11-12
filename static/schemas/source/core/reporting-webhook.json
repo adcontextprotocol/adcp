@@ -40,7 +40,7 @@
         "schemes",
         "credentials"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "reporting_frequency": {
       "type": "string",

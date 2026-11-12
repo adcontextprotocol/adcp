@@ -57,7 +57,7 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "daily_budget_cap": {
       "type": "number",
@@ -78,7 +78,7 @@
         "signature_id": { "type": "string", "minLength": 1 }
       },
       "required": ["io_id", "accepted_at", "signatory"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "purchase_order_ref": {
       "type": "string",

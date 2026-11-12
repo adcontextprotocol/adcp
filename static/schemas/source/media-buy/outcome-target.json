@@ -20,7 +20,7 @@
             }
           },
           "required": ["kind", "metric"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "type": "object",
@@ -43,7 +43,7 @@
             "required": ["event_type"]
           },
           "then": { "required": ["custom_event_name"] },
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -58,5 +58,5 @@
   },
   "required": ["goal"],
   "anyOf": [{ "required": ["volume"] }, { "required": ["cost_per"] }],
-  "additionalProperties": false
+  "additionalProperties": true
 }

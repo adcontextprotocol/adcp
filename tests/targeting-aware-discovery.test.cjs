@@ -278,8 +278,9 @@ test("frequency cap detail preserves the legacy boolean and separates aggregate 
     validateConstraints({
       max_impressions_constraints: { minimum: 1, maximum: 10, step: 2 },
     }),
-    false,
-    "count ranges have no step"
+    // Open by default (DR-0009): `step` is defined nowhere, so it is an unknown key and validates.
+    true,
+    "count ranges declare no step; it is an ignored unknown key"
   );
 
   const requirementsSchema = JSON.parse(
@@ -661,13 +662,15 @@ test("product responses expose symmetric property and collection list applicatio
   );
   assert.equal(
     validateReceipt({ ...collectionReceipt, mode: "exclude" }),
-    false,
-    "effect is the only application discriminator"
+    // Open by default (DR-0009): `mode` is defined nowhere, so it is an unknown key and validates.
+    true,
+    "effect is the only declared application discriminator; mode is ignored"
   );
   assert.equal(
     validateReceipt({ ...collectionReceipt, entries_total: 200 }),
-    false,
-    "counts are represented only by the closed summary partition"
+    // Open by default (DR-0009): `entries_total` is an unknown key and validates.
+    true,
+    "counts are declared only by the summary partition; entries_total is ignored"
   );
   assert.equal(
     validateCanonicalProduct({
@@ -2005,9 +2008,19 @@ test("required overlay requirements exclude seller limit fields", async () => {
     false,
     "seller maxima are response-only"
   );
+  // The requirements container is open (DR-0009). An unknown
+  // hard requirement still isn't ignored: matching fails closed on it. The
+  // functional case is in server/tests/unit/training-agent.test.ts.
   assert.equal(
     validate({ future_unknown_dimension: true }),
-    false,
+    true,
+    errors(validate)
+  );
+  assert.match(
+    JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting-overlay-requirements.json"), "utf8")
+    ).description,
+    /Missing or unknown required fields do not match\./,
     "unknown hard requirements must not be ignored"
   );
   for (const zeroCapability of [
@@ -2075,7 +2088,6 @@ test("required overlay requirements exclude seller limit fields", async () => {
     { geo_countries: {} },
     { geo_countries: { ext: { vendor: "hint" } } },
     { geo_countries: { max_values_per_package: 0 } },
-    { geo_countries: { max_values_per_package: 1, unknown: true } },
     { geo_proximity: { radius: true, max_values_per_package: 0 } },
     { geo_proximity: { max_values_per_package: 1 } },
   ]) {
@@ -2087,6 +2099,13 @@ test("required overlay requirements exclude seller limit fields", async () => {
       )}`
     );
   }
+
+  // Open by default (DR-0009): an unknown key beside a valid seller maximum validates.
+  assert.equal(
+    validateSupport({ geo_countries: { max_values_per_package: 1, unknown: true } }),
+    true,
+    errors(validateSupport)
+  );
 
   const requirements = JSON.parse(
     fs.readFileSync(

@@ -32,7 +32,7 @@
           }
         },
         "required": ["feature_id"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -52,7 +52,7 @@
         }
       },
       "required": ["agent_url"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "eval_budget": {
       "type": "object",

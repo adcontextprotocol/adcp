@@ -92,6 +92,7 @@
       "type": "array",
       "description": "Relationships to other collections (spin-offs, companion collections, etc.). Each entry references another collection by collection_id within the same publisher's adagents.json.",
       "items": {
+        "description": "Rejects `publisher_domain`: a related collection is a local reference, not a cross-publisher declaration.",
         "type": "object",
         "properties": {
           "collection_id": {
@@ -105,7 +106,8 @@
           }
         },
         "required": ["collection_id", "relationship"],
-        "additionalProperties": false
+        "additionalProperties": true,
+        "not": { "required": ["publisher_domain"] }
       }
     },
     "ext": {

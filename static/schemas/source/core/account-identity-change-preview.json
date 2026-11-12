@@ -38,7 +38,7 @@
         "area",
         "effect"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "nonblocking_impacts": {
       "type": "array",
@@ -106,7 +106,7 @@
         "requested_operator_identity",
         "impacts"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AccountIdentityChangeWouldRequireApproval",
@@ -128,7 +128,7 @@
         "requested_operator_identity",
         "impacts"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AccountIdentityChangeBlocked",
@@ -160,7 +160,7 @@
         "impacts",
         "blockers"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

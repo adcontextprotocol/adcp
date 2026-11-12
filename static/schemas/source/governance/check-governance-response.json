@@ -186,7 +186,7 @@
           "severity",
           "explanation"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "conditions": {
@@ -211,7 +211,7 @@
           "field",
           "reason"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "consultation_context": {
@@ -247,7 +247,7 @@
             "end": { "type": "string", "format": "date-time" }
           },
           "required": ["start", "end"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "cumulative_spend": { "type": "number", "minimum": 0 },
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
@@ -259,11 +259,11 @@
             "delivery_metrics": { "type": "object", "additionalProperties": true }
           },
           "required": ["seller_reference", "delivery_metrics"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": ["statement_id", "statement_digest", "sequence", "issued_at", "seller_reference", "reporting_period", "cumulative_spend", "currency", "canonical_payload"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "categories_evaluated": {
       "type": "array",

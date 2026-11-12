@@ -50,7 +50,7 @@
         "source_timezone": { "type": "string", "minLength": 1 }
       },
       "required": ["start", "end", "source_timezone"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "reporting_obligation_id": {
       "type": "string",
@@ -177,5 +177,5 @@
     "snapshot_provenance": "When seller_ledger_snapshot_id is present, the seller MUST resolve it and require seller_ledger_as_of to exactly match the issued snapshot for this authenticated caller, account, and applicable filter scope. Unknown, unauthorized, cross-account, cross-caller, expired, or mismatched snapshot identities fail with the same unavailable result.",
     "time": "status_as_of MUST be no earlier than the superseded statement's status_as_of and no later than recorded_at except for the seller's documented clock-skew tolerance. Sellers reject unreasonable future timestamps and retain the submitted value as consumer-attributed evidence rather than rewriting it."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -50,5 +50,5 @@
     "iana_timezone": "Every advertised fixed period_timezone MUST be a recognized IANA Time Zone Database zone name or link, including UTC. Unknown identifiers and numeric UTC offsets are invalid.",
     "source_compatibility": "The resolved schedule MUST be compatible with the pinned report definition calendar. A seller MUST NOT advertise or accept a schedule merely because it can query the source eventually; it must be able to produce the exact promised periods natively or through lossless finer-grained re-bucketing."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -3,7 +3,7 @@
   "$id": "/schemas/core/reporting-revision.json",
   "title": "Reporting Revision",
   "x-status": "experimental",
-  "description": "One immutable emitted version of logical reporting content. The revision is destination-independent: one canonical revision may fan out through many caller/account-bound obligations and materializations, including file, warehouse, and dataset-share destinations. The report_definition_id plus period and scope identify the logical slice; provisional restatements create a new snapshot revision and preserve the superseded snapshot for the advertised retention window. An official revision is terminal; later corrections are separate reporting adjustments.",
+  "description": "One immutable emitted version of logical reporting content. The revision is destination-independent: one canonical revision may fan out through many caller/account-bound obligations and materializations, including file, warehouse, and dataset-share destinations. The report_definition_id plus period and scope identify the logical slice; provisional restatements create a new snapshot revision and preserve the superseded snapshot for the advertised retention window. An official revision is terminal; later corrections are separate reporting adjustments. Rejects `destination_ref`: a revision is destination-independent.",
   "type": "object",
   "properties": {
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Portable AdCP identity for this immutable report publication. Distinct from package delivery_revision_id and provider-native versions." },
@@ -29,7 +29,7 @@
         "source_timezone": { "type": "string", "minLength": 1 }
       },
       "required": ["start", "end", "source_timezone"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "finality": { "$ref": "/schemas/enums/reporting-finality.json" },
     "finality_basis": { "type": "string", "enum": ["source_final", "contractual_cutoff", "stabilized"], "description": "Why an official revision is considered final: an authoritative source signal, a versioned contractual cutoff, or a versioned stabilization rule." },
@@ -71,5 +71,6 @@
     "set_ordering": "media_buy_ids is a mathematical set and MUST be serialized in ascending Unicode code-point order so equivalent denominators have one representation.",
     "digest_requirement": "revision_content_sha256 is required for every revision and is SHA-256 of RFC 8785 JCS for {reporting_revision_id,row_count,control_totals,reporting_rows}. Exact revision reads MUST return metadata, rows, ID, count, totals, and this digest identically to status. canonical_content_digest is separate external-materialization evidence: it is optional for non-billing delivery profiles and mandatory when a referenced materialization selects canonical_digest and for every billing obligation."
   },
-  "additionalProperties": false
+  "additionalProperties": true,
+  "not": { "required": ["destination_ref"] }
 }

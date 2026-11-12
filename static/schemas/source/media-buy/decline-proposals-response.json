@@ -53,7 +53,7 @@
             "required": ["outcome", "reason"]
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "status": { "type": "string", "const": "submitted" },

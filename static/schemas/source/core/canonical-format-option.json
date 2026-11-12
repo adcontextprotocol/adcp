@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-format-option.json",
   "title": "Canonical Format Option",
-  "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery. Format-option processing metadata such as macro_resolution_capabilities stays at this object's top level and is not part of canonical params.",
+  "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery. Format-option processing metadata such as macro_resolution_capabilities stays at this object's top level and is not part of canonical params. Rejects `v1_format_ref`, the legacy named-format link of product-format-declaration.",
   "type": "object",
   "properties": {
     "format_option_id": { "type": "string", "minLength": 1 },
@@ -71,5 +71,6 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true,
+  "not": { "required": ["v1_format_ref"] }
 }

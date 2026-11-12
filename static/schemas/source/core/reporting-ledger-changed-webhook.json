@@ -37,5 +37,5 @@
   "x-adcp-validation": {
     "logical_record": "One destination-independent revision or adjustment produces one logical account event even when it fans out through multiple obligations or delivery configurations. Receivers use changes_after to resolve the affected obligations and deduplicate by the immutable record identity."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

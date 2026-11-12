@@ -628,7 +628,7 @@
                   }
                 },
                 "required": ["pattern", "transports", "verification_profiles"],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
             "suspension_interval_seconds": {
@@ -688,7 +688,7 @@
             "task_presence": "The agent's MCP tools/list or A2A skill list MUST include sync_principal and get_principal when this block is present.",
             "offering_boundary": "Requests are rejected atomically for schema violations, authorization failures, unsupported sections, and out-of-offering destinations. In-offering destinations that fail provider-side setup are reported per destination as validating, action_required, or rejected inside an applied response, never as a failed request."
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "capability_changes": {
           "type": "object",
@@ -819,7 +819,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -833,7 +833,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -847,7 +847,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -861,7 +861,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -875,7 +875,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -889,7 +889,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -903,7 +903,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -917,7 +917,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -931,7 +931,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 ]
               },
@@ -945,7 +945,7 @@
           },
           "required": ["tasks"],
           "x-status": "experimental",
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "attestations": {
           "$ref": "/schemas/core/attestation-capabilities.json",
@@ -1172,7 +1172,7 @@
                 "supported",
                 "supported_changes"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             {
               "title": "AccountIdentityUpdatesUnsupported",
@@ -1191,7 +1191,7 @@
                   "supported_changes"
                 ]
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           ]
         },
@@ -1236,7 +1236,7 @@
             }
           },
           "required": ["catalog_url", "catalog_digest"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "supported_pricing_models": {
           "type": "array",
@@ -1445,7 +1445,7 @@
             }
           },
           "required": ["supported", "registration_task", "event_types", "repair_tasks"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "features": {
           "allOf": [
@@ -1620,7 +1620,7 @@
                       "type": "boolean"
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "geo_postal_areas": {
                   "description": "Postal area targeting. Prefer the native country-keyed map where each ISO 3166-1 alpha-2 country lists supported country-local postal systems. Deprecated legacy country-fused postal-system boolean aliases may be emitted alongside native country keys during migration.",
@@ -1813,7 +1813,7 @@
             }
           },
           "required": ["requirement"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "audience_targeting": {
           "type": "object",
@@ -1867,7 +1867,7 @@
                   "minimum": 0
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "required": ["supported_identifier_types", "minimum_audience_size"],
@@ -2251,11 +2251,11 @@
                 }
               },
               "required": ["requirement", "claim_types"],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "required": ["signal_activation"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "aggregation_window_days": {
           "type": "integer",
@@ -2656,7 +2656,7 @@
                     "description": "Informational implementation origin. platform_native means the route uses the serving platform's preview machinery; agent_approximation means the agent renders an approximation. Neither value grants authority without a publisher preview_provider delegation."
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "minItems": 1,
               "x-adcp-validation": {
@@ -2664,7 +2664,7 @@
               }
             }
           },
-          "additionalProperties": false,
+          "additionalProperties": true,
           "x-adcp-validation": {
             "verifier_constraints": {
               "routes": "capability_id_set_equals_routable_capability_ids_of_creative.supported_formats_entries_with_preview_operation"
@@ -3033,7 +3033,7 @@
               "description": "Origin (scheme + host) serving the TMP-signing JWKS, when this operator participates in TMP."
             }
           },
-          "additionalProperties": false,
+          "additionalProperties": true,
           "x-adcp-validation": {
             "verifier_constraints": {
               "purpose_anchoring": {
@@ -3061,7 +3061,7 @@
               "default": false
             }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "additionalProperties": true
@@ -3144,7 +3144,7 @@
                     }
                   },
                   "required": ["accrediting_body"],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "uniqueItems": true
               },
@@ -3180,7 +3180,7 @@
               }
             },
             "required": ["metric_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "uniqueItems": true

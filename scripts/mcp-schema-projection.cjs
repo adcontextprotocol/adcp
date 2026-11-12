@@ -813,6 +813,15 @@ function stripPresentationAnnotations(schema) {
   return stripped;
 }
 
+/** True for `{ required: [...] }` or an `anyOf` of only such clauses. */
+function isNamedRejection(not) {
+  const requiredOnly = value => value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === 1 && Array.isArray(value.required);
+  if (requiredOnly(not)) return true;
+  return Boolean(not) && typeof not === 'object' && Object.keys(not).length === 1
+    && Array.isArray(not.anyOf) && not.anyOf.length > 0 && not.anyOf.every(requiredOnly);
+}
+
 function stripModelContextAnnotations(schema) {
   const stripped = stripPresentationAnnotations(schema);
   walkSchema(stripped, node => {
@@ -835,11 +844,15 @@ function stripModelContextAnnotations(schema) {
     // Exact const values and homogeneous enums already communicate their JSON
     // types. Mixed enums retain type because it still narrows the listed values.
     if (Object.hasOwn(node, 'const')) delete node.type;
-    // Closed-object enforcement belongs to the validation profile. The
-    // declared property list already communicates the prompt shape, while
-    // retaining `additionalProperties: true` and schema-valued maps preserves
-    // meaningful extension and dictionary surfaces.
-    if (node.additionalProperties === false) delete node.additionalProperties;
+    // Closed-object enforcement belongs to the validation profile; the
+    // declared property list communicates the prompt shape. Boolean true is
+    // JSON Schema's default, so omit that redundant spelling as well. Retain
+    // schema-valued additionalProperties to describe typed dictionary values.
+    if (typeof node.additionalProperties === 'boolean') delete node.additionalProperties;
+    // A named rejection (`not` over required names only, beside declared
+    // properties) is validation, like the bounds omitted above; the validation
+    // profile keeps it. A bare `not` branch of a union is logic and stays.
+    if (node.properties && isNamedRejection(node.not)) delete node.not;
     for (const keyword of Object.keys(node)) {
       if (keyword.startsWith('x-')) delete node[keyword];
     }

@@ -28,7 +28,7 @@
             }
           },
           "required": ["max_values_per_package"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -62,7 +62,7 @@
             }
           },
           "required": ["systems"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -96,7 +96,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["countries", "current_version", "system_versions"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "x-adcp-validation": {
         "member_of": { "field": "current_version", "array_field": "system_versions" },
         "description": "JSON Schema draft-07 cannot express scalar membership in a sibling array; conformance tooling MUST verify current_version is present in system_versions."
@@ -121,7 +121,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["systems"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "keywordSupport": {
       "anyOf": [
@@ -144,7 +144,7 @@
             }
           },
           "required": ["supported_match_types"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -164,7 +164,7 @@
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
           "required": ["families"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -223,7 +223,7 @@
               }
             }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     }
@@ -287,7 +287,7 @@
             { "required": ["geometry"] },
             { "required": ["transport_modes"] }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -329,7 +329,7 @@
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
           "minProperties": 1,
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },

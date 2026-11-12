@@ -45,5 +45,5 @@
     }
   },
   "required": ["days", "start_hour", "end_hour"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

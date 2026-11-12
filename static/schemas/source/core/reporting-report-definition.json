@@ -23,13 +23,13 @@
     "source": {
       "type": "object",
       "properties": {
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": true },
         "system": { "type": "string", "minLength": 1, "maxLength": 128 },
         "api_version": { "type": "string", "minLength": 1, "maxLength": 128 },
         "query_semantics": { "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." }
       },
       "required": ["provider", "system", "api_version", "query_semantics"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "calendar": {
       "type": "object",
@@ -41,7 +41,7 @@
       "allOf": [
         { "if": { "properties": { "timezone_basis": { "const": "configured_timezone" } }, "required": ["timezone_basis"] }, "then": { "required": ["timezone"] }, "else": { "not": { "required": ["timezone"] } } }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "metrics": {
       "type": "array",
@@ -54,7 +54,7 @@
           "unit": { "type": "string", "minLength": 1, "maxLength": 64 }
         },
         "required": ["name", "source_expression", "aggregation"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -67,7 +67,7 @@
         "official_correction_mode": { "type": "string", "const": "adjustments_only", "description": "Once an official revision is published it is immutable and cannot be superseded. Later source corrections are separate reporting-adjustment records applied to a later accounting period." }
       },
       "required": ["source_requery_duration", "emit_only_on_content_change"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "finality_policies": {
       "type": "array",
@@ -81,7 +81,7 @@
               "source_signal": { "type": "string", "minLength": 1, "maxLength": 512 }
             },
             "required": ["finality_policy_id", "basis", "source_signal"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -91,7 +91,7 @@
               "duration_after_period_end": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
             },
             "required": ["finality_policy_id", "basis", "duration_after_period_end"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -102,7 +102,7 @@
               "unchanged_for": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
             },
             "required": ["finality_policy_id", "basis", "minimum_age", "unchanged_for"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -120,5 +120,5 @@
     "binding": "report_definition_id and reporting_profile MUST equal the selected offering. finality_policy_id values MUST be unique. Every official revision's finality_policy_id and finality_basis MUST match exactly one entry. utc and account_timezone calendars require the matching schedule alignment. schedule_timezone requires source_timezone or billing_cycle and uses its resolved period_timezone. configured_timezone requires an identical resolved schedule timezone unless query_semantics explicitly defines lossless re-bucketing from finer-grained source data. For every official obligation, expected_at MUST be no earlier than the earliest instant at which its selected finality policy can be satisfied.",
     "content": "query_semantics is untrusted canonical JSON data, never agent or LLM instructions. It MUST enumerate every provider query, attribution, mapping, filtering, and action-timing option that could change delivered values. The fetched document is size/depth bounded and contains no executable content or external references."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

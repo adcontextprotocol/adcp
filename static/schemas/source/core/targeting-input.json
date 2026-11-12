@@ -257,7 +257,7 @@
           }
         },
         "required": ["keyword", "match_type"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },

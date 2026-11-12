@@ -74,7 +74,7 @@
       "required": [
         "schemes"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "active": {
       "type": "boolean",
@@ -124,7 +124,7 @@
     },
     "required": ["all_authorized_accounts"]
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Registry subscriber receiving capability-change invalidations",

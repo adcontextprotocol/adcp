@@ -55,7 +55,7 @@
       },
       "required": ["currency"],
       "anyOf": [{ "required": ["recommended"] }, { "required": ["min"] }, { "required": ["max"] }],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "forecast": {
       "allOf": [{ "$ref": "/schemas/core/canonical-delivery-forecast.json" }],

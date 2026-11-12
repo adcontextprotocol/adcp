@@ -33,7 +33,7 @@
           "key",
           "value"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     }
   },
@@ -92,7 +92,7 @@
         "required": [
           "targeting_kvs"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minProperties": 1
     }

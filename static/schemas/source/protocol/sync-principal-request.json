@@ -102,7 +102,7 @@
         }
       },
       "minProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "dry_run": {
       "type": "boolean",

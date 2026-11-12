@@ -49,10 +49,19 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
-// The canonical Product's `not`, as the projection serializes it.
-const CANONICAL_PRODUCT_PROHIBITION = JSON.stringify({
-  not: JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, 'core', 'canonical-product.json'), 'utf8')).not,
-}).slice(1, -1);
+// A named rejection (`not: { required: [...] }`) forbids a legacy key without
+// exposing it, and its schema description may name the key it rejects. Drops
+// every `not` keyword and description string so a legacy-graph scan sees only
+// what a schema accepts, whatever the rejection's shape or serialization.
+function withoutNamedRejections(node, parentKey) {
+  if (Array.isArray(node)) return node.map((item) => withoutNamedRejections(item, parentKey));
+  if (!node || typeof node !== 'object') return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key, value]) => parentKey === 'properties' || !(key === 'not' || (key === 'description' && typeof value === 'string')))
+      .map(([key, value]) => [key, withoutNamedRejections(value, key)]),
+  );
+}
 // The generated profiles describe the active surface of the package's release
 // line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
 // manifest declares via added_in; once the line has a stable release it is the
@@ -91,6 +100,8 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // from colliding with BiddingPolicy's CostPer and Strength. It is embedded in
 // list_products, request_proposals, and refine_proposals (~0.5 KiB each),
 // measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB.
+// Named rejections (DR-0009) are validation, so the model-context view omits
+// them with the bounds; the budget is unchanged.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 443,
   creative: 410,
@@ -319,9 +330,16 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.exactMode.const, 'direct');
   assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
-  assert.equal(projected.properties.extensions.additionalProperties, true);
+  assert.equal(projected.properties.extensions.additionalProperties, undefined);
   assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
+  // A named rejection beside declared properties is validation-only.
+  const named = stripModelContextAnnotations({
+    type: 'object',
+    properties: { a: { type: 'string' } },
+    not: { anyOf: [{ required: ['b'] }, { required: ['c'] }] },
+  });
+  assert.equal(named.not, undefined);
 
   const negotiated = stripModelContextAnnotations({
     type: 'object',
@@ -335,8 +353,40 @@ test('model-context presentation keeps request shape and omits validation-only d
   });
   assert.deepEqual(negotiated.properties.ext, {
     type: 'object',
-    additionalProperties: true,
   });
+});
+
+test('model-context omits default object openness while retaining typed maps and payload values', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      label: { type: 'string' },
+      open: { type: 'object', additionalProperties: true },
+      counts: { type: 'object', additionalProperties: { type: 'integer' } },
+      exact: { const: { additionalProperties: true } },
+    },
+    additionalProperties: true,
+  };
+  const projected = stripModelContextAnnotations(source);
+  assert.equal(source.additionalProperties, true, 'the source validation contract is unchanged');
+  assert.equal(projected.additionalProperties, undefined);
+  assert.equal(projected.properties.open.additionalProperties, undefined);
+  assert.deepEqual(projected.properties.counts.additionalProperties, { type: 'integer' });
+  assert.deepEqual(projected.properties.exact.const, { additionalProperties: true });
+
+  const ajv = new AjvDraft07({ strict: false });
+  const original = ajv.compile(source);
+  const prompt = ajv.compile(projected);
+  for (const value of [
+    {},
+    { open: { arbitrary: ['value'] }, counts: { impressions: 10 }, extra: 'allowed' },
+    { counts: { impressions: 'ten' } },
+    { exact: { additionalProperties: true } },
+    { exact: { additionalProperties: false } },
+    { label: 5 },
+  ]) {
+    assert.equal(prompt(value), original(value), JSON.stringify(value));
+  }
 });
 
 test('model-context pruning removes only unreachable root definitions', () => {
@@ -987,9 +1037,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      // The canonical Product forbids the legacy Product's keys by name;
-      // forbidding them does not expose them.
-      const exposed = output.replaceAll(CANONICAL_PRODUCT_PROHIBITION, '');
+      // The canonical Product forbids the legacy Product's keys by name and
+      // says so in descriptions; forbidding them does not expose them.
+      const exposed = JSON.stringify(withoutNamedRejections(JSON.parse(output)));
       assert.doesNotMatch(exposed, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }

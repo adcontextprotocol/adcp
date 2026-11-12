@@ -37,7 +37,7 @@
           "estimated_wait": { "$ref": "/schemas/core/duration.json" }
         },
         "required": ["scope", "description"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "replayed": { "type": "boolean", "const": true },

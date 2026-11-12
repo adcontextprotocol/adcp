@@ -63,7 +63,7 @@
     },
     "bleed": {
       "type": "object",
-      "description": "Required bleed area beyond the trim size. The submitted image must be larger than the declared dimensions: total width = trim width + left bleed + right bleed, total height = trim height + top bleed + bottom bleed. For uniform bleed: total = trim + (2 * uniform). Uses the same unit as the parent dimensions.",
+      "description": "Required bleed area beyond the trim size. The submitted image must be larger than the declared dimensions: total width = trim width + left bleed + right bleed, total height = trim height + top bleed + bottom bleed. For uniform bleed: total = trim + (2 * uniform). Uses the same unit as the parent dimensions. The uniform and per-side forms exclude each other.",
       "oneOf": [
         {
           "properties": {
@@ -74,7 +74,8 @@
             }
           },
           "required": ["uniform"],
-          "additionalProperties": false
+          "not": { "anyOf": [{ "required": ["top"] }, { "required": ["right"] }, { "required": ["bottom"] }, { "required": ["left"] }] },
+          "additionalProperties": true
         },
         {
           "properties": {
@@ -84,7 +85,8 @@
             "left": { "type": "number", "minimum": 0 }
           },
           "required": ["top", "right", "bottom", "left"],
-          "additionalProperties": false
+          "not": { "required": ["uniform"] },
+          "additionalProperties": true
         }
       ]
     },

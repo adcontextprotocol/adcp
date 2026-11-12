@@ -94,7 +94,7 @@
         "email": { "type": "string", "format": "email", "maxLength": 254, "description": "Monitored operations mailbox for reporting escalations. A role address, not an individual." }
       },
       "minProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "reliability_statistics": {
       "type": "array",
@@ -279,5 +279,5 @@
     "reliability_statistics": "Each reliability_statistics offering_id MUST name exactly one offerings entry and occur at most once. Counts and percentiles follow reporting-reliability-statistics.json; a long declared delivery_sla never substitutes for disclosure of observed publication delay and adjustment behavior.",
     "reliable_reporting_discovery": "Reliable Reporting 1.0 is supported if and only if reliable_reporting_version is 1.0, supported is true, and the enclosing capability document contains media_buy.reporting_delivery in experimental_features. Such sellers use reporting-definition contract 1.1 and implement checkpoint/adjustment fields even though those fields remain schema-optional for compatibility with the preceding experimental managed-reporting shape. managed_delivery and reconciled_billing then identify optional tiers; offering and product applicability still determine whether a concrete feed is available."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

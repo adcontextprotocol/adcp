@@ -659,7 +659,7 @@
         }
       },
       "required": ["methods"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "material_submission": {
       "type": "object",

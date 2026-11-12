@@ -85,7 +85,7 @@
           }
         },
         "required": ["vendor", "metric_id"],
-        "additionalProperties": false,
+        "additionalProperties": true,
         "x-adcp-validation": {
           "verifier_constraints": {
             "vendor_relationship_required_for_self_measurement": "when vendor.domain equals the seller's own brand.json domain (or a domain the seller's brand.json lists as under common ownership or control), vendor_relationship MUST be present and MUST be first_party or affiliated",

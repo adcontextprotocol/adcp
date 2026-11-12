@@ -283,7 +283,7 @@
           "description": "ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inventory has been released and billing stopped. Absent until the seller processes the cancellation."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "agency_estimate_number": {
       "type": "string",

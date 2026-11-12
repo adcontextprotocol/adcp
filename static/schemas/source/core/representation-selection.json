@@ -65,5 +65,5 @@
     }
   },
   "required": ["creative_id", "revision_id", "revision_content_digest", "selected_representation_id", "strategy", "selected_output_digest", "resolved_by"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

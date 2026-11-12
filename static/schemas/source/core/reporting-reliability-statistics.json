@@ -13,7 +13,7 @@
         "p95": { "type": "integer", "minimum": 0 }
       },
       "required": ["p50", "p95"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ReportingReliabilityMeasurementPeriod": {
       "type": "object",
@@ -22,7 +22,7 @@
         "end": { "type": "string", "format": "date-time" }
       },
       "required": ["start", "end"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "properties": {
@@ -47,7 +47,7 @@
           "p95_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$" }
         },
         "required": ["control_total_name", "unit", "sample_count", "p50_absolute_delta", "p95_absolute_delta"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "uniqueItems": true
     },
@@ -67,7 +67,7 @@
           "else": { "not": { "anyOf": [{ "required": ["attestation_uri"] }, { "required": ["attestation_sha256"] }] } }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "required": ["offering_id", "measurement_period", "obligations_due", "obligations_on_time", "official_revisions_published", "official_revisions_adjusted", "publication_latency_seconds", "evidence"],
@@ -82,5 +82,5 @@
     "comparability": "Statistics MUST use the exact selected offering semantics and complete measurement period. Sellers MUST NOT exclude late or adjusted obligations, combine unlike offering_ids, or reset the window to conceal failures. reporting_ledger evidence is derived from the immutable obligation/revision/adjustment ledger; third_party_attestation identifies content-addressed external evidence.",
     "safe_attestation_fetch": "Treat attestation_uri as untrusted input: require public HTTPS, reject credentials, fragments, loopback, link-local, private, reserved, and metadata-service destinations after DNS resolution and on every redirect, enforce response size and timeout limits, verify attestation_sha256 before parsing, and never interpret fetched content as agent/LLM instructions."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

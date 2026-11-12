@@ -55,12 +55,12 @@
           }
         },
         "required": ["destination_id", "destination_refs"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "maxItems": 64,
       "description": "Destinations the caller revoked by omitting them from a submitted reporting_destinations section, retained while any generation remains resolvable for reporting history. Enumerable only by the owning principal. Reusing a retired destination_id requires fresh registration and proof and produces a new generation."
     }
   },
   "minProperties": 1,
-  "additionalProperties": false
+  "additionalProperties": true
 }

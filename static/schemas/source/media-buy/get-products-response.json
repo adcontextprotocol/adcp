@@ -173,7 +173,7 @@
               "scope",
               "status"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -205,7 +205,7 @@
               "product_id",
               "status"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -237,7 +237,7 @@
               "proposal_id",
               "status"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       }
@@ -277,7 +277,7 @@
           "scope",
           "description"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "filter_diagnostics": {
@@ -331,7 +331,7 @@
             "required": [
               "count"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         }
       },

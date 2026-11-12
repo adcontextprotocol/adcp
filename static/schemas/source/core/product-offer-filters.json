@@ -53,7 +53,7 @@
     },
     "availability_horizon": {
       "type": "object",
-      "description": "Flexible-window availability discovery: the buyer is open to any bookable window inside [start_time, end_time) and asks the seller to describe when the returned inventory can run, instead of filtering to one exact flight. Sellers that support this field partition the horizon into time-dimensioned forecast rows (forecast-dimension-time) carrying availability_status; sellers that cannot cover the full horizon signal the gap via the response's incomplete[] mechanism. Unlike start_date/end_date this is not an eligibility filter — products remain returnable when only part of the horizon is open. The resulting availability is a snapshot bounded by the forecast's valid_until, never a hold. Mutually exclusive with start_date and end_date, which declare a fixed flight; buyers that already know their dates use those instead.",
+      "description": "Flexible-window availability discovery: the buyer is open to any bookable window inside [start_time, end_time) and asks the seller to describe when the returned inventory can run, instead of filtering to one exact flight. Sellers that support this field partition the horizon into time-dimensioned forecast rows (forecast-dimension-time) carrying availability_status; sellers that cannot cover the full horizon signal the gap via the response's incomplete[] mechanism. Unlike start_date/end_date this is not an eligibility filter — products remain returnable when only part of the horizon is open. The resulting availability is a snapshot bounded by the forecast's valid_until, never a hold. Mutually exclusive with start_date and end_date, which declare a fixed flight; buyers that already know their dates use those instead. Rejects `timezone`: the bounds are instants.",
       "properties": {
         "start_time": {
           "type": "string",
@@ -67,7 +67,8 @@
         }
       },
       "required": ["start_time", "end_time"],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "required": ["timezone"] }
     },
     "budget_range": {
       "$ref": "/schemas/core/budget-range.json"
@@ -109,7 +110,7 @@
           "system",
           "code"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -185,7 +186,7 @@
           "minItems": 1
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "required_features": {
       "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-features.json" }],
@@ -222,7 +223,7 @@
           "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" }
         },
         "anyOf": [{ "required": ["vendor"] }, { "required": ["metric_id"] }],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -241,5 +242,5 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

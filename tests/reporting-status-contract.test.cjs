@@ -937,7 +937,8 @@ describe('managed reporting status contract', () => {
       `the count stays optional for sellers that do not advertise consumer_status_task: ${JSON.stringify(validateResponse.errors)}`,
     );
     response.obligation_counts.consumer_status_overdue = 4;
-    assert.equal(validateResponse(response), false, 'obligation_counts stays a closed object');
+    // Open by default (DR-0009): an unknown count key validates.
+    assert.equal(validateResponse(response), true, 'obligation_counts accepts an unknown key');
     assert.match(
       readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].incremental_repair,
       /requires obligation_counts.consumer_status_pending on the summary view/,
@@ -1382,7 +1383,8 @@ describe('managed reporting status contract', () => {
       /at most one statement for each logical chain/,
     );
     const syncRequestSchema = readSchema('/schemas/media-buy/sync-reporting-status-request.json');
-    assert.equal(syncRequestSchema.additionalProperties, false);
+    // Open by default (DR-0009).
+    assert.equal(syncRequestSchema.additionalProperties, true);
     assert.ok(
       (syncRequestSchema.allOf || []).some((arm) => arm.$ref === '/schemas/core/version-envelope.json'),
       'closed request composes the version envelope via root allOf',

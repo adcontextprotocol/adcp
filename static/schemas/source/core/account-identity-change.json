@@ -5,6 +5,7 @@
   "description": "A requested operator-identity change that has not been applied. The account's top-level operator and operator_unit remain canonical until this object disappears after approval and the canonical fields advance. Rejected changes remain visible until replaced by a later request so buyers polling list_accounts can observe the outcome.",
   "oneOf": [
     {
+      "description": "A pending change rejects `reason`: only a rejected change carries one.",
       "title": "AccountIdentityChangePending",
       "type": "object",
       "properties": {
@@ -27,7 +28,8 @@
         "status",
         "requested_operator_identity"
       ],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "required": ["reason"] }
     },
     {
       "title": "AccountIdentityChangeRejected",
@@ -59,7 +61,7 @@
         "requested_operator_identity",
         "reason"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }
