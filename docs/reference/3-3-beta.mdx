@@ -179,7 +179,7 @@ After a prerelease is published, SDK maintainers ingest that signed bundle and p
 
 On 2026-11-09 the working group decided that 3.x opens the schemas that were closed by accident ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). A schema stays closed for a structural reason, such as `oneOf` disjointness or a closed key set. `commercial_terms` and the term objects inside it, and `proposal-budget-constraint`, are held closed until 4.0. The [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) triage then re-checked every beta feature that had been withdrawn because its schema was closed. A feature withdrawn only for that reason stays in 3.3. Two reasons still remove a field: it sits on a deprecated task or row (`get_products`, `create_media_buy`, `update_media_buy`, `sync_creatives` `assignments[]`), or it would extend a schema held closed until 4.0. The [migration guide](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3) lists every field, and what to do if you built from a beta.
 
-{/* depends on #8758, #8767, #8762 and #8854 (the withdrawals); the available_installment_statuses move depends on c4777ebd's PR (number to follow). Re-check each row against what merged before the rc.0 cut */}
+{/* depends on #8758, #8767, #8762 and #8854 (the withdrawals); the available_installment_statuses move depends on #8957. Re-check each row against what merged before the rc.0 cut */}
 
 | | Fields | Why |
 |---|---|---|

@@ -143,7 +143,7 @@ Each is detailed in the [migration guide](/docs/reference/migration/3-2-to-3-3#r
 
 Per the [experimental status contract](/docs/reference/experimental-status#graduation-cadence). No experimental surface graduates in 3.3. One experimental surface, `creative.evaluator`, loses a source form in 3.3, with the notice window waived as the table records; the other active notices are listed below. Two experiments that shipped in beta.1, `media_buy.purchase_rights` and `media_buy.installment_selection`, are withdrawn after beta.1 and no longer registered ([below](#withdrawn-from-3-3-planned-for-4-0)).
 
-{/* depends on c4777ebd's available_installment_statuses PR (number to follow): move it to core/canonical-reporting-capabilities.json in the media_buy.installment_lifecycle row */}
+{/* depends on #8957: once it lands, name the canonical product's reporting_capabilities as the home of available_installment_statuses in the media_buy.installment_lifecycle row */}
 
 | Feature id | Surface | Status | Expected next |
 |---|---|---|---|
@@ -216,7 +216,7 @@ See the [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-
 
 ### Closed-schema triage before rc.0
 
-{/* depends on #8758, #8767, #8762 and #8854; the available_installment_statuses move depends on c4777ebd's PR (number to follow) */}
+{/* depends on #8758, #8767, #8762 and #8854; the available_installment_statuses move depends on #8957 */}
 
 After the working group opened the schemas that were closed by accident (2026-11-09, DR-0036), the [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) triage re-checked every beta feature withdrawn because its schema was closed. A feature withdrawn only for that reason stays in 3.3. A field on a deprecated task or row leaves, and so does a field that would extend `commercial_terms`, the term objects inside it, or `proposal-budget-constraint`, which are held closed until 4.0. The [migration guide](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3) lists every field.
 
