@@ -51,6 +51,27 @@ Use `image_carousel` when one creative contains an ordered set of cards. Card co
 }
 ```
 
+## Card media and card count
+
+- **Card media.** `allowed_card_media_asset_types` lists the asset types a card's `media` may carry. It defaults to `["image"]`: a declaration that omits both it and the deprecated `allowed_card_asset_types` alias accepts image cards only. Declare `["image", "video"]` for mixed-media carousels.
+- **Card count.** The `cards` slot's `min` and `max` set the count (2 and 10 in the default slots). `min_cards` and `max_cards` only narrow them: the effective minimum is the larger value and the effective maximum the smaller one. `max_cards: 35` on its own still caps at 10. A product that takes 35 cards restates the `cards` slot with `max: 35`, and may also set `max_cards: 35`. A restated `slots` list replaces the whole default slot set (see [declaring a different slot contract](/docs/creative/canonical-formats#declaring-a-different-slot-contract-with-params-slots)), so it lists every slot the buyer may supply.
+
+```json
+{
+  "format_option_id": "long_carousel",
+  "format_kind": "image_carousel",
+  "params": {
+    "max_cards": 35,
+    "allowed_card_media_asset_types": ["image", "video"],
+    "slots": [
+      { "asset_group_id": "cards", "asset_type": "card", "required": true, "min": 2, "max": 35 },
+      { "asset_group_id": "primary_text", "asset_type": "text", "required": false },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+    ]
+  }
+}
+```
+
 ## Card image size
 
 `card_aspect_ratio` fixes the shape every card shares. `card_image_sizes` (added in AdCP 3.3) fixes the pixel size of card images. It is a list of accepted logical `{ width, height }` pairs, the same shape as `main_image_sizes` on `native_in_feed`.

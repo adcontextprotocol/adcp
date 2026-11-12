@@ -12,7 +12,7 @@
       "description": "Discriminator identifying this as a card asset. See /schemas/creative/asset-types for the registry."
     },
     "media": {
-      "description": "The card's primary visual asset. Either an `image` or `video` asset, matching the parent format's `allowed_card_media_asset_types` parameter.",
+      "description": "The card's primary visual asset. Either an `image` or `video` asset, matching the parent format's `allowed_card_media_asset_types` parameter (image only when the parameter is omitted).",
       "oneOf": [
         { "$ref": "/schemas/core/assets/image-asset.json" },
         { "$ref": "/schemas/core/assets/video-asset.json" }
