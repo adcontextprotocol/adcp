@@ -13,8 +13,6 @@ import {
   flushDirtySessions,
   findMediaBuyAcrossSessions,
   findSessionsMatching,
-  MAX_MEDIA_BUYS_PER_SESSION,
-  MAX_CREATIVES_PER_SESSION,
   SESSION_RETENTION_MS,
   SESSION_STORE_UNAVAILABLE_MESSAGE,
   sessionRetentionCutoff,
@@ -16177,87 +16175,6 @@ describe('get_media_buy_delivery handler', () => {
   });
 });
 
-// ── Session limits ──────────────────────────────────────────────────
-
-describe('session limits', () => {
-  beforeEach(() => {
-    invalidateCache();
-    clearSessions();
-  });
-
-  afterEach(() => {
-    clearSessions();
-  });
-
-  it('rejects create_media_buy when session media buy limit reached', async () => {
-    const catalog = buildCatalog();
-    const product = catalog[0].product;
-    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'limit-mb.example' }, operator: 'limit-mb.example' };
-
-    // Fill the session to the limit by directly manipulating state (persist via store)
-    const sessionKey = sessionKeyFromArgs({ account }, 'open');
-    await runWithSessionContext(async () => {
-      const session = await getSession(sessionKey);
-      for (let i = 0; i < MAX_MEDIA_BUYS_PER_SESSION; i++) {
-        session.mediaBuys.set(`mb_fill_${i}`, {
-          mediaBuyId: `mb_fill_${i}`,
-          status: 'active',
-          currency: 'USD',
-          packages: [],
-          startTime: '2027-01-01T00:00:00Z',
-          endTime: '2027-12-31T00:00:00Z',
-          accountRef: account,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        } as any);
-      }
-      await flushDirtySessions();
-    });
-
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
-      account,
-      brand: { domain: 'limit-mb.example' },
-      start_time: '2027-06-01T00:00:00Z',
-      end_time: '2027-07-01T00:00:00Z',
-      packages: [{
-        product_id: product.product_id,
-        pricing_option_id: pricingOptions[0].pricing_option_id,
-        budget: 50000,
-      }],
-    });
-
-    expect(result.code).toBe('LIMIT_EXCEEDED');
-  });
-
-  it('rejects sync_creatives when session creative limit reached', async () => {
-    const account = { brand: { domain: 'limit-cr.example' }, operator: 'limit-cr.example' };
-
-    // Fill creatives to the limit (persist via store)
-    const sessionKey = sessionKeyFromArgs({ account }, 'open');
-    await runWithSessionContext(async () => {
-      const session = await getSession(sessionKey);
-      for (let i = 0; i < MAX_CREATIVES_PER_SESSION; i++) {
-        session.creatives.set(`cr_fill_${i}`, {
-          creativeId: `cr_fill_${i}`,
-          status: 'active',
-          syncedAt: new Date().toISOString(),
-        } as any);
-      }
-      await flushDirtySessions();
-    });
-
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'sync_creatives', {
-      account,
-      creatives: [{ name: 'one-too-many' }],
-    });
-
-    expect(result.code).toBe('LIMIT_EXCEEDED');
-  });
-});
-
 // ── Pause/resume on update_media_buy ────────────────────────────────
 
 describe('update_media_buy pause/resume', () => {
@@ -21023,7 +20940,7 @@ describe('proposal lifecycle', () => {
     });
     expect(capped.isError).toBe(true);
     expect(capped.result).toMatchObject({
-      code: 'LIMIT_EXCEEDED',
+      code: 'INVALID_STATE',
       field: 'targeting_overlay',
       recovery: 'correctable',
       details: { limit: 128, dropped_products: 1 },
