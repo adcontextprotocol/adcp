@@ -11,6 +11,7 @@ import {
   hostedComplianceTarget,
 } from './hosted-compliance-version.js';
 import { undeclaredSurfaceMissingToolStoryboards } from './verification-profile-tool-obligations.js';
+import { requestSigningNotAdvertised, SIGNED_REQUESTS_STORYBOARD } from './verification-profile-request-signing.js';
 
 export const VERIFICATION_PROFILE_ROLE_POLICY_VERSION = 'verification-profiles-role-v1';
 
@@ -68,9 +69,10 @@ function legacyStatus(role: ReturnType<typeof deriveVerificationStatus>['roles']
  * additionally requires complete universal, role-protocol, and every declared
  * stable-specialism bundle. A universal bundle the runner left partial only
  * because the agent advertises none of the tools for a surface it never
- * declared is not applicable, not incomplete. Unattributed failures fail every
- * role closed. Sandbox remains visible but unavailable until causal bundle
- * evidence ships.
+ * declared, or signed_requests set aside because the agent does not advertise
+ * request signing, is not applicable, not incomplete. Unattributed failures
+ * fail every role closed. Sandbox remains visible but unavailable until causal
+ * bundle evidence ships.
  */
 export function deriveVerificationProfileRoleAssessments(input: {
   result: ComplianceResult;
@@ -98,13 +100,17 @@ export function deriveVerificationProfileRoleAssessments(input: {
     input.result,
     verification.roles.map(role => role.role.replace(/-/g, '_')),
   );
+  const setAside = new Set([
+    ...undeclaredSurfaces,
+    ...(requestSigningNotAdvertised(input.result) ? [SIGNED_REQUESTS_STORYBOARD] : []),
+  ]);
   const notApplicableStoryboards = new Set(input.result.storyboards_not_applicable ?? []);
-  const undeclaredSurfaceBundle = (bundle: (typeof bundles)[number]): boolean => {
+  const notApplicableUniversalBundle = (bundle: (typeof bundles)[number]): boolean => {
     const storyboardIds = bundle.storyboard_ids ?? [];
     return bundle.kind === 'universal'
       && bundle.status === 'partial'
-      && storyboardIds.some(id => undeclaredSurfaces.has(id))
-      && storyboardIds.every(id => undeclaredSurfaces.has(id) || notApplicableStoryboards.has(id));
+      && storyboardIds.some(id => setAside.has(id))
+      && storyboardIds.every(id => setAside.has(id) || notApplicableStoryboards.has(id));
   };
   const output: VerificationProfileRoleAssessmentInput[] = [];
 
@@ -128,7 +134,7 @@ export function deriveVerificationProfileRoleAssessments(input: {
     );
     const missingUniversalBundle = !relevantBundles.some(bundle => bundle.kind === 'universal');
     const failingBundles = relevantBundles.filter(bundle => bundle.status === 'failing');
-    const notApplicableUniversalBundles = relevantBundles.filter(undeclaredSurfaceBundle);
+    const notApplicableUniversalBundles = relevantBundles.filter(notApplicableUniversalBundle);
     const incompleteBundles = relevantBundles.filter(bundle =>
       (bundle.status === 'partial' || bundle.status === 'untested')
       && !notApplicableUniversalBundles.includes(bundle),
@@ -162,6 +168,7 @@ export function deriveVerificationProfileRoleAssessments(input: {
       relevant_bundle_ids: relevantBundles.map(bundle => `${bundle.kind}:${bundle.id}`),
       failing_bundle_count: failingBundles.length,
       incomplete_bundle_count: incompleteBundles.length,
+      incomplete_bundle_ids: incompleteBundles.map(bundle => `${bundle.kind}:${bundle.id}`),
       not_applicable_universal_bundle_ids: notApplicableUniversalBundles.map(bundle => bundle.id),
       relevant_failure_count: relevantFailures.length,
       missing_universal_bundle: missingUniversalBundle,
