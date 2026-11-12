@@ -226,7 +226,7 @@ In 3.3 the experimental `billing_measurement.counting_mechanisms[]` is carried o
 
 **Check id:** `canonical_price_adjustments_required_in_4_0` · **Change:** new requirement · **Issue:** [#7659](https://github.com/adcontextprotocol/adcp/issues/7659)
 
-**What it was:** experimental `media_buy.price_adjustments`, an ordered table of fee and discount rows on a fixed-price pricing option, so a buyer can compute the binding rate for its format option and placement selections and its flight dates without another quote ([#7955](https://github.com/adcontextprotocol/adcp/pull/7955)). It shipped in `3.3.0-beta.1` through `3.3.0-beta.4` on the pricing options of the deprecated `get_products` and is withdrawn after beta.4 ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)): 3.3 adds no field that exists only on a deprecated task, and `core/canonical-pricing-option.json` is closed in 3.x.
+**What it was:** experimental `media_buy.price_adjustments`, an ordered table of fee and discount rows on a fixed-price pricing option, so a buyer can compute the binding rate for its format option and placement selections and its flight dates without another quote ([#7955](https://github.com/adcontextprotocol/adcp/pull/7955)). It shipped in `3.3.0-beta.1` through `3.3.0-beta.5` on the pricing options of the deprecated `get_products` and is withdrawn after beta.5 ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)): 3.3 adds no field that exists only on a deprecated task, and `core/canonical-pricing-option.json` is held closed with the commercial terms until 4.0.
 
 **Design to keep:**
 
@@ -235,7 +235,7 @@ In 3.3 the experimental `billing_measurement.counting_mechanisms[]` is carried o
 - When the buyer supplies `pricing`, a seller rejects a price that differs from the resolved result with `INVALID_REQUEST` and the resolved values in `error-details/price-adjustments-mismatch.json`.
 - A placement-selection row requires `overlay_support.placement_selection` on the product.
 
-**Where it is preserved:** commit `4c35f8ce1` (#7955) carries `pricing-options/price-adjustments.json`, `error-details/price-adjustments-mismatch.json`, the rule on the seven fixed-price pricing options, the vectors in `static/compliance/source/test-vectors/price-adjustments/` with `tests/price-adjustments-vectors.test.cjs`, and the section "Selection-dependent price adjustments" in `docs/media-buy/advanced-topics/pricing-models.mdx`. The `3.3.0-beta.1` to `3.3.0-beta.4` bundles under `dist/` keep the schemas.
+**Where it is preserved:** commit `4c35f8ce1` (#7955) carries `pricing-options/price-adjustments.json`, `error-details/price-adjustments-mismatch.json`, the rule on the seven fixed-price pricing options, the vectors in `static/compliance/source/test-vectors/price-adjustments/` with `tests/price-adjustments-vectors.test.cjs`, and the section "Selection-dependent price adjustments" in `docs/media-buy/advanced-topics/pricing-models.mdx`. The `3.3.0-beta.1` to `3.3.0-beta.5` bundles under `dist/` keep the schemas.
 
 **Until then:** return a priced option per configured product. **What 4.0 needs:** the table on the canonical pricing option, and a rule for how `terms_digest` binds the table an accepted `pricing_option_id` names.
 
