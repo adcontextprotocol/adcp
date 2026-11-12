@@ -23,14 +23,14 @@ No stable field, enum value, or task is removed. Two result fields, one usage, t
 
 ## New in rc.0
 
-{/* depends on #8864 (the 3.2.x backport) and the #8501 withdrawals (#8758, #8767, #8762, #8854) */}
+{/* depends on the 3.2.11 release (Version Packages #8942) and the #8501 withdrawals (#8758, #8767, #8762, #8854) */}
 
 rc.0 (2026-11-16) is the first release candidate. Its main changes since beta.5 open the schemas that were closed by accident and settle which beta features stay in 3.3.
 
 **Schemas are open by default ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), decided 2026-11-09).** Closing a schema only breaks validators that hard-code it, so 3.x opens the schemas that were meant to be open: 744 of the 859 closed locations in the 3.3 schemas. 115 stay closed. Most have a structural reason, such as unions told apart by key presence, join keys, privacy clamps, and `trust.json`. The nodes inside `commercial_terms`, with `proposal-budget-constraint`, are held closed until 4.0.
 - Every payload that was valid stays valid. Where closure also rejected a specific field, the opened schema rejects it by name.
 - Generated types change. TypeScript types gain index signatures, Pydantic models stop forbidding extra fields, and Zod validators accept unknown keys where the schema opened.
-- A strict validator built from 3.2.10 or earlier still rejects 3.3 fields, so send them only to 3.3 peers. The next 3.2.x patch ([#8864](https://github.com/adcontextprotocol/adcp/pull/8864)) opens the same locations that 3.2 has.
+- A strict validator built from 3.2.10 or earlier still rejects 3.3 fields, so send them only to 3.3 peers. 3.2.11 ([#8864](https://github.com/adcontextprotocol/adcp/pull/8864)) opens the same locations in 3.2.
 - A minor adds to open schemas and adds nothing to a schema that stays closed. See [Schemas are open by default](/docs/reference/migration/3-2-to-3-3#schemas-are-open-by-default).
 
 **What stays and what leaves ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).** Features withdrawn from the betas only because their schema was closed stay in 3.3. They include `review_sla` on media-buy actions, `signing_profile` on notification configs, and `trackers` and `landing_page_url` on `assign` operations.
