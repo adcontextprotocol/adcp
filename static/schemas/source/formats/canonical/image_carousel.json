@@ -6,8 +6,8 @@
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "x-adcp-validation": {
     "verifier_constraints": {
-      "card_size_ratio_agreement": "When both card_aspect_ratio and card_image_sizes are declared, every card_image_sizes entry's width/height MUST be within 1% of card_aspect_ratio; otherwise the declaration is invalid",
-      "card_image_size_match": "When card_image_sizes is declared, each image card media MUST match one listed logical pair (times the selected pixel ratio when the cards slot declares pixel_ratios), and all image cards in one creative MUST share one aspect ratio"
+      "card_size_ratio_agreement": "Every card_image_sizes pair is within 1% of card_aspect_ratio when both are declared; otherwise the declaration is invalid",
+      "card_image_size_match": "Each image card matches one card_image_sizes pair (times the cards slot pixel ratio), and all image cards in a creative share one aspect ratio"
     },
     "spec": "docs/creative/channels/carousels.mdx"
   },
@@ -42,7 +42,7 @@
         },
         "additionalProperties": false
       },
-      "description": "Accepted logical (width, height) pairs for card images: a card's `media` when it is an `image` asset. Same shape as `native_in_feed`'s `main_image_sizes`. Each card image MUST match one listed pair exactly; a larger image at the same aspect ratio does not match. When the effective `cards` slot declares `pixel_ratios`, intrinsic dimensions are the matched logical pair multiplied by the selected ratio; absence remains 1x. Because mixed orientations are not allowed within one carousel, all card images in one creative MUST match pairs of the same aspect ratio. This field does not constrain video card media. When `card_aspect_ratio` is also declared, every listed pair MUST have that ratio, within 1% (so 1200×627 matches '1.91:1'); a declaration whose sizes disagree with `card_aspect_ratio` is invalid, and neither field takes precedence. When `card_aspect_ratio` is absent, the listed sizes imply the accepted card ratios. When this field is absent, card pixel size is unconstrained beyond `card_aspect_ratio`."
+      "description": "Accepted logical (width, height) pairs for image card media, the same shape as `native_in_feed` `main_image_sizes`. Each card image MUST match one pair exactly (a larger image at the same ratio does not match), times the selected ratio when the `cards` slot declares `pixel_ratios`. All card images in one creative MUST share one aspect ratio. Does not constrain video card media. When `card_aspect_ratio` is also declared, every pair MUST have that ratio within 1% (1200×627 matches '1.91:1'); a disagreeing declaration is invalid and neither field wins. Without `card_aspect_ratio`, the sizes imply the accepted ratios."
     },
     "min_cards": {
       "type": "integer",
