@@ -516,6 +516,58 @@ describe('content standards and usage limits', () => {
     });
     expect(result.message).toContain(`can accept ${MAX_USAGE_RECORDS_PER_SESSION - USAGE_RECORDS_NEARLY_FULL} more`);
   });
+
+  it('refuses a multi-account batch as correctable when dropping or trimming records makes it fit', async () => {
+    const full = testAccount('limit-usage-mixed-full');
+    const nearlyFull = testAccount('limit-usage-mixed-nearly-full');
+    const roomy = testAccount('limit-usage-mixed-roomy');
+    await editSession(full, session => storeUsageRecords(session, full, MAX_USAGE_RECORDS_PER_SESSION));
+    await editSession(nearlyFull, session => storeUsageRecords(session, nearlyFull, USAGE_RECORDS_NEARLY_FULL));
+
+    const { result } = await callTool('report_usage', {
+      reporting_period: USAGE_PERIOD,
+      usage: [usageRecord(full), usageRecord(nearlyFull), usageRecord(nearlyFull), usageRecord(roomy)],
+    });
+
+    expect(result).toMatchObject({ code: 'INVALID_STATE', recovery: 'correctable' });
+    expect(result.details).toEqual({
+      limit: MAX_USAGE_RECORDS_PER_SESSION,
+      accounts: [
+        { account: full, current: MAX_USAGE_RECORDS_PER_SESSION, remaining: 0, requested: 1 },
+        {
+          account: nearlyFull,
+          current: USAGE_RECORDS_NEARLY_FULL,
+          remaining: MAX_USAGE_RECORDS_PER_SESSION - USAGE_RECORDS_NEARLY_FULL,
+          requested: 2,
+        },
+      ],
+    });
+  });
+
+  it('refuses a multi-account batch as terminal only when every account in it is full', async () => {
+    const first = testAccount('limit-usage-all-full-a');
+    const second = testAccount('limit-usage-all-full-b');
+    for (const account of [first, second]) {
+      await editSession(account, session => storeUsageRecords(session, account, MAX_USAGE_RECORDS_PER_SESSION));
+    }
+
+    const { result } = await callTool('report_usage', {
+      reporting_period: USAGE_PERIOD,
+      usage: [usageRecord(first), usageRecord(second)],
+    });
+
+    expect(result).toMatchObject({ code: 'INVALID_STATE', recovery: 'terminal' });
+    expect(result.details).toEqual({
+      limit: MAX_USAGE_RECORDS_PER_SESSION,
+      accounts: [first, second].map(account => ({
+        account,
+        current: MAX_USAGE_RECORDS_PER_SESSION,
+        remaining: 0,
+        requested: 1,
+      })),
+    });
+    expect(result.message).toContain('every account in this report is full');
+  });
 });
 
 describe('public sales route', () => {

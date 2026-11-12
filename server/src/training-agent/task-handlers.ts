@@ -23013,26 +23013,46 @@ function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | und
   return null;
 }
 
+/** Usage-record room for one account touched by a report_usage batch. */
+interface UsageAccountRoom {
+  account: ReportUsageArgs['usage'][number]['account'];
+  current: number;
+  remaining: number;
+  requested: number;
+}
+
+function usageLimitMessage(overLimit: UsageAccountRoom[], everyAccountFull: boolean): string {
+  const expiry = `${SESSION_RETENTION_MS / MS_PER_HOUR} hours without any change`;
+  const [only] = overLimit;
+  if (everyAccountFull && overLimit.length === 1) {
+    return `Usage record limit reached: an account in this report already stores ${only.current} usage records (max ${MAX_USAGE_RECORDS_PER_SESSION}). The sandbox keeps every accepted record, so it cannot store more for that account until its sandbox session expires after ${expiry}.`;
+  }
+  if (everyAccountFull) {
+    return `Usage record limit reached: every account in this report is full (max ${MAX_USAGE_RECORDS_PER_SESSION} usage records each). The sandbox keeps every accepted record, so it cannot store more for these accounts until their sandbox sessions expire after ${expiry}.`;
+  }
+  if (overLimit.length === 1) {
+    const fix = only.remaining === 0 ? 'Leave that account out of the report' : 'Send at most that many records for it';
+    return `Usage record limit: an account in this report already stores ${only.current} usage records (max ${MAX_USAGE_RECORDS_PER_SESSION}) and can accept ${only.remaining} more. ${fix}; accepted records are never removed.`;
+  }
+  return `Usage record limit: ${overLimit.length} accounts in this report would exceed ${MAX_USAGE_RECORDS_PER_SESSION} stored usage records. details.accounts gives each one's remaining room; send at most that many records per account (leave out accounts with 0) and resend. Accepted records are never removed.`;
+}
+
 /**
  * Accepted usage records are never removed (the cumulative vendor_cost check
- * reads them), so a full account cannot recover by changing the request:
- * that case is terminal until the session expires.
+ * reads them). The refusal is terminal only when every account in the batch is
+ * full, since then no change to the request can store anything until the
+ * sessions expire; otherwise dropping or trimming records makes it fit.
  */
-function usageRecordLimitError(storedCount: number): TaskError {
-  const details = { limit: MAX_USAGE_RECORDS_PER_SESSION, current: storedCount };
-  if (storedCount >= MAX_USAGE_RECORDS_PER_SESSION) {
-    return {
-      code: 'INVALID_STATE',
-      message: `Usage record limit reached: an account in this report already stores ${storedCount} usage records (max ${MAX_USAGE_RECORDS_PER_SESSION}). The sandbox keeps every accepted record, so it cannot store more for that account until its sandbox session expires after ${SESSION_RETENTION_MS / MS_PER_HOUR} hours without any change.`,
-      recovery: 'terminal',
-      details,
-    };
-  }
+function usageRecordLimitError(overLimit: UsageAccountRoom[], everyAccountFull: boolean): TaskError {
   return {
     code: 'INVALID_STATE',
-    message: `Usage record limit: an account in this report already stores ${storedCount} usage records (max ${MAX_USAGE_RECORDS_PER_SESSION}) and can accept ${MAX_USAGE_RECORDS_PER_SESSION - storedCount} more. Send fewer records for that account; accepted records are never removed.`,
-    recovery: 'correctable',
-    details,
+    message: usageLimitMessage(overLimit, everyAccountFull),
+    recovery: everyAccountFull ? 'terminal' : 'correctable',
+    details: {
+      limit: MAX_USAGE_RECORDS_PER_SESSION,
+      ...(overLimit.length === 1 && { current: overLimit[0].current }),
+      accounts: overLimit,
+    },
   };
 }
 
@@ -23065,15 +23085,22 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     }
     return sessionPromise;
   }));
-  const incomingBySession = new Map<import('./types.js').SessionState, number>();
-  for (const session of usageSessions) {
-    incomingBySession.set(session, (incomingBySession.get(session) ?? 0) + 1);
-  }
-  const overLimitStoredCounts = [...incomingBySession]
-    .filter(([session, incoming]) => session.usageRecords.length + incoming > MAX_USAGE_RECORDS_PER_SESSION)
-    .map(([session]) => session.usageRecords.length);
-  if (overLimitStoredCounts.length > 0) {
-    return { errors: [usageRecordLimitError(Math.max(...overLimitStoredCounts))] };
+  const roomBySession = new Map<import('./types.js').SessionState, UsageAccountRoom>();
+  req.usage.forEach((record, index) => {
+    const session = usageSessions[index];
+    const room = roomBySession.get(session) ?? {
+      account: record.account,
+      current: session.usageRecords.length,
+      remaining: Math.max(0, MAX_USAGE_RECORDS_PER_SESSION - session.usageRecords.length),
+      requested: 0,
+    };
+    room.requested += 1;
+    roomBySession.set(session, room);
+  });
+  const rooms = [...roomBySession.values()];
+  const overLimit = rooms.filter(room => room.requested > room.remaining);
+  if (overLimit.length > 0) {
+    return { errors: [usageRecordLimitError(overLimit, rooms.every(room => room.remaining === 0))] };
   }
 
   let accepted = 0;
