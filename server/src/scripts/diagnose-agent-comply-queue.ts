@@ -8,7 +8,8 @@
  *     or registry metadata row (the metadata row alone is not eligibility)
  *   - Registry metadata (lifecycle_stage, compliance_opt_out, monitoring_paused,
  *     check_interval_hours) — the three filters that exclude rows from the
- *     heartbeat
+ *     heartbeat — plus the cadence, the heartbeat lock, and the outcome of the
+ *     last heartbeat attempt, which tell "due", "running" and "skipped" apart
  *   - Current `agent_compliance_status` row
  *   - The agent's position in the next heartbeat batch
  *
@@ -90,6 +91,10 @@ async function main(): Promise<void> {
     check_interval_hours: number | null;
     monitoring_paused_at: Date | null;
     next_compliance_check_at: Date | null;
+    compliance_lock_until: Date | null;
+    last_heartbeat_attempt_at: Date | null;
+    last_heartbeat_skip_reason: string | null;
+    last_heartbeat_success_at: Date | null;
     compliance_inconclusive_streak: number;
     heartbeat_claim_owner: string | null;
     heartbeat_started_at: Date | null;
@@ -97,7 +102,8 @@ async function main(): Promise<void> {
   }>(
     `SELECT lifecycle_stage, compliance_opt_out, monitoring_paused,
             check_interval_hours, monitoring_paused_at, next_compliance_check_at,
-            compliance_inconclusive_streak, heartbeat_claim_owner,
+            compliance_lock_until, last_heartbeat_attempt_at, last_heartbeat_skip_reason,
+            last_heartbeat_success_at, compliance_inconclusive_streak, heartbeat_claim_owner,
             heartbeat_started_at, heartbeat_orphan_streak
        FROM agent_registry_metadata WHERE agent_url = $1`,
     [agentUrl],
@@ -116,6 +122,10 @@ async function main(): Promise<void> {
     console.log(`   monitoring_paused:    ${paused}${paused ? ` ✗ excluded (since ${m.monitoring_paused_at})` : ''}`);
     console.log(`   check_interval_hours: ${interval}`);
     console.log(`   next_check_at:         ${m.next_compliance_check_at?.toISOString() ?? '(due)'}`);
+    const lockHeld = m.compliance_lock_until !== null && m.compliance_lock_until.getTime() > Date.now();
+    console.log(`   lock_until:            ${m.compliance_lock_until?.toISOString() ?? '(none)'}${lockHeld ? ' ✗ held: running, quarantined after a crash, or waiting on another suite' : ''}`);
+    console.log(`   last attempt:          ${m.last_heartbeat_attempt_at?.toISOString() ?? '(none recorded)'}${m.last_heartbeat_skip_reason ? ` (skipped: ${m.last_heartbeat_skip_reason})` : ''}`);
+    console.log(`   last success:          ${m.last_heartbeat_success_at?.toISOString() ?? '(none recorded)'}`);
     console.log(`   inconclusive_streak:   ${m.compliance_inconclusive_streak}`);
     console.log(`   heartbeat claim owner: ${m.heartbeat_claim_owner ?? '(none)'}`);
     console.log(`   heartbeat started_at:  ${m.heartbeat_started_at?.toISOString() ?? '(not running)'}`);
@@ -162,7 +172,7 @@ async function main(): Promise<void> {
   if (requeue) {
     console.log('\n[5] Requeueing (--requeue flag set):');
     await complianceDb.requeueForHeartbeat(agentUrl);
-    console.log('   ✓ cleared scheduling delay and backoff; eligible agents are prioritized at a future heartbeat');
+    console.log('   ✓ cleared scheduling delay and backoff; eligible agents are prioritized at a future heartbeat once no heartbeat lock holds them');
   } else {
     console.log('\n[5] Rerun with --requeue to clear the scheduling delay for an eligible agent');
   }

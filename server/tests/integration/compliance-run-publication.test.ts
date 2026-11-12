@@ -6,6 +6,15 @@ import * as databaseClient from '../../src/db/client.js';
 import { closeDatabase, initializeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { ComplianceDatabase, type RecordComplianceRunInput } from '../../src/db/compliance-db.js';
+import {
+  claimHeartbeatAgents,
+  createHeartbeatProcessIdentity,
+  markHeartbeatSuiteStarted,
+  releaseHeartbeatClaim,
+} from '../../src/addie/jobs/compliance-heartbeat-claims.js';
+
+/** A batch lock comfortably longer than any single test. */
+const BATCH_LOCK_MS = 60 * 60 * 1000;
 
 describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction', () => {
   let pool: Pool;
@@ -56,6 +65,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     const migration = readFileSync(new URL('../../src/db/migrations/589_compliance_run_publication.sql', import.meta.url), 'utf8');
     const requeueMigration = readFileSync(new URL('../../src/db/migrations/608_agent_registry_requeued_at.sql', import.meta.url), 'utf8');
     const heartbeatClaimMigration = readFileSync(new URL('../../src/db/migrations/622_compliance_heartbeat_claim_ownership.sql', import.meta.url), 'utf8');
+    const scheduleStateMigration = readFileSync(new URL('../../src/db/migrations/635_compliance_heartbeat_schedule_state.sql', import.meta.url), 'utf8');
     const querySpy = vi.spyOn(databaseClient, 'query');
     try {
       await client.query('BEGIN');
@@ -69,7 +79,8 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
         CREATE TABLE agent_compliance_status (agent_url TEXT PRIMARY KEY, last_checked_at TIMESTAMPTZ);
         CREATE TABLE agent_compliance_runs (
           agent_url TEXT, triggered_org_id TEXT, tested_at TIMESTAMPTZ, overall_status TEXT,
-          tracks_json JSONB, headline TEXT, dry_run BOOLEAN NOT NULL DEFAULT FALSE
+          tracks_json JSONB, headline TEXT, dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+          triggered_by TEXT NOT NULL DEFAULT 'heartbeat'
         );
         CREATE TABLE agent_contexts (
           organization_id TEXT, agent_url TEXT, last_tested_at TIMESTAMPTZ,
@@ -117,6 +128,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
       // Use the real heartbeat selection query on this transaction's migrated schema.
       await client.query(requeueMigration);
       await client.query(heartbeatClaimMigration);
+      await client.query(scheduleStateMigration);
       querySpy.mockImplementation((sql, values) => client.query(sql, values));
       expect((await db.getAgentsDueForCheck()).map(agent => agent.agent_url)).toEqual(['never', 'overdue']);
     } finally {
@@ -165,7 +177,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
   it('keeps scheduler locks and deferrals out of the authoritative timestamp', async () => {
     const before = await db.getComplianceStatus(agentUrl);
     await pool.query(`UPDATE agent_registry_metadata SET next_compliance_check_at = NOW() + INTERVAL '1 hour' WHERE agent_url = $1`, [agentUrl]);
-    expect(await db.deferComplianceCheckAfterInconclusiveTarget(agentUrl)).toBe(true);
+    expect(await db.deferComplianceCheckAfterInconclusiveTarget(agentUrl, 'pre_target_error')).toBe(true);
     expect((await db.getComplianceStatus(agentUrl))?.last_checked_at).toEqual(before?.last_checked_at);
     expect((await db.getAgentsDueForCheck(1000)).some(agent => agent.agent_url === agentUrl)).toBe(false);
     await db.requeueForHeartbeat(agentUrl);
@@ -179,28 +191,38 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     expect((await db.getComplianceStatus(agentUrl))?.last_checked_at).toEqual(lastComplete?.last_checked_at);
   });
 
-  it('only defers a busy suite when its selected lock still owns the schedule', async () => {
-    const selectedLockUntil = new Date(Date.now() + 60 * 60 * 1000);
+  it('holds a busy suite briefly in the lock, only while its selected claim still holds it', async () => {
+    const selectedLockUntil = new Date(Date.now() + BATCH_LOCK_MS);
+    const dueCadence = new Date(Date.now() - 10 * 60 * 1000);
     await pool.query(
-      'UPDATE agent_registry_metadata SET next_compliance_check_at = $2 WHERE agent_url = $1',
-      [agentUrl, selectedLockUntil],
+      `UPDATE agent_registry_metadata
+       SET compliance_lock_until = $2, next_compliance_check_at = $3, last_heartbeat_skip_reason = NULL
+       WHERE agent_url = $1`,
+      [agentUrl, selectedLockUntil, dueCadence],
     );
     expect(await db.deferComplianceCheckAfterContention(agentUrl, selectedLockUntil)).toBe(true);
-    const deferred = await pool.query(
-      'SELECT next_compliance_check_at FROM agent_registry_metadata WHERE agent_url = $1', [agentUrl],
+    const held = await pool.query(
+      `SELECT compliance_lock_until, next_compliance_check_at, last_heartbeat_skip_reason,
+              EXTRACT(EPOCH FROM compliance_lock_until - NOW()) / 60 AS minutes_held
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [agentUrl],
     );
-    expect(deferred.rows[0].next_compliance_check_at.getTime()).toBeLessThan(selectedLockUntil.getTime());
+    expect(Number(held.rows[0].minutes_held)).toBeGreaterThan(4.9);
+    expect(Number(held.rows[0].minutes_held)).toBeLessThanOrEqual(5);
+    // Contention is not a verdict about the agent: its cadence stays due.
+    expect(held.rows[0].next_compliance_check_at).toEqual(dueCadence);
+    expect(held.rows[0].last_heartbeat_skip_reason).toBe('execution_fence_busy');
+    expect((await db.getAgentsDueForCheck(1000)).some(agent => agent.agent_url === agentUrl)).toBe(false);
 
-    const authoritativeSchedule = new Date(Date.now() + 6 * 60 * 60 * 1000);
-    await pool.query(
-      'UPDATE agent_registry_metadata SET next_compliance_check_at = $2 WHERE agent_url = $1',
-      [agentUrl, authoritativeSchedule],
-    );
+    const otherClaim = new Date(Date.now() + 2 * BATCH_LOCK_MS);
+    await pool.query('UPDATE agent_registry_metadata SET compliance_lock_until = $2 WHERE agent_url = $1',
+      [agentUrl, otherClaim]);
     expect(await db.deferComplianceCheckAfterContention(agentUrl, selectedLockUntil)).toBe(false);
     const current = await pool.query(
-      'SELECT next_compliance_check_at FROM agent_registry_metadata WHERE agent_url = $1', [agentUrl],
+      'SELECT compliance_lock_until FROM agent_registry_metadata WHERE agent_url = $1', [agentUrl],
     );
-    expect(current.rows[0].next_compliance_check_at).toEqual(authoritativeSchedule);
+    expect(current.rows[0].compliance_lock_until).toEqual(otherClaim);
+    await pool.query('UPDATE agent_registry_metadata SET compliance_lock_until = NULL WHERE agent_url = $1', [agentUrl]);
   });
 
   it('backs off repeated target failures and resets the streak on requeue and an authoritative run', async () => {
@@ -222,7 +244,9 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     };
 
     for (const [index, expectedHours] of [6, 12, 24, 48, 48].entries()) {
-      expect(await db.deferComplianceCheckAfterInconclusiveTarget(agentUrl, { exponentialBackoff: true })).toBe(true);
+      expect(await db.deferComplianceCheckAfterInconclusiveTarget(
+        agentUrl, 'target_unconfirmed', { exponentialBackoff: true },
+      )).toBe(true);
       const current = await schedule();
       expect(current.streak).toBe(Math.min(index + 1, 4));
       expect(current.hours).toBeGreaterThan(expectedHours - 0.1);
@@ -243,14 +267,16 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     expect((await schedule()).streak).toBe(0);
     await pool.query(`UPDATE agent_registry_metadata SET next_compliance_check_at = NOW() + INTERVAL '1 hour' WHERE agent_url = $1`,
       [agentUrl]);
-    await db.deferComplianceCheckAfterInconclusiveTarget(agentUrl, { exponentialBackoff: true });
+    await db.deferComplianceCheckAfterInconclusiveTarget(agentUrl, 'target_unconfirmed', { exponentialBackoff: true });
     await db.recordComplianceRun(input);
     expect((await schedule()).streak).toBe(0);
 
     await db.updateCheckInterval(agentUrl, 168);
     await pool.query(`UPDATE agent_registry_metadata SET next_compliance_check_at = NOW() + INTERVAL '1 hour' WHERE agent_url = $1`,
       [agentUrl]);
-    expect(await db.deferComplianceCheckAfterInconclusiveTarget(agentUrl, { exponentialBackoff: true })).toBe(true);
+    expect(await db.deferComplianceCheckAfterInconclusiveTarget(
+      agentUrl, 'target_unconfirmed', { exponentialBackoff: true },
+    )).toBe(true);
     const longInterval = await schedule();
     expect(longInterval.streak).toBe(1);
     expect(longInterval.hours).toBeGreaterThan(167.9);
@@ -487,6 +513,184 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
       const after = await schedule(url);
       expect(after.next_compliance_check_at).toBeNull();
       expect(after.requeued_at).not.toBeNull();
+    });
+  });
+
+  describe('cadence, heartbeat lock and skip deferral are separate states (#7693)', () => {
+    const urls: string[] = [];
+    const identity = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
+    const registeredAgent = async () => {
+      const url = `https://${randomUUID()}.example.test/mcp`;
+      urls.push(url);
+      await pool.query(
+        `UPDATE member_profiles SET agents = agents || $2::jsonb
+         WHERE workos_organization_id = $1`,
+        [ownerOrgId, JSON.stringify([{ url }])],
+      );
+      await db.upsertRegistryMetadata(url, { lifecycle_stage: 'production' });
+      return url;
+    };
+    const state = async (url: string) => (await pool.query<{
+      next_compliance_check_at: Date | null;
+      compliance_lock_until: Date | null;
+      compliance_inconclusive_streak: number;
+      requeued_at: Date | null;
+      last_heartbeat_attempt_at: Date | null;
+      last_heartbeat_skip_reason: string | null;
+      last_heartbeat_success_at: Date | null;
+      hours_until_next: string | null;
+    }>(
+      `SELECT next_compliance_check_at, compliance_lock_until, compliance_inconclusive_streak, requeued_at,
+              last_heartbeat_attempt_at, last_heartbeat_skip_reason, last_heartbeat_success_at,
+              EXTRACT(EPOCH FROM next_compliance_check_at - NOW()) / 3600 AS hours_until_next
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [url],
+    )).rows[0];
+    const isDue = async (url: string) =>
+      (await db.getAgentsDueForCheck(100000)).some(agent => agent.agent_url === url);
+    const makeDue = async (url: string) => {
+      const due = new Date(Date.now() - 10 * 60 * 1000);
+      await pool.query('UPDATE agent_registry_metadata SET next_compliance_check_at = $2 WHERE agent_url = $1', [url, due]);
+      return due;
+    };
+    const claim = async (url: string) => {
+      const claimed = await claimHeartbeatAgents([url], new Date(Date.now() + BATCH_LOCK_MS), identity.owner);
+      expect(claimed.has(url)).toBe(true);
+    };
+
+    afterAll(async () => {
+      for (const table of ['agent_compliance_step_diagnostics', 'agent_storyboard_status', 'agent_verification_badges',
+        'agent_compliance_status', 'agent_compliance_runs', 'agent_registry_metadata']) {
+        await pool.query(`DELETE FROM ${table} WHERE agent_url = ANY($1::text[])`, [urls]);
+      }
+    });
+
+    it('keeps the cadence under an in-flight lock and makes the agent due again once the lock expires', async () => {
+      const url = await registeredAgent();
+      const dueCadence = await makeDue(url);
+      expect(await isDue(url)).toBe(true);
+
+      await claim(url);
+
+      const locked = await state(url);
+      expect(locked.next_compliance_check_at).toEqual(dueCadence);
+      expect(locked.compliance_lock_until?.getTime()).toBeGreaterThan(Date.now());
+      expect(await isDue(url)).toBe(false);
+
+      // A worker that dies holding the lock strands nothing: once it expires
+      // the agent is due on the cadence it never lost.
+      await pool.query(`UPDATE agent_registry_metadata SET compliance_lock_until = NOW() - INTERVAL '1 second'
+        WHERE agent_url = $1`, [url]);
+      expect(await isDue(url)).toBe(true);
+    });
+
+    it('records a skipped attempt without counting it as a success, then a heartbeat publish clears it', async () => {
+      const url = await registeredAgent();
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'heartbeat' });
+      const published = await state(url);
+      expect(published.last_heartbeat_success_at).not.toBeNull();
+      expect(published.last_heartbeat_attempt_at).toEqual(published.last_heartbeat_success_at);
+      expect(published.last_heartbeat_skip_reason).toBeNull();
+
+      await makeDue(url);
+      await claim(url);
+      await markHeartbeatSuiteStarted(url, identity.owner);
+      await db.deferComplianceCheckAfterInconclusiveTarget(url, 'target_unconfirmed', { exponentialBackoff: true });
+      await releaseHeartbeatClaim(url, identity.owner);
+
+      const skipped = await state(url);
+      expect(skipped.last_heartbeat_skip_reason).toBe('target_unconfirmed');
+      expect(skipped.last_heartbeat_attempt_at!.getTime()).toBeGreaterThan(published.last_heartbeat_success_at!.getTime());
+      expect(skipped.last_heartbeat_success_at).toEqual(published.last_heartbeat_success_at);
+      expect(skipped.compliance_lock_until).toBeNull();
+      expect(skipped.compliance_inconclusive_streak).toBe(1);
+      expect(Number(skipped.hours_until_next)).toBeCloseTo(12, 1);
+      expect(await isDue(url)).toBe(false);
+
+      await makeDue(url);
+      await claim(url);
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'heartbeat' });
+
+      const republished = await state(url);
+      expect(republished.last_heartbeat_skip_reason).toBeNull();
+      expect(republished.last_heartbeat_success_at!.getTime()).toBeGreaterThan(published.last_heartbeat_success_at!.getTime());
+      expect(republished.last_heartbeat_attempt_at).toEqual(republished.last_heartbeat_success_at);
+      expect(republished.compliance_lock_until).toBeNull();
+      expect(republished.compliance_inconclusive_streak).toBe(0);
+    });
+
+    it.each(['owner_test', 'manual'] as const)(
+      'leaves the heartbeat lock and success history alone when a %s run publishes',
+      async (triggeredBy) => {
+        const url = await registeredAgent();
+        await makeDue(url);
+        await claim(url);
+        const before = await state(url);
+
+        await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: triggeredBy });
+
+        const after = await state(url);
+        expect(after.compliance_lock_until).toEqual(before.compliance_lock_until);
+        expect(after.last_heartbeat_success_at).toBeNull();
+        expect(after.last_heartbeat_attempt_at).toBeNull();
+      },
+    );
+
+    it('lets a requeue placed after the suite started win over the deferral', async () => {
+      const url = await registeredAgent();
+      await makeDue(url);
+      await claim(url);
+      await markHeartbeatSuiteStarted(url, identity.owner);
+      await db.requeueForHeartbeat(url);
+
+      await db.deferComplianceCheckAfterInconclusiveTarget(url, 'audit_only', { exponentialBackoff: true });
+      await releaseHeartbeatClaim(url, identity.owner);
+
+      const after = await state(url);
+      expect(after.next_compliance_check_at).toBeNull();
+      expect(after.compliance_inconclusive_streak).toBe(0);
+      expect(after.last_heartbeat_skip_reason).toBe('audit_only');
+      expect(await isDue(url)).toBe(true);
+    });
+
+    it('lets a requeue lift a hold no batch owns, but never a live batch claim', async () => {
+      const url = await registeredAgent();
+      await makeDue(url);
+      await claim(url);
+
+      await db.requeueForHeartbeat(url);
+      expect((await state(url)).compliance_lock_until!.getTime()).toBeGreaterThan(Date.now());
+      expect(await isDue(url)).toBe(false);
+
+      // Crash quarantine: orphan reconciliation leaves the lock with no owner.
+      await pool.query(
+        `UPDATE agent_registry_metadata
+         SET heartbeat_claim_owner = NULL, compliance_lock_until = NOW() + INTERVAL '30 minutes'
+         WHERE agent_url = $1`,
+        [url],
+      );
+      expect(await isDue(url)).toBe(false);
+      await db.requeueForHeartbeat(url);
+      expect((await state(url)).compliance_lock_until).toBeNull();
+      expect(await isDue(url)).toBe(true);
+    });
+
+    it('answers a requeue placed before the suite started with that attempt\'s backoff', async () => {
+      const url = await registeredAgent();
+      await makeDue(url);
+      await db.requeueForHeartbeat(url);
+      await claim(url);
+      await markHeartbeatSuiteStarted(url, identity.owner);
+
+      await db.deferComplianceCheckAfterInconclusiveTarget(url, 'audit_only', { exponentialBackoff: true });
+      await releaseHeartbeatClaim(url, identity.owner);
+
+      const after = await state(url);
+      expect(Number(after.hours_until_next)).toBeCloseTo(12, 1);
+      expect(after.compliance_inconclusive_streak).toBe(1);
+      // The requeue still orders the agent first once the backoff passes.
+      expect(after.requeued_at).not.toBeNull();
+      expect(await isDue(url)).toBe(false);
     });
   });
 

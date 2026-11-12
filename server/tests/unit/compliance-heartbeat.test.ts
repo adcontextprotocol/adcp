@@ -386,9 +386,9 @@ describe('runComplianceHeartbeatJob', () => {
     expect(notifyComplianceChange).not.toHaveBeenCalled();
     expect(notifyVerificationChange).not.toHaveBeenCalled();
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', 'audit_only', { exponentialBackoff: true });
     expect(mocks.query.mock.calls.every(([sql]) => !String(sql).includes('last_checked_at'))).toBe(true);
-    expect(claimCalls()[0][0]).toContain('next_compliance_check_at');
+    expect(claimCalls()[0][0]).toContain('compliance_lock_until');
   });
 
   // adcp#8268 — a heartbeat that runs out of time is never published, so the
@@ -753,7 +753,7 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
     expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', 'execution_fence_lost');
     expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
   });
 
@@ -780,7 +780,7 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.revokeBadge).not.toHaveBeenCalled();
     expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', 'execution_fence_lost');
     expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
   });
 
@@ -1039,7 +1039,7 @@ describe('runComplianceHeartbeatJob', () => {
       }),
     );
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', 'agent_error', { exponentialBackoff: true });
   });
 
   it('backs off target selection when no trustworthy target exists', async () => {
@@ -1058,7 +1058,7 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', 'target_unconfirmed', { exponentialBackoff: true });
     expect(mocks.comply).not.toHaveBeenCalled();
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
   });
@@ -1071,7 +1071,7 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', 'pre_target_error');
     expect(mocks.comply).not.toHaveBeenCalled();
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
   });
@@ -1089,7 +1089,7 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', 'target_superseded', { exponentialBackoff: true });
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
   });
 
@@ -1123,7 +1123,7 @@ describe('runComplianceHeartbeatJob', () => {
       await run({ limit: 1 });
 
       expect(reconcileCalls()).toHaveLength(1);
-      expect(reconcileCalls()[0][1]).toEqual([identity.owner, 'machine-1:']);
+      expect(reconcileCalls()[0][1]).toEqual([identity.owner, 'machine-1:', 'worker_died']);
       expect(queryOrder(reconcileCalls())).toBeLessThan(mocks.getAgentsDueForCheck.mock.invocationCallOrder[0]);
     });
 
@@ -1145,13 +1145,14 @@ describe('runComplianceHeartbeatJob', () => {
       expect(markerOrder).toBeLessThan(mocks.comply.mock.invocationCallOrder[0]);
     });
 
-    it('releases the claim after a normal completion without touching the schedule', async () => {
+    it('releases the claim after a normal completion without touching the schedule or the lock', async () => {
       completeRuns();
       await run({ limit: 1 });
 
       expect(releaseCalls()).toHaveLength(1);
       expect(releaseCalls()[0][1]).toEqual([agentUrl, identity.owner]);
       expect(String(releaseCalls()[0][0])).not.toContain('next_compliance_check_at');
+      expect(String(releaseCalls()[0][0])).not.toContain('compliance_lock_until');
       expect(queryOrder(releaseCalls())).toBeGreaterThan(mocks.comply.mock.invocationCallOrder[0]);
     });
 

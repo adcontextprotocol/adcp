@@ -15,6 +15,14 @@ import { isComplianceRefreshAccessFailure, type ComplianceRefreshWriteGuard } fr
 const logger = baseLogger.child({ module: 'compliance-db' });
 const catalogEventsDb = new CatalogEventsDatabase();
 const OPERATIONAL_DIAGNOSTIC_DEADLINE_MS = 2_000;
+/** How long a heartbeat waits before retrying an agent whose full suite is already running elsewhere. */
+const CONTENTION_RETRY_MINUTES = 5;
+const CONTENTION_SKIP_REASON: HeartbeatSkipReason = 'execution_fence_busy';
+/**
+ * True when an owner requeued the agent after the current heartbeat attempt's
+ * suite started. That attempt cannot have seen whatever the owner changed.
+ */
+const REQUEUED_DURING_HEARTBEAT_ATTEMPT_SQL = 'COALESCE(requeued_at > heartbeat_started_at, FALSE)';
 
 // =====================================================
 // TYPES
@@ -25,6 +33,20 @@ export type ComplianceStatus = 'passing' | 'degraded' | 'failing' | 'unknown';
 export type OverallRunStatus = 'passing' | 'failing' | 'partial';
 export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook' | 'owner_test';
 export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip' | 'silent';
+/**
+ * Why a heartbeat attempt ended without publishing an authoritative verdict.
+ * Stored in agent_registry_metadata.last_heartbeat_skip_reason (unconstrained
+ * TEXT, so this union is the only guard on new values).
+ */
+export type HeartbeatSkipReason =
+  | 'execution_fence_busy'
+  | 'execution_fence_lost'
+  | 'target_unconfirmed'
+  | 'target_superseded'
+  | 'audit_only'
+  | 'pre_target_error'
+  | 'agent_error'
+  | 'worker_died';
 
 /**
  * Auth shape resolved from an agent_context for outbound compliance/test
@@ -988,15 +1010,31 @@ export class ComplianceDatabase {
 
       // 4. Upsert the materialized status and capture transition.
       // Owner-initiated runs publish the verdict but leave the independent
-      // heartbeat schedule and pending requeues untouched (#7680).
+      // heartbeat schedule and pending requeues untouched (#7680). Only a
+      // heartbeat publish counts as a heartbeat success and ends its own
+      // in-flight lock (#7693); an admin run between batches leaves both alone.
       const statusResult = await client.query(
         `WITH schedule_next AS (
-          INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-          VALUES ($1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END)
+          INSERT INTO agent_registry_metadata (
+            agent_url, next_compliance_check_at,
+            last_heartbeat_attempt_at, last_heartbeat_success_at
+          )
+          VALUES (
+            $1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END,
+            CASE WHEN $7 = 'heartbeat' THEN NOW() END, CASE WHEN $7 = 'heartbeat' THEN NOW() END
+          )
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             compliance_inconclusive_streak = 0,
-            requeued_at = NULL
+            requeued_at = NULL,
+            compliance_lock_until = CASE WHEN $7 = 'heartbeat' THEN NULL
+              ELSE agent_registry_metadata.compliance_lock_until END,
+            last_heartbeat_attempt_at = CASE WHEN $7 = 'heartbeat' THEN NOW()
+              ELSE agent_registry_metadata.last_heartbeat_attempt_at END,
+            last_heartbeat_skip_reason = CASE WHEN $7 = 'heartbeat' THEN NULL
+              ELSE agent_registry_metadata.last_heartbeat_skip_reason END,
+            last_heartbeat_success_at = CASE WHEN $7 = 'heartbeat' THEN NOW()
+              ELSE agent_registry_metadata.last_heartbeat_success_at END
           -- TriggeredBy constrains $7 at compile time. Adding a trigger opts it
           -- into cadence advancement unless this predicate and the INSERT
           -- CASE above are updated together.
@@ -1571,40 +1609,56 @@ export class ComplianceDatabase {
   }
 
   /**
-   * Release an in-progress heartbeat lock without publishing a verdict.
+   * End a heartbeat attempt that published no verdict: record why, release the
+   * in-flight lock, and schedule the next attempt.
    *
-   * Schedule another attempt without changing the last authoritative timestamp.
-   * Repeated inconclusive checks back off from the configured interval to at
-   * most 48 hours. A manual requeue (NULL) must win over deferral.
+   * The last authoritative timestamp and `last_heartbeat_success_at` are left
+   * alone. Repeated inconclusive checks back off from the configured interval
+   * to at most 48 hours. A requeue placed after this attempt's suite started
+   * was not answered by it, so it wins over the deferral and the agent stays
+   * due.
    */
   async deferComplianceCheckAfterInconclusiveTarget(
     agentUrl: string,
+    reason: HeartbeatSkipReason,
     options: { exponentialBackoff?: boolean } = {},
   ): Promise<boolean> {
     const result = await query(
       `UPDATE agent_registry_metadata
-       SET next_compliance_check_at = NOW() + make_interval(hours =>
-             CASE WHEN $2::boolean THEN
-               GREATEST(check_interval_hours, LEAST(48, check_interval_hours * (1 << LEAST(compliance_inconclusive_streak, 3))))
-             ELSE check_interval_hours END),
-           compliance_inconclusive_streak = CASE WHEN $2::boolean
+       SET next_compliance_check_at = CASE WHEN ${REQUEUED_DURING_HEARTBEAT_ATTEMPT_SQL}
+             THEN next_compliance_check_at
+             ELSE NOW() + make_interval(hours =>
+               CASE WHEN $2::boolean THEN
+                 GREATEST(check_interval_hours, LEAST(48, check_interval_hours * (1 << LEAST(compliance_inconclusive_streak, 3))))
+               ELSE check_interval_hours END)
+             END,
+           compliance_inconclusive_streak = CASE WHEN $2::boolean AND NOT ${REQUEUED_DURING_HEARTBEAT_ATTEMPT_SQL}
              THEN LEAST(compliance_inconclusive_streak + 1, 4)
-             ELSE compliance_inconclusive_streak END
-       WHERE agent_url = $1
-         AND next_compliance_check_at > NOW()`,
-      [agentUrl, options.exponentialBackoff ?? false],
+             ELSE compliance_inconclusive_streak END,
+           compliance_lock_until = NULL,
+           last_heartbeat_attempt_at = NOW(),
+           last_heartbeat_skip_reason = $3
+       WHERE agent_url = $1`,
+      [agentUrl, options.exponentialBackoff ?? false, reason],
     );
     return (result.rowCount ?? 0) > 0;
   }
 
-  /** Retry soon after an execution fence or global suite slot is busy. */
+  /**
+   * Retry soon after an execution fence or global suite slot is busy. Another
+   * full suite is running on the agent, so this is a short hold on the lock,
+   * not a change to its cadence. Applies only while this batch's claim still
+   * holds the lock.
+   */
   async deferComplianceCheckAfterContention(agentUrl: string, expectedLockUntil: Date): Promise<boolean> {
     const result = await query(
       `UPDATE agent_registry_metadata
-       SET next_compliance_check_at = NOW() + INTERVAL '5 minutes'
-       WHERE agent_url = $1 AND next_compliance_check_at = $2::timestamptz
-         AND next_compliance_check_at > NOW()`,
-      [agentUrl, expectedLockUntil],
+       SET compliance_lock_until = NOW() + make_interval(mins => $3),
+           last_heartbeat_attempt_at = NOW(),
+           last_heartbeat_skip_reason = $4
+       WHERE agent_url = $1 AND compliance_lock_until = $2::timestamptz
+         AND compliance_lock_until > NOW()`,
+      [agentUrl, expectedLockUntil, CONTENTION_RETRY_MINUTES, CONTENTION_SKIP_REASON],
     );
     return (result.rowCount ?? 0) > 0;
   }
@@ -1702,6 +1756,11 @@ export class ComplianceDatabase {
     // bypasses the cadence floor. Inconclusive runs have bounded backoff in
     // deferComplianceCheckAfterInconclusiveTarget().
     //
+    // An agent is due only when its cadence has passed and no heartbeat lock
+    // holds it. The lock (in-flight claim, crash quarantine, contention hold)
+    // lives in its own column, so it never masks or moves the cadence (#7693);
+    // a lock left by a dead worker stops excluding the agent once it expires.
+    //
     // Explicit owner requeues are served first (oldest requeue wins), then
     // the regular cadence by last authoritative check. Without that, an agent
     // with a recent `last_checked_at` sorts behind every agent checked
@@ -1750,6 +1809,7 @@ export class ComplianceDatabase {
           AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
           AND COALESCE(m.monitoring_paused, FALSE) = FALSE
           AND (m.next_compliance_check_at IS NULL OR m.next_compliance_check_at < NOW())
+          AND (m.compliance_lock_until IS NULL OR m.compliance_lock_until < NOW())
           AND (ka.is_member_registered OR ka.has_active_badge OR m.requeued_at IS NOT NULL
             OR s.last_checked_at IS NULL OR s.last_checked_at < NOW() - INTERVAL '48 hours')
       )
@@ -1815,12 +1875,20 @@ export class ComplianceDatabase {
     );
   }
 
+  /**
+   * Make the agent due and serve it ahead of regular checks. A requeue still
+   * lifts a hold no batch owns (crash quarantine, contention hold, a lock left
+   * by a failed attempt), as it did when those lived in the cadence column. A
+   * live batch claim keeps its lock, so a requeue never runs the agent twice.
+   */
   async requeueForHeartbeat(agentUrl: string): Promise<void> {
     await query(
       `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at, requeued_at)
        VALUES ($1, NULL, NOW())
        ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL,
-         compliance_inconclusive_streak = 0, requeued_at = NOW()`,
+         compliance_inconclusive_streak = 0, requeued_at = NOW(),
+         compliance_lock_until = CASE WHEN agent_registry_metadata.heartbeat_claim_owner IS NULL THEN NULL
+           ELSE agent_registry_metadata.compliance_lock_until END`,
       [agentUrl],
     );
   }
