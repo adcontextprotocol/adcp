@@ -24,9 +24,13 @@ jobs:
       run:
         working-directory: apps/web
     steps:
+      # The change detector compares two snapshots, so only the tested commit
+      # is checked out and the compared commit is fetched below. Fetching every
+      # branch and tag in full exhausted this job's budget before any check
+      # ran (#8559).
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           filter: blob:none
           sparse-checkout: |
             apps/web
@@ -39,20 +43,50 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF_NAME: ${{ github.base_ref }}
           BEFORE_SHA: ${{ github.event.before }}
+          # actions/checkout retries its fetches; this one replaces part of it.
+          FETCH_ATTEMPTS: "3"
+          FETCH_RETRY_DELAY_SECONDS: "5"
         run: |
           set -euo pipefail
           if [ "${EVENT_NAME}" = "pull_request" ]; then
-            compare_ref="origin/${BASE_REF_NAME}"
+            compare_ref="refs/remotes/origin/${BASE_REF_NAME}"
+            fetch_refspec="+refs/heads/${BASE_REF_NAME}:${compare_ref}"
           elif [ -n "${BEFORE_SHA}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]; then
             compare_ref="${BEFORE_SHA}"
+            fetch_refspec="${BEFORE_SHA}"
           else
             echo "web=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
-          if git diff --quiet "${compare_ref}" HEAD -- apps/web .github/workflows/apps-web-check.yml; then
+          # A tree diff needs the compared commit, not its history. When that
+          # commit or the diff is unavailable, every web check runs.
+          fetched=false
+          for attempt in $(seq "${FETCH_ATTEMPTS}"); do
+            if git fetch --no-tags --no-recurse-submodules --depth=1 origin "${fetch_refspec}"; then
+              fetched=true
+              break
+            fi
+            if [ "${attempt}" -lt "${FETCH_ATTEMPTS}" ]; then
+              echo "::warning::Fetching ${compare_ref} failed (attempt ${attempt} of ${FETCH_ATTEMPTS}); retrying."
+              sleep "${FETCH_RETRY_DELAY_SECONDS}"
+            fi
+          done
+          if [ "${fetched}" != true ]; then
+            echo "::warning::Could not fetch ${compare_ref} after ${FETCH_ATTEMPTS} attempts; running every web check."
+            echo "web=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          git count-objects -v
+
+          diff_status=0
+          git diff --quiet "${compare_ref}" HEAD -- apps/web .github/workflows/apps-web-check.yml || diff_status=$?
+          if [ "${diff_status}" -eq 0 ]; then
             echo "web=false" >> "${GITHUB_OUTPUT}"
           else
+            if [ "${diff_status}" -ne 1 ]; then
+              echo "::warning::Could not diff against ${compare_ref}; running every web check."
+            fi
             echo "web=true" >> "${GITHUB_OUTPUT}"
           fi
 

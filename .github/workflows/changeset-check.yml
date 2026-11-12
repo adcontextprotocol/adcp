@@ -39,10 +39,16 @@ jobs:
     # - Release docs snapshot PRs (`auto/docs-v*`) — they freeze docs for an
     #   already-published version and do not represent a new package release.
     if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
+    env:
+      BASE_REF: ${{ github.base_ref }}
     steps:
       - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
+
+      # Both checks below compare against the merge base with the target
+      # branch. Only that much history is fetched instead of every branch and
+      # tag (#8559); the step fails when no merge base can be found.
+      - name: Fetch merge base with the target branch
+        run: bash scripts/fetch-merge-base.sh "${BASE_REF}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -50,16 +56,16 @@ jobs:
           node-version: '24'
 
       - name: Check changeset protocol scope
-        run: node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }}
+        run: node scripts/check-changeset-protocol-scope.cjs "origin/${BASE_REF}"
 
       - name: Check for changeset
         run: |
-          if node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --is-status-exempt-maintenance; then
+          if node scripts/check-changeset-protocol-scope.cjs "origin/${BASE_REF}" --is-status-exempt-maintenance; then
             echo "Skipping changesets status for changeset policy maintenance."
             exit 0
           fi
-          if ! node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --has-protocol-scoped-changes; then
+          if ! node scripts/check-changeset-protocol-scope.cjs "origin/${BASE_REF}" --has-protocol-scoped-changes; then
             echo "Skipping changesets status because this PR does not touch the protocol release surface."
             exit 0
           fi
-          npx --yes @changesets/cli@^3.0.0 status --since=origin/${{ github.base_ref }}
+          npx --yes @changesets/cli@^3.0.0 status "--since=origin/${BASE_REF}"
