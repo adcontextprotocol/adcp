@@ -1305,6 +1305,7 @@
     let currentOrgId = null;
     let currentOrgName = null;
     let currentOrgRole = null; // 'admin' | 'owner' | 'member' — gates domain-claim UI
+    const LISTING_MANAGER_ROLES = ['owner', 'admin'];
 
     // Fetch with a timeout to prevent hanging on slow API responses
     function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
@@ -1318,6 +1319,20 @@
     function getOrgIdFromUrl() {
       const params = new URLSearchParams(window.location.search);
       return params.get('org');
+    }
+
+    // With no ?org=, open a company workspace the user owns or administers first.
+    // /api/me order is no preference (WorkOS lists newest first): a member who
+    // added an individual plan beside their own company workspace would otherwise
+    // land on the personal workspace and be sent away (#8926). Everyone else keeps
+    // the first org, so a plain member of an employer still reaches their own
+    // personal listing on /account.
+    function pickDefaultListingOrgId(organizations) {
+      if (!Array.isArray(organizations) || organizations.length === 0) return null;
+      const managedCompanyOrg = organizations.find(
+        org => !org.is_personal && LISTING_MANAGER_ROLES.includes(org.role),
+      );
+      return (managedCompanyOrg || organizations[0]).id;
     }
 
     // Build API URL with org parameter
@@ -1384,10 +1399,10 @@
           isAdmin = meData.user?.isAdmin || false;
         }
 
-        // Get org ID from URL or use first org from user data
+        // Get org ID from URL or pick the default listing org from user data
         let orgId = getOrgIdFromUrl();
         if (!orgId && meData?.organizations?.length > 0) {
-          orgId = meData.organizations[0].id;
+          orgId = pickDefaultListingOrgId(meData.organizations);
           // Update URL to include org param for bookmarking/sharing
           const newUrl = new URL(window.location);
           newUrl.searchParams.set('org', orgId);
@@ -1441,8 +1456,10 @@
         if (isPersonal) {
           document.getElementById('loading').style.display = 'none';
           showError('This page is for organization profiles. Opening your account profile instead.');
+          // /account picks the newest membership without ?org=, which can hide
+          // this workspace's member directory fields behind a company org.
           window.setTimeout(() => {
-            window.location.href = '/account';
+            window.location.href = '/account?org=' + encodeURIComponent(currentOrgId);
           }, 1200);
           return;
         }
