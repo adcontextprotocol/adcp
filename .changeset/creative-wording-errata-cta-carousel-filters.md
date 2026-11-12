@@ -1,8 +1,8 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
-Creative wording errata from the maintainer answers on adcp#8628, adcp#8629, adcp#8630 and adcp#8631. Descriptions, one schema `default` and docs only; no new fields or codes.
+Creative wording errata from the maintainer answers on adcp#8628, adcp#8629, adcp#8630 and adcp#8631. Descriptions, one schema `default` and docs only; no new fields or codes. Minor because the `asset_types` filter on `list_creative_formats` changes from any-of to all-of, which changes the results an any-of seller returned before; that makes it ineligible for a 3.2.x patch backport.
 
 - `CREATIVE_VALUE_NOT_ALLOWED` (adcp#8628): the closed set is `cta_values` on canonical formats or `allowed_values` in text-asset requirements. The code also covers a card's per-card `cta`, with `error.field` pointing at the card. Sellers carry the declared set in `error.details.accepted_values`, the canonical key in `core/error.json`; also sending `allowed_values` is harmless but not needed. The `text-asset-requirements` and `card-asset` descriptions, `sync_creatives` and the error-code snippet say the same. The Meta Reels table now says the buyer ships `assets.cta.content`, not `assets.cta.text`.
 - `image_carousel` (adcp#8629): `allowed_card_media_asset_types` declares `"default": ["image"]`, so a declaration that omits both it and the deprecated `allowed_card_asset_types` alias accepts image cards only; declare `["image", "video"]` for mixed-media carousels. `min_cards` and `max_cards` only narrow the `cards` slot: `max_cards: 35` alone still caps at the default 10, and a product taking 35 cards restates the slot with `max: 35`. The `responsive_creative` pool counts narrow their slots the same way. The format-conformance text notes that a parameter whose canonical schema states a `default` applies it when omitted.
