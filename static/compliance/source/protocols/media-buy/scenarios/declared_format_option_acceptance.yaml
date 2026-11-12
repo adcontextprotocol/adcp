@@ -51,13 +51,13 @@ prerequisites:
 
 fixtures:
   accounts:
-    - account_id: "acct_acmeoutdoor_example_sandbox_5d0c7a91e2b4"
+    - account_id: "acct_acmeoutdoor_example_sandbox_bccee165ce3b"
       fixture:
         brand:
           domain: "acmeoutdoor.example"
         operator: "pinnacle-agency.example"
         operator_unit:
-          id: "compliance-media_buy_seller_declared_format_option_acceptance-7b2e19c4"
+          id: "compliance-media_buy_seller_declared_format_opt-8b96e0b4"
         billing: "operator"
         status: "active"
         sandbox: true
@@ -115,7 +115,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-media_buy_seller_declared_format_option_acceptance-7b2e19c4"
+              id: "compliance-media_buy_seller_declared_format_opt-8b96e0b4"
             sandbox: true
           creatives:
             - creative_id: "declared_option_native_001"
