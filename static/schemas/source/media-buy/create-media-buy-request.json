@@ -104,7 +104,7 @@
         "amount",
         "currency"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "daily_budget_cap": {
       "type": "number",
@@ -281,7 +281,7 @@
             "schemes",
             "credentials"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "delivery_mode": {
           "type": "string",

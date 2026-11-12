@@ -18078,7 +18078,7 @@ describe('get_adcp_capabilities handler', () => {
     expect(signals.signals).toMatchObject({ anonymous_discovery: true });
   });
 
-  it.each(['3.0', '3.1', '3.2'])('withholds provenance capability from the %s contract', async servedAdcpVersion => {
+  it.each(['3.0', '3.1', '3.2'])('withholds provenance and registry-policy capabilities from the %s contract', async servedAdcpVersion => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,
       tenantId: 'sales',
@@ -18086,16 +18086,20 @@ describe('get_adcp_capabilities handler', () => {
     });
 
     expect(result.creative).not.toHaveProperty('supports_provenance');
+    expect(result.creative).not.toHaveProperty('supports_registry_policy_enforcement');
   });
 
-  it('advertises provenance enforcement on the 3.3 seller contract', async () => {
+  it('advertises provenance and registry-policy enforcement on the 3.3 seller contract', async () => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,
       tenantId: 'sales',
       servedAdcpVersion: '3.3-beta.1',
     });
 
-    expect(result.creative).toMatchObject({ supports_provenance: true });
+    expect(result.creative).toMatchObject({
+      supports_provenance: true,
+      supports_registry_policy_enforcement: true,
+    });
   });
 
   it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
@@ -20339,6 +20343,43 @@ describe('proposal lifecycle', () => {
     });
     expect(unsupported.isError).toBeFalsy();
     expect(unsupported.result).toMatchObject({ outcome: 'listed', products: [] });
+
+    // The requirements container is open, so an unknown requirement validates.
+    // It still fails closed: "Missing or unknown required fields do not match."
+    // The only difference from allRegions above is the unknown key.
+    const unknownRequirement = {
+      geo_regions: { countries: { FR: { values: ['FR-49'] } } },
+      future_unknown_dimension: true,
+    };
+    const unknownRequirementValidation = validateSourceSchema(
+      'core/targeting-overlay-requirements.json',
+      unknownRequirement,
+    );
+    expect(unknownRequirementValidation.valid, JSON.stringify(unknownRequirementValidation.errors)).toBe(true);
+    const unknownListed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        required_overlay_support: unknownRequirement,
+      },
+    });
+    expect(unknownListed.isError, JSON.stringify(unknownListed.result)).toBeFalsy();
+    expect(unknownListed.result).toMatchObject({ outcome: 'listed', products: [] });
+    const discover = (required_overlay_support: Record<string, unknown>) => executeTrainingAgentTool('get_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      account,
+      buying_mode: 'brief',
+      brief: 'Regional display inventory in France',
+      required_overlay_support,
+    }, DEFAULT_CTX);
+    const knownDiscovered = await discover({ geo_regions: unknownRequirement.geo_regions });
+    expect(knownDiscovered.success, knownDiscovered.error).toBe(true);
+    expect((knownDiscovered.data as { products: Array<{ product_id: string }> }).products)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ product_id: targetedProductId })]));
+    const unknownDiscovered = await discover(unknownRequirement);
+    expect(unknownDiscovered.success, unknownDiscovered.error).toBe(true);
+    expect(unknownDiscovered.data).not.toHaveProperty('errors');
+    expect((unknownDiscovered.data as { products: unknown[] }).products).toEqual([]);
 
     const concurrentListings = await Promise.all(['US', 'CA'].map(country => simulateCallTool(
       server,

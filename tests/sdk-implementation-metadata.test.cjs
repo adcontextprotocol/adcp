@@ -107,8 +107,12 @@ test('malformed, duplicate, and approval-bearing reports are rejected', () => {
     { sdks: [sdk(), sdk()] },
     { sdks: [], approved: true },
     { sdks: [sdk({ approved: true })] },
-    { sdks: [sdk({ verified: true })] },
   ]) {
     assert.equal(validate(capabilities(implementation)), false, JSON.stringify(implementation));
   }
+});
+
+test('an unknown verified key on an SDK entry validates', () => {
+  // Open by default (DR-0036): `verified` is defined nowhere, so it is an unknown key; `approved` stays rejected.
+  assert.equal(validate(capabilities({ sdks: [sdk({ verified: true })] })), true);
 });

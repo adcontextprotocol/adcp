@@ -72,7 +72,7 @@
               }
             },
             "required": ["id"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "value_mappings": {
@@ -98,7 +98,7 @@
               }
             },
             "required": ["value", "taxonomy_value_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "parent_match_behavior": {
@@ -107,7 +107,7 @@
         }
       },
       "required": ["ref", "values"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "segmentation_criteria": {
       "type": "string",
@@ -184,7 +184,7 @@
         }
       },
       "required": ["match_keys"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "countries": {
       "type": "array",
@@ -227,7 +227,7 @@
             }
           },
           "required": ["type", "provider_signed"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "training_data_jurisdictions": {
           "type": "array",
@@ -246,7 +246,7 @@
         }
       },
       "required": ["method", "seed_source", "training_data_jurisdictions", "ai_act_risk_class"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "data_subject_rights": {
       "type": "object",
@@ -312,7 +312,7 @@
               { "required": ["url"] },
               { "required": ["email"] }
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "response_sla_days": {
@@ -327,7 +327,7 @@
         }
       },
       "required": ["channels"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "last_updated": {
       "type": "string",

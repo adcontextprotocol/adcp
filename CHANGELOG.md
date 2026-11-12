@@ -901,6 +901,27 @@
   
   Directory scenarios in `scenarios.json` can carry `requests`, which a harness signs with a named key and verifies against that directory. D03 and D11 use them: a request signed with a key that has no valid directory signature gets `403`. D15 adds malformed extra Ed25519 keys, one with no `x` and one with a 31-byte `x`, which a verifier ignores.
 
+## 3.2.10
+
+### Patch Changes
+
+- bdc61ec: Stop the 3.2 collection and reporting storyboards from failing sellers on features they do not offer. Backports the applicability part of #8336 and narrows #8428 for the 3.2 runner (#8744).
+  
+  `advanced_delivery_reporting` no longer seeds a video product. It discovers a native wholesale sandbox product that advertises format breakdown, with a fixed-price CPM option, and grades metric narrowing, the `by_format` array, truncation disclosure and the applied-sort echo on that product. When no product qualifies, the storyboard reports `fixture_unsatisfied`: the feature was not tested, which is neither a pass nor proof of nonsupport. It no longer grades `time_based_views`, because the controller cannot inject view observations and the old checks expected an invented 2-second threshold.
+  
+  `collection_selection` and `owner_sold_channel_carriage` keep their existing checks. They now run only when wholesale discovery finds a native product that allows collection targeting and declares at least one domain-qualified collection. Otherwise they report `fixture_unsatisfied`. Discovery failures still fail. Sellers that do not advertise the wholesale buying mode grade all three storyboards not applicable.
+  
+  Full independent collection grading needs the 3.3 fixture contract and runner, and ships in 3.3. No schema changes.
+- 5541479: Stop the `dependency_impairment` and `dependency_impairment_cardinality` storyboards from failing sellers whose selected format option is not an image format (adcp#8770). Both storyboards send a fixed 300x250 image creative against the first product's first format option. When that option is a `display_tag`, `video_vast` or other non-image kind, the creative phases are now skipped instead of failing a seller that correctly refuses an image it does not accept. Image sellers run the storyboards unchanged.
+- 8f159e4: Gate `product_signal_targeting` and `cross_path_targeting_provenance` on wholesale support in both `media_buy.buying_modes` and `signals.discovery_modes`. A seller that advertises only brief discovery no longer runs them. Their negative probes now cascade-skip when product discovery fails, instead of sending an unresolved `$context.product_id`.
+
+## 3.2.9
+
+### Patch Changes
+
+- 03e8e2a: Compliance: the `typed_proposal_negotiation` and `refine_frequency_cap_negotiation` storyboards seeded their native product (`native_feed_q4` and `no_fcap_native_q4`) with `format_kind: "native"` and `channels: ["native"]`, neither of which is a valid value. The format declaration matched no `core/product-format-declaration.json` branch, so a seller that echoed the seeded product failed product schema validation. The declaration now uses `native_in_feed`, the canonical kind for in-feed native, and carries the `params` that every format declaration requires (title and body length limits and a 1200×627 main image). The channel is now `display`. Both fixtures now match `main`. No storyboard step depends on the format kind or channel, and the product's role in both storyboards is unchanged. Released bundles are unchanged.
+- 03e8e2a: Make shared signals error compliance runnable for discovery-only owned agents. Use malformed get_signals requests for error-code and context checks; move activation negatives into a required signal-marketplace scenario so marketplaces retain their activation checks. The training agent rejects non-string signal_spec inputs instead of silently dropping them and returning a catalog. Missing required tools, controller evidence and genuine assertion failures remain blocking. Existing released bundles are unchanged.
+
 ## 3.2.8
 
 ### Patch Changes

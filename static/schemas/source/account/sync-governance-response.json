@@ -49,7 +49,7 @@
                   "required": [
                     "url"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "minItems": 1,
                 "maxItems": 1

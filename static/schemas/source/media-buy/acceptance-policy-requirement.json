@@ -13,7 +13,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -22,7 +22,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -37,7 +37,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind", "criteria"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -52,7 +52,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind", "criteria"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -61,7 +61,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -70,7 +70,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -78,7 +78,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -86,7 +86,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -94,7 +94,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -104,7 +104,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -118,7 +118,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -126,7 +126,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind", "description"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -134,7 +134,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind", "description"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -152,7 +152,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -162,7 +162,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -170,7 +170,7 @@
         "description": { "type": "string", "minLength": 1 }
       },
       "required": ["kind"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -180,7 +180,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["kind", "id", "description"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

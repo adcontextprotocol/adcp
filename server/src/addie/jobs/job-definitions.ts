@@ -39,6 +39,7 @@ import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from 
 import { runCredentialDigestJob } from './credential-digest.js';
 import { runCertificationRecoveryJob } from './certification-recovery.js';
 import { runBrandLogoDigestJob } from './brand-logo-digest.js';
+import { runBrandLogoBackgroundBackfillJob } from './brand-logo-background-backfill.js';
 import { runCommunityMirrorDigestJob } from './community-mirror-digest.js';
 import { runRegistryReviewDigestJob } from './registry-review-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
@@ -489,6 +490,24 @@ export function registerAllJobs(): void {
     runner: runBrandLogoDigestJob,
     businessHours: { startHour: 9, endHour: 10 },
     shouldLogResult: (r) => r.posted || r.staleCount > 0,
+  });
+
+  // Classify which background each stored logo is drawn for (light-bg /
+  // dark-bg). The only classifier: uploads insert unclassified rows and this
+  // picks them up within a minute. Registry reads expose it on
+  // brand_manifest.logos[].background.
+  jobScheduler.register({
+    name: 'brand-logo-background-backfill',
+    description: 'Classify stored brand logos as light-bg or dark-bg',
+    interval: { value: 1, unit: 'minutes' },
+    initialDelay: { value: 3, unit: 'minutes' },
+    executionTimeoutMs: 50_000,
+    passExecutionContext: true,
+    runner: (options: { limit?: number }, context) =>
+      runBrandLogoBackgroundBackfillJob(options, context.signal),
+    options: { limit: 250 },
+    shouldLogResult: (r) => r.scanned > 0 || r.released > 0,
+    statusResult: (r) => r,
   });
 
   // Registry submissions the automated review left for a human. Since
@@ -1055,6 +1074,7 @@ export const JOB_NAMES = {
   CREDENTIAL_DIGEST: 'credential-digest',
   CERTIFICATION_RECOVERY: 'certification-recovery',
   BRAND_LOGO_DIGEST: 'brand-logo-digest',
+  BRAND_LOGO_BACKGROUND_BACKFILL: 'brand-logo-background-backfill',
   COMMUNITY_MIRROR_DIGEST: 'community-mirror-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',

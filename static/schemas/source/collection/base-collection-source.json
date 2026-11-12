@@ -33,7 +33,7 @@
               }
             },
             "required": ["type", "value"],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "not": {
               "required": ["type"],
               "properties": { "type": { "const": "platform_channel_id" } }
@@ -43,7 +43,7 @@
         }
       },
       "required": ["selection_type", "identifiers"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -70,7 +70,7 @@
         }
       },
       "required": ["selection_type", "publisher_domain", "collection_ids"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -101,7 +101,7 @@
         }
       },
       "required": ["selection_type", "publisher_domain", "genres", "genre_taxonomy"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

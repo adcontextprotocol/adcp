@@ -1,0 +1,23 @@
+{
+  "contract_version": "1.1",
+  "media_type": "application/vnd.adcp.reporting-definition+json",
+  "report_definition_id": "billing-v1",
+  "reporting_profile": "billing-v1",
+  "grain": "media-buy-day",
+  "source": {
+    "provider": { "domain": "seller.example.net" },
+    "system": "fixture",
+    "api_version": "1",
+    "query_semantics": {}
+  },
+  "calendar": { "timezone_basis": "utc" },
+  "metrics": [
+    { "name": "impressions", "source_expression": "impressions", "aggregation": "sum", "unit": "impressions" },
+    { "name": "spend", "source_expression": "spend", "aggregation": "sum", "unit": "USD" }
+  ],
+  "dimensions": ["date", "media_buy_id"],
+  "restatement_policy": { "source_requery_duration": "P7D", "emit_only_on_content_change": true, "official_correction_mode": "adjustments_only" },
+  "finality_policies": [
+    { "finality_policy_id": "billing-close-v1", "basis": "contractual_cutoff", "duration_after_period_end": "PT4H" }
+  ]
+}

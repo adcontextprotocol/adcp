@@ -465,3 +465,12 @@ schema_removals_not_checked:
     sites:
       - "core/media-buy-legacy-terms-ref.json#"
       - "media-buy/request-proposals-response.json#/properties/purchase_continuation"
+
+  - change: "Boolean demographics, the 3.2 shorthand for { age: true }"
+    issue: 8778
+    reason: >-
+      Product support is seller-emitted and observable on get_products, but
+      not graded yet. Requirements are buyer-sent.
+    sites:
+      - "core/targeting-overlay-support.json#/properties/demographics/anyOf/0"
+      - "core/targeting-overlay-requirements.json#/properties/demographics/anyOf/0"

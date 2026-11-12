@@ -99,7 +99,7 @@
           }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "event_types": {
       "type": "array",
@@ -123,7 +123,7 @@
     "delivery_auth",
     "event_types"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Agent-level endpoint proof-of-control challenge",

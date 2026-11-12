@@ -97,12 +97,14 @@ test('a canonical installment is identified by the (collection_ref, installment_
   assert.equal(validate(omit(slot(1), 'collection_ref')), false, 'collection_ref is required');
   assert.equal(validate(omit(slot(1), 'installment_id')), false, 'installment_id is required');
   assert.equal(validate({ ...slot(1), collection_id: COLLECTION_ID }), false, 'the deprecated shorthand is not inherited');
-  assert.equal(validate({ ...slot(1), undeclared: true }), false, 'the canonical shape is closed');
+  // Open by default (DR-0036): an unknown key validates.
+  assert.equal(validate({ ...slot(1), undeclared: true }), true, errors(validate));
   assert.equal(validate({ ...slot(1), collection_ref: { collection_id: COLLECTION_ID } }), false, 'publisher_domain scopes the ID');
   assert.equal(validate({ ...slot(1), installment_id: '' }), false, 'installment_id is non-empty');
 
   const schema = readSchema('core/canonical-installment.json');
-  assert.equal(schema.additionalProperties, false);
+  // Open by default (DR-0036).
+  assert.equal(schema.additionalProperties, true);
   assert.deepEqual(schema.required, ['installment_id', 'collection_ref']);
   assert.equal(schema.properties.collection_id, undefined, 'no deprecated shorthand is declared');
   assert.equal(schema.properties.installment_id['x-entity'], 'installment');

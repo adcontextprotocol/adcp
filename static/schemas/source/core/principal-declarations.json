@@ -38,5 +38,5 @@
       "description": "Experimental feature identifiers, matching the seller's experimental_features vocabulary, that the caller opts into receiving in asynchronous payloads. Unknown identifiers are accepted and excluded from the intersection rather than rejected, so a caller can declare once across sellers with different surfaces."
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

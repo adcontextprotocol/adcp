@@ -43,5 +43,5 @@
     "required": ["accepted"]
   },
   "then": { "required": ["window_ends_at", "max_count", "min_interval"] },
-  "additionalProperties": false
+  "additionalProperties": true
 }

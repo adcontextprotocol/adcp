@@ -265,7 +265,7 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "execution_commitment": {
       "type": "object",
@@ -275,7 +275,7 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "tool": {
       "type": "string",
@@ -357,7 +357,7 @@
             "start",
             "end"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "spend": {
           "type": "number",
@@ -455,13 +455,13 @@
             "baseline",
             "indices"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": [
         "reporting_period"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "modification_summary": {
       "type": "string",

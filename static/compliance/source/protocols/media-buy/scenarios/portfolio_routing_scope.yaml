@@ -1,5 +1,5 @@
 id: media_buy_seller/portfolio_routing_scope
-version: "1.1.0"
+version: "1.2.0"
 title: "Seller declares brief-routing portfolio scope"
 category: media_buy_seller
 summary: "Advises when a media-buy seller omits its complete country or channel routing allowlist."
@@ -18,11 +18,13 @@ narrative: |
   array. Omission means unknown scope, never global coverage. The declarations
   are SHOULD-level during 3.2, so omission is an advisory finding rather than a
   conformance failure. Product availability remains a get_products concern.
-  When a channel declaration is present, the gated phase also proves that a
-  synchronous product read is accepted and that every returned product channel
-  stays within the exhaustive channel allowlist. Empty product results remain
-  valid. Empty declared arrays are advisory in 3.2 rather than schema-invalid;
-  4.0 can require non-empty declarations.
+  When a channel declaration is present and the seller declares wholesale
+  buying, a wholesale product read (synchronous by contract) proves that every
+  returned product channel stays within the exhaustive channel allowlist.
+  Brief-only sellers skip that read: a brief read may return a Submitted
+  envelope, so it cannot ground a synchronous-page assertion. Empty product
+  results remain valid. Empty declared arrays are advisory in 3.2 rather than
+  schema-invalid; 4.0 can require non-empty declarations.
 
 agent:
   interaction_model: media_buy_seller
@@ -108,7 +110,7 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: declared_channel_scope
-    title: "Exercise a declared channel and detect contradictory products"
+    title: "Capture the declared channel allowlist"
     depends_on: []
     requires_capability:
       path: media_buy.portfolio.primary_channels
@@ -131,6 +133,14 @@ phases:
           - name: portfolio_channels
             path: "media_buy.portfolio.primary_channels"
 
+  - id: declared_channel_products
+    title: "Detect wholesale products outside the declared channel scope"
+    depends_on: [declared_channel_scope]
+    requires_capability:
+      path: media_buy.buying_modes
+      contains: wholesale
+    skip_if: "!context.portfolio_channels"
+    steps:
       - id: query_declared_channel
         title: "Read products under the advertised channel scope"
         task: get_products

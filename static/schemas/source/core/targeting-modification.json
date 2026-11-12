@@ -23,7 +23,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["operation", "path", "applied", "reason"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Remove targeting set values",
@@ -59,7 +59,7 @@
             "system": { "type": "string", "minLength": 1 }
           },
           "required": ["country", "system"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "values": {
           "type": "array",
@@ -86,7 +86,7 @@
           "else": { "not": { "required": ["selector"] } }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }
