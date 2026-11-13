@@ -325,7 +325,7 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 
 ## Withdrawn from 3.3, planned for 4.0
 
-Three features are not part of 3.3. All three add terms to `commercial_terms`, which is held closed until 4.0. 4.0 gives `commercial_terms` a declared extension point with must-understand and brings them back ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).
+Three features are not part of 3.3. All three add terms to `commercial_terms`, which is held closed until 4.0. A buyer must not be bound by terms it cannot read: `terms_digest` covers every member of `commercial_terms`, including members under the open schemas inside it, and a party that cannot interpret every member must not accept the terms ([Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently)). 4.0 gives `commercial_terms` a declared extension point with must-understand and brings them back ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).
 
 | Feature | Where it stood | What changes |
 |---|---|---|

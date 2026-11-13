@@ -46,6 +46,8 @@ import {
   TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
   TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH,
   TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
+  PROPOSAL_DECLINE_REASONS,
+  validateProductDiscoveryAliasInput,
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
@@ -21954,6 +21956,56 @@ describe('proposal lifecycle', () => {
       expect(stored?.__declined).toBe(true);
       expect(stored).not.toHaveProperty('__opportunity_update');
     });
+  });
+
+  it('accepts the unrecognized_terms decline reason on both decline checks and rejects an unknown reason', async () => {
+    const schemaReasons = JSON.parse(
+      readFileSync(new URL('../../../static/schemas/source/enums/proposal-decline-reason.json', import.meta.url), 'utf8'),
+    ).enum as string[];
+    expect([...PROPOSAL_DECLINE_REASONS]).toEqual(schemaReasons);
+    expect(PROPOSAL_DECLINE_REASONS.has('unrecognized_terms')).toBe(true);
+
+    // decline_proposals request check.
+    const declineRequest = (reason: string) => validateProductDiscoveryAliasInput('decline_proposals', {
+      idempotency_key: randomUUID(),
+      declines: [{ proposal_id: 'p1', reason }],
+    });
+    expect(declineRequest('unrecognized_terms')).toBeUndefined();
+    expect(declineRequest('not_a_reason')).toMatchObject({ field: 'declines[0].reason' });
+
+    // Compact refine-decline check, reached directly with the internal flags.
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const compactDecline = (reason: string) => simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      __compact_proposal_lifecycle: true,
+      __decline_proposals: true,
+      refine: [{ scope: 'proposal', proposal_id: 'p1', action: 'decline', reason }],
+    });
+    const compactAccepted = await compactDecline('unrecognized_terms');
+    expect(compactAccepted.isError).toBeFalsy();
+    expect(compactAccepted.result).not.toHaveProperty('code');
+    const compactRejected = await compactDecline('not_a_reason');
+    expect(compactRejected.isError).toBe(true);
+    expect(compactRejected.result).toMatchObject({ code: 'INVALID_REQUEST', field: 'refine[0]' });
+
+    // End to end, a decline_proposals call passes both checks.
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const proposal = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const declined = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: proposal.proposal_id, reason: 'unrecognized_terms' }],
+    });
+    expect(declined.isError).toBeFalsy();
+    expect(declined.result).toMatchObject({
+      results: [{ proposal_id: proposal.proposal_id, outcome: 'declined' }],
+    });
+    const rejected = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: proposal.proposal_id, reason: 'not_a_reason' }],
+    });
+    expect(rejected.isError).toBe(true);
+    expect(rejected.result).toMatchObject({ code: 'INVALID_REQUEST' });
   });
 
   it('rejects duplicate decline proposal IDs and cannot decline registry proposals', async () => {
