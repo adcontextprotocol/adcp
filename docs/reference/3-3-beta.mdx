@@ -21,6 +21,8 @@ The latest checkpoint is **`3.3.0-rc.0`, the first release candidate, published 
 
 GA follows the first release candidate that meets every one of the GA criteria in [#8600](https://github.com/adcontextprotocol/adcp/issues/8600): SDK support for the latest prerelease, green storyboards, the closed-schema triage ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)), no open objections on consent items and decision records, and current release docs. The criteria stand as written: their consent closed on 2026-11-07 with no objections. The target for GA is the week of 2026-11-30, or the week of 2026-11-23 if every criterion passes first time. A later release candidate follows rc.0 if a correction needs adopter action.
 
+{/* depends on #8995: social distribution identifier types */}
+
 | Checkpoint | Published | Purpose | Who should test |
 |---|---|---|---|
 | `3.3.0-beta.0` | 2026-10-22 | Canonical schemas, compliance assets, skills, and protocol manifest for SDK implementation | SDK maintainers, code-generator maintainers, raw-wire implementers, and agent teams that can validate without generated 3.3 SDK types |
@@ -30,7 +32,7 @@ GA follows the first release candidate that meets every one of the GA criteria i
 | `3.3.0-beta.4` | 2026-11-05 | Reporting-subscription coverage fixes (per-package `added_at`, a reduced grant as a loss of authority) and the probe reset, `replace` that transfers assignment settings, tracker-slot limits only where a format declares slots, `BUDGET_TOO_LOW` details, `creative.supports_provenance`, `opportunity` on explicit-package buys, undefined-property reporting, and the hold, account-request, and reporting-subscription storyboards | The same teams, and SDK maintainers adopting the two coverage rule changes |
 | `3.3.0-beta.5` | 2026-11-07 | Experimental match keys for cross-publisher frequency capping, `sales-fixed-rate` promoted to stable, and the bundled Public Suffix List (DR-0037) | Pinned adopters comparing beta.5 with beta.6 and rc.0 |
 | `3.3.0-beta.6` | 2026-11-13 | Schemas open by default (DR-0036), the closed-schema triage, the versioning rules for what changes between releases, and every other change merged since beta.5 | SDK maintainers and adopters testing ahead of rc.0 |
-| `3.3.0-rc.0` | 2026-11-16 | First release candidate: everything in beta.6, plus the prerelease pins, unpinned discovery, and anonymous capabilities guidance | Every team that tested a beta, SDK maintainers ingesting the bundle, and raw-wire implementers; this is the checkpoint the docs describe |
+| `3.3.0-rc.0` | 2026-11-16 | First release candidate: everything in beta.6, plus the prerelease pins, unpinned discovery, and anonymous capabilities guidance, and the Instagram, Facebook, Snapchat and X distribution identifier types (#8995) | Every team that tested a beta, SDK maintainers ingesting the bundle, and raw-wire implementers; this is the checkpoint the docs describe |
 
 Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1), and the [closed-schema triage](#closed-schema-triage-before-rc-0) removes further beta fields before rc.0.
 
