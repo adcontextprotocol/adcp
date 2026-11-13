@@ -745,6 +745,7 @@ When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` option
 | `impressions` | `constraints.impressions` | Sum `commercial_terms.purchases[].impressions` and compare with the minimum. |
 | `flight` | `constraints.flight` | Compare `commercial_terms.start_time` and `end_time` with the window bounds. |
 | `product_changes` | `product_changes` | Check each keyed `include`/`omit` action against `commercial_terms.purchases[].product_id`. |
+| `installment_changes` | `installment_changes` | Experimental (`media_buy.installment_refinement`, which the seller MUST also list in `experimental_features`). For each named product, check that the draft buys one product whose `installments[]` equals the selected set. See [Choose installments](/docs/media-buy/task-reference/refine_proposals#choose-installments-experimental). |
 | `alternatives` | `alternatives.count` | Count drafts and verify that their `commercial_terms` — and therefore `terms_digest` values — are distinct. |
 | `criteria` | `criteria` | Apply structured discovery changes and preserve omitted criteria from the source proposal. |
 
