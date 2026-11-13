@@ -344,8 +344,7 @@ The spec has historically read sales-agent-first. v2 reshapes the creative-agent
 A creative agent that produces image / VAST / html5 creatives across multiple sizes and surfaces. Pre-v2, it published 30+ named formats (one per size × surface combination). v2 collapses to a smaller `supported_formats` set:
 
 ```json test=false
-// GET https://flashtalking.example/.well-known/agent.json
-// → get_adcp_capabilities response (excerpt)
+// get_adcp_capabilities response (excerpt)
 {
   "creative": {
     "supports_generation": true,
@@ -408,7 +407,7 @@ The buyer flow is unchanged from a Flashtalking perspective: `build_creative` st
 A transformation agent that takes a buyer's brief or script and produces a rendered audio file. Pre-v2, AudioStack published `audiostack_audio_30s_generated` and similar. v2 collapses to a per-canonical declaration with explicit production-source semantics:
 
 ```json test=false
-// GET https://audiostack.example/.well-known/agent.json
+// get_adcp_capabilities response (excerpt)
 {
   "creative": {
     "supports_generation": true,
