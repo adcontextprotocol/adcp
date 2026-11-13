@@ -30,8 +30,10 @@
       ]
     },
     "geo_value_labels": {
-      "$ref": "/schemas/core/targeting.json#/properties/geo_value_labels",
-      "description": "Optional diagnostic labels for ISO codes supplied in this request's geo_countries, geo_countries_exclude, geo_regions, or geo_regions_exclude. Not a targeting dimension and not stored state: it has no null form, and sellers MUST NOT reject a request because it is present or apply targeting from it."
+      "anyOf": [
+        { "$ref": "/schemas/core/targeting.json#/properties/geo_value_labels" },
+        { "type": "null" }
+      ]
     },
     "geo_metros": {
       "title": "Targeting Geo Metros",
