@@ -89,6 +89,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 53 | Sellers offering Reliable Reporting managed delivery | Hold no caller-issued secret for any pattern; push rows through `reporting_webhook`, and sign every `https_put` request under the Web Bot Auth profile ([details](#reliable-reporting-managed-delivery-holds-no-buyer-secret)). |
 | 54 | Media-buy sellers | Optionally declare `media_buy.supported_delivery_types`, and return only products with a listed `delivery_type` when you do ([#8458](https://github.com/adcontextprotocol/adcp/pull/8458)). |
 | 55 | Sellers publishing Reliable Reporting report definitions | At `contract_version` `1.2`, include `package_id` whenever `dimensions` include `media_buy_id`, and in `reporting_profile.primary_keys`. Callers pinned below 3.3 MUST be served `1.0` or `1.1` offerings ([details](#per-package-rows-in-reliable-reporting-report-definitions)). |
+| 56 | Sellers that accept targeting; buyers that send it | Sellers: accept `geo_value_labels` and geo-entry `value_labels` without rejecting the request, never target from them, and compare codes only. Buyers: send `geo_value_labels` only to 3.3 peers ([details](#display-labels-for-geo-targeting-codes)). |
 
 ## Withdrawn from 3.3, planned for 4.0
 
@@ -650,6 +651,7 @@ Many 3.3 additions sit inside objects that 3.2.10 and earlier publish closed, so
 | Seller | `vendor_metric_provenance[]` on delivery metrics | Strict older validators reject the new field. |
 | Buyer | `reporting_subscriptions` on `sync_principal` | A seller that lists only `sync_principal` in `reporting_delivery.configuration_tasks[]` serves reporting registration to 3.3 callers only. |
 | Buyer | `pixel_tracker` `event` values `start`, `first_quartile`, `midpoint`, `third_quartile`, `complete` | 3.2 closes the `event` enum; send them as `event: custom` until the seller negotiates 3.3 ([below](#hosted-video-and-audio-playback-trackers)). |
+| Buyer | `geo_value_labels` on targeting ([#8966](https://github.com/adcontextprotocol/adcp/pull/8966)) | The field is not in 3.2, and a 3.2 seller may treat an unknown targeting key as an unsupported dimension. |
 | Seller | `match_keys` on `Product.identity` (experimental, beta.5) | 3.2 closes `core/product-identity.json`. `media_buy.supported_match_keys` on `get_adcp_capabilities` sits in an open object and is safe. |
 
 New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `3gp`, `mpeg`, and `m4v` in video `containers`, `print_metrics` in `available-metric`, `operator_fee` in `adjustment-kind`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
@@ -803,6 +805,12 @@ An SDK talking to a seller that does not advertise 3.3 MAY make this rewrite its
 ### SDK implementation metadata
 
 Agents can report `adcp.implementation.sdks[]` with a package `name`, exact resolved `version`, and a `components` list. `components: []` reports SDK use without claiming agent-wide component coverage, such as an SDK signing helper used on only some routes. Existing agents may omit the block; buyers treat omission as unknown SDK use, while `sdks: []` explicitly reports no AdCP SDK use. Components describe the deployed server integration, including build-time type imports, rather than the package's available features. Buyers keep using AdCP version declarations for negotiation and retain all conformance obligations. Approval comes from a trusted catalog, and reducing check depth requires independently trusted evidence covering the endpoint and integration. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation).
+
+### Display labels for geo targeting codes
+
+Optional ([#8966](https://github.com/adcontextprotocol/adcp/pull/8966), beta.6). Targeting can carry display names beside its geographic codes. `geo_value_labels` maps the ISO codes in `geo_countries`, `geo_countries_exclude`, `geo_regions`, and `geo_regions_exclude` to names (`{ "DE": "Germany", "US-CA": "California" }`), and `geo_metros`, `geo_metros_exclude`, and `geo_places` entries take `value_labels` (`{ "501": "New York" }`). Every label key MUST appear in the values it labels.
+
+Labels are not a targeting dimension. Sellers MUST NOT resolve or apply targeting from them and MUST NOT reject a request because they are present, and MAY omit, keep, or supply their own labels in readback. Targeting equality and exact readback compare codes only, and a name in place of a code is still invalid. In create and update input, `null` clears labels the seller kept. Buyers SHOULD NOT send `geo_value_labels` to a seller on a version before 3.3 ([Send only to 3.3 peers](#send-only-to-3-3-peers)). See [Geographic Restrictions](/docs/media-buy/advanced-topics/targeting#geographic-restrictions).
 
 ### Targeting errors
 
