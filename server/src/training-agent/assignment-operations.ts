@@ -99,6 +99,11 @@ export async function planAssignmentOperations(
     if (kind === 'assign' && op.landing_page_url !== undefined && !options.supportsLandingPage) {
       return { errors: [error('UNSUPPORTED_FEATURE', 'Assignment landing pages require creative.supports_assignment_landing_page.', `${at}.landing_page_url`)] };
     }
+    // This agent does not list media_buy.installment_creative_assignment, so it
+    // refuses installment scope rather than assign to every installment (#8968).
+    if (op.installment_refs !== undefined) {
+      return { errors: [error('UNSUPPORTED_FEATURE', 'Installment-scoped assignments require media_buy.installment_creative_assignment.', `${at}.installment_refs`)] };
+    }
 
     const located = locate(packageId);
     if (located === 'missing') {
