@@ -85,6 +85,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 49 | Sellers | Serve `get_adcp_capabilities` without credentials (a MUST in 4.0). On MCP, let `server/discover`, `initialize`, and `tools/list` through your gateway without credentials ([details](#prerelease-pins-unpinned-discovery-and-anonymous-capabilities)). |
 | 50 | Sellers with a creative library | Accept a creative that conforms to the format option it targets; enforce only declared limits ([details](#sellers-accept-creatives-that-conform-to-the-declared-format-option)). |
 | 51 | Validators, TMP providers, and registries that read `adagents.json` | Let an origin-only `authorized_agents[].url` authorize the agent at any path on that origin ([`adagents.json`](/docs/governance/property/adagents)). |
+| 52 | Buyers, sellers, and governance agents that accept signed terms | Refuse terms carrying a member you cannot interpret (`unrecognized_terms` or `UNRECOGNIZED_TERMS`), and compute `terms_digest` over the bytes as received ([details](#accepting-signed-terms-binds-every-member)). |
 
 ## Withdrawn from 3.3, planned for 4.0
 
@@ -241,6 +242,17 @@ An `authorized_agents[].url` whose canonical form has the root path and no query
 ([#8941](https://github.com/adcontextprotocol/adcp/pull/8941), rc.0.) A seller MUST NOT refuse a creative, with a conformance code (`CREATIVE_SIZE_MISMATCH`, `CREATIVE_VALUE_NOT_ALLOWED`, `CREATIVE_VALIDATION_FAILED_GENERIC`, or `VALIDATION_ERROR` / `INVALID_REQUEST` against the assets), on the grounds of a declared parameter the creative satisfies, and MUST NOT enforce a narrower value than the one declared. A closed set narrows a slot only when it is declared: with no `cta_values`, the `cta` slot takes free text. Under `technical_requirements_complete: true` the seller holds no undeclared limit, so a creative that conforms to every declared parameter is accepted. Refusals outside format conformance are unchanged: `CREATIVE_REJECTED` for content review and `POLICY_VIOLATION` for advertising policy.
 
 **Sellers** that refused declared sizes or enforced an undeclared CTA list were already contradicting their own declaration; they now fail the new `media_buy_seller/declared_format_option_acceptance` scenario. See [Format conformance](/docs/creative/task-reference/sync_creatives#format-conformance).
+
+### Accepting signed terms binds every member
+
+([#8884](https://github.com/adcontextprotocol/adcp/pull/8884), rc.0.) `terms_digest` covers the entire `commercial_terms` JSON value: every member at every depth, including `ext` and members a party does not recognize. Several schemas inside `commercial_terms` are open, so the signed bytes can carry members a party's release does not define. Accepting the terms binds the accepting party to every member, so a party that cannot interpret every member MUST NOT accept them.
+
+- **Buyers** decline with the new `decline_proposals` reason `unrecognized_terms`.
+- **Sellers** reject the request that carries such terms, such as a `buy_products` purchase, with the new error code `UNRECOGNIZED_TERMS`.
+- **Governance agents** deny the check through their existing deny path.
+- **Everyone** computes or verifies `terms_digest` over the JSON value as received, never over a re-serialized parsed model, which can drop members the model doesn't declare. A member whose schema defines it as opaque, such as `context`, is interpreted by that definition.
+
+The `media_buy_seller/unrecognized_terms_rejected` storyboard grades the seller side. See [Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently).
 
 ### Advertise only the measurement terms you accept
 
@@ -956,7 +968,7 @@ One earlier deprecation is worth restating before 4.0. The integer request field
 - New experimental scenarios: `media_buy_seller/creative_live_updates` and `media_buy_seller/creative_live_update_refusal`, the `media_buy.execution_readiness` scenario, a gender-targeting conformance storyboard, and a stateful package-retention scenario for canceled and completed buys. The `definition_pin_drift` storyboard, the `definition_pin_probe` controller scenario, and the `definition-pins` vectors are removed with definition pins.
 - New controller scenario and vectors: `reporting_subscription_probe` on `comply_test_controller` (`revoke_grant`, `regrant`, `reduce_grant`, `set_account_timezone`, `advance_time`), and the canonical reporting-subscription coverage vectors with a reference model. Cross-SDK vectors for undisclosed rosters live under `static/test-vectors/product/`.
 - New experimental storyboards in beta.4: `account_requests` (#8677); `media_buy_seller/reporting_subscription_coverage` and `media_buy_seller/reporting_subscription_capacity` (#8680, #8724); `media_buy_seller/hold_policy_bounds`, `hold_policy_terms_only`, `hold_policy_version_gate`, `hold_unavailable_batch`, `hold_extension`, and `hold_ranking` (#8696); and `media_buy_seller/assignment_replace_transfers_settings` (#8695). The runner contract adds the advisory `owed_periods_match`, `instant_offset_within`, and `undefined_properties` checks, and `reset_state` runs before each storyboard when the seller lists it (#8717).
-- `creative/policy_backed_rejections` runs only for sellers that declare the new optional `creative.supports_registry_policy_enforcement` (#8857, rc.0); a creative library alone does not imply it, and a seller that publishes a registry policy in `enforced_policies` still enforces it. `media_buy_seller/declared_format_option_acceptance` is new (#8941, rc.0).
+- `creative/policy_backed_rejections` runs only for sellers that declare the new optional `creative.supports_registry_policy_enforcement` (#8857, rc.0); a creative library alone does not imply it, and a seller that publishes a registry policy in `enforced_policies` still enforces it. `media_buy_seller/declared_format_option_acceptance` (#8941, rc.0) and `media_buy_seller/unrecognized_terms_rejected` (#8884, rc.0) are new.
 - `deterministic_testing` pins its fixtures and controller calls to one sandbox account (#8731, beta.5), and legacy creative fixtures come from a gated, offline test-kit catalog (#8684, beta.5).
 - Hosted service: grading of governance-aware sellers is covered in [AAO Verified](/docs/building/verification/aao-verified).
 
