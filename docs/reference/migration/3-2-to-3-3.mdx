@@ -109,6 +109,10 @@ A seller no longer pins definitions, re-verifies pins at finalize, or fails `acc
 
 [#8246](https://github.com/adcontextprotocol/adcp/pull/8246) merged on 2026-10-24 and shipped in `3.3.0-beta.1` as experimental `media_buy.installment_selection`: `purchases[].installments[]`, and `installment_changes` with `unsatisfied_installment_changes` on `refine_proposals`. All are removed, along with `core/installment-change-set.json` and the `installment_changes` value of `proposal_refinement.supported_dimensions`. A seller that listed the feature id stops listing it. Installments on the canonical product and `holds[]` stay in 3.3. A purchase buys the product as offered, which is its complete installment set when it declares one.
 
+{/* depends on the #8967 PR (number to follow): installment selection through refine_proposals */}
+
+**The request side returns in rc.0.** Experimental `media_buy.installment_refinement` ([#8967](https://github.com/adcontextprotocol/adcp/issues/8967)) brings back `installment_changes` on `refine_proposals` and `unsatisfied_installment_changes` on its result rows, on schemas that are now open. The seller answers a selection with a product whose `installments[]` is exactly the chosen set, so `terms_digest` binds the `product_id` as before and every 3.x buyer reads the purchase the way it already does. `purchases[].installments[]` stays planned for 4.0 ([Adopt by capability](#installment-selection-and-per-installment-creatives-experimental)).
+
 ### Where the designs are kept
 
 The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) and in the merge commits of #7960, #8101, and #8246.
@@ -711,7 +715,16 @@ Optional, two pieces with different stability.
 
 A migration note: a legacy installment that carries only the deprecated `collection_id` cannot be represented on the canonical surface. Add `collection_ref` before declaring 3.3 — a seller that drops such installments from its canonical projection is asserting run-of-collection for a product that actually sells named slots.
 
-**Not in 3.3.** Naming the exact installments a purchase buys, and dropping or swapping one through `refine_proposals`, was merged for 3.3 and is [withdrawn to 4.0](#installment-selection-published-in-beta-1-removed-after-beta-1). A purchase buys the product as offered.
+**Not in the signed purchase.** Naming the exact installments in `purchases[].installments[]` was merged for 3.3 and is [withdrawn to 4.0](#installment-selection-published-in-beta-1-removed-after-beta-1). A purchase buys the product as offered. From rc.0, a buyer chooses installments on the request side instead ([below](#installment-selection-and-per-installment-creatives-experimental)).
+
+### Installment selection and per-installment creatives (experimental)
+
+{/* depends on the #8967 and #8968 PRs (numbers to follow) */}
+
+Optional, two features, each gated on its feature id in `experimental_features`.
+
+- **Installment selection (`media_buy.installment_refinement`, [#8967](https://github.com/adcontextprotocol/adcp/issues/8967)).** A buyer asks for specific installments with `refine_proposals` `installment_changes`: entries of `{ product_id, installment_ref, action }`, unique by `(product_id, installment_ref)`. The seller answers with a revised draft whose purchase references a product that declares exactly the chosen installments, which may be one it derives for the selection, and reports what it can't satisfy in `unsatisfied_installment_changes`. Nothing new goes into `commercial_terms`.
+- **Per-installment creatives (`media_buy.installment_creative_assignment`, [#8968](https://github.com/adcontextprotocol/adcp/issues/8968)).** `installment_refs` on a creative assignment limits it to those installments of the package; absent, it applies to every installment, as before. Each ref must be an installment the package bought, and the installment's `change_cutoff` applies. `get_media_buys` reads the field back on `creative_assignments`.
 
 ### Creative `seller_revision`
 
