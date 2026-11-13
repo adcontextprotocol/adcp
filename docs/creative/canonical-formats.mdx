@@ -490,7 +490,7 @@ Same governance pattern that produced the original 12 canonicals from the v1 aud
 3. **`promotion_status` lifecycle**: the registry entry's `promotion_status` updates from `tracking — see adcp#3666` to `promoted to <format_kind> in <version>; transition ends <date>` when the working group schedules promotion. SDKs MAY read this at codegen / runtime.
 4. **Post-transition**: sellers SHOULD drop the legacy `format_kind: "custom"` declaration. Buyers MAY then assume `format_kind == "custom"` is a long-tail / non-promoted shape.
 
-The producer must project the response to the negotiated protocol version; open-enum parsing in generated SDKs is a resilience recommendation, not permission to send 3.2 kinds in a 3.1 response. Within 3.2, the deprecation warning is the early migration signal during the transition window.
+The producer must project the response to the negotiated protocol version. In a product format declaration, `format_kind` is the discriminator, so open-enum parsing in generated SDKs is a resilience recommendation, not permission to send a declaration with a 3.2 kind in a 3.1 response. Everywhere else, a newer `format_kind` is a new enum value: it is exempt from projection ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)), and clients tolerate it under the [Enums](/docs/reference/versioning#3-x-stability-guarantees) rule. Within 3.2, the deprecation warning is the early migration signal during the transition window.
 
 ## Asset group vocabulary
 
