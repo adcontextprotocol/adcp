@@ -1,5 +1,5 @@
 id: media_buy_seller/governance_agent_binding_acceptance
-version: "1.0.0"
+version: "1.1.0"
 introduced_in: "3.2"
 title: "Seller rejects an unacceptable governance-agent binding"
 category: media_buy_seller
@@ -132,6 +132,14 @@ phases:
             path: "accounts[0].governance_agents"
             description: "A failed response never represents the rejected endpoint as persisted"
 
+  # comply_test_controller is optional for this storyboard. A
+  # missing_test_controller skip cascades prerequisite_failed onto stateful
+  # peers in its phase, so the controller read and the recovery each run in
+  # their own phase that depends only on the account setup.
+  - id: verify_retained_binding
+    title: "Confirm the accepted binding survived the rejection"
+    depends_on: [create_account]
+    steps:
       - id: verify_prior_binding_retained
         title: "Read the binding after the rejected replacement"
         task: comply_test_controller
@@ -157,6 +165,10 @@ phases:
             value: "$context.governance_agent_url"
             description: "The rejected replacement did not erase or replace the accepted binding"
 
+  - id: recover_accepted_binding
+    title: "Retry with the advertised endpoint"
+    depends_on: [create_account]
+    steps:
       - id: resync_accepted_governance_agent
         title: "Retry with the advertised endpoint"
         task: sync_governance
