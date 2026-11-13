@@ -393,6 +393,32 @@
       }
     },
     {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "proposal_refinement": {
+                "properties": {
+                  "supported_dimensions": { "contains": { "const": "installment_changes" } }
+                },
+                "required": ["supported_dimensions"]
+              }
+            },
+            "required": ["proposal_refinement"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.installment_refinement" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
       "description": "Listing media_buy.collection_catalog (list_collections and collection card webhooks) requires media_buy.collection_cards, because the response carries card fields.",
       "if": {
         "properties": {
@@ -1775,6 +1801,16 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "supported_delivery_types": {
+          "x-added-in": "3.3.0",
+          "type": "array",
+          "description": "Delivery types this seller sells across its product portfolio: guaranteed (reserved inventory) and/or non_guaranteed. Buyers can use this for pre-flight filtering before querying individual products. Like every capability declaration, it is a commitment: the products this seller returns carry a delivery_type listed here. When absent, the seller has not declared its delivery types, and buyers treat them as unknown rather than as an empty set. Values come from the product delivery_type enum (guaranteed, non_guaranteed); this is unrelated to the display_tag format parameter of the same name, which lists creative serving modes such as inline_markup.",
+          "items": {
+            "$ref": "/schemas/enums/delivery-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "buying_modes": {
           "type": "array",
           "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
@@ -1814,10 +1850,10 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; installment_changes (experimental, media_buy.installment_refinement) covers installment_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },
@@ -3005,7 +3041,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 365,
-          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
+          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (owner_principal, seller_agent), where owner_principal is the authenticated buyer principal that synchronized the plan, and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
         },
         "supports_budget_periods": {
           "x-added-in": "3.3.0",

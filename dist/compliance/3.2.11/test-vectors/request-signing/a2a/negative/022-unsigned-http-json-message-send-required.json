@@ -1,0 +1,38 @@
+{
+  "name": "Unsigned A2A 1.0 HTTP+JSON POST /message:send carrying create_media_buy; operation is in required_for",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "tier": "contradiction-resolution",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/v1/message:send",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"message\":{\"messageId\":\"msg-a2a-neg-022\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"create_media_buy\",\"input\":{\"idempotency_key\":\"vector-a2a-create-media-buy-0001\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}}}]}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_required",
+    "failed_step": 0,
+    "resolved_operation": "create_media_buy"
+  },
+  "$comment": "The HTTP+JSON binding has no JSON-RPC method, so method-keyed resolution never fires. The same skill resolution applies to the decoded message. The binding path is /message:send or /message:stream."
+}

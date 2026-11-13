@@ -2,7 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/geo-metro.json",
   "title": "Geo Metro",
-  "description": "A targeted metro area.",
+  "description": "A targeted metro area. value_labels are diagnostic only and MUST NOT be used to resolve targeting.",
+  "x-adcp-validation": {
+    "map_keys_subset_of_array": { "map_field": "value_labels", "array_field": "values" },
+    "description": "Every value_labels key MUST also appear in values. JSON Schema draft-07 cannot express this sibling-field key membership constraint, so conformance tooling must enforce it."
+  },
   "type": "object",
   "properties": {
     "system": {
@@ -14,6 +18,14 @@
       "description": "Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)",
       "items": { "type": "string" },
       "minItems": 1
+    },
+    "value_labels": {
+      "type": "object",
+      "description": "Optional human-readable diagnostic labels keyed by codes present in values (e.g., { \"501\": \"New York\" }). Extra keys are a conformance error. Labels are non-authoritative and MUST NOT be used to resolve or apply targeting.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   },
   "required": ["system", "values"],
