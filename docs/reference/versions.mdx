@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Release candidate** | 3.3 (current prerelease: `rc.0`) | `"3.3-rc.0"` | Development and staging only. The first release candidate, after six betas; no published SDK bundles it yet. Follow the [3.3 prerelease program](/docs/reference/3-3-beta). |
+| **Release candidate** | 3.3 (current prerelease: `rc.0`) | `"3.3-rc.0"` | Development and staging only. The first release candidate, after seven betas; no published SDK bundles it yet. Follow the [3.3 prerelease program](/docs/reference/3-3-beta). |
 | **Active** | 3.2 (current stable: 3.2.1) | `"3.2"` | Current production minor release, published 2026-09-30. `3.2.0` was never released. TypeScript `@adcp/sdk@14.0.0` and Python `adcp==8.0.0` ship alongside it and embed it. See [What's new in AdCP 3.2](/docs/reference/whats-new-in-3-2) and the [3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2). |
 | **Maintained** | 3.1 (current stable: 3.1.24) | `"3.1"` | Supported previous minor. Receives security and critical fixes on the `3.1.x` line for a maintainer-decided window. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). |
 | **Maintained** | 3.0 (current stable: 3.0.26) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
@@ -49,11 +49,13 @@ Supported patches don't change stable wire surfaces. Upgrading among supported 3
 
 ### Prereleases
 
+{/* depends on the beta.6 cut (planned 2026-11-13, #8801): confirm the published date */}
 {/* depends on the rc.0 Version Packages cut (planned 2026-11-16): confirm the published date */}
 
 | Version | Released | Notes |
 |---|---|---|
-| **3.3.0-rc.0** | 2026-11-16 | **Current 3.3 prerelease**, the first release candidate. Opens the schemas that were closed by accident (DR-0036) and applies the closed-schema triage, which removes or moves the beta fields on deprecated tasks and on the commercial terms held closed until 4.0. No published SDK bundles it yet. See the [3.3 prerelease program](/docs/reference/3-3-beta). |
+| **3.3.0-rc.0** | 2026-11-16 | **Current 3.3 prerelease**, the first release candidate. Carries beta.6, plus the prerelease pins, unpinned discovery, and anonymous capabilities guidance. No published SDK bundles it yet. See the [3.3 prerelease program](/docs/reference/3-3-beta). |
+| 3.3.0-beta.6 | 2026-11-13 | Superseded. Opens the schemas that were closed by accident (DR-0036) and applies the closed-schema triage, which removes or moves the beta fields on deprecated tasks and on the commercial terms held closed until 4.0. No published SDK embeds it yet. |
 | 3.3.0-beta.5 | 2026-11-07 | Superseded. Experimental match keys, `sales-fixed-rate` promoted to stable, and the bundled Public Suffix List. `@adcp/sdk` 17.0.0-beta.21 and 17.0.0-beta.22 and Python `adcp` 10.0.0b13 and 10.0.0b15 embed it. |
 | 3.3.0-beta.4 | 2026-11-05 | Superseded. Reporting-subscription coverage fixes, assignment `replace` settings transfer, and the hold, account-request, and reporting-subscription storyboards. `@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 embed it. |
 | 3.3.0-beta.0 through beta.3 | 2026-10-22 to 2026-10-31 | Superseded. Beta.0 was the protocol-first input for SDK work; beta.1 to beta.3 added the account identity model, principal-level reporting subscriptions, live creative updates, and the protocol envelope on every response, and beta.2 withdrew definition pins, purchase rights, and installment selection. |
