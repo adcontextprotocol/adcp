@@ -568,6 +568,36 @@ later periods are not created. Install multiple configurations when the buyer ne
 15-minute snapshot pacing feed, daily official analytics, and billing-cycle official
 billing data. Billing feeds require official finality.
 
+A report definition states its own `contract_version`, and the offering pins it
+through `report_definition_uri` and SHA-256. A seller adopts a newer version by
+publishing a definition at that version in an offering, and a buyer chooses it by
+selecting that offering; no capability flag or request field negotiates it.
+Callers pinned below 3.3 validate `contract_version` against `1.0` and `1.1`
+only, so a seller MUST serve them offerings whose definitions are `1.0` or `1.1`;
+a `1.2` offering serves 3.3 callers only.
+
+| `contract_version` | Adds |
+|---|---|
+| `1.0` | The preceding experimental managed-reporting contract. |
+| `1.1` | Immutable official closes: `restatement_policy.official_correction_mode` is `adjustments_only`. |
+| `1.2` (3.3) | Every `1.1` rule, plus a `package_id` dimension on media-buy definitions. |
+
+At `1.2`, a definition whose rows are scoped to a media buy MUST name that
+dimension `media_buy_id`, not a seller-native name, and a definition whose
+`dimensions` include `media_buy_id` MUST include `package_id`, so every row carries
+the buyer-visible package. The offering's `reporting_profile.primary_keys` then
+MUST include `package_id`, so per-package rows stay distinct. A buyer that bills,
+caps, or reconciles per package can then split a buy-level revision without
+guessing. A definition whose rows are not scoped to a media buy (an account-level
+summary, for example) declares no `media_buy_id` and is exempt at every version.
+Definitions at `1.0` and `1.1` keep validating unchanged; graders SHOULD report one
+that includes `media_buy_id` but not `package_id` as an advisory finding. The dimension
+is named `package_id`, matching `media_buy_id`. Reporting subscription selectors
+and offering `standard_dimensions` use the standard vocabulary, where the same
+breakdown is `package`. The
+[report-definition test vectors](/docs/reference/test-vectors) grade each case
+([#8971](https://github.com/adcontextprotocol/adcp/issues/8971)).
+
 `source_timezone` represents an upstream reporting calendar that differs from
 the AdCP account clock—for example an ad server's network timezone. The
 installed schedule always carries its resolved IANA `period_timezone`; an

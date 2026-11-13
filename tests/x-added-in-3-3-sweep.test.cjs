@@ -192,6 +192,9 @@ test('added enum values are noted in the enum description', () => {
   assert.match(video.video_codecs.description, /`mpeg2`, `avc_intra`, and `xavc`.*3\.3/);
   assert.match(video.containers.description, /`mxf`.*3\.3/);
   assert.match(load('core/requirements/video-asset-requirements.json').properties.containers.description, /`3gp`, `mpeg`, and `m4v`.*3\.3/);
+  const definition = load('core/reporting-report-definition.json');
+  assert.match(definition.properties.contract_version.description, /`1\.2`.*3\.3/);
+  assert.equal(definition.allOf.find(branch => branch.if?.properties?.contract_version?.const === '1.2')['x-added-in'], '3.3.0');
 });
 
 test('surfaces shipped in 3.2 are not marked 3.3', () => {
