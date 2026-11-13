@@ -31,6 +31,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 ## Upgrade checklist
 
 {/* depends on #8854 (metric_id, evaluator): row 45 */}
+{/* depends on #8983 (report definition contract_version 1.2): row 55 */}
 
 | Step | Who | Action |
 |---|---|---|
@@ -88,6 +89,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 52 | Buyers, sellers, and governance agents that accept signed terms | Refuse terms carrying a member you cannot interpret (`unrecognized_terms` or `UNRECOGNIZED_TERMS`), and compute `terms_digest` over the bytes as received ([details](#accepting-signed-terms-binds-every-member)). |
 | 53 | Sellers offering Reliable Reporting managed delivery | Hold no caller-issued secret for any pattern; push rows through `reporting_webhook`, and sign every `https_put` request under the Web Bot Auth profile ([details](#reliable-reporting-managed-delivery-holds-no-buyer-secret)). |
 | 54 | Media-buy sellers | Optionally declare `media_buy.supported_delivery_types`, and return only products with a listed `delivery_type` when you do ([#8458](https://github.com/adcontextprotocol/adcp/pull/8458)). |
+| 55 | Sellers publishing Reliable Reporting report definitions | At `contract_version` `1.2`, include `package_id` whenever `dimensions` include `media_buy_id`, and in `reporting_profile.primary_keys`; keep serving `1.0` or `1.1` offerings to callers pinned below 3.3 ([details](#per-package-rows-in-reliable-reporting-report-definitions)). |
 
 ## Withdrawn from 3.3, planned for 4.0
 
@@ -908,6 +910,14 @@ This is a removal on an experimental surface, which the [experimental status](/d
 ([#8793](https://github.com/adcontextprotocol/adcp/pull/8793), rc.0.) Applies to sellers that offer managed delivery under the experimental `media_buy.reporting_delivery`. For every managed pattern, the seller authenticates as itself, through its advertised `producer_identity`. A seller MUST NOT hold, request, or store a caller-issued secret of any kind (password, API key, bearer token, OAuth client secret, private key, signed URL, or shared signing key), directly or through a processor acting for it; the deprecated `reporting_webhook.authentication` block is not precedent. Rows in an HTTP request body are the Core `reporting_webhook` transport, never `file_transfer`.
 
 The new `https_put` `file_transfer` transport (experimental in 3.3) writes immutable objects and a manifest to a buyer HTTPS endpoint. It is conformant only when the manifest is written last, every request is signed by the seller under the Web Bot Auth profile with keys from its origin's key directory, and the endpoint passes a signed probe, carrying the seller-issued `destination_ref`, before `ready`.
+
+### Per-package rows in Reliable Reporting report definitions
+
+{/* depends on #8983: report definition contract_version 1.2 */}
+
+([#8983](https://github.com/adcontextprotocol/adcp/pull/8983), rc.0.) Applies to sellers that publish report definitions under the experimental `media_buy.reporting_delivery`. Report definitions gain `contract_version` `1.2`, which keeps every `1.1` rule. At `1.2`, a definition whose rows are scoped to a media buy names that dimension `media_buy_id`, and a definition whose `dimensions` include `media_buy_id` MUST include `package_id`; the offering's `reporting_profile.primary_keys` then MUST include `package_id`. A definition without `media_buy_id`, such as an account-level summary, is exempt at every version.
+
+Nothing negotiates the version: the definition states it, and the offering pins it through `report_definition_uri` and SHA-256, as for `1.1`. Callers pinned below 3.3 accept only `1.0` and `1.1`, so a seller MUST serve them offerings whose definitions are `1.0` or `1.1`. `1.0` and `1.1` keep validating unchanged; graders SHOULD report one that includes `media_buy_id` but not `package_id` as an advisory finding. Subscription selectors and offering `standard_dimensions` keep calling the breakdown `package`. The vectors are in `test-vectors/reporting-report-definition/`. See [Configuration and capabilities](/docs/media-buy/task-reference/get_reporting_status#configuration-and-capabilities).
 
 ### Superseded reporting snapshots may be compacted
 
