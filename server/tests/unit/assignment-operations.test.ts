@@ -18,6 +18,7 @@ import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import { trackerAllocationProblem } from '../../src/training-agent/assignment-operations.js';
+import { fieldsAddedAfterRelease } from '../../src/training-agent/served-release-fields.js';
 
 const CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'assign-ops.example' }, operator: 'assign-ops.example', sandbox: true };
@@ -84,6 +85,33 @@ describe('sync_creatives assignment_operations', () => {
     const caps = await call(createTrainingAgentServer(CTX), 'get_adcp_capabilities', {});
     expect(caps.creative.supports_assignment_trackers).toBe(true);
     expect(caps.creative.supports_assignment_landing_page).toBe(true);
+  });
+
+  it('lists exactly the assignment operations it accepts, including replace for live updates', async () => {
+    const caps = await call(createTrainingAgentServer(CTX), 'get_adcp_capabilities', {});
+    expect(caps.creative.assignment_operations).toEqual(['assign', 'unassign', 'replace']);
+    expect(caps.creative.live_updates).toBeDefined();
+    expect(caps.creative.supports_assignment_merge).toBeUndefined();
+  });
+
+  it('withholds the list from a 3.2 caller, where the field does not exist', () => {
+    const caps = { creative: { has_creative_library: true, assignment_operations: ['assign', 'unassign', 'replace'] } };
+    const schemaFile = 'protocol/get-adcp-capabilities-response.json';
+    expect(fieldsAddedAfterRelease(caps, schemaFile, '3.2')).toEqual(['/creative/assignment_operations']);
+    expect(fieldsAddedAfterRelease(caps, schemaFile, '3.3-beta.0')).toEqual([]);
+  });
+
+  it('refuses every operation on a creative-only route, which lists none', async () => {
+    const server = createTrainingAgentServer({ ...CTX, tenantId: 'creative' } as TrainingContext);
+    const caps = await call(server, 'get_adcp_capabilities', {});
+    expect(caps.creative?.assignment_operations).toBeUndefined();
+    const { packageId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId }],
+    });
+    expect(result).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'assignment_operations[0].operation' });
   });
 
   it('assigns with trackers and a landing page and reads them back', async () => {
@@ -194,7 +222,8 @@ describe('sync_creatives assignment_operations', () => {
       account: ACCOUNT,
       assignment_operations: [{ operation: 'merge', creative_id: 'a', package_id: packageId, merged_creative_id: 'b' }],
     });
-    expect(merge.code).toBe('UNSUPPORTED_FEATURE');
+    expect(merge).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'assignment_operations[0].operation' });
+    expect(merge.message).toContain('creative.assignment_operations');
     const missingPackage = await call(server, 'sync_creatives', {
       account: ACCOUNT,
       assignment_operations: [{ operation: 'unassign', creative_id: 'a', package_id: 'pkg_nowhere' }],

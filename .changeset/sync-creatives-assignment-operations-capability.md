@@ -1,0 +1,13 @@
+---
+"adcontextprotocol": minor
+---
+
+Sellers declare which `sync_creatives` `assignment_operations` they accept, and a refusal recommends `replace` only where the seller accepts it (adcp#8933). `assign`, `unassign` and `replace` have existed since 3.2 and 3.3 adds `merge`, but only `merge` had a capability flag, so a buyer learned what a seller accepted by being refused. Live creative updates made this matter: `CREATIVE_LIVE_UPDATE_UNSUPPORTED` told buyers to swap in a new creative with a `replace` that the seller might refuse too.
+
+- **`creative.assignment_operations`.** New optional array on `get_adcp_capabilities`, any of `assign`, `unassign`, `replace` and `merge`. The list is exact: the agent accepts every listed operation and rejects any other with `UNSUPPORTED_FEATURE`, applying nothing. Buyers MUST NOT send an operation that is not listed. Absent from a response served at 3.3 or later, the agent accepts none and buyers MUST NOT send `assignment_operations`. A response served at 3.2 cannot carry the field, so there its absence declares nothing.
+- **Live updates require `replace`.** An agent that declares the experimental `creative.live_updates` MUST list `replace`; the schema enforces it. The `CREATIVE_LIVE_UPDATE_UNSUPPORTED` recovery and suggestion name `replace` only when the seller lists it, and otherwise say the change needs a new package or media buy. `error-details/creative-live-update-unsupported.json` and the `CREATIVE_MERGE_REJECTED` recovery are worded the same way.
+- **`merge`.** Listing `merge` requires `has_creative_library: true` and `stable_creative_ids: true`, as `supports_assignment_merge` does. That flag stays for compatibility and SHOULD agree with whether `merge` is listed; where they disagree, the list governs. The `merge` operation's verifier capability gate now names the list.
+- **Suggestions name only what the agent accepts.** `core/error.json` `suggestion`: a suggestion, and the recovery a correctable code documents, SHOULD name only operations and fields the agent declares it accepts or the schema requires it to accept.
+- **Conformance.** `media_buy_seller/assignment_replace_transfers_settings` runs only against sellers that list `assign` and `replace`. The reference training agent lists `assign`, `unassign` and `replace` on its media-buy routes, refuses `merge` and every operation on its creative-only routes, and words its live-update refusal from its own list.
+
+Additive for schemas: a new optional capability field and description changes. Behaviorally, a 3.3 seller that accepts `assignment_operations` must now list them, or 3.3 buyers stop sending them.

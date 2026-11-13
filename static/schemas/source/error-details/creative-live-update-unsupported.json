@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/error-details/creative-live-update-unsupported.json",
   "title": "Creative Live Update Unsupported Details",
-  "description": "Typed details for CREATIVE_LIVE_UPDATE_UNSUPPORTED. Names the kinds of change the seller refused on a live creative and the packages that make it live, so the buyer can sync the change as a new creative_id and replace it on those packages.",
+  "description": "Typed details for CREATIVE_LIVE_UPDATE_UNSUPPORTED. Names the kinds of change the seller refused on a live creative and the packages that make it live, so the buyer can sync the change as a new creative_id and, where the seller lists replace in creative.assignment_operations, replace it on those packages.",
   "type": "object",
   "properties": {
     "refused_changes": {
@@ -16,7 +16,7 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1, "x-entity": "package" },
       "uniqueItems": true,
-      "description": "Packages in the caller's account on which the creative is live. These are the packages on which to replace it."
+      "description": "Packages in the caller's account on which the creative is live. These are the packages on which to replace it, or that a change needing a new package or media buy affects."
     }
   },
   "required": ["refused_changes"],

@@ -246,9 +246,19 @@
     },
     "assignment_operations": {
       "type": "array",
-      "description": "Explicit, ordered assignment mutations. These operations may be sent without creatives to traffic existing creative IDs independently from MediaBuy commercial control. The entire request is atomic under idempotency_key and therefore requires strict validation; lenient partial processing is not permitted. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review.",
+      "description": "Explicit, ordered assignment mutations. These operations may be sent without creatives to traffic existing creative IDs independently from MediaBuy commercial control. The entire request is atomic under idempotency_key and therefore requires strict validation; lenient partial processing is not permitted. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review. Buyers MUST NOT send an operation the seller does not list in get_adcp_capabilities creative.assignment_operations; a seller rejects an unlisted operation with UNSUPPORTED_FEATURE and applies nothing.",
       "minItems": 1,
       "maxItems": 500,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "capability_gate": {
+            "required_capability": "creative.assignment_operations contains each item's operation",
+            "without_capability": "UNSUPPORTED_FEATURE",
+            "error_field": "assignment_operations[i].operation"
+          }
+        },
+        "spec": "docs/creative/task-reference/sync_creatives.mdx#which-operations-a-seller-accepts"
+      },
       "items": {
         "description": "`trackers` and `landing_page_url` belong only to assign: unassign, replace and merge reject them, and merge also rejects `weight`, which a later assign changes. `installment_refs` belongs to assign and replace: unassign and merge reject it.",
         "type": "object",
@@ -367,7 +377,7 @@
           },
           {
             "title": "Merge seller copy",
-            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, placement routing, and installment scope to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires creative.supports_assignment_merge.",
+            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, placement routing, and installment scope to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires merge in creative.assignment_operations.",
             "properties": {
               "operation": { "const": "merge" },
               "creative_id": { "type": "string", "minLength": 1, "description": "Buyer's creative that takes over the assignment. It need not already be assigned to package_id.", "x-entity": "creative" },
@@ -381,7 +391,7 @@
             "x-adcp-validation": {
               "verifier_constraints": {
                 "capability_gate": {
-                  "required_capability": "creative.supports_assignment_merge",
+                  "required_capability": "creative.assignment_operations contains merge",
                   "without_capability": "UNSUPPORTED_FEATURE"
                 },
                 "on_rejection": {

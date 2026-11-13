@@ -59,7 +59,7 @@ import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
-import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem } from './assignment-operations.js';
+import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem, TRAINING_ASSIGNMENT_OPERATIONS } from './assignment-operations.js';
 import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
@@ -18854,7 +18854,11 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             action: 'failed',
             errors: [{
               code: 'CREATIVE_LIVE_UPDATE_UNSUPPORTED',
-              message: `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`,
+              // The recovery names replace only because this seller lists it
+              // in creative.assignment_operations (live_updates requires it).
+              message: acceptedAssignmentOperations(ctx).includes('replace')
+                ? `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`
+                : `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. The change needs a new package or media buy.`,
               field: `creatives[${creativeId}]`,
               recovery: 'correctable',
               details: { refused_changes: decision.refusedChanges, live_package_ids: livePackages },
@@ -19074,6 +19078,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const statusById = new Map(results.filter(result => result.status).map(result => [result.creative_id, result.status as string]));
     const settings = declaresAssignmentSettings(ctx);
     const plan = await planAssignmentOperations(session, assignmentOperations, {
+      acceptedOperations: acceptedAssignmentOperations(ctx),
       supportsTrackers: settings,
       supportsLandingPage: settings,
       requestCreativeIds: accepted,
@@ -19241,6 +19246,15 @@ function assignmentTrackerSlotProblem(
     if (problem) return `${problem} (format option ${label})`;
   }
   return undefined;
+}
+
+/** The sync_creatives assignment_operations this tenant accepts, and lists in
+ * creative.assignment_operations (3.3; the served-release projection withholds
+ * the list below 3.3, where the behavior is unchanged). Only the media-buy
+ * routes (/sales and the /mcp monolith) have packages to assign to; the
+ * creative routes accept none and refuse every operation. */
+function acceptedAssignmentOperations(ctx: TrainingContext): ReadonlyArray<string> {
+  return ctx.tenantId == null || ctx.tenantId === 'sales' ? TRAINING_ASSIGNMENT_OPERATIONS : [];
 }
 
 /** Assignment trackers and landing-page overrides (3.3) ride the same gate:
@@ -21368,6 +21382,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         supports_registry_policy_enforcement: true,
       }),
       ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
+      ...(!isThreeZeroStoryboardCompat(ctx) && acceptedAssignmentOperations(ctx).length > 0 && {
+        assignment_operations: [...acceptedAssignmentOperations(ctx)],
+      }),
       ...(declaresAssignmentSettings(ctx) && {
         supports_assignment_trackers: true,
         supports_assignment_landing_page: true,

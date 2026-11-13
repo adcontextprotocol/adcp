@@ -17,7 +17,21 @@ export interface AssignmentOperationError {
   recovery: 'correctable';
 }
 
+/**
+ * The assignment operations the reference seller accepts, and so lists in
+ * get_adcp_capabilities creative.assignment_operations (3.3). The list is
+ * exact: any other operation is refused with UNSUPPORTED_FEATURE. merge is
+ * not implemented, and replace is listed because creative.live_updates
+ * requires it.
+ */
+export const TRAINING_ASSIGNMENT_OPERATIONS = ['assign', 'unassign', 'replace'] as const;
+
+/** Every operation the protocol defines; anything else is a validation error. */
+const PROTOCOL_ASSIGNMENT_OPERATIONS: ReadonlySet<string> = new Set(['assign', 'unassign', 'replace', 'merge']);
+
 export interface AssignmentOperationOptions {
+  /** Operations this agent lists in creative.assignment_operations. */
+  acceptedOperations: ReadonlyArray<string>;
   supportsTrackers: boolean;
   supportsLandingPage: boolean;
   /** Creative IDs accepted earlier in the same request. */
@@ -90,8 +104,11 @@ export async function planAssignmentOperations(
     const creativeId = op.creative_id as string;
     const packageId = op.package_id as string;
 
-    if (kind === 'merge') {
-      return { errors: [error('UNSUPPORTED_FEATURE', 'This seller does not declare creative.supports_assignment_merge.', `${at}.operation`)] };
+    if (typeof kind === 'string' && PROTOCOL_ASSIGNMENT_OPERATIONS.has(kind) && !options.acceptedOperations.includes(kind)) {
+      const listed = options.acceptedOperations.length > 0
+        ? `It lists ${options.acceptedOperations.join(', ')}.`
+        : 'It accepts no assignment operations.';
+      return { errors: [error('UNSUPPORTED_FEATURE', `This seller does not list ${kind} in creative.assignment_operations. ${listed}`, `${at}.operation`)] };
     }
     if (kind === 'assign' && op.trackers !== undefined && !options.supportsTrackers) {
       return { errors: [error('UNSUPPORTED_FEATURE', 'Assignment trackers require creative.supports_assignment_trackers.', `${at}.trackers`)] };

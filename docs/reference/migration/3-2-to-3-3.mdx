@@ -74,6 +74,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 42 | Buyers and sellers of reporting | Adopt principal-level reporting subscriptions (experimental) and compute coverage from the wire. From beta.4, sellers emit `packages[].added_at` on packages added after confirmation, treat a grant reduced without `get_reporting_status` as a loss of authority, and list `reset_state` with the probe ([details](#reporting-subscriptions-experimental)). |
 | 43 | Sellers that adopt the commercial experiments | Gate [seller offers, price adjustments, execution readiness, gender targeting, signal pricing groups, provider-initiated delivery, and measurement provenance](#commercial-and-targeting-experiments) on the negotiated version and the feature id. |
 | 44 | Sellers that keep package records | Retain packages on canceled and completed buys, and start approved creatives by default when others are pending review ([details](#canceled-and-completed-buys-keep-their-packages)). |
+| 45 | Sellers and buyers of `sync_creatives` `assignment_operations` | Sellers list exactly the operations they accept in `creative.assignment_operations`, and list `replace` if they declare `creative.live_updates`. Buyers send only listed operations ([details](#sellers-declare-the-assignment-operations-they-accept)). |
 
 ## Withdrawn from 3.3, planned for 4.0
 
@@ -448,6 +449,14 @@ Senders still MUST NOT put `aggregated_totals` in a delivery webhook result. Rec
 
 ([#8715](https://github.com/adcontextprotocol/adcp/pull/8715), beta.4.) Assignment tracker-slot limits apply only when the effective format declares at least one tracker slot: a `pixel_tracker` slot, or a canonical `impression_tracker`, `click_tracker`, or `viewability_tracker` slot. A format that declares none, such as canonical `image`, makes no slot-limit claim. Against it, a seller does not reject an assignment tracker for lack of a slot; it fires every accepted tracker or rejects the assignment. Trackers match slots by event: `impression_tracker` takes `impression`, `click_tracker` takes `click`, `viewability_tracker` takes the `viewable_*` events and `audible_video_complete`, and any other `pixel_tracker` slot takes any event. The same rules govern the trackers a `replace` transfers.
 
+### Sellers declare the assignment operations they accept
+
+([#8933](https://github.com/adcontextprotocol/adcp/issues/8933).) `sync_creatives` `assignment_operations` has had `assign`, `unassign`, and `replace` since 3.2, and 3.3 adds `merge`, but nothing said which a seller accepts, so a buyer learned it by being refused. 3.3 adds `creative.assignment_operations` to `get_adcp_capabilities`.
+
+**Sellers.** List exactly the operations you accept, and reject any other with `UNSUPPORTED_FEATURE`, with `error.field` at that operation, applying nothing. If you declare the experimental `creative.live_updates`, you MUST list `replace`, because `CREATIVE_LIVE_UPDATE_UNSUPPORTED` recovers through a `replace`. Name an operation in an error `suggestion` or recovery only when you list it: a refused live change without `replace` needs a new package or media buy. Keep `creative.supports_assignment_merge` in step with whether you list `merge`. A 3.2 response cannot carry the list, so serve it at 3.3 or later only.
+
+**Buyers.** Send only listed operations. When a response served at 3.3 or later lists none, send no `assignment_operations`. Against a seller served at 3.2, the list is unavailable, and `UNSUPPORTED_FEATURE` is the signal. Where `supports_assignment_merge` and the list disagree, the list governs. The `media_buy_seller/assignment_replace_transfers_settings` storyboard now runs only against sellers that list `assign` and `replace`.
+
 ## Brand JSON size cap rises to 2 MiB
 
 The brand.json body cap rises from 256 KiB to 2 MiB (2,097,152 bytes) on every fetch path: the AgenticAdvertising.org registry's live read, and the signing trust-root fetches in [`security.mdx`](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) (rights-holder resolution, designated-task response signing, and `brand_json_url` key discovery). Real brand houses with visual guidelines, colorways, and localized names exceed 256 KiB, so the old cap made them unverifiable. The cap applies to brand.json only. `MAX_JWKS_BYTES` and `MAX_CAPABILITIES_BYTES` are unchanged.
@@ -717,7 +726,7 @@ Optional (`creative.live_updates`, [#8488](https://github.com/adcontextprotocol/
 
 - `list_creatives` and the `sync_creatives` item return `staged_update` while a change awaits promotion; `dry_run` returns the exact outcome of one change. There is no per-creative policy readback: the declaration is the general floor and `dry_run` answers for one change.
 - The new notification type `creative.staged_update_changed` reports a staged update's outcome (`promoted` or `rejected`) only to subscribers that register it. `creative.status_changed` is unchanged, so a buyer on an earlier release never receives an `approved` to `approved` event that its closed validator would reject.
-- A seller that declares the capability refuses an undeclared change with `CREATIVE_LIVE_UPDATE_UNSUPPORTED` (with `error-details/creative-live-update-unsupported.json`) in place of `INVALID_STATE`. A seller that doesn't declare it keeps the original rule: creatives on active, non-paused packages cannot be updated, and the refusal is `INVALID_STATE`.
+- A seller that declares the capability lists `replace` in `creative.assignment_operations` ([details](#sellers-declare-the-assignment-operations-they-accept)) and refuses an undeclared change with `CREATIVE_LIVE_UPDATE_UNSUPPORTED` (with `error-details/creative-live-update-unsupported.json`) in place of `INVALID_STATE`. A seller that doesn't declare it keeps the original rule: creatives on active, non-paused packages cannot be updated, and the refusal is `INVALID_STATE`.
 - `comply_test_controller` `force_creative_status` forces a staged update's review outcome. The storyboards are `media_buy_seller/creative_live_updates` and `media_buy_seller/creative_live_update_refusal`.
 
 See [Live creative updates](/docs/creative/task-reference/sync_creatives#live-creative-updates).
