@@ -630,8 +630,6 @@ Receivers of A2A push notifications and AdCP webhooks SHOULD bound the request b
 
 ## Send only to 3.3 peers
 
-{/* depends on the 3.2.11 release (Version Packages #8942): this section's 3.2.11 mentions */}
-
 Many 3.3 additions sit inside objects that 3.2.10 and earlier publish closed, so a strict validator built from those schemas rejects them. 3.2.11 ([#8864](https://github.com/adcontextprotocol/adcp/pull/8864)) opens the same locations in 3.2, so a validator built from it ignores most of these fields instead, but a 3.2 peer still doesn't understand them. Either way, send a field or value that 3.3 defines only when the negotiated `adcp_version` is 3.3 or later ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md)). The "why" column describes 3.2.10 and earlier. The cases most likely to bite:
 
 | Sender | Field or value | Why a 3.2 peer rejects it |
