@@ -963,8 +963,10 @@ describe('sync_accounts', () => {
 
     const { result } = await simulateCallTool(server, 'sync_accounts', { accounts });
     expect(result).toMatchObject({
-      code: 'LIMIT_EXCEEDED',
+      code: 'VALIDATION_ERROR',
+      field: 'accounts',
       recovery: 'correctable',
+      details: { limit: MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC },
       message: expect.stringContaining(
         `At most ${MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC}`,
       ),

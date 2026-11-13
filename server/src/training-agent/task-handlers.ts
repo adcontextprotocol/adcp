@@ -58,7 +58,7 @@ import { packageReportingOfferingIds } from './package-reporting-offerings.js';
 import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
-import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
+import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, TERMINAL_MEDIA_BUY_STATUSES, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
 import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem } from './assignment-operations.js';
 import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
@@ -3258,7 +3258,7 @@ import {
   runWithSessionContext, flushDirtySessions, evictSessionFromRequestCache,
   getComplianceCreatives, getComplianceCreative,
   getComplianceMediaBuys, getComplianceMediaBuy,
-  MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
+  MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION, SESSION_RETENTION_MS,
 } from './state.js';
 import { getAgentUrl, getIdentityBaseUrl } from './config.js';
 import {
@@ -3414,8 +3414,9 @@ export function acceptancePolicyDiscoveryCapability(
     default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
   };
 }
-const MAX_PACKAGES_PER_BUY = 50;
+export const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
+const MS_PER_HOUR = 60 * 60 * 1000;
 
 interface VersionUnsupportedDetails {
   adcp_version?: string;
@@ -12012,8 +12013,8 @@ async function handleGetProductsUnlocked(
   if (discoveryTargeting.capacityDrops > 0) {
     return {
       errors: [{
-        code: 'LIMIT_EXCEEDED',
-        message: `Configured-product session limit reached (max ${MAX_CONFIGURED_PRODUCTS_PER_SESSION}); ${discoveryTargeting.capacityDrops} matching product(s) could not be configured. Start a new session or retry after prior offers expire.`,
+        code: 'INVALID_STATE',
+        message: `Configured-product limit reached (max ${MAX_CONFIGURED_PRODUCTS_PER_SESSION} per account); ${discoveryTargeting.capacityDrops} matching product(s) could not be configured. Request fewer products, or retry once earlier configured offers pass their expires_at and no stored media buy (canceled ones included) or open proposal uses them.`,
         field: 'targeting_overlay',
         recovery: 'correctable',
         details: {
@@ -15747,6 +15748,48 @@ function viewableRateGoalError(
   return undefined;
 }
 
+type MediaBuySlot = { ok: true; evictions: string[] } | { ok: false; liveCount: number };
+
+/** A buy holds a slot exactly when get_media_buys reports it in a live status. */
+function isTerminalMediaBuy(mb: MediaBuyState, session: SessionState, servedAdcpVersion?: string): boolean {
+  return TERMINAL_MEDIA_BUY_STATUSES.has(deriveStatus(mb, session, servedAdcpVersion));
+}
+
+/**
+ * Find room for one more buy. Only live buys count toward
+ * MAX_MEDIA_BUYS_PER_SESSION; terminal buys are dropped least recently
+ * updated first, so a buyer recovers by canceling buys while the stored total
+ * (and the persisted session size) stays bounded.
+ */
+function reserveMediaBuySlot(session: SessionState, servedAdcpVersion?: string): MediaBuySlot {
+  const overflow = session.mediaBuys.size - MAX_MEDIA_BUYS_PER_SESSION + 1;
+  if (overflow <= 0) return { ok: true, evictions: [] };
+  const lastUpdatedMs = (mb: MediaBuyState) => Date.parse(mb.updatedAt) || 0;
+  const terminal = [...session.mediaBuys.values()]
+    .filter(mb => isTerminalMediaBuy(mb, session, servedAdcpVersion))
+    .sort((a, b) => lastUpdatedMs(a) - lastUpdatedMs(b));
+  if (terminal.length < overflow) {
+    return { ok: false, liveCount: session.mediaBuys.size - terminal.length };
+  }
+  return { ok: true, evictions: terminal.slice(0, overflow).map(mb => mb.mediaBuyId) };
+}
+
+function mediaBuyLimitError(liveCount: number): TaskError {
+  return {
+    code: 'INVALID_STATE',
+    message: `Media buy limit reached: ${liveCount} media buys on this account are not canceled, completed or rejected (max ${MAX_MEDIA_BUYS_PER_SESSION}). Cancel buys you no longer need (canceled: true on update_media_buy or control_media_buy), then retry. Canceled, completed and rejected buys do not count toward the limit.`,
+    recovery: 'correctable',
+    details: { limit: MAX_MEDIA_BUYS_PER_SESSION, current: liveCount },
+  };
+}
+
+/** Drop a terminal buy together with the controller simulations keyed by its id. */
+function evictMediaBuy(session: SessionState, mediaBuyId: string): void {
+  session.mediaBuys.delete(mediaBuyId);
+  session.complyExtensions.deliverySimulations.delete(mediaBuyId);
+  session.complyExtensions.budgetSimulations.delete(mediaBuyId);
+}
+
 export async function handleCreateMediaBuy(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -16630,14 +16673,19 @@ async function handleCreateMediaBuyUnlocked(
 
   if (req.packages.length > MAX_PACKAGES_PER_BUY) {
     return {
-      errors: [{ code: 'LIMIT_EXCEEDED', message: `Too many packages: ${req.packages.length} (max ${MAX_PACKAGES_PER_BUY}).` }] as TaskError[],
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `Too many packages: ${req.packages.length} (max ${MAX_PACKAGES_PER_BUY} per media buy). Split the packages across several media buys.`,
+        field: 'packages',
+        recovery: 'correctable',
+        details: { limit: MAX_PACKAGES_PER_BUY },
+      }] as TaskError[],
     };
   }
 
-  if (session.mediaBuys.size >= MAX_MEDIA_BUYS_PER_SESSION) {
-    return {
-      errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
-    };
+  const mediaBuySlot = reserveMediaBuySlot(session, lifecycleSplitVersionForContext(ctx));
+  if (!mediaBuySlot.ok) {
+    return { errors: [mediaBuyLimitError(mediaBuySlot.liveCount)] };
   }
 
   // Validate dates
@@ -17347,6 +17395,11 @@ async function handleCreateMediaBuyUnlocked(
     }
   }
   if (holdSession) holdSession.complyExtensions.forcedMediaBuyHold = undefined;
+  // Evict only once the buy is certain to persist, and after its packages were
+  // numbered, so a refused request changes nothing and package ids never repeat.
+  if (!session.mediaBuys.has(mediaBuyId)) {
+    for (const evictedId of mediaBuySlot.evictions) evictMediaBuy(session, evictedId);
+  }
   session.mediaBuys.set(mediaBuyId, mediaBuy);
   await captureMediaBuyReportingState(
     ctx,
@@ -18604,9 +18657,21 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
   }
 
-  if (!isDryRun && session.creatives.size + (req.creatives?.length ?? 0) > MAX_CREATIVES_PER_SESSION) {
+  // Re-syncing a stored creative_id updates it in place, so only new ids
+  // take a slot.
+  const newCreativeIds = new Set((req.creatives ?? [])
+    .map(creative => creative.creative_id)
+    .filter(creativeId => typeof creativeId === 'string' && !session.creatives.has(creativeId)));
+  // Inline creatives and controller seeding can leave more than the limit
+  // stored; a request that adds nothing is still accepted.
+  if (!isDryRun && newCreativeIds.size > 0 && session.creatives.size + newCreativeIds.size > MAX_CREATIVES_PER_SESSION) {
     return {
-      errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
+      errors: [{
+        code: 'INVALID_STATE',
+        message: `Creative limit reached: this account holds ${session.creatives.size} creatives and the request adds ${newCreativeIds.size} new creative_id(s) (max ${MAX_CREATIVES_PER_SESSION}). Re-sync an existing creative_id to update it; updates do not count toward the limit.`,
+        recovery: 'correctable',
+        details: { limit: MAX_CREATIVES_PER_SESSION, current: session.creatives.size },
+      }] as TaskError[],
     };
   }
 
@@ -20595,7 +20660,13 @@ async function handleUpdateMediaBuyUnlocked(
     const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
     if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
       return {
-        errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}; this media buy already has ${mb.packages.length}, canceled packages included. Add the packages to another media buy instead.`,
+          field: 'new_packages',
+          recovery: 'correctable',
+          details: { limit: MAX_PACKAGES_PER_BUY, current: mb.packages.length },
+        }] as TaskError[],
       };
     }
     // Number new packages after every pkg-N in the account, including this
@@ -23231,6 +23302,49 @@ function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | und
   return null;
 }
 
+/** Usage-record room for one account touched by a report_usage batch. */
+interface UsageAccountRoom {
+  account: ReportUsageArgs['usage'][number]['account'];
+  current: number;
+  remaining: number;
+  requested: number;
+}
+
+function usageLimitMessage(overLimit: UsageAccountRoom[], everyAccountFull: boolean): string {
+  const expiry = `${SESSION_RETENTION_MS / MS_PER_HOUR} hours without any change`;
+  const [only] = overLimit;
+  if (everyAccountFull && overLimit.length === 1) {
+    return `Usage record limit reached: an account in this report already stores ${only.current} usage records (max ${MAX_USAGE_RECORDS_PER_SESSION}). The sandbox keeps every accepted record, so it cannot store more for that account until its sandbox session expires after ${expiry}.`;
+  }
+  if (everyAccountFull) {
+    return `Usage record limit reached: every account in this report is full (max ${MAX_USAGE_RECORDS_PER_SESSION} usage records each). The sandbox keeps every accepted record, so it cannot store more for these accounts until their sandbox sessions expire after ${expiry}.`;
+  }
+  if (overLimit.length === 1) {
+    const fix = only.remaining === 0 ? 'Leave that account out of the report' : 'Send at most that many records for it';
+    return `Usage record limit: an account in this report already stores ${only.current} usage records (max ${MAX_USAGE_RECORDS_PER_SESSION}) and can accept ${only.remaining} more. ${fix}; accepted records are never removed.`;
+  }
+  return `Usage record limit: ${overLimit.length} accounts in this report would exceed ${MAX_USAGE_RECORDS_PER_SESSION} stored usage records. details.accounts gives each one's remaining room; send at most that many records per account (leave out accounts with 0) and resend. Accepted records are never removed.`;
+}
+
+/**
+ * Accepted usage records are never removed (the cumulative vendor_cost check
+ * reads them). The refusal is terminal only when every account in the batch is
+ * full, since then no change to the request can store anything until the
+ * sessions expire; otherwise dropping or trimming records makes it fit.
+ */
+function usageRecordLimitError(overLimit: UsageAccountRoom[], everyAccountFull: boolean): TaskError {
+  return {
+    code: 'INVALID_STATE',
+    message: usageLimitMessage(overLimit, everyAccountFull),
+    recovery: everyAccountFull ? 'terminal' : 'correctable',
+    details: {
+      limit: MAX_USAGE_RECORDS_PER_SESSION,
+      ...(overLimit.length === 1 && { current: overLimit[0].current }),
+      accounts: overLimit,
+    },
+  };
+}
+
 export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
 
@@ -23260,14 +23374,22 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     }
     return sessionPromise;
   }));
-  const incomingBySession = new Map<import('./types.js').SessionState, number>();
-  for (const session of usageSessions) {
-    incomingBySession.set(session, (incomingBySession.get(session) ?? 0) + 1);
-  }
-  if ([...incomingBySession].some(([session, incoming]) => (
-    session.usageRecords.length + incoming > MAX_USAGE_RECORDS_PER_SESSION
-  ))) {
-    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Usage record limit (${MAX_USAGE_RECORDS_PER_SESSION}) would be exceeded for at least one account.` }] };
+  const roomBySession = new Map<import('./types.js').SessionState, UsageAccountRoom>();
+  req.usage.forEach((record, index) => {
+    const session = usageSessions[index];
+    const room = roomBySession.get(session) ?? {
+      account: record.account,
+      current: session.usageRecords.length,
+      remaining: Math.max(0, MAX_USAGE_RECORDS_PER_SESSION - session.usageRecords.length),
+      requested: 0,
+    };
+    room.requested += 1;
+    roomBySession.set(session, room);
+  });
+  const rooms = [...roomBySession.values()];
+  const overLimit = rooms.filter(room => room.requested > room.remaining);
+  if (overLimit.length > 0) {
+    return { errors: [usageRecordLimitError(overLimit, rooms.every(room => room.remaining === 0))] };
   }
 
   let accepted = 0;

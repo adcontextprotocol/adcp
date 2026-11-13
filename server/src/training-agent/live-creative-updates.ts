@@ -5,7 +5,7 @@
  * Spec: docs/creative/task-reference/sync_creatives.mdx#live-creative-updates
  */
 import { isDeepStrictEqual } from 'node:util';
-import type { CreativeState, MediaBuyState, SessionState } from './types.js';
+import { TERMINAL_MEDIA_BUY_STATUSES, type CreativeState, type MediaBuyState, type SessionState } from './types.js';
 
 export type CreativeChangeKind = 'click_through' | 'trackers' | 'asset_content' | 'format';
 export type LiveUpdateServingMode = 'uninterrupted' | 'staged' | 'paused_for_review';
@@ -55,8 +55,6 @@ export interface StagedCreativeUpdate {
   rejectionReason?: string;
   content: StagedCreativeContent;
 }
-
-const TERMINAL_MEDIA_BUY_STATUSES = new Set(['completed', 'rejected', 'canceled']);
 
 /** A buy is open unless canceled (recorded as canceledAt), rejected,
  * completed, or past its flight. Mirrors deriveStatus's terminal states. */

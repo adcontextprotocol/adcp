@@ -194,7 +194,14 @@ export async function handleCreateContentStandards(
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (session.contentStandards.size >= MAX_CONTENT_STANDARDS_PER_SESSION) {
-    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CONTENT_STANDARDS_PER_SESSION} content standards).` }] };
+    return {
+      errors: [{
+        code: 'INVALID_STATE',
+        message: `Content standards limit reached: this account holds ${session.contentStandards.size} content standards configurations (max ${MAX_CONTENT_STANDARDS_PER_SESSION}). Update an existing configuration with update_content_standards instead of creating a new one.`,
+        recovery: 'correctable',
+        details: { limit: MAX_CONTENT_STANDARDS_PER_SESSION, current: session.contentStandards.size },
+      }],
+    };
   }
 
   const now = new Date().toISOString();

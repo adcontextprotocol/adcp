@@ -1863,9 +1863,11 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
   if (!req.dry_run && proofCandidateCount > MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC) {
     return {
       errors: [{
-        code: 'LIMIT_EXCEEDED',
+        code: 'VALIDATION_ERROR',
         message: `At most ${MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC} active webhook registrations may be submitted per sync_accounts call; split larger activations across calls.`,
+        field: 'accounts',
         recovery: 'correctable',
+        details: { limit: MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC },
       }],
     };
   }
