@@ -7,10 +7,11 @@ description: "Adopter overview of the AdCP 3.3 release candidate: scheduled, hum
 
 # What's new in AdCP 3.3
 
+{/* depends on the beta.6 cut (planned 2026-11-13, #8801): confirm the published date */}
 {/* depends on the rc.0 Version Packages cut (planned 2026-11-16): confirm the published date */}
 
 <Warning>
-**3.3 is at its first release candidate.** The latest checkpoint is `3.3.0-rc.0`, published 2026-11-16, after six betas. A prerelease is SDK-backed only after SDK support for its exact bundle is published. Use the release candidate in development and staging, and read the [3.3 prerelease program](/docs/reference/3-3-beta) before testing. This page lists only what has merged; it is refreshed at each prerelease cut.
+**3.3 is at its first release candidate.** The latest checkpoint is `3.3.0-rc.0`, published 2026-11-16, after seven betas. A prerelease is SDK-backed only after SDK support for its exact bundle is published. Use the release candidate in development and staging, and read the [3.3 prerelease program](/docs/reference/3-3-beta) before testing. This page lists only what has merged; it is refreshed at each prerelease cut.
 
 **Three features that shipped in the betas are withdrawn after beta.1: definition pins (beta.0 and beta.1), purchase rights, and installment selection (both beta.1).** All three wait for 4.0, because `commercial-terms` stays closed within 3.x ([details](#withdrawn-from-3-3-planned-for-4-0)). **The closed-schema triage removes further beta fields at rc.0**, mostly 3.3 additions to deprecated tasks ([details](#new-in-rc-0)).
 </Warning>
@@ -25,7 +26,7 @@ No stable field, enum value, or task is removed. Two result fields, one usage, t
 
 {/* depends on #8854 */}
 
-rc.0 (2026-11-16) is the first release candidate. Its main changes since beta.5 open the schemas that were closed by accident and settle which beta features stay in 3.3.
+rc.0 (2026-11-16) is the first release candidate. Its main changes since beta.5 open the schemas that were closed by accident and settle which beta features stay in 3.3. Everything in this section first shipped in `3.3.0-beta.6` (2026-11-13), cut for SDK testing ahead of rc.0, except the guidance on prerelease pins, unpinned discovery, and anonymous capabilities, which is new in rc.0.
 
 **Schemas are open by default ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), decided 2026-11-09).** Closing a schema only breaks validators that hard-code it, so 3.x opens the schemas that were meant to be open: 744 of the 859 closed locations in the 3.3 schemas. 115 stay closed. Most have a structural reason, such as unions told apart by key presence, join keys, privacy clamps, and `trust.json`. The nodes inside `commercial_terms`, with `proposal-budget-constraint`, are held closed until 4.0.
 - Every payload that was valid stays valid. Where closure also rejected a specific field, the opened schema rejects it by name.

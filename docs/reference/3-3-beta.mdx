@@ -15,9 +15,10 @@ description: "Where the AdCP 3.3 prerelease stands at the first release candidat
 
 ## Prerelease status
 
+{/* depends on the beta.6 cut (planned 2026-11-13, #8801): confirm the published date */}
 {/* depends on the rc.0 Version Packages cut (planned 2026-11-16): confirm the published date */}
 
-The latest checkpoint is **`3.3.0-rc.0`, the first release candidate, published 2026-11-16**. It follows six betas, the last of them `3.3.0-beta.5` (2026-11-07). Each prerelease is an immutable, signed checkpoint. Between beta.5 and rc.0, 3.3 opened the schemas that were closed by accident, and the closed-schema triage settled which beta features stay in 3.3 and which leave ([below](#closed-schema-triage-before-rc-0)).
+The latest checkpoint is **`3.3.0-rc.0`, the first release candidate, published 2026-11-16**. It follows seven betas, the last of them `3.3.0-beta.6` (2026-11-13). Each prerelease is an immutable, signed checkpoint. In beta.6, 3.3 opened the schemas that were closed by accident, and the closed-schema triage settled which beta features stay in 3.3 and which leave ([below](#closed-schema-triage-before-rc-0)).
 
 GA follows the first release candidate that meets every one of the GA criteria in [#8600](https://github.com/adcontextprotocol/adcp/issues/8600): SDK support for the latest prerelease, green storyboards, the closed-schema triage ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)), no open objections on consent items and decision records, and current release docs. The criteria stand as written: their consent closed on 2026-11-07 with no objections. The target for GA is the week of 2026-11-30, or the week of 2026-11-23 if every criterion passes first time. A later release candidate follows rc.0 if a correction needs adopter action.
 
@@ -28,23 +29,24 @@ GA follows the first release candidate that meets every one of the GA criteria i
 | `3.3.0-beta.2` | 2026-10-30 | Account change outcomes, seller offers, measurement provenance, structural capability bounds, the principal clarification, reporting-subscription convergence, and the withdrawal of definition pins, purchase rights, and installment selection | The same teams, against the withdrawn surfaces removed |
 | `3.3.0-beta.3` | 2026-10-31 | Live creative updates, the protocol envelope on every task response, money terms on resolved account requests, revocation as no access, and reporting-subscription coverage computable from the wire | The same teams |
 | `3.3.0-beta.4` | 2026-11-05 | Reporting-subscription coverage fixes (per-package `added_at`, a reduced grant as a loss of authority) and the probe reset, `replace` that transfers assignment settings, tracker-slot limits only where a format declares slots, `BUDGET_TOO_LOW` details, `creative.supports_provenance`, `opportunity` on explicit-package buys, undefined-property reporting, and the hold, account-request, and reporting-subscription storyboards | The same teams, and SDK maintainers adopting the two coverage rule changes |
-| `3.3.0-beta.5` | 2026-11-07 | Experimental match keys for cross-publisher frequency capping, `sales-fixed-rate` promoted to stable, and the bundled Public Suffix List (DR-0037) | Pinned adopters comparing beta.5 and rc.0 behavior |
-| `3.3.0-rc.0` | 2026-11-16 | First release candidate: schemas open by default (DR-0036), the closed-schema triage, and the versioning rules for what changes between releases | Every team that tested a beta, SDK maintainers ingesting the bundle, and raw-wire implementers; this is the checkpoint the docs describe |
+| `3.3.0-beta.5` | 2026-11-07 | Experimental match keys for cross-publisher frequency capping, `sales-fixed-rate` promoted to stable, and the bundled Public Suffix List (DR-0037) | Pinned adopters comparing beta.5 with beta.6 and rc.0 |
+| `3.3.0-beta.6` | 2026-11-13 | Schemas open by default (DR-0036), the closed-schema triage, the versioning rules for what changes between releases, and every other change merged since beta.5 | SDK maintainers and adopters testing ahead of rc.0 |
+| `3.3.0-rc.0` | 2026-11-16 | First release candidate: everything in beta.6, plus the prerelease pins, unpinned discovery, and anonymous capabilities guidance | Every team that tested a beta, SDK maintainers ingesting the bundle, and raw-wire implementers; this is the checkpoint the docs describe |
 
 Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1), and the [closed-schema triage](#closed-schema-triage-before-rc-0) removes further beta fields before rc.0.
 
-`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 and 17.0.0-beta.22 and Python `adcp` 10.0.0b13 and 10.0.0b15 support beta.5. No published SDK supports rc.0 yet: rc.0 is SDK-backed once new SDK prereleases bundle it ([SDK guidance](#sdk-guidance)).
+`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 and 17.0.0-beta.22 and Python `adcp` 10.0.0b13 and 10.0.0b15 support beta.5. No published SDK supports beta.6 or rc.0 yet: rc.0 is SDK-backed once new SDK prereleases bundle it ([SDK guidance](#sdk-guidance)).
 
 ## Know which version string to use
 
 The artifact version, wire pin, and documentation selector are related but not interchangeable:
 
-| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 | rc.0 |
-|---|---|---|---|---|---|---|---|
-| Protocol artifact | `3.3.0-beta.0` | `3.3.0-beta.1` | `3.3.0-beta.2` | `3.3.0-beta.3` | `3.3.0-beta.4` | `3.3.0-beta.5` | `3.3.0-rc.0` |
-| Git tag | `v3.3.0-beta.0` | `v3.3.0-beta.1` | `v3.3.0-beta.2` | `v3.3.0-beta.3` | `v3.3.0-beta.4` | `v3.3.0-beta.5` | `v3.3.0-rc.0` |
-| `adcp_version` wire pin | `"3.3-beta.0"` | `"3.3-beta.1"` | `"3.3-beta.2"` | `"3.3-beta.3"` | `"3.3-beta.4"` | `"3.3-beta.5"` | `"3.3-rc.0"` |
-| Documentation selector | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-rc` |
+| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 | beta.6 | rc.0 |
+|---|---|---|---|---|---|---|---|---|
+| Protocol artifact | `3.3.0-beta.0` | `3.3.0-beta.1` | `3.3.0-beta.2` | `3.3.0-beta.3` | `3.3.0-beta.4` | `3.3.0-beta.5` | `3.3.0-beta.6` | `3.3.0-rc.0` |
+| Git tag | `v3.3.0-beta.0` | `v3.3.0-beta.1` | `v3.3.0-beta.2` | `v3.3.0-beta.3` | `v3.3.0-beta.4` | `v3.3.0-beta.5` | `v3.3.0-beta.6` | `v3.3.0-rc.0` |
+| `adcp_version` wire pin | `"3.3-beta.0"` | `"3.3-beta.1"` | `"3.3-beta.2"` | `"3.3-beta.3"` | `"3.3-beta.4"` | `"3.3-beta.5"` | `"3.3-beta.6"` | `"3.3-rc.0"` |
+| Documentation selector | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-rc` |
 
 A buyer MUST send a prerelease wire pin only to a peer that advertises that exact value in `get_adcp_capabilities.adcp.supported_versions`. Prerelease pins are exact and never negotiate down: a peer that doesn't list `"3.3-beta.5"` answers a request pinned to it with `VERSION_UNSUPPORTED`, never with rc.0 or 3.2, and a stable `"3.2"` pin never resolves onto a prerelease. Send the discovery `get_adcp_capabilities` call without a pin (SHOULD), and on `VERSION_UNSUPPORTED` retry without a pin or at a value from `supported_versions` (SHOULD). See [Pre-release pins](/docs/reference/versioning#pre-release-pins). The `3.3-beta` documentation selector stays at beta.5, and `3.3-rc` advances with each release candidate.
 
