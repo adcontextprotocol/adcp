@@ -7,7 +7,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { CreativeState, MediaBuyState, SessionState } from './types.js';
 
-export type CreativeChangeKind = 'click_through' | 'trackers' | 'asset_content' | 'format';
+export type CreativeChangeKind = 'clickthrough' | 'trackers' | 'asset_content' | 'format';
 export type LiveUpdateServingMode = 'uninterrupted' | 'staged' | 'paused_for_review';
 
 export interface LiveUpdatePolicyEntry {
@@ -23,7 +23,7 @@ export interface LiveUpdatePolicyEntry {
  * and cannot change a trafficked creative's format.
  */
 export const TRAINING_LIVE_UPDATE_POLICY: readonly LiveUpdatePolicyEntry[] = [
-  { change: 'click_through', serving: 'uninterrupted' },
+  { change: 'clickthrough', serving: 'uninterrupted' },
   { change: 'trackers', serving: 'uninterrupted' },
   { change: 'asset_content', serving: 'staged', on_rejection: 'keeps_prior' },
 ];
@@ -65,7 +65,7 @@ export function isOpenMediaBuy(mb: MediaBuyState, now: Date = new Date()): boole
   const end = Date.parse(mb.endTime);
   return !(Number.isFinite(end) && end <= now.getTime());
 }
-const KIND_ORDER: readonly CreativeChangeKind[] = ['click_through', 'trackers', 'asset_content', 'format'];
+const KIND_ORDER: readonly CreativeChangeKind[] = ['clickthrough', 'trackers', 'asset_content', 'format'];
 const MODE_ORDER: readonly LiveUpdateServingMode[] = ['uninterrupted', 'staged', 'paused_for_review'];
 const TRACKER_ASSET_TYPES = new Set(['pixel_tracker', 'vast_tracker', 'daast_tracker']);
 
@@ -98,7 +98,7 @@ function assetKinds(value: unknown): CreativeChangeKind[] {
   if (!value || typeof value !== 'object') return ['asset_content'];
   const asset = value as Record<string, unknown>;
   if (asset.asset_type === 'url') {
-    if (asset.url_type === 'clickthrough') return ['click_through'];
+    if (asset.url_type === 'clickthrough') return ['clickthrough'];
     if (asset.url_type === 'tracker_pixel' || asset.url_type === 'tracker_script') return ['trackers'];
     return ['asset_content'];
   }
