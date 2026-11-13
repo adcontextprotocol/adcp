@@ -294,14 +294,10 @@ Buyers MUST NOT send `installment_refs` unless the seller lists `media_buy.insta
 - **Changing the scope.** A supplied `installment_refs` replaces the assignment's installment scope, and omitting it on an `assign` upsert keeps the scope. To return an assignment to every installment, use the atomic `unassign`/`assign` [reset recipe](#assignment-landing-pages) without the field. A `replace` carries the replaced assignment's scope over unless it supplies its own. `unassign` and `merge` reject `installment_refs`: an `unassign` removes the creative from every installment it applied to, so to drop one installment, `assign` the remaining ones.
 - **Readback.** Sellers that list the feature return `installment_refs` on every assignment that has a scope, in [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `packages[].creative_approvals[]` and [`list_creatives`](/docs/creative/task-reference/list_creatives) `assignments.assigned_packages[]`. They omit it when the assignment applies to every installment.
 
-This request gives each post of a two-post creator package its own creative: the awareness brief for the first post and the offer, with its discount code, for the second.
-
-{/* Using latest because installment_refs is not yet released in any version.
-     Update to correct version alias after the next release. */}
+This request gives each post of a two-post creator package its own creative: the awareness brief for the first post and the offer, with its discount code, for the second. It uses the unreleased experimental `installment_refs`; the installment creative assignment tests validate it against the source schema.
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json",
   "account": { "account_id": "acct_acme" },
   "idempotency_key": "juniper-vale-posts-0001",
   "assignment_operations": [

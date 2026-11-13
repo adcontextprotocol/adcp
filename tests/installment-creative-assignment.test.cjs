@@ -84,11 +84,20 @@ test('assign and replace accept installment_refs, and accept their absence', asy
     assert.equal(validate(request({ ...operation, installment_refs: [slot(1), slot(2)], placement_ids: ['post'] })), true,
       JSON.stringify(validate.errors));
   }
-  // Two posts, two creatives: the creator example in sync_creatives.mdx.
-  assert.equal(validate({ ...requestBase, assignment_operations: [
-    { operation: 'assign', creative_id: 'juniper_awareness_brief', package_id: 'pkg_juniper_vale', installment_refs: [slot(1)] },
-    { operation: 'assign', creative_id: 'juniper_offer_brief', package_id: 'pkg_juniper_vale', installment_refs: [slot(2)] }
-  ] }), true, JSON.stringify(validate.errors));
+});
+
+test('the sync_creatives creator example validates against the source schema', async () => {
+  // The example carries no $schema: sync-creatives-request.json is released in v3,
+  // which lacks installment_refs, so this test is its validator.
+  const doc = fs.readFileSync(path.join(ROOT, 'docs/creative/task-reference/sync_creatives.mdx'), 'utf8');
+  const section = doc.slice(doc.indexOf('### Assigning to specific installments (experimental)'));
+  const block = section.match(/```json\n([\s\S]*?)\n```/);
+  assert.ok(block, 'the section carries a JSON example');
+  const example = JSON.parse(block[1]);
+  assert.deepEqual(example.assignment_operations.map(op => op.installment_refs.map(ref => ref.installment_id)),
+    [['juniper_vale_slot_1'], ['juniper_vale_slot_2']]);
+  const validate = await compile('creative/sync-creatives-request.json');
+  assert.equal(validate(example), true, JSON.stringify(validate.errors));
 });
 
 test('installment_refs are unique, nonempty, bounded canonical refs', async () => {
