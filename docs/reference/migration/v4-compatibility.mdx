@@ -261,6 +261,25 @@ In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/doc
 
 **Until then:** return a priced option per configured product. **What 4.0 needs:** the table on the canonical pricing option, and a rule for how `terms_digest` binds the table an accepted `pricing_option_id` names.
 
+<a id="performance_standard_metric_id_required_in_4_0"></a>
+### Performance standards name the vendor metric
+
+**Check id:** `performance_standard_metric_id_required_in_4_0` · **Change:** new requirement · **Issue:** [#8394](https://github.com/adcontextprotocol/adcp/issues/8394)
+
+**What it was:** an optional `metric_id` on `core/performance-standard.json`, `core/canonical-performance-standard.json`, and the `required_performance_standards` entries of `core/product-offer-filters.json`. It named which of the vendor's metrics an `ivt`, `brand_safety`, or `attention_score` standard is judged against ([#8436](https://github.com/adcontextprotocol/adcp/pull/8436)). It shipped in `3.3.0-beta.1` through `3.3.0-beta.5` and is withdrawn after beta.5 ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). The canonical standard is part of the purchase terms that `terms_digest` signs, and `metric_id` changes which vendor value decides it. The digest proves the bytes didn't change, but a 3.2 buyer would still read the same signed standard differently.
+
+**Design to keep:**
+
+- With `metric_id`, only `vendor_metric_values[]` entries with the same vendor and `metric_id` are evidence. When several rows differ only by `qualifier`, the package's vendor-scope `committed_metrics` qualifier selects one; if that doesn't leave exactly one row, the standard is not judged.
+- The named metric is a 0–1 fraction that runs the same way as `metric`, judged as reported. A value outside 0–1 is not evidence and is never converted.
+- Only `ivt`, `brand_safety`, and `attention_score` take it. `viewability` and `completion_rate` are judged against their delivery scalars.
+- Without `metric_id` on those three metrics, parties don't infer one, and the standard is not judged from `vendor_metric_values`.
+- On `required_performance_standards`, `metric_id` narrows the threshold to that vendor metric.
+
+**Where it is preserved:** commit `43447c15b` (#8436) carries the three schema fields with their `viewability` and `completion_rate` guard, `tests/performance-standard-metric-id.test.cjs`, and the judging rules in `docs/media-buy/advanced-topics/pricing-models.mdx` and `docs/media-buy/advanced-topics/accountability.mdx`. The `3.3.0-beta.1` to `3.3.0-beta.5` bundles under `dist/` keep the schemas.
+
+**Until then:** which of the vendor's metrics a standard is judged on stays between the parties, as in 3.2. **What 4.0 needs:** the field on both performance standards and on the `required_performance_standards` filter, with the rules above.
+
 ## Changes not checked yet
 
 A check is added once its 4.0 change is decided. These changes are still proposals or under working group review, so the suite does not grade them yet:
