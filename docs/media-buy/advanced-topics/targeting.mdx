@@ -880,6 +880,8 @@ Use geo fields **only** for:
 
 **Note**: Inclusion and exclusion can be combined. Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
+**Labels.** Codes are the targeting. A targeting object MAY carry display names beside them so a person reading a package, a proposal, or an audit log does not have to look codes up: `geo_value_labels` for ISO country and subdivision codes (`{ "DE": "Germany", "US-CA": "California" }`), and `value_labels` on each `geo_metros`, `geo_metros_exclude`, and `geo_places` entry. Every label key MUST appear in the values it labels. Labels are not a targeting dimension: sellers MUST NOT resolve or apply targeting from them, MUST NOT reject a request because they are present, and MAY omit, keep, or supply their own labels in readback. Targeting equality and exact readback compare codes only. A name with no code, such as `"California"` in `geo_regions`, is still invalid. Buyers SHOULD NOT send `geo_value_labels` to a seller on a version before 3.3, which may treat an unknown key as an unsupported dimension.
+
 ### Age Restrictions (Compliance)
 Use for **legal compliance** requirements:
 - **Alcohol advertising**: Require verified 21+ in the US
@@ -1113,6 +1115,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Description**: Restrict delivery to specific countries
 - **Format**: ISO 3166-1 alpha-2 country codes
 - **Examples**: `["US", "CA"]`, `["GB", "FR", "DE"]`
+- **Labels**: optional, in `geo_value_labels` (e.g., `{ "GB": "United Kingdom" }`)
 - **Use cases**: Regulatory compliance, country-specific campaigns
 
 ### geo_countries_exclude
@@ -1147,6 +1150,7 @@ disclosed, compliant targeting modification.
 - **Description**: Restrict delivery to canonical ISO 3166-2 subdivisions, including states, provinces, regions, departments, and overseas subdivisions
 - **Format**: ISO 3166-2 subdivision codes
 - **Examples**: `["US-CA", "CA-QC"]`, `["FR-49", "FR-2A", "FR-971", "FR-ARA"]`
+- **Labels**: optional, in `geo_value_labels` (e.g., `{ "US-CA": "California" }`)
 - **Use cases**: State-level compliance, regional testing
 
 ### geo_regions_exclude
@@ -1165,16 +1169,16 @@ At create or update, unsupported dimensions, countries, or values outside Produc
 
 ### geo_metros
 - **Description**: Restrict delivery to specific metro areas
-- **Format**: Array of objects, each with a `system` and `values`
+- **Format**: Array of objects, each with a `system` and `values`; optional `value_labels`
 - **Systems**: `nielsen_dma` (US), `uk_itl1` / `uk_itl2` (UK), `eurostat_nuts2` (EU), `custom`
-- **Example**: `[{ "system": "nielsen_dma", "values": ["501", "803"] }]`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["501", "803"], "value_labels": { "501": "New York", "803": "Los Angeles" } }]`
 - **Use cases**: Local campaigns, metro-level RCT testing
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
 ### geo_metros_exclude
 - **Description**: Exclude specific metro areas from delivery
-- **Format**: Array of objects, each with a `system` and `values`
-- **Example**: `[{ "system": "nielsen_dma", "values": ["602"] }]`
+- **Format**: Array of objects, each with a `system` and `values`; optional `value_labels`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["602"], "value_labels": { "602": "Chicago" } }]`
 - **Use cases**: RCT holdout markets, competitive exclusion zones, markets where product is unavailable
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
