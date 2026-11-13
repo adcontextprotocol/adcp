@@ -434,6 +434,23 @@ const NEGATIVE_CASES = {
       doc: { width: 300, height: 250, pixel_ratios: [] },
     },
   ],
+  '/schemas/formats/canonical/image_carousel.json': [
+    {
+      label: 'per-card cta_values accepts a list of strings (positive control)',
+      expected: true,
+      doc: { cta_values: ['SHOP_NOW', 'LEARN_MORE'] },
+    },
+    {
+      label: 'per-card cta_values rejects a bare string',
+      expected: false,
+      doc: { cta_values: 'SHOP_NOW' },
+    },
+    {
+      label: 'per-card cta_values rejects a non-string value',
+      expected: false,
+      doc: { cta_values: ['SHOP_NOW', 1] },
+    },
+  ],
   '/schemas/core/assets/image-asset.json': [
     {
       label: 'image asset accepts positive pixel_ratio metadata',
