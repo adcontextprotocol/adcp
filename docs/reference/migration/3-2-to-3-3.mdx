@@ -110,11 +110,9 @@ A seller no longer pins definitions, re-verifies pins at finalize, or fails `acc
 
 ### Installment selection (published in beta.1, removed after beta.1)
 
-[#8246](https://github.com/adcontextprotocol/adcp/pull/8246) merged on 2026-10-24 and shipped in `3.3.0-beta.1` as experimental `media_buy.installment_selection`: `purchases[].installments[]`, and `installment_changes` with `unsatisfied_installment_changes` on `refine_proposals`. All are removed, along with `core/installment-change-set.json` and the `installment_changes` value of `proposal_refinement.supported_dimensions`. A seller that listed the feature id stops listing it. Installments on the canonical product and `holds[]` stay in 3.3. A purchase buys the product as offered, which is its complete installment set when it declares one.
+[#8246](https://github.com/adcontextprotocol/adcp/pull/8246) merged on 2026-10-24 and shipped in `3.3.0-beta.1` as experimental `media_buy.installment_selection`: `purchases[].installments[]`, and `installment_changes` with `unsatisfied_installment_changes` on `refine_proposals`. All are removed after beta.1, along with `core/installment-change-set.json` and the `installment_changes` value of `proposal_refinement.supported_dimensions`. A seller that listed `media_buy.installment_selection` stops listing it. Installments on the canonical product and `holds[]` stay in 3.3. A purchase buys the product as offered, which is its complete installment set when it declares one.
 
-{/* depends on #8974: installment selection through refine_proposals */}
-
-**The request side returns in rc.0.** Experimental `media_buy.installment_refinement` ([#8974](https://github.com/adcontextprotocol/adcp/pull/8974)) brings back `installment_changes` on `refine_proposals` and `unsatisfied_installment_changes` on its result rows, on schemas that are now open. The seller answers a selection with a product whose `installments[]` is exactly the chosen set, so `terms_digest` binds the `product_id` as before and every 3.x buyer reads the purchase the way it already does. `purchases[].installments[]` stays planned for 4.0 ([Adopt by capability](#installment-selection-and-per-installment-creatives-experimental)).
+**The request side returns in rc.0, under a new feature id.** Experimental `media_buy.installment_refinement` ([#8974](https://github.com/adcontextprotocol/adcp/pull/8974)) brings back `installment_changes` on `refine_proposals` (`core/installment-change-set.json`), `unsatisfied_installment_changes` on its result rows, and the `installment_changes` value of `supported_dimensions`, on schemas that are now open. The seller answers a selection with a product whose `installments[]` is exactly the chosen set, so `terms_digest` binds the `product_id` as before and every 3.x buyer reads the purchase the way it already does. `purchases[].installments[]` stays planned for 4.0 ([Adopt by capability](#installment-selection-and-per-installment-creatives-experimental)).
 
 ### Where the designs are kept
 
@@ -731,7 +729,7 @@ A migration note: a legacy installment that carries only the deprecated `collect
 
 ### Installment selection and per-installment creatives (experimental)
 
-{/* depends on #8974 (installment selection) and #8972 (per-installment creatives) */}
+{/* depends on #8972: per-installment creatives */}
 
 Optional, two features, each gated on its feature id in `experimental_features`.
 
