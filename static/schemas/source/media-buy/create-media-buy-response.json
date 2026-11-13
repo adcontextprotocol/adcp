@@ -188,8 +188,15 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "errors"
+        "anyOf": [
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "$ref": "/schemas/core/task-submitted.json"
+          }
         ]
       }
     },
