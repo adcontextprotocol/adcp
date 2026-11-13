@@ -25,8 +25,10 @@
  *
  *   5. Slot-param consistency: when a format declaration's params include `cta_values` or
  *      `*_max_chars` for a content type, the canonical's default slots OR the product's
- *      override slots SHOULD declare a matching slot. Soft-warn (does not fail) until the
- *      canonicals are updated to add default slots for cta and primary_text.
+ *      override slots SHOULD declare a matching slot. `cta_values` matches the `cta` slot,
+ *      except on image_carousel, where it governs each card's `cta` in the `cards` slot.
+ *      Soft-warn (does not fail) until the canonicals are updated to add default slots for
+ *      cta and primary_text.
  *
  * Run: node tests/canonical-format-conventions.test.cjs
  */
@@ -71,6 +73,10 @@ const CANONICAL_DEFAULT_SLOTS = (() => {
   }
   return out;
 })();
+
+// The slot a canonical's `cta_values` governs, where it is not the `cta` slot.
+// image_carousel has no `cta` slot; its `cta_values` governs each card's `cta`.
+const CTA_VALUES_SLOT = { image_carousel: 'cards' };
 
 let errors = 0;
 let warnings = 0;
@@ -143,8 +149,9 @@ function checkDeclaration(decl, ctx, file) {
     ? new Set(overrideSlots.map(s => s.asset_group_id))
     : inheritedDefaults;
 
-  if (params.cta_values && !effectiveSlotIds.has('cta')) {
-    warn(file, `${ctx} declares cta_values but effective slots[] has no 'cta' slot (canonical=${decl.format_kind})`);
+  const ctaSlotId = CTA_VALUES_SLOT[decl.format_kind] || 'cta';
+  if (params.cta_values && !effectiveSlotIds.has(ctaSlotId)) {
+    warn(file, `${ctx} declares cta_values but effective slots[] has no '${ctaSlotId}' slot (canonical=${decl.format_kind})`);
   }
   if (params.primary_text_max_chars && !effectiveSlotIds.has('primary_text')) {
     warn(file, `${ctx} declares primary_text_max_chars but effective slots[] has no 'primary_text' slot (canonical=${decl.format_kind})`);

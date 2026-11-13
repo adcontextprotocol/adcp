@@ -60,6 +60,11 @@
         "card_video_max_duration_ms": 240000,
         "primary_text_max_chars": 125,
         "card_headline_max_chars": 40,
+        "cta_values": [
+          "SHOP_NOW",
+          "LEARN_MORE",
+          "SIGN_UP"
+        ],
         "ssl_required": true,
         "composition_model": "deterministic",
         "slots": [
