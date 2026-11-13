@@ -252,7 +252,8 @@
       "x-adcp-validation": {
         "verifier_constraints": {
           "capability_gate": {
-            "required_capability": "creative.assignment_operations contains each item's operation",
+            "required_capability": "creative.assignment_operations",
+            "description": "Each item's operation must be listed in creative.assignment_operations; the seller rejects an unlisted operation, and applies nothing.",
             "without_capability": "UNSUPPORTED_FEATURE",
             "error_field": "assignment_operations[i].operation"
           }
@@ -391,7 +392,8 @@
             "x-adcp-validation": {
               "verifier_constraints": {
                 "capability_gate": {
-                  "required_capability": "creative.assignment_operations contains merge",
+                  "required_capability": "creative.assignment_operations",
+                  "description": "creative.assignment_operations must list merge.",
                   "without_capability": "UNSUPPORTED_FEATURE"
                 },
                 "on_rejection": {

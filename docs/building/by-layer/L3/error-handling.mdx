@@ -672,7 +672,7 @@ Use the `recovery` field to determine how to handle errors. When a legacy error 
 
 For unknown `recovery` values (forward compatibility), treat as `terminal`.
 
-**Suggest only what the agent accepts.** An error's `suggestion`, and the recovery a `correctable` code documents, SHOULD name only operations and fields the agent declares it accepts or the schema requires it to accept. A buyer agent that follows a correctable refusal should not be refused again. Where a recovery depends on a declared capability, name the capability: for example, [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported) recommends an `assignment_operations` `replace` only when the seller lists `replace` in `creative.assignment_operations`, and otherwise says the change needs a new package or media buy.
+**Suggest only what the agent accepts.** An error's `suggestion`, and the recovery a `correctable` code documents, SHOULD name only operations and fields the agent declares it accepts or the schema requires it to accept. A buyer agent that follows a correctable refusal should not be refused again. Where a recovery depends on a declared capability, name the capability: for example, [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) recommends an `assignment_operations` `replace` only when the seller lists `replace` in `creative.assignment_operations`.
 
 ```javascript
 function recoveryFor(error, knownRecoveryByCode) {

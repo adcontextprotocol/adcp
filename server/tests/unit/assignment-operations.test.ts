@@ -223,7 +223,7 @@ describe('sync_creatives assignment_operations', () => {
       assignment_operations: [{ operation: 'merge', creative_id: 'a', package_id: packageId, merged_creative_id: 'b' }],
     });
     expect(merge).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'assignment_operations[0].operation' });
-    expect(merge.message).toContain('creative.assignment_operations');
+    expect(merge.message).toContain('does not accept the merge assignment operation');
     const missingPackage = await call(server, 'sync_creatives', {
       account: ACCOUNT,
       assignment_operations: [{ operation: 'unassign', creative_id: 'a', package_id: 'pkg_nowhere' }],

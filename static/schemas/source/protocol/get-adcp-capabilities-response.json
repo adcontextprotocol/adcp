@@ -3296,7 +3296,16 @@
         },
         "assignment_operations": {
           "type": "array",
-          "description": "The sync_creatives assignment_operations this agent accepts. The list is exact: the agent accepts every listed operation and rejects any other with UNSUPPORTED_FEATURE, applying nothing, since the request is atomic. Buyers MUST NOT send an operation that is not listed. Absent from a response served at 3.3 or later: the agent accepts none, and buyers MUST NOT send assignment_operations. A response served at an earlier release cannot carry this field, so there its absence declares nothing. An agent that declares live_updates MUST list replace, the swap its CREATIVE_LIVE_UPDATE_UNSUPPORTED recovery relies on. Listing merge requires has_creative_library: true and stable_creative_ids: true. supports_assignment_merge SHOULD agree with whether merge is listed; where they disagree, this list governs.",
+          "description": "The sync_creatives assignment_operations this agent accepts. The list is exact: the agent accepts every listed operation and rejects any other with UNSUPPORTED_FEATURE, applying nothing, since the request is atomic. Buyers MUST NOT send an operation that is not listed. Absent from a response served at 3.3 or later: the agent accepts none, and buyers MUST NOT send assignment_operations. A response served at an earlier release cannot carry this field, so there its absence declares nothing. An agent that declares live_updates MUST list replace, the swap its CREATIVE_LIVE_UPDATE_UNSUPPORTED recovery relies on. A seller that exposes buy_products or accept_proposal (lists either in media_buy.lifecycle_tools) and declares has_creative_library: true MUST list assign in a response served at 3.3 or later, because the compact lifecycle assigns creatives only through assignment_operations. Listing merge requires has_creative_library: true and stable_creative_ids: true. supports_assignment_merge: true requires merge in this list; a seller that lists merge SHOULD also set that flag, and where they disagree, this list governs.",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "compact_lifecycle_assign": {
+                "when": "response served at 3.3 or later; media_buy.lifecycle_tools contains buy_products or accept_proposal; creative.has_creative_library is true",
+                "requires": "creative.assignment_operations contains assign"
+              }
+            },
+            "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+          },
           "items": {
             "type": "string",
             "enum": ["assign", "unassign", "replace", "merge"]
@@ -3307,7 +3316,7 @@
         },
         "supports_assignment_merge": {
           "type": "boolean",
-          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. Kept for compatibility: assignment_operations is the authoritative declaration, and this flag SHOULD be true exactly when that list includes merge. Buyers MUST NOT send merge unless assignment_operations lists it; an agent that does not list it rejects merge with UNSUPPORTED_FEATURE.",
+          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. Kept for compatibility: assignment_operations is the authoritative declaration. When this flag is true, assignment_operations MUST list merge, and an agent that lists merge SHOULD set this flag. Buyers MUST NOT send merge unless assignment_operations lists it; an agent that does not list it rejects merge with UNSUPPORTED_FEATURE.",
           "default": false,
           "x-added-in": "3.3.0"
         },
@@ -3681,6 +3690,20 @@
               "stable_creative_ids": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library", "stable_creative_ids"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_merge": { "const": true }
+            },
+            "required": ["supports_assignment_merge"]
+          },
+          "then": {
+            "properties": {
+              "assignment_operations": { "contains": { "const": "merge" }, "x-added-in": "3.3.0" }
+            },
+            "required": ["assignment_operations"]
           }
         },
         {

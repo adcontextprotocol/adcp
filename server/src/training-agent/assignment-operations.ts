@@ -105,10 +105,11 @@ export async function planAssignmentOperations(
     const packageId = op.package_id as string;
 
     if (typeof kind === 'string' && PROTOCOL_ASSIGNMENT_OPERATIONS.has(kind) && !options.acceptedOperations.includes(kind)) {
-      const listed = options.acceptedOperations.length > 0
-        ? `It lists ${options.acceptedOperations.join(', ')}.`
+      // Worded without the 3.3 capability name, which a 3.2 caller cannot see.
+      const accepted = options.acceptedOperations.length > 0
+        ? `It accepts ${options.acceptedOperations.join(', ')}.`
         : 'It accepts no assignment operations.';
-      return { errors: [error('UNSUPPORTED_FEATURE', `This seller does not list ${kind} in creative.assignment_operations. ${listed}`, `${at}.operation`)] };
+      return { errors: [error('UNSUPPORTED_FEATURE', `This seller does not accept the ${kind} assignment operation. ${accepted}`, `${at}.operation`)] };
     }
     if (kind === 'assign' && op.trackers !== undefined && !options.supportsTrackers) {
       return { errors: [error('UNSUPPORTED_FEATURE', 'Assignment trackers require creative.supports_assignment_trackers.', `${at}.trackers`)] };

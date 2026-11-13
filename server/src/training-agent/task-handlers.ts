@@ -18854,11 +18854,9 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             action: 'failed',
             errors: [{
               code: 'CREATIVE_LIVE_UPDATE_UNSUPPORTED',
-              // The recovery names replace only because this seller lists it
-              // in creative.assignment_operations (live_updates requires it).
-              message: acceptedAssignmentOperations(ctx).includes('replace')
-                ? `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`
-                : `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. The change needs a new package or media buy.`,
+              // Naming replace is safe: a seller declaring live_updates lists it
+              // in creative.assignment_operations, as this one does.
+              message: `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`,
               field: `creatives[${creativeId}]`,
               recovery: 'correctable',
               details: { refused_changes: decision.refusedChanges, live_package_ids: livePackages },
@@ -19248,11 +19246,12 @@ function assignmentTrackerSlotProblem(
   return undefined;
 }
 
-/** The sync_creatives assignment_operations this tenant accepts, and lists in
- * creative.assignment_operations (3.3; the served-release projection withholds
- * the list below 3.3, where the behavior is unchanged). Only the media-buy
- * routes (/sales and the /mcp monolith) have packages to assign to; the
- * creative routes accept none and refuse every operation. */
+/** The sync_creatives assignment_operations this tenant accepts. The
+ * monolith (no tenant) lists them in creative.assignment_operations here;
+ * /sales lists the same set in tenants/router.ts. The served-release
+ * projection withholds the list below 3.3, but enforcement applies at every
+ * served version: the creative routes, which have no packages to assign to,
+ * accept none and refuse every operation, including at 3.2. */
 function acceptedAssignmentOperations(ctx: TrainingContext): ReadonlyArray<string> {
   return ctx.tenantId == null || ctx.tenantId === 'sales' ? TRAINING_ASSIGNMENT_OPERATIONS : [];
 }
