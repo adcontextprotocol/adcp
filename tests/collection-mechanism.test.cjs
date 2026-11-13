@@ -35,11 +35,6 @@ describe("collection mechanism vocabulary", () => {
     assert.equal(e["x-status"], "experimental");
     assert.equal(e["x-added-in"], "3.3.0");
     assert.match(e.description, /Not `measurement_source`, which names the provider/);
-    const terms = readSchema("/schemas/core/measurement-terms.json");
-    const counting = terms.properties.billing_measurement.properties.counting_mechanisms;
-    assert.equal(counting["x-status"], "experimental");
-    assert.equal(counting["x-added-in"], "3.3.0");
-    assert.match(counting.description, /Not `measurement_source`, which names the provider/);
     const prov = readSchema("/schemas/core/vendor-metric-provenance.json");
     assert.equal(prov["x-status"], "experimental");
     assert.equal(prov["x-added-in"], "3.3.0");
@@ -104,27 +99,10 @@ describe("collection mechanism vocabulary", () => {
     });
   });
 
-  describe("billing_measurement.counting_mechanisms[]", () => {
-    for (const uri of ["/schemas/core/measurement-terms.json"]) {
-      describe(uri, () => {
-        let validate;
-        const terms = (cs) => ({
-          billing_measurement: {
-            vendor: { domain: "streamhaus.example" },
-            ...(cs === undefined ? {} : { counting_mechanisms: cs }),
-          },
-        });
-        before(async () => {
-          validate = await compile(uri);
-        });
-        it("is optional", () => assert.ok(validate(terms())));
-        it("accepts a hybrid set", () => assert.ok(validate(terms(["client_tracker", "server_logs"]))));
-        it("rejects empty, duplicate, and unknown values", () => {
-          assert.ok(!validate(terms([])));
-          assert.ok(!validate(terms(["server_logs", "server_logs"])));
-          assert.ok(!validate(terms(["seller_tracker"])));
-        });
-      });
-    }
+  describe("billing_measurement.counting_mechanisms (withdrawn, adcp#8501)", () => {
+    it("is absent from the shared measurement terms, so products, create and update packages all lack it", () => {
+      const terms = readSchema("/schemas/core/measurement-terms.json");
+      assert.equal(terms.properties.billing_measurement.properties.counting_mechanisms, undefined);
+    });
   });
 });

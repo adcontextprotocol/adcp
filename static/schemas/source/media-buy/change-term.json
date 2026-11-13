@@ -34,7 +34,7 @@
     },
     "processing_sla": {
       "$ref": "/schemas/core/sla-window.json",
-      "description": "Binding acknowledgement and completion commitment. The default elapsed clock includes weekends and non-working periods; an explicit business clock references an immutable seller calendar."
+      "description": "Binding elapsed-time acknowledgement and completion commitment. Sellers account for weekends and non-working periods when declaring the maximum."
     },
     "conditions": {
       "type": "array",

@@ -58,31 +58,14 @@ async function checkEnclosingSchemas(cases) {
   }
 }
 
-test('complete create/update requests validate optional assignment landing pages', async () => {
-  await checkEnclosingSchemas([
-    {
-      schema: 'media-buy/create-media-buy-request.json',
-      data: {
-        ...requestBase,
-        brand: { domain: 'acme.example' },
-        start_time: '2026-11-01T00:00:00Z',
-        end_time: '2026-11-30T23:59:59Z',
-        packages: [{
-          product_id: 'display', pricing_option_id: 'cpm', budget: 1000,
-          creative_assignments: [{ creative_id: 'hero' }]
-        }]
-      },
-      assignment: data => data.packages[0].creative_assignments[0]
-    },
-    {
-      schema: 'media-buy/update-media-buy-request.json',
-      data: {
-        ...requestBase, media_buy_id: 'mb_display',
-        packages: [{ package_id: 'pkg_display', creative_assignments: [{ creative_id: 'hero' }] }]
-      },
-      assignment: data => data.packages[0].creative_assignments[0]
-    }
-  ]);
+// create_media_buy and update_media_buy are deprecated tasks: 3.3 adds no assignment landing page
+// to their creative_assignments rows (adcp#8501). Only the live surfaces below keep it.
+test('the deprecated create/update creative assignment rows declare no landing page', () => {
+  assert.equal(readSchema('core/creative-assignment.json').properties.landing_page_url, undefined);
+  for (const relativePath of ['media-buy/package-request.json', 'media-buy/package-update.json', 'core/package.json']) {
+    const assignment = readSchema(relativePath).properties.creative_assignments.items;
+    assert.equal(assignment.$ref, '/schemas/core/creative-assignment.json', relativePath);
+  }
 });
 
 test('complete list/get responses validate effective assignment landing pages', async () => {
@@ -142,35 +125,28 @@ test('sync assignment reset uses existing atomic unassign/assign operations and 
   }), false);
 });
 
-test('package create, update, and read assignments accept optional macro-bearing landing pages', async () => {
-  for (const relativePath of ['media-buy/package-request.json', 'media-buy/package-update.json', 'core/package.json']) {
-    const assignment = readSchema(relativePath).properties.creative_assignments.items;
-    assert.equal(assignment.$ref, '/schemas/core/creative-assignment.json');
-    const validate = await compile(assignment);
-    assert.equal(validate({ creative_id: 'hero' }), true, JSON.stringify(validate.errors));
-    for (const landing_page_url of urls) {
-      assert.equal(validate({ creative_id: 'hero', landing_page_url }), true, JSON.stringify(validate.errors));
-    }
-    for (const landing_page_url of invalidUrls) {
-      assert.equal(validate({ creative_id: 'hero', landing_page_url }), false, relativePath);
-    }
-  }
-});
-
-test('sync additive assignments and assign operations validate landing pages without creative upserts', async () => {
+test('assign operations validate landing pages without creative upserts; deprecated assignments[] rows reject them', async () => {
   const validate = await compile(syncSchema);
-  for (const field of ['assignments', 'assignment_operations']) {
-    const assignment = { creative_id: 'hero', package_id: 'pkg_display' };
-    if (field === 'assignment_operations') assignment.operation = 'assign';
-    assert.equal(validate({ ...requestBase, [field]: [assignment] }), true, JSON.stringify(validate.errors));
-    for (const landing_page_url of urls) {
-      assert.equal(validate({ ...requestBase, [field]: [{ ...assignment, landing_page_url }] }), true,
-        JSON.stringify(validate.errors));
-    }
-    for (const landing_page_url of invalidUrls) {
-      assert.equal(validate({ ...requestBase, [field]: [{ ...assignment, landing_page_url }] }), false, field);
-    }
+  const assignment = { operation: 'assign', creative_id: 'hero', package_id: 'pkg_display' };
+  assert.equal(validate({ ...requestBase, assignment_operations: [assignment] }), true, JSON.stringify(validate.errors));
+  for (const landing_page_url of urls) {
+    assert.equal(validate({ ...requestBase, assignment_operations: [{ ...assignment, landing_page_url }] }), true,
+      JSON.stringify(validate.errors));
   }
+  for (const landing_page_url of invalidUrls) {
+    assert.equal(validate({ ...requestBase, assignment_operations: [{ ...assignment, landing_page_url }] }), false);
+  }
+  // Withdrawn from the deprecated assignments[] row in 3.3 (adcp#8501).
+  const legacy = { creative_id: 'hero', package_id: 'pkg_display' };
+  assert.equal(validate({ ...requestBase, assignments: [legacy] }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...requestBase, assignments: [{ ...legacy, landing_page_url: urls[0] }] }), false,
+    'the assignments[] row rejects landing_page_url by name; use assignment_operations assign');
+  assert.equal(validate({ ...requestBase, assignments: [{ ...legacy, unrelated_extension: 'x' }] }), true,
+    'the row is open: unrelated unknown keys are accepted');
+  const legacyRow = syncSchema.properties.assignments.items;
+  assert.notEqual(legacyRow.additionalProperties, false);
+  assert.ok(legacyRow.not.anyOf.some(branch => branch.required?.includes('landing_page_url')),
+    'the row not names landing_page_url');
   for (const operation of ['unassign', 'replace']) {
     const assignment = { operation, creative_id: 'hero', package_id: 'pkg_display', landing_page_url: urls[0] };
     if (operation === 'replace') assignment.replaces_creative_id = 'old_hero';
@@ -221,8 +197,6 @@ test('assignment landing page capability defaults off and requires an explicit c
 test('all input and readback fields use the creative click-through URL rules and carry 3.3 metadata', () => {
   const clickthroughUrl = readSchema('core/assets/url-asset.json').properties.url;
   for (const schema of [
-    readSchema('core/creative-assignment.json'),
-    syncSchema.properties.assignments.items,
     assignSchema,
     listAssignment,
     buyAssignment
