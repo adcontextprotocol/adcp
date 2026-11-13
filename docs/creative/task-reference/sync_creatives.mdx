@@ -155,7 +155,7 @@ A product can declare a separate `creative_policy.review_sla` for time to an app
 | `creatives`       | Creative[] | Conditional | Creative assets to upload/update (max 100); at least one of `creatives`, `assignments`, or `assignment_operations` is required.                                                                                                                               |
 | `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
 | `assignments`     | array      | No       | Deprecated additive `{creative_id, package_id}` shorthand. Optional `weight` and `placement_ids` per assignment. It does not carry `landing_page_url` or `trackers`; send those on an `assign` operation. |
-| `assignment_operations` | array | Conditional | Ordered `assign`, `unassign`, or `replace` operations for existing creative IDs, without requiring creative uploads. Only `assign` accepts capability-gated `landing_page_url` and `trackers`; `replace` transfers the replaced assignment's settings, including those, to the replacement ([Replacing a creative on a package](#replacing-a-creative-on-a-package)). The request is atomic and requires strict validation. |
+| `assignment_operations` | array | Conditional | Ordered `assign`, `unassign`, or `replace` operations for existing creative IDs, without requiring creative uploads. Only `assign` accepts capability-gated `landing_page_url` and `trackers`; `replace` transfers the replaced assignment's settings, including those, to the replacement ([Replacing a creative on a package](#replacing-a-creative-on-a-package)). `assign` and `replace` also accept experimental `installment_refs` ([Assigning to specific installments](#assigning-to-specific-installments-experimental)). The request is atomic and requires strict validation. |
 | `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) for manifest-only preflight against canonical/product format targets. |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
 | `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. Sellers that declare `creative.stable_creative_ids` never archive [seller-created creatives](#seller-assigned-creative-ids); others may. |
@@ -259,9 +259,10 @@ The replacement takes over the replaced assignment's authored settings, so a swa
 
 - `weight` and placement routing (`placement_ids` and `placement_refs`);
 - rotation settings: `rotation_mode`, `group_id`, and `sequence_position`;
-- assignment [`trackers`](#assignment-trackers) and the [`landing_page_url`](#assignment-landing-pages) override.
+- assignment [`trackers`](#assignment-trackers) and the [`landing_page_url`](#assignment-landing-pages) override;
+- the experimental installment scope, [`installment_refs`](#assigning-to-specific-installments-experimental).
 
-A `weight` supplied on the operation replaces the transferred weight. A `placement_ids` supplied on the operation replaces the transferred placement routing entirely: neither the replaced assignment's `placement_ids` nor its `placement_refs` transfer. To change the transferred trackers or landing page in the same request, follow the `replace` with an `assign` for the replacement creative; operations apply in order and the request is atomic.
+A `weight` supplied on the operation replaces the transferred weight. So does a supplied `installment_refs` for the transferred installment scope. A `placement_ids` supplied on the operation replaces the transferred placement routing entirely: neither the replaced assignment's `placement_ids` nor its `placement_refs` transfer. To change the transferred trackers or landing page in the same request, follow the `replace` with an `assign` for the replacement creative; operations apply in order and the request is atomic.
 
 The seller MUST validate every transferred setting against the replacement, including tracker-slot capacity and events for its format, whether the landing-page override can apply to its clicks, and any destination review, and MUST reject the atomic request with the existing assignment errors rather than drop or partially apply a setting. Readback in [`list_creatives`](/docs/creative/task-reference/list_creatives) and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `creative_approvals[]` shows the transferred settings on the replacement's row.
 
@@ -280,6 +281,53 @@ The seller MUST validate every transferred setting against the replacement, incl
   ]
 }
 ```
+
+### Assigning to specific installments (experimental)
+
+In AdCP 3.3, optional `installment_refs` on an `assign` or `replace` operation limits the assignment to some [installments](/docs/media-buy/product-discovery/collections-and-installments#the-installment-object) of the package: one post of a creator package, one episode's host read, one issue of a print run. Without it the assignment applies to every installment, as before. Each entry is a [canonical installment reference](https://adcontextprotocol.org/schemas/latest/core/canonical-installment-ref.json), a `collection_ref` and an `installment_id`.
+
+Buyers MUST NOT send `installment_refs` unless the seller lists `media_buy.installment_creative_assignment` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). A seller that ignored the field would run the creative on every installment, so it waits on the capability ([versioning rule 4](/docs/reference/versioning#what-can-change-in-a-release)). A seller that does not support it MUST reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Send it only on `assignment_operations`: the deprecated `assignments[]` row and the `creative_assignments` rows of the deprecated `create_media_buy` and `update_media_buy` don't carry it.
+
+- **Which installments.** Each ref MUST name an installment the package bought: one in the `installments` of the product its purchase references. The seller rejects any other ref with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error), with `error.field` at that ref, such as `assignment_operations[1].installment_refs[0]`. A run-of-collection product names no installments, so it has none to scope to.
+- **Rotation and routing.** Within one installment, weight, rotation and placement routing work as they do today, over the assignments that apply to that installment. Placement routing and installment scope intersect: a creative with both serves only in those placements of those installments. An installment that no assignment applies to has no creative from this package, and the seller MUST NOT serve it a creative scoped to another installment.
+- **Change cutoff.** An operation changes an installment when it adds or removes a creative there, or changes the weight or routing of one that applies there. An assignment without `installment_refs` applies to every installment, so changing it changes them all, and a `replace` changes every installment either creative applies to. When an operation changes an installment whose [`deadlines.change_cutoff`](/docs/media-buy/product-discovery/collections-and-installments#installment-deadlines) has passed, the seller MUST reject the request with [`CREATIVE_DEADLINE_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-creative-deadline-exceeded) and name the installment, with `error.field` at the ref when the operation names it, otherwise at the operation. It MUST NOT accept the change silently. The request is atomic, so it doesn't apply the change to the other installments alone either. The package's `creative_deadline` applies as before.
+- **Changing the scope.** A supplied `installment_refs` replaces the assignment's installment scope, and omitting it on an `assign` upsert keeps the scope. To return an assignment to every installment, use the atomic `unassign`/`assign` [reset recipe](#assignment-landing-pages) without the field. A `replace` carries the replaced assignment's scope over unless it supplies its own. `unassign` and `merge` reject `installment_refs`: an `unassign` removes the creative from every installment it applied to, so to drop one installment, `assign` the remaining ones.
+- **Readback.** Sellers that list the feature return `installment_refs` on every assignment that has a scope, in [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `packages[].creative_approvals[]` and [`list_creatives`](/docs/creative/task-reference/list_creatives) `assignments.assigned_packages[]`. They omit it when the assignment applies to every installment.
+
+This request gives each post of a two-post creator package its own creative: the awareness brief for the first post and the offer, with its discount code, for the second. It uses the unreleased experimental `installment_refs`; the installment creative assignment tests validate it against the source schema.
+
+```json
+{
+  "account": { "account_id": "acct_acme" },
+  "idempotency_key": "juniper-vale-posts-0001",
+  "assignment_operations": [
+    {
+      "operation": "assign",
+      "creative_id": "juniper_awareness_brief",
+      "package_id": "pkg_juniper_vale",
+      "installment_refs": [
+        {
+          "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+          "installment_id": "juniper_vale_slot_1"
+        }
+      ]
+    },
+    {
+      "operation": "assign",
+      "creative_id": "juniper_offer_brief",
+      "package_id": "pkg_juniper_vale",
+      "installment_refs": [
+        {
+          "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+          "installment_id": "juniper_vale_slot_2"
+        }
+      ]
+    }
+  ]
+}
+```
+
+To change the creative for later installments once an earlier one is past its cutoff, narrow the current assignment to the installments past it and assign the new creative to the rest. A `replace` of an assignment without `installment_refs` would change the earlier installments too, and the seller would refuse it.
 
 ### Creative object
 

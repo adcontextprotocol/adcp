@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.6/error-details/budget-too-low.json",
+  "title": "Budget Too Low Details",
+  "description": "Recommended details shape for BUDGET_TOO_LOW errors. Provides the seller's minimum budget so agents can adjust.",
+  "type": "object",
+  "properties": {
+    "minimum_budget": {
+      "type": "number",
+      "description": "Minimum acceptable amount for the constrained budget, in currency. budget_field identifies that budget when present; otherwise error.field can identify it only when it unambiguously names a budget control. If neither identifies the budget, this amount is diagnostic and buyers must reconcile current state before choosing a budget change. For a bid-dependent floor, report the computed required budget amount, not the bid value or the additional amount needed."
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code"
+    },
+    "budget_field": {
+      "type": "string",
+      "minLength": 1,
+      "description": "JSONPath-lite locator for the constrained budget in the request's target scope, separate from error.field and issues[].pointer, whose existing semantics are unchanged. May name a retained budget omitted from an update. packages[i] always indexes a submitted request row, resolved through its package_id on updates, never a readback array index. Omit if the affected package has no submitted row or the budget cannot otherwise be located unambiguously; do not fabricate an index. Buyers must read and reconcile a retained budget before changing it.",
+      "x-added-in": "3.3.0"
+    },
+    "basis": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "lifetime"
+      ],
+      "description": "Period of the constrained budget identified by budget_field, or by error.field when it unambiguously names a budget control. daily does not imply hard-cap or averaged semantics. lifetime applies to a package or media-buy lifetime budget. Omission means undeclared; buyers must not infer a period from minimum_budget alone.",
+      "x-added-in": "3.3.0"
+    },
+    "constraint": {
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "product_minimum",
+        "effective_bid_floor"
+      ],
+      "description": "Cause of the budget floor, separate from its period. product_minimum identifies a seller's minimum for the selected product/pricing option; effective_bid_floor identifies a minimum computed from the effective bidding policy. Other non-empty values are permitted; buyers that do not recognize one can still use the amount, currency, period, and an unambiguous budget locator for recovery.",
+      "x-added-in": "3.3.0"
+    },
+    "related_field": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Request field path for an input contributing to the floor, using the same JSONPath-lite convention as error.field. For effective_bid_floor this identifies a buyer-authored bid that contributes to the computed minimum; budget_field separately identifies the constrained budget. Omit when no contributing request field can be identified; do not invent a path to a seller default.",
+      "x-added-in": "3.3.0"
+    }
+  },
+  "additionalProperties": true
+}

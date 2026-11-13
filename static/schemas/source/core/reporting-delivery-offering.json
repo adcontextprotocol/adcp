@@ -94,7 +94,7 @@
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "producer_identity": {
           "type": "object",
-          "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
+          "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering. For https_put, provider.domain is the seller operator's domain and identity is the canonical origin of the seller agent that signs every write under the Web Bot Auth profile. The receiver authorizes that origin; it resolves keys only from each write's verified Signature-Agent, never from this field.",
           "properties": {
             "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": true },
             "identity": { "type": "string", "minLength": 1, "maxLength": 512 },

@@ -53,6 +53,23 @@
       },
       "minItems": 1
     },
+    "geo_value_labels": {
+      "type": "object",
+      "description": "Optional human-readable diagnostic labels for the ISO codes in geo_countries, geo_countries_exclude, geo_regions, and geo_regions_exclude, keyed by code (e.g., { \"DE\": \"Germany\", \"US-CA\": \"California\" }). Every key MUST appear in one of those four arrays; extra keys are a conformance error. Labels are not a targeting dimension: they are non-authoritative, MUST NOT be used to resolve or apply targeting, and are ignored when comparing targeting for equality or readback. Metro and place labels live in value_labels on their own entries.",
+      "x-adcp-validation": {
+        "map_keys_subset_of_arrays": {
+          "array_fields": ["geo_countries", "geo_countries_exclude", "geo_regions", "geo_regions_exclude"]
+        },
+        "description": "Every geo_value_labels key MUST appear in at least one of the listed sibling arrays. JSON Schema draft-07 cannot express this sibling-field key membership constraint, so conformance tooling must enforce it."
+      },
+      "propertyNames": {
+        "pattern": "^[A-Z]{2}(-[A-Z0-9]{1,3})?$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "geo_metros": {
       "title": "Targeting Geo Metros",
       "type": "array",
@@ -65,6 +82,10 @@
       "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
       "items": {
         "type": "object",
+        "x-adcp-validation": {
+          "map_keys_subset_of_array": { "map_field": "value_labels", "array_field": "values" },
+          "description": "Every value_labels key MUST also appear in values. JSON Schema draft-07 cannot express this sibling-field key membership constraint, so conformance tooling must enforce it."
+        },
         "properties": {
           "system": {
             "$ref": "/schemas/enums/metro-system.json",
@@ -77,6 +98,14 @@
               "type": "string"
             },
             "minItems": 1
+          },
+          "value_labels": {
+            "type": "object",
+            "description": "Optional human-readable diagnostic labels keyed by codes present in values (e.g., { \"602\": \"Chicago\" }). Extra keys are a conformance error. Labels are non-authoritative and MUST NOT be used to resolve or apply targeting.",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "required": ["system", "values"],

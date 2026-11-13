@@ -289,6 +289,10 @@ schedule.delivery_sla`.
 Per-buy `reporting_webhook` remains the existing low-latency data API. It is not a
 durable materialization in this first managed-ledger version; a short-period pacing
 configuration plus the signed readiness doorbell is the reliable fast path here.
+Pushing rows in an HTTP request body is `reporting_webhook`, a Core transport, never
+`file_transfer`: it has no objects, manifest, or receipts. Durable object delivery to a
+buyer HTTPS endpoint uses the `file_transfer` transport `https_put`; see
+[HTTPS object writes](#https-object-writes).
 
 Periods pagination applies to the flat union of `periods[]` obligation records,
 `revisions[]`, `adjustments[]`, `consumer_statuses[]`, `materializations[]`, `receipts[]`, and
@@ -517,6 +521,16 @@ buyer sends its provider-native location and grants the seller the
 GAM to BigQuery uses the same provisioned-location shape even though the transfer
 service, rather than the seller process, writes the table.
 
+In every managed pattern the seller authenticates as itself. The buyer grants the
+`producer_identity` advertised in the selected offering, or, for `https_put`
+([HTTPS object writes](#https-object-writes)), configures its endpoint to accept writes signed by
+the seller's origin. A seller MUST NOT hold, request, or store a buyer-issued secret to
+deliver reporting through any managed pattern, directly or through a processor acting
+for it: no password, API key, bearer token, OAuth client secret, private key, signed
+URL, or shared signing key. A seller that does is non-conformant.
+The deprecated `authentication` block on `reporting_webhook` is not precedent; it
+belongs to the Core webhook transport and does not extend to managed destinations.
+
 [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and
 [`list_accounts`](/docs/accounts/tasks/list_accounts) return
 `reporting_delivery_configs[]` as resolved configuration state.
@@ -554,6 +568,36 @@ later periods are not created. Install multiple configurations when the buyer ne
 15-minute snapshot pacing feed, daily official analytics, and billing-cycle official
 billing data. Billing feeds require official finality.
 
+A report definition states its own `contract_version`, and the offering pins it
+through `report_definition_uri` and SHA-256. A seller adopts a newer version by
+publishing a definition at that version in an offering, and a buyer chooses it by
+selecting that offering; no capability flag or request field negotiates it.
+Callers pinned below 3.3 validate `contract_version` against `1.0` and `1.1`
+only, so a seller MUST serve them offerings whose definitions are `1.0` or `1.1`;
+a `1.2` offering serves 3.3 callers only.
+
+| `contract_version` | Adds |
+|---|---|
+| `1.0` | The preceding experimental managed-reporting contract. |
+| `1.1` | Immutable official closes: `restatement_policy.official_correction_mode` is `adjustments_only`. |
+| `1.2` (3.3) | Every `1.1` rule, plus a `package_id` dimension on media-buy definitions. |
+
+At `1.2`, a definition whose rows are scoped to a media buy MUST name that
+dimension `media_buy_id`, not a seller-native name, and a definition whose
+`dimensions` include `media_buy_id` MUST include `package_id`, so every row carries
+the buyer-visible package. The offering's `reporting_profile.primary_keys` then
+MUST include `package_id`, so per-package rows stay distinct. A buyer that bills,
+caps, or reconciles per package can then split a buy-level revision without
+guessing. A definition whose rows are not scoped to a media buy (an account-level
+summary, for example) declares no `media_buy_id` and is exempt at every version.
+Definitions at `1.0` and `1.1` keep validating unchanged; graders SHOULD report one
+that includes `media_buy_id` but not `package_id` as an advisory finding. The dimension
+is named `package_id`, matching `media_buy_id`. Reporting subscription selectors
+and offering `standard_dimensions` use the standard vocabulary, where the same
+breakdown is `package`. The
+[report-definition test vectors](/docs/reference/test-vectors) grade each case
+([#8971](https://github.com/adcontextprotocol/adcp/issues/8971)).
+
 `source_timezone` represents an upstream reporting calendar that differs from
 the AdCP account clock—for example an ad server's network timezone. The
 installed schedule always carries its resolved IANA `period_timezone`; an
@@ -586,7 +630,10 @@ Supported patterns are:
 
 - `file_transfer` — immutable objects plus a normative manifest-last commit. The
   manifest binds revision, obligation, materialization, period, format, compression,
-  complete file list, sizes, cryptographic checksums, row counts, and control totals;
+  complete file list, sizes, cryptographic checksums, row counts, and control totals.
+  Transports include object stores such as `s3`, `gcs`, and `azure_blob`, and the
+  experimental `https_put` to a buyer HTTPS endpoint
+  ([HTTPS object writes](#https-object-writes));
 - `dataset_share` — consumer-observed access to a versioned relation/share; and
 - `warehouse_materialization` — verified publication into a warehouse relation or
   partition.
@@ -640,6 +687,90 @@ and digest alone are not an executable agreement. The fetched
 `adcp_jcs_rows_v1` algorithm, and contains cross-language golden vectors. SDKs fetch this contract under the
 same origin, redirect, DNS, byte, time, and content-type controls and verify its bytes
 and golden vectors before computing or accepting a billing digest.
+
+### HTTPS object writes
+
+<Note>
+Experimental in 3.3 under `media_buy.reporting_delivery` ([#8149](https://github.com/adcontextprotocol/adcp/issues/8149)).
+</Note>
+
+`https_put` is a `file_transfer` transport that writes immutable objects and their
+manifest to a buyer-registered HTTPS endpoint. It exists for durable delivery that needs
+objects, a manifest, and receipts, such as `consumer_receipt` reconciliation, which
+requires a managed method. Pushing rows in a request body is
+[`reporting_webhook`](/docs/building/by-layer/L3/webhooks#reporting-webhooks), not
+`https_put`. A seller offering it lists `https_put` in
+`protocol.principal.reporting_destination_offerings[].transports` and in the offering's
+`method.transport`.
+
+An `https_put` delivery is conformant only if all three of these hold:
+
+1. **The manifest is written last.** The seller writes the manifest only after every
+   data-object write has returned `2xx`. The manifest's appearance is the commit point,
+   as for every `file_transfer` transport.
+2. **The seller signs every request.** Every write, the probe included, is signed by
+   the seller under the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile),
+   never authenticated with a buyer-issued secret.
+3. **The endpoint proves control before `ready`.** The destination does not become
+   `ready` until the endpoint passes the signed probe below.
+
+**Location.** `location` is an `https://` origin plus a path prefix ending in `/`. The
+`location` pattern excludes `?`, `#`, and `%`, so it cannot carry a query token, but a
+path segment can still act as a capability. The location is non-secret: it can be
+logged and read back, and the endpoint MUST authorize writes only by verifying the
+seller's signature, never by the path. Sellers parse the location as a URL and reject
+`\`, userinfo, and a host that is an IP literal in any form or `localhost`. The
+destination's `provider.domain` MUST equal the location host.
+
+**Writes.** Each data object is written with `PUT` to the location followed by its
+`object_ref`, percent-encoded as an RFC 3986 path, which is the form `@target-uri`
+signs. Sellers refuse an `object_ref` with dot-segments. The manifest is written the same
+way to its own key under the location. Every write carries `Content-Digest`
+([RFC 9530](https://www.rfc-editor.org/rfc/rfc9530), `sha-256`) and `If-None-Match: *`,
+and every key includes `reporting_materialization_id`. A PUT re-sent within one
+materialization carries identical bytes to the identical key; an automated retry is a
+new materialization with new keys. An object is never overwritten: a write to an
+existing key gets `412`, with the stored object's `Repr-Digest`. The seller treats a
+`412` whose `Repr-Digest` matches the bytes it sent as success, and any other `412` as
+non-retryable, opening a `DELIVERY_FAILED` issue.
+
+**Signing.** Each request is an ordinary Web Bot Auth request from the seller agent's
+origin. It covers `@method`, `@target-uri`, `@authority`, `content-type`,
+`content-digest`, and the `Signature-Agent` member keyed to the signature label. A
+re-sent request is signed again with a fresh nonce. The receiver MUST verify the
+signature under the profile, resolving the seller's keys from the key directory of the
+origin named in `Signature-Agent` per the profile's
+[one resolution rule](/docs/building/by-layer/L1/wba-profile#one-resolution-rule). It
+MUST check that the origin equals the registered `producer_identity.identity`, and
+MUST verify the body against `Content-Digest` before storing it. The offering's
+`producer_identity.identity` is that origin, and `producer_identity.provider.domain` is
+the seller operator's domain. Keys never come from
+[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+
+**Proof of control.** Before the destination is `ready`, the seller writes a
+seller-named probe object under the location, signed like every write. The probe body
+carries a single-use nonce and the `destination_ref` the seller returned to the caller
+at registration, and `@target-uri` binds the exact location. The endpoint MUST echo the nonce and the probe's `Content-Digest` in a `2xx`
+response only after verifying that its operator received that `destination_ref` from
+this seller, as a webhook activation challenge binds its subscriber
+([Webhook URL validation](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf)).
+The verified echo is the seller-verifiable challenge that `file_transfer` readiness
+requires. A write-only endpoint is allowed: where the seller cannot read the
+destination, the signed probe and its echo also replace the read-back of the probe
+object.
+
+**Fetch safety.** The seller applies
+[Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf)
+steps 1–6 to the location at registration and again before every write: it resolves
+the host, rejects reserved ranges, and pins the connection. It follows no redirects,
+because a `307` or `308` would replay the body to another host.
+
+**Verification.** An `https_put` feed MUST NOT select `native_commit`, because no
+provider-native version evidence exists. A seller rejects an `https_put` destination
+whose `accepted_verification_profiles` leaves only `native_commit`. Billing feeds keep
+their existing requirements: `canonical_digest` and a
+[`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
+receipt.
 
 ## Subscription coverage
 
