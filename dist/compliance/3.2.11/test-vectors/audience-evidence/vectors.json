@@ -1,0 +1,277 @@
+{
+  "schema_version": "1.0",
+  "evaluation_time": "2026-08-04T12:00:00Z",
+  "capability_response": {
+    "status": "completed",
+    "adcp": {
+      "major_versions": [3],
+      "idempotency": { "supported": false },
+      "attestations": {
+        "accepted_claim_types": ["https://claims.example/audience/methodology-reviewed"],
+        "accepted_proof_formats": ["https://formats.example/jcs-signed-json"],
+        "supported_delivery_methods": ["credential_uri"],
+        "accepted_issuers": [
+          {
+            "issuer": { "type": "origin", "origin": "https://credentials.example" },
+            "credential_origins": ["https://credentials.example"]
+          }
+        ]
+      }
+    },
+    "supported_protocols": ["media_buy"],
+    "media_buy": {
+      "audience_evidence": {
+        "supported_requirement_modes": ["required", "preferred"],
+        "supported_presence_modes": ["required", "when_available"],
+        "supports_attestation_evaluation": true
+      }
+    }
+  },
+  "evidence": {
+    "evidence_id": "evidence_northstar_age_affinity",
+    "snapshot_id": "evidence_snapshot_2026_q2",
+    "version": "2026-q2",
+    "content_digest": "sha256:0d65098cb9cf74844983aa6acb9e983cc39d2adf3a39b7496840911b454937db",
+    "audience": {
+      "dimension": "age",
+      "range": { "min": 25, "max": 34 },
+      "label": "Adults 25–34"
+    },
+    "relationship": "index",
+    "value": 1.8,
+    "unit": "ratio",
+    "baseline": {
+      "system": "https://measurement.example/populations",
+      "population_id": "us_adults",
+      "version": "2026-q2",
+      "description": "United States adult population"
+    },
+    "evidence_type": "measured",
+    "methodology": "projected",
+    "subject_type": "individual",
+    "resolution_method": "mixed",
+    "provider": { "domain": "measurement.example" },
+    "measurement_window": { "start": "2026-04-01", "end": "2026-06-30" },
+    "sample_size": 12000,
+    "confidence": 0.92,
+    "last_updated": "2026-07-15T00:00:00Z",
+    "methodology_url": "https://measurement.example/methodology/audience-projection",
+    "attestation_refs": [
+      {
+        "issuer": { "type": "origin", "origin": "https://credentials.example" },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/audience-evidence",
+          "namespace": "https://sales.northstar.example/adcp",
+          "id": "evidence_snapshot_2026_q2",
+          "content_digest": "sha256:0d65098cb9cf74844983aa6acb9e983cc39d2adf3a39b7496840911b454937db"
+        },
+        "locator": {
+          "type": "credential_uri",
+          "credential_uri": "https://credentials.example/credentials/audience-evidence-2026-q2"
+        }
+      },
+      {
+        "issuer": { "type": "origin", "origin": "https://untrusted-credentials.example" },
+        "claim_type": "https://claims.example/audience/sample-validated",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/audience-evidence",
+          "namespace": "https://sales.northstar.example/adcp",
+          "id": "evidence_snapshot_2026_q2",
+          "content_digest": "sha256:0d65098cb9cf74844983aa6acb9e983cc39d2adf3a39b7496840911b454937db"
+        },
+        "locator": {
+          "type": "credential_uri",
+          "credential_uri": "https://untrusted-credentials.example/credentials/audience-evidence-2026-q2"
+        }
+      }
+    ]
+  },
+  "product": {
+    "product_id": "northstar_streaming_bundle",
+    "name": "Northstar Streaming Bundle",
+    "description": "Fictional streaming inventory for audience-evidence conformance.",
+    "publisher_properties": [
+      { "publisher_domain": "northstar.example", "selection_type": "all" }
+    ],
+    "format_ids": [
+      { "agent_url": "https://creative.example", "id": "video_16x9_30s" }
+    ],
+    "delivery_type": "guaranteed",
+    "pricing_options": [
+      { "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "currency": "USD", "fixed_price": 32 }
+    ],
+    "reporting_capabilities": {
+      "available_reporting_frequencies": ["daily"],
+      "expected_delay_minutes": 240,
+      "timezone": "UTC",
+      "supports_webhooks": false,
+      "available_metrics": ["impressions", "spend"],
+      "date_range_support": "date_range"
+    }
+  },
+  "policy_cases": [
+    {
+      "name": "required-present-admissible",
+      "requirements": {
+        "requirement_mode": "required",
+        "evidence_presence": "required",
+        "accepted_methodologies": ["observed", "projected"],
+        "excluded_methodologies": ["inferred", "modeled"],
+        "accepted_evidence_types": ["measured"],
+        "accepted_subject_types": ["individual", "household"],
+        "minimum_confidence": 0.8,
+        "maximum_age": { "interval": 90, "unit": "days" },
+        "methodology_documentation_required": true
+      },
+      "evidence_state": "fixture",
+      "expected_eligible": true,
+      "expected_selected": true
+    },
+    {
+      "name": "required-presence-missing",
+      "requirements": {
+        "requirement_mode": "required",
+        "evidence_presence": "required",
+        "accepted_methodologies": ["projected"]
+      },
+      "evidence_state": "missing",
+      "expected_eligible": false,
+      "expected_selected": false
+    },
+    {
+      "name": "when-available-missing",
+      "requirements": {
+        "requirement_mode": "required",
+        "evidence_presence": "when_available",
+        "accepted_methodologies": ["observed"]
+      },
+      "evidence_state": "missing",
+      "expected_eligible": true,
+      "expected_selected": false
+    },
+    {
+      "name": "when-available-published-but-inadmissible",
+      "requirements": {
+        "requirement_mode": "required",
+        "evidence_presence": "when_available",
+        "accepted_methodologies": ["observed"]
+      },
+      "evidence_state": "fixture",
+      "expected_eligible": false,
+      "expected_selected": false
+    },
+    {
+      "name": "preferred-inadmissible-still-eligible",
+      "requirements": {
+        "requirement_mode": "preferred",
+        "evidence_presence": "required",
+        "accepted_methodologies": ["observed"]
+      },
+      "evidence_state": "fixture",
+      "expected_eligible": true,
+      "expected_selected": false
+    },
+    {
+      "name": "required-independent-attestation",
+      "requirements": {
+        "requirement_mode": "required",
+        "evidence_presence": "required",
+        "independent_attestation_required": true,
+        "accepted_attestation_issuers": [
+          { "type": "origin", "origin": "https://credentials.example" }
+        ],
+        "accepted_attestation_claim_types": ["https://claims.example/audience/methodology-reviewed"]
+      },
+      "evidence_state": "fixture",
+      "attestation_outcome": "verified",
+      "expected_eligible": true,
+      "expected_selected": true
+    },
+    {
+      "name": "expired-evidence",
+      "requirements": {
+        "requirement_mode": "required",
+        "evidence_presence": "required",
+        "maximum_age": { "interval": 10, "unit": "days" }
+      },
+      "evidence_state": "fixture",
+      "expected_eligible": false,
+      "expected_selected": false
+    }
+  ],
+  "package_request": {
+    "product_id": "northstar_streaming_bundle",
+    "budget": 50000,
+    "pricing_option_id": "cpm_fixed",
+    "audience_evidence_requirements": {
+      "requirement_mode": "required",
+      "evidence_presence": "required",
+      "accepted_methodologies": ["projected"],
+      "independent_attestation_required": true,
+      "accepted_attestation_issuers": [
+        { "type": "origin", "origin": "https://credentials.example" }
+      ],
+      "accepted_attestation_claim_types": [
+        "https://claims.example/audience/methodology-reviewed"
+      ]
+    },
+    "audience_evidence_pins": [
+      {
+        "evidence_id": "evidence_northstar_age_affinity",
+        "snapshot_id": "evidence_snapshot_2026_q2",
+        "version": "2026-q2",
+        "content_digest": "sha256:0d65098cb9cf74844983aa6acb9e983cc39d2adf3a39b7496840911b454937db"
+      }
+    ]
+  },
+  "package": {
+    "package_id": "pkg_northstar_streaming",
+    "product_id": "northstar_streaming_bundle",
+    "audience_evidence_selections": [
+      {
+        "evidence_id": "evidence_northstar_age_affinity",
+        "snapshot_id": "evidence_snapshot_2026_q2",
+        "version": "2026-q2",
+        "content_digest": "sha256:0d65098cb9cf74844983aa6acb9e983cc39d2adf3a39b7496840911b454937db",
+        "decision_use": "package_construction",
+        "attestation_evaluations": [
+          {
+            "reference": {
+              "issuer": { "type": "origin", "origin": "https://credentials.example" },
+              "claim_type": "https://claims.example/audience/methodology-reviewed",
+              "subject": {
+                "type": "resource",
+                "resource_type": "https://adcontextprotocol.org/claims/subjects/audience-evidence",
+                "namespace": "https://sales.northstar.example/adcp",
+                "id": "evidence_snapshot_2026_q2",
+                "content_digest": "sha256:0d65098cb9cf74844983aa6acb9e983cc39d2adf3a39b7496840911b454937db"
+              },
+              "locator": {
+                "type": "credential_uri",
+                "credential_uri": "https://credentials.example/credentials/audience-evidence-2026-q2"
+              }
+            },
+            "evaluation": {
+              "reference_digest": "sha256:d52b2df7b5e8ed71dbc1ea8c94c39f788934ab325b03f6f84a20bc2cfc7d1afe",
+              "credential_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "proof_format": "https://formats.example/jcs-signed-json",
+              "outcome": "verified",
+              "confidence": 0.98,
+              "evaluated_at": "2026-08-04T12:00:00Z",
+              "evaluated_by": "https://sales.northstar.example/adcp",
+              "valid_until": "2026-08-04T13:00:00Z",
+              "action_binding": {
+                "action_type": "https://adcontextprotocol.org/actions/audience-evidence-evaluation",
+                "action_id": "evidence_snapshot_2026_q2",
+                "action_digest": "sha256:0d65098cb9cf74844983aa6acb9e983cc39d2adf3a39b7496840911b454937db"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
