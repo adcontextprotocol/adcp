@@ -10,6 +10,7 @@ import { promises as dnsPromises } from "node:dns";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { isComplianceRefreshAccessFailure } from "./services/compliance-refresh-authorization.js";
+import { A2A_AGENT_CARD_PATH } from "./lib/a2a-agent-card.js";
 
 export interface ClassifiedProbeError {
   kind: ProbeErrorKind;
@@ -108,7 +109,7 @@ export function classifyMCPError(error: unknown): ClassifiedProbeError {
       /\bno\s+mcp\s+endpoint\b/i.test(joined)) {
     return {
       kind: 'wrong_path',
-      message: 'No MCP endpoint at this URL. The agent may live at a sub-path (e.g. /mcp, /adcp/mcp) or be advertised as A2A in /.well-known/agent.json — check the registered URL.',
+      message: `No MCP endpoint at this URL. The agent may live at a sub-path (e.g. /mcp, /adcp/mcp) or be advertised as A2A in ${A2A_AGENT_CARD_PATH} — check the registered URL.`,
       raw,
     };
   }
@@ -324,8 +325,7 @@ export class HealthChecker {
 
   private async tryA2A(agent: Agent, startTime: number, auth?: SdkAuth, checkpoint?: () => Promise<void>): Promise<AgentHealth> {
     try {
-      // Check for A2A agent card at /.well-known/agent.json
-      const agentCardUrl = `${agent.url.replace(/\/$/, "")}/.well-known/agent.json`;
+      const agentCardUrl = `${agent.url.replace(/\/$/, "")}${A2A_AGENT_CARD_PATH}`;
       const headers = healthProbeHeaders(auth);
       await checkpoint?.();
       const response = await fetch(agentCardUrl, {

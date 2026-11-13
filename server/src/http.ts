@@ -25,6 +25,7 @@ import type { ComplianceRefreshQueue } from "./services/compliance-refresh-queue
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { inferDiagnosticAgentType } from "./lib/diagnostic-agent-type-inference.js";
+import { hasA2AAgentCard } from "./lib/a2a-agent-card.js";
 import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
@@ -35,7 +36,7 @@ import { closeDatabase, getPool, healthCheck, type HealthCheckDiagnostics } from
 import { ComplianceDatabase } from "./db/compliance-db.js";
 import { ComplianceRefreshRequestsDatabase } from "./db/compliance-refresh-requests-db.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
-import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
@@ -9898,20 +9899,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         // Detect protocols - check if both MCP and A2A are available
         const protocols: string[] = [agentInfo.protocol];
-        try {
-          // Check for A2A agent card if we detected MCP
-          if (agentInfo.protocol === 'mcp') {
-            const a2aUrl = new URL('/.well-known/agent.json', url).toString();
-            const a2aResponse = await sdkSafeFetch(a2aUrl, {
-              headers: { 'Accept': 'application/json' },
-              signal: AbortSignal.timeout(3000),
-            });
-            if (a2aResponse.ok) {
-              protocols.push('a2a');
-            }
-          }
-        } catch {
-          // Ignore A2A check failures
+        if (agentInfo.protocol === 'mcp' && await hasA2AAgentCard(url)) {
+          protocols.push('a2a');
         }
 
         // Fetch type-specific stats

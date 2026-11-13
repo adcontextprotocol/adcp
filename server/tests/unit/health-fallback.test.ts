@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Agent } from '../../src/types.js';
 
 // Pins the contract for the health_check_url fallback (adcp#3066):
@@ -82,6 +82,11 @@ describe('classifyMCPError', () => {
     const r = classifyMCPError(new Error('Failed to discover MCP endpoint at any of: /, /mcp, /mcp/'));
     expect(r.kind).toBe('wrong_path');
     expect(r.message).toMatch(/no mcp endpoint/i);
+  });
+
+  it('points the wrong_path hint at the A2A well-known URI', () => {
+    const r = classifyMCPError(new Error('Failed to discover MCP endpoint'));
+    expect(r.message).toContain('A2A in /.well-known/agent-card.json');
   });
 
   it('detects ENOTFOUND via direct error code', () => {
@@ -263,5 +268,39 @@ describe('HealthChecker.tryMCP — health_check_url fallback', () => {
     const health = await checker.checkHealth(baseAgent({ url: 'https://example.com' }));
     expect(health.online).toBe(false);
     expect(health.error_kind).toBe('wrong_path');
+  });
+});
+
+// The A2A agent card lives at /.well-known/agent-card.json (A2A §8.2). An
+// agent that serves only that path must probe as online, and the probe must
+// not request the pre-1.0 /.well-known/agent.json (#7875).
+describe('HealthChecker.tryA2A — agent card well-known URI', () => {
+  const cardUrl = 'https://agent.example.com/.well-known/agent-card.json';
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    mockFetch.mockImplementation(async (url: string) =>
+      url === cardUrl
+        ? new Response(JSON.stringify({ name: 'Test', skills: [] }), { status: 200 })
+        : new Response('not found', { status: 404 }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports online for an agent that serves its card only at agent-card.json', async () => {
+    const checker = new HealthChecker(0);
+    const health = await checker.checkHealth(baseAgent({ protocol: 'a2a' }));
+    expect(health.online).toBe(true);
+  });
+
+  it('requests only /.well-known/agent-card.json', async () => {
+    const checker = new HealthChecker(0);
+    await checker.checkHealth(baseAgent({ protocol: 'a2a' }));
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([cardUrl]);
   });
 });
