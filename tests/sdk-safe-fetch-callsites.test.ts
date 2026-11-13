@@ -9,6 +9,10 @@ const httpSource = readFileSync(
   new URL('../server/src/http.ts', import.meta.url),
   'utf8',
 );
+const a2aAgentCardSource = readFileSync(
+  new URL('../server/src/lib/a2a-agent-card.ts', import.meta.url),
+  'utf8',
+);
 
 describe('hosted SDK safe-fetch call sites', () => {
   it('scopes the registry client-credentials diagnostic exchange', () => {
@@ -18,10 +22,10 @@ describe('hosted SDK safe-fetch call sites', () => {
   });
 
   it('does not use ambient fetch for hosted A2A probes', () => {
-    expect(registryApiSource).not.toContain('await fetch(a2aUrl');
-    expect(httpSource).not.toContain('await fetch(a2aUrl');
-    expect(registryApiSource).toContain('await sdkSafeFetch(a2aUrl');
-    expect(httpSource).toContain('await sdkSafeFetch(a2aUrl');
+    expect(registryApiSource).toContain('await hasA2AAgentCard(url)');
+    expect(httpSource).toContain('await hasA2AAgentCard(url)');
+    expect(a2aAgentCardSource).not.toContain('await fetch(');
+    expect(a2aAgentCardSource).toContain('await sdkSafeFetch(new URL(A2A_AGENT_CARD_PATH, url)');
   });
 
   it('does not construct unscoped public discovery clients', () => {
