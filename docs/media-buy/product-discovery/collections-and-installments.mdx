@@ -804,6 +804,14 @@ For each product named, the **selected set** is that product's installments with
 
 A committed proposal can read back which installments its hold covers, in `holds[]` (experimental, `media_buy.installment_holds`); see [Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental). `holds[]` is readback about the hold finalize placed, not contract, and is not covered by `terms_digest`.
 
+### Creatives per installment (experimental)
+
+A package that buys several installments can give each one its own creative. A creator package with two posts is the usual case: the first post carries the awareness brief, and the second, weeks later, carries the call to action and a discount code. The same goes for a host read that changes by episode, or a print ad that changes by issue.
+
+For a creator deal, the creative the buyer assigns is often the brief: talking points, claims to avoid and the required disclosure, which the creator turns into a draft. Sync each brief as a library creative, then assign it to its post with `installment_refs` on a [`sync_creatives`](/docs/creative/task-reference/sync_creatives) `assign` operation. That post's `change_cutoff` then applies to changing its brief, and its `material_deadlines` say when the seller needs the talking points, script or draft.
+
+Each ref names one of the installments the package bought, the `installments` of the purchased product. An assignment without `installment_refs` applies to every installment, as before. A change that reaches an installment past its `change_cutoff` is refused, never accepted silently. Sellers that support this list `media_buy.installment_creative_assignment` in `experimental_features`, and buyers send the field only to them. See [Assigning to specific installments](/docs/creative/task-reference/sync_creatives#assigning-to-specific-installments-experimental) for the full rules.
+
 ## get_products response structure
 
 Products reference collections via `collections` selectors — the same pattern as `publisher_properties`. Each selector has a `publisher_domain` and `collection_ids` array pointing to collections declared in that publisher's `adagents.json`. When the request sets `include_collections: true`, the response can also carry the full collection objects, described [below](#collections-in-responses).
