@@ -379,7 +379,8 @@
           },
           "by_package": {
             "type": "array",
-            "description": "Metrics broken down by package",
+            "description": "Metrics broken down by package. Every media buy has at least one package, so this array MUST contain at least one row. Sellers SHOULD return one row per package in the media buy. Delivery that cannot be attributed to a package MUST NOT be reported as an empty array; buyers price, cap and reconcile per package.",
+            "minItems": 1,
             "items": {
               "allOf": [
                 {
