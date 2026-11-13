@@ -77,7 +77,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 
 ## Withdrawn from 3.3, planned for 4.0
 
-Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` and the term objects inside it are held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). A buyer must not be bound by terms it cannot read: `terms_digest` covers every member of `commercial_terms`, including members under the open schemas inside it, and a party that cannot interpret every member must not accept the terms ([Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently)). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it. The decision is in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
+Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` and the term objects inside it are held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). A buyer must not be bound by terms it cannot read: `terms_digest` covers every member of `commercial_terms`, including members under the open schemas inside it, and a party that cannot interpret every member must not accept the terms ([Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently)). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it. A fourth, `metric_id` on performance standards, waits for 4.0 because it changes how a signed performance standard is read. The decision is in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
 
 ### Definition pins (published in beta.0 and beta.1, removed after beta.1)
 
@@ -98,9 +98,13 @@ A seller no longer pins definitions, re-verifies pins at finalize, or fails `acc
 
 [#8246](https://github.com/adcontextprotocol/adcp/pull/8246) merged on 2026-10-24 and shipped in `3.3.0-beta.1` as experimental `media_buy.installment_selection`: `purchases[].installments[]`, and `installment_changes` with `unsatisfied_installment_changes` on `refine_proposals`. All are removed, along with `core/installment-change-set.json` and the `installment_changes` value of `proposal_refinement.supported_dimensions`. A seller that listed the feature id stops listing it. Installments on the canonical product and `holds[]` stay in 3.3. A purchase buys the product as offered, which is its complete installment set when it declares one.
 
+### Performance standard `metric_id` (published in beta.1 through beta.5, removed after beta.5)
+
+[#8436](https://github.com/adcontextprotocol/adcp/pull/8436) added an optional `metric_id` to `core/performance-standard.json`, `core/canonical-performance-standard.json`, and the `required_performance_standards` entries of `core/product-offer-filters.json`, naming which of the vendor's metrics an `ivt`, `brand_safety`, or `attention_score` standard is judged against. All three are removed, with the rule that a standard without it is not judged from `vendor_metric_values`. The canonical standard is part of the purchase that `terms_digest` signs, and `metric_id` changes which vendor value decides it, so a 3.2 buyer would read the same signed standard differently. The three schemas return to their 3.2 form. Stop sending and emitting the field. Which of the vendor's metrics a standard is judged on stays between the parties, as in 3.2, until 4.0 ([check](/docs/reference/migration/v4-compatibility#performance_standard_metric_id_required_in_4_0)).
+
 ### Where the designs are kept
 
-The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) and in the merge commits of #7960, #8101, and #8246.
+The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) and in the merge commits of #7960, #8101, #8246, and #8436.
 
 ## Required to claim 3.3 behavior
 
@@ -761,7 +765,7 @@ Each is optional and experimental: a seller that emits it lists the feature id i
 
 ### Experimental creative evaluator drops `evaluator_id`
 
-Applies only to sellers and buyers that use the experimental `creative.evaluator` surface (`build_creative.evaluator`). The `evaluator_id` source form is removed from `core/evaluator-spec.json`, and the `evaluator` entity is removed from `x-entity-types`. The evaluator object stays the request primitive, with two source forms: inline `exemplars` or an external `agent_url`. A seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `list_evaluators` follow-on that existed only to resolve `evaluator_id` is withdrawn.
+Applies only to sellers and buyers that use the experimental `creative.evaluator` surface (`build_creative.evaluator`). The `evaluator_id` source form is removed from `core/evaluator-spec.json`. The `evaluator` value stays in `x-entity-types`, deprecated, because existing values are never removed or renamed; no 3.3 field carries it. The evaluator object stays the request primitive, with two source forms: inline `exemplars` or an external `agent_url`. A seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `list_evaluators` follow-on that existed only to resolve `evaluator_id` is withdrawn.
 
 | Before (3.1 and 3.2) | After (3.3) |
 |---|---|

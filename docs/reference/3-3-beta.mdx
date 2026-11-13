@@ -176,6 +176,16 @@ Three features shipped in `3.3.0-beta.1` and are not part of 3.3. They leave the
 
 The [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) lists every surface removed, and [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) keeps the designs.
 
+## Withdrawn after beta.5
+
+One field that the 3.3 betas added to the performance standards leaves after beta.5 ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). The canonical performance standard is part of the signed commercial terms, which are held closed until 4.0.
+
+| Field | Shipped in | Action |
+|---|---|---|
+| `metric_id` on performance standards and `required_performance_standards` ([#8436](https://github.com/adcontextprotocol/adcp/pull/8436)) | beta.1 to beta.5 | Stop sending and emitting it. Planned for 4.0. |
+
+The `evaluator` value that beta.0 removed from `x-entity-types` is back, as a deprecated value.
+
 ## Required integration evidence
 
 Retain the exact protocol bundle, SDK package versions, capability responses, redacted requests and responses, task IDs, and account and MediaBuy identifiers for each run.
