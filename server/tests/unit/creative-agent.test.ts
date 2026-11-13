@@ -30,6 +30,23 @@ const inlineMarkupManifest = (markup: string, size?: { width: number; height: nu
   },
 });
 const getId = (format: Record<string, unknown>) => (format.format_id as { id: string }).id;
+// asset_types filter fixtures (#8630): the carousel's only image sits inside
+// its repeatable card group, and the banner's text asset is optional.
+const ASSET_TYPE_FILTER_FORMATS = [
+  { format_id: { agent_url: TEST_AGENT_URL, id: 'image_only' }, assets: [{ asset_type: 'image', required: true }] },
+  {
+    format_id: { agent_url: TEST_AGENT_URL, id: 'image_with_optional_text' },
+    assets: [{ asset_type: 'image', required: true }, { asset_type: 'text', required: false }],
+  },
+  {
+    format_id: { agent_url: TEST_AGENT_URL, id: 'carousel_cards' },
+    assets: [
+      { item_type: 'repeatable_group', asset_group_id: 'cards', assets: [{ asset_type: 'image', required: true }] },
+      { asset_type: 'text', required: true },
+    ],
+  },
+  { format_id: { agent_url: TEST_AGENT_URL, id: 'video_only' }, assets: [{ asset_type: 'video', required: true }] },
+];
 
 // ── Training agent formats (shared/formats.ts) ─────────────────────
 
@@ -419,6 +436,14 @@ describe('handleListCreativeFormats', () => {
       const hasVast = f.assets?.some(a => a.asset_type === 'vast');
       expect(hasVast).toBe(true);
     }
+  });
+
+  it('keeps only formats that declare every requested asset type, counting optional and repeatable-group assets', () => {
+    const ids = (assetTypes: string[]) =>
+      (handleListCreativeFormats({ asset_types: assetTypes }, ASSET_TYPE_FILTER_FORMATS).formats as Array<Record<string, unknown>>).map(getId);
+    expect(ids(['image', 'text'])).toEqual(['image_with_optional_text', 'carousel_cards']);
+    expect(ids(['image'])).toEqual(['image_only', 'image_with_optional_text', 'carousel_cards']);
+    expect(ids(['image', 'video'])).toEqual([]);
   });
 
   it('filters by is_responsive: true', () => {

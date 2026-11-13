@@ -7680,7 +7680,7 @@ function nativeInFeedValidationError(
       details: {
         constraint: violation.constraint,
         declared: violation.expected,
-        ...(violation.code === 'CREATIVE_VALUE_NOT_ALLOWED' && { allowed_values: violation.expected }),
+        ...(violation.code === 'CREATIVE_VALUE_NOT_ALLOWED' && { accepted_values: violation.expected }),
         ...(violation.constraint === 'main_image_sizes' && { allowed_sizes: violation.expected }),
         ...(declaration.formatOptionId && { format_option_id: declaration.formatOptionId }),
       },

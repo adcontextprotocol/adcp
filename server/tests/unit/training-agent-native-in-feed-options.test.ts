@@ -203,7 +203,7 @@ describe('training agent sync_creatives honors declared native_in_feed options (
         field: 'creatives[0].assets.cta.content',
         details: {
           constraint: 'cta_values',
-          allowed_values: ['Get offer', 'Visit site'],
+          accepted_values: ['Get offer', 'Visit site'],
           format_option_id: OPTION_ID,
         },
       });
@@ -306,7 +306,7 @@ describe('training agent sync_creatives honors declared native_in_feed options (
       const cta = await sync([nativeCreative('bare_cta', { cta: 'EXPLORE_MORE' })]);
       expect(cta.errors?.[0]).toMatchObject({
         code: 'CREATIVE_VALUE_NOT_ALLOWED',
-        details: { allowed_values: ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD', 'APPLY_NOW'] },
+        details: { accepted_values: ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD', 'APPLY_NOW'] },
       });
     });
 

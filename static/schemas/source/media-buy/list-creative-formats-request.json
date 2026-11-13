@@ -24,7 +24,7 @@
     },
     "asset_types": {
       "type": "array",
-      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. For published-post reference formats, search for 'published_post'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "description": "Filter to formats that declare every one of these asset types. An asset counts whether it is required or optional, and whether it is declared at the top level or inside a `repeatable_group`. For third-party tags, search for 'html' or 'javascript'. For published-post reference formats, search for 'published_post'. E.g., ['image', 'text'] returns only formats that declare both an image and a text asset, ['image'] also returns a carousel whose only image sits inside its card group, and ['javascript'] returns formats accepting JavaScript tags.",
       "items": {
         "$ref": "/schemas/enums/asset-content-type.json"
       },

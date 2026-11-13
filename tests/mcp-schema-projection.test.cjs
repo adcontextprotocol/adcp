@@ -226,6 +226,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // #8501 entries 11-12 restore sla-window to its 3.2.8 text and give the
 // creative review SLA its own clock, durations and calendar constraints in
 // place of a $ref; the controller measures 1_387_457 bytes, bound at 1_388_000.
+// #8758 and #8767 withdraw 3.3 additions from the seeded Product, so main
+// measures 1_329_553 bytes. The creative wording errata (#8628-#8631:
+// image_carousel default, slot narrowing, Product.format_options rule) add
+// 890 bytes, to 1_330_443. The bound stays at 1_388_000.
 const PARITY_COMPILE_LIMIT = 1_388_000;
 
 function readJson(filename) {
