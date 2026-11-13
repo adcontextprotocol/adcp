@@ -1762,9 +1762,14 @@ export class ComplianceDatabase {
     // a lock left by a dead worker stops excluding the agent once it expires.
     //
     // Explicit owner requeues are served first (oldest requeue wins), then
-    // the regular cadence by last authoritative check. Without that, an agent
+    // the regular cadence by last independent check. Without that, an agent
     // with a recent `last_checked_at` sorts behind every agent checked
     // earlier and a requeue never moves it forward (#7632).
+    // Within a tier the oldest heartbeat success goes first, not the oldest
+    // `last_checked_at`: owner tests also set that, so an agent whose owner
+    // tests often would keep sorting to the back of its tier and could go
+    // without an independent check while due (#7693). Eligibility still
+    // requires the cadence and a free lock, so this never overrides backoff.
     // ORDER BY adds `agent_url` as a deterministic tiebreaker so two
     // never-checked agents land in a stable order across heartbeat runs.
     const result = await query(
@@ -1799,6 +1804,7 @@ export class ComplianceDatabase {
           ka.has_active_badge,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
           s.last_checked_at,
+          m.last_heartbeat_success_at,
           m.requeued_at,
           COALESCE(m.heartbeat_orphan_streak, 0) AS heartbeat_orphan_streak
         FROM known_agents ka
@@ -1821,7 +1827,7 @@ export class ComplianceDatabase {
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
       ORDER BY requeued_at ASC NULLS LAST, is_member_registered DESC, has_active_badge DESC,
-        last_checked_at ASC NULLS FIRST, agent_url ASC
+        last_heartbeat_success_at ASC NULLS FIRST, agent_url ASC
       LIMIT $1`,
       [limit],
     );

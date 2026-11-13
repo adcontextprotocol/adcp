@@ -675,6 +675,38 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
       expect(await isDue(url)).toBe(true);
     });
 
+    it('serves the oldest independent check first within a tier, not the least recently owner-tested agent', async () => {
+      const ownerTested = await registeredAgent();
+      const heartbeatChecked = await registeredAgent();
+      const neverHeartbeat = await registeredAgent();
+      const tier = [ownerTested, heartbeatChecked, neverHeartbeat];
+      // Owner tests publish and refresh last_checked_at without being an
+      // independent check.
+      for (const url of [ownerTested, neverHeartbeat]) {
+        await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'owner_test' });
+      }
+      await pool.query(
+        `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
+         VALUES ($1, 'passing', NOW() - INTERVAL '2 days')`,
+        [heartbeatChecked],
+      );
+      await pool.query(
+        `UPDATE agent_registry_metadata
+         SET next_compliance_check_at = NOW() - INTERVAL '10 minutes',
+             last_heartbeat_success_at = CASE agent_url
+               WHEN $1 THEN NOW() - INTERVAL '3 days'
+               WHEN $2 THEN NOW() - INTERVAL '2 days' END
+         WHERE agent_url = ANY($3::text[])`,
+        [ownerTested, heartbeatChecked, tier],
+      );
+
+      const order = (await db.getAgentsDueForCheck(100000))
+        .map(agent => agent.agent_url)
+        .filter(url => tier.includes(url));
+
+      expect(order).toEqual([neverHeartbeat, ownerTested, heartbeatChecked]);
+    });
+
     it('answers a requeue placed before the suite started with that attempt\'s backoff', async () => {
       const url = await registeredAgent();
       await makeDue(url);
