@@ -223,7 +223,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // bound at 1_386_000.
 // With both on main (#8911 and the named rejections), the controller measures
 // 1_386_397 bytes; bound at 1_387_000.
-const PARITY_COMPILE_LIMIT = 1_387_000;
+// The creative wording errata (#8628-#8631: image_carousel default, slot
+// narrowing, Product.format_options rule) bring it to 1_387_287 bytes; bound
+// at 1_388_000.
+const PARITY_COMPILE_LIMIT = 1_388_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
