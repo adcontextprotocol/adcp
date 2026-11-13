@@ -157,6 +157,12 @@ export const MERGE_POLICIES: Readonly<Record<string, MergePolicy>> = {
       heartbeat_claim_owner: { kind: 'reset', value: null },
       heartbeat_started_at: { kind: 'reset', value: null },
       heartbeat_orphan_streak: { kind: 'reset', value: 0 },
+      compliance_lock_until: { kind: 'reset', value: null },
+      // Heartbeat writes never bump updated_at, so the ranked winner's reason
+      // may not belong to the latest attempt; the next attempt rewrites it.
+      last_heartbeat_skip_reason: { kind: 'reset', value: null },
+      last_heartbeat_attempt_at: { kind: 'max' },
+      last_heartbeat_success_at: { kind: 'max' },
     },
     rationale:
       'Lifecycle comes from the most recently updated row; every flag that '
