@@ -1459,16 +1459,43 @@ See [Audience evidence](/docs/media-buy/product-discovery/media-products#audienc
 
 #### audience_targeting
 
-Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) and `audience_include`/`audience_exclude` in targeting overlays. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
+Audience targeting capabilities. Presence of this object indicates the seller supports `audience_include`/`audience_exclude` in targeting overlays and discovery-only [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences#discovery-only), the call without `audiences` that lists the audiences on the account and the `audience_id` values those overlays reference. A seller that declares `audience_targeting` MUST answer discovery-only `sync_audiences`. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
+
+**Inline member push is declared separately.** Presence of `audience_targeting` alone does not promise that the seller accepts pushed members (`add` and `remove` on `sync_audiences`):
+
+| `supported_activation_methods` | Inline member push | `supported_identifier_types` and `minimum_audience_size` |
+|---|---|---|
+| Absent | Supported, as in 3.2 | Required |
+| Includes `{ "pattern": "sync_audiences" }` | Supported | Required |
+| Present without the `sync_audiences` pattern | Not supported | Optional |
+
+A seller without inline member push MUST reject, with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), a `sync_audiences` entry that carries `add` or `remove`, or that would create a new audience without a [`source`](/docs/media-buy/task-reference/sync_audiences#external-audience-sources-experimental) reference. It still answers discovery-only calls, so a buyer can read the `audience_id` values of audiences already on the account, such as ones built in the platform's own tools, and target them. `supported_activation_methods` is experimental, so a seller that declares no inline push lists `media_buy.audience_activation` in `experimental_features`.
+
+```json
+{
+  "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
+  "adcp": { "major_versions": [3], "idempotency": { "supported": false } },
+  "supported_protocols": ["media_buy"],
+  "experimental_features": ["media_buy.audience_activation"],
+  "media_buy": {
+    "audience_targeting": {
+      "supported_activation_methods": [
+        { "pattern": "platform_distribution", "vendor": { "domain": "activation-hub.example" } }
+      ]
+    }
+  }
+}
+```
 
 | Field                           | Type     | Required     | Description                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `supported_identifier_types`    | string[] | **Required** | PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. Values: `hashed_email`, `hashed_phone`.                                                                                                                                                                                                                                                             |
-| `minimum_audience_size`         | integer  | **Required** | Minimum matched audience size required for targeting. Audiences below this threshold will have `status: too_small`. Varies by platform (100–1000 is typical).                                                                                                                                                                                                                                                             |
+| `supported_identifier_types`    | string[] | **Required with inline push** | PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. Values: `hashed_email`, `hashed_phone`. Required unless `supported_activation_methods` is present without the `sync_audiences` pattern.                                                                                                                                                                                                                                                             |
+| `minimum_audience_size`         | integer  | **Required with inline push** | Minimum matched audience size required for targeting. Audiences below this threshold will have `status: too_small`. Varies by platform (100–1000 is typical). Required unless `supported_activation_methods` is present without the `sync_audiences` pattern; a seller without inline push MAY still declare it.                                                                                                                                                                                                                                                             |
 | `supports_platform_customer_id` | boolean  |              | When `true`, the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). Buyers can include `platform_customer_id` values in `AudienceMember.identifiers`. Reporting on matched IDs typically requires a clean room or the seller's own reporting surface. |
 | `supported_uid_types`           | string[] |              | Universal ID types accepted for audience matching (MAIDs, RampID, UID2, etc.). MAID support varies significantly by platform — check this field before sending `uids` with `type: maid`.                                                                                                                                                                                                                                  |
 | `matching_latency_hours`        | object   |              | Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring `push_notification_config`. Shape: `{ min: integer, max: integer }`.                                                                                                                                                                                                          |
-| `supported_activation_methods`  | object[] |              | **Experimental** (`media_buy.audience_activation` — MUST be listed in `experimental_features` when present; see [Experimental status](/docs/reference/experimental-status)). Union of per-product [`audience_activation.methods`](/docs/media-buy/product-discovery/media-products#audience-activation) across the seller's catalog. Fast-fail discovery: read this once and skip the catalog walk when nothing overlaps your pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: this union may omit `consumer_identities` and `destination_ref` until bilateral setup establishes them, and must never expose another account's coordinates. Absence of this field with `media_buy.audience_activation` listed in `experimental_features` means walk the catalog — only a present, non-overlapping union is a fast-fail signal. Each entry is an [activation method](/docs/media-buy/product-discovery/media-products#activation-method-patterns). |
+| `supported_activation_methods`  | object[] |              | **Experimental** (`media_buy.audience_activation` — MUST be listed in `experimental_features` when present; see [Experimental status](/docs/reference/experimental-status)). Union of per-product [`audience_activation.methods`](/docs/media-buy/product-discovery/media-products#audience-activation) across the seller's catalog. Fast-fail discovery: read this once and skip the catalog walk when nothing overlaps your pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: this union may omit `consumer_identities` and `destination_ref` until bilateral setup establishes them, and must never expose another account's coordinates. Absence of this field with `media_buy.audience_activation` listed in `experimental_features` means walk the catalog — only a present, non-overlapping union is a fast-fail signal. When present, it also declares inline member push: the seller accepts `add` and `remove` on `sync_audiences` only when the union includes the `sync_audiences` pattern. Each entry is an [activation method](/docs/media-buy/product-discovery/media-products#activation-method-patterns). |
 
 #### conversion_tracking
 
@@ -1990,7 +2017,7 @@ Agents that declare `supported: true` MUST apply the same account/caller authori
 - `media_buy.execution.targeting.property_list_exclude: true` → At least one product supports property exclusion; inspect that product's `overlay_support.property_list_exclude`
 - `media_buy.execution.targeting.placement_selection: true` → At least one product supports purchased-placement selection; inspect that product's targetable placements and `overlay_support.placement_selection`
 - `media_buy.content_standards` object present → Seller MUST apply content standards when provided
-- `media_buy.audience_targeting` object present → Seller MUST support [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) and audience targeting overlays
+- `media_buy.audience_targeting` object present → Seller MUST support `audience_include`/`audience_exclude` overlays and answer discovery-only [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences); it MUST also accept inline member push unless `audience_targeting.supported_activation_methods` is present without the `sync_audiences` pattern
 - `media_buy.conversion_tracking` object present → Seller MUST support [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) and [`log_event`](/docs/media-buy/task-reference/log_event)
 - AXE URL in `media_buy.execution.axe_integrations` → Seller can execute through that exchange (legacy — new integrations use [TMP](/docs/trusted-match))
 

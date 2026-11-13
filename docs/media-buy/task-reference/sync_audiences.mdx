@@ -117,7 +117,7 @@ asyncio.run(main())
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
-| `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. |
+| `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. Every seller that declares `media_buy.audience_targeting` answers discovery-only calls; member deltas need [inline member push](#sellers-without-inline-member-push). |
 | `delete_missing` | boolean | No | When true, buyer-managed audiences on the account not in this request are removed (default: false). Does not affect seller-managed audiences. Do not combine with an omitted `audiences` array or all buyer-managed audiences will be deleted. |
 
 ### Audience Object
@@ -145,13 +145,23 @@ Every member requires an `external_id` (buyer-assigned stable identifier) plus a
 
 Providing multiple identifiers for the same person improves match rates. Composite identifiers (e.g. hashed first name + last name + zip) are not yet standardized — use `ext` for platform-specific extensions.
 
-**Identifier support varies by seller**: Check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) → `media_buy.audience_targeting.supported_identifier_types` and `media_buy.audience_targeting.supported_uid_types` before sending. MAID support is not universal (LinkedIn does not accept MAIDs; iOS IDFA requires App Tracking Transparency consent). The `media_buy.audience_targeting.matching_latency_hours` range and `media_buy.audience_targeting.minimum_audience_size` in capabilities are also seller-specific.
+**Identifier support varies by seller**: Check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) → `media_buy.audience_targeting.supported_identifier_types` and `media_buy.audience_targeting.supported_uid_types` before sending. MAID support is not universal (LinkedIn does not accept MAIDs; iOS IDFA requires App Tracking Transparency consent). The `media_buy.audience_targeting.matching_latency_hours` range and `media_buy.audience_targeting.minimum_audience_size` in capabilities are also seller-specific. A seller without inline member push may omit `supported_identifier_types` and `minimum_audience_size`.
 
 **Activation paths beyond inline push**: Inline members are one activation method. Sellers declare which paths they support — AdCP push, dataset sharing, clean rooms, platform distribution — via [`audience_activation`](/docs/media-buy/product-discovery/media-products#audience-activation) on products and `media_buy.audience_targeting.supported_activation_methods` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Filter discovery with `filters.audience_activation_methods` on [`get_products`](/docs/media-buy/task-reference/get_products) to find inventory compatible with your data pipeline. [External source references](#external-audience-sources-experimental) — pointing this task at a shared dataset or vendor-distributed segment instead of pushing members — are available experimentally on sellers that declare the corresponding activation patterns.
 
 **Size limit**: Payloads are limited to 100,000 members per call across all audiences. For larger lists, chunk into sequential calls using `add` deltas.
 
 **Concurrency**: Ensure that calls made to `sync_audience` are independent of eachother. They may be processed out-of-order. If you need sequential execution, wait for the callback to your configured webhook before making another call. 
+
+### Sellers without inline member push
+
+A seller that declares `media_buy.audience_targeting` supports `audience_include` and `audience_exclude` and MUST answer discovery-only calls to this task. Whether it also accepts pushed members is a separate declaration, read from `media_buy.audience_targeting.supported_activation_methods` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#audience_targeting):
+
+- **Absent:** inline member push is supported, as in 3.2.
+- **Includes `{ "pattern": "sync_audiences" }`:** inline member push is supported.
+- **Present without the `sync_audiences` pattern:** no inline member push. The seller MUST reject, with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), an `audiences` entry that carries `add` or `remove`, or that would create a new audience without a [`source`](#external-audience-sources-experimental) reference. Discovery-only calls still work, and so do `source` references for the rails the seller declares.
+
+The typical case is an ad platform account that already holds the buyer's audiences, built in the platform's own tools, where the platform cannot take a customer list through its API. The seller lists those audiences with a [discovery-only call](#discovery-only), and the buyer targets the returned `audience_id` values with `audience_include` and `audience_exclude`.
 
 ## Response shapes
 
@@ -279,7 +289,7 @@ Sellers that only support aggregate match counts omit `match_breakdown` entirely
 
 ### Discovery Only
 
-Check status of all existing audiences without making changes. The response includes all audiences on the account — filter by `audience_id` to find the one you care about:
+Check status of all existing audiences without making changes. The response includes all audiences on the account — filter by `audience_id` to find the one you care about. Every seller that declares `media_buy.audience_targeting` answers this call, including a [seller without inline member push](#sellers-without-inline-member-push), so it is how a buyer learns which `audience_id` values it can target:
 
 <CodeGroup>
 
@@ -706,6 +716,7 @@ The schema never carries cleartext email or phone — buyers MUST hash before tr
 | [`SOURCE_ACCESS_FAILED`](/docs/building/verification/compliance-catalog#error-code-source-access-failed) | Seller could not read an external audience source (per-audience, experimental) | `error.field` `source.locator`/`source.segment_ref`: fix the reference; `source`: grant the seller's declared consumer identity and retry; no `error.field`: vendor outage — retry with backoff |
 | [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | Cross-transport upsert: member deltas against a sourced audience or `source` against a pushed one (`error.field` = `audience_id`) | Transport is fixed at creation — delete and recreate to convert |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | `source` kind whose activation pattern the seller has not declared | Check the seller's `audience_activation` declarations before sending source references |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | `add` or `remove` member deltas, or a new audience without `source`, sent to a seller whose `supported_activation_methods` omits the `sync_audiences` pattern | Check `media_buy.audience_targeting.supported_activation_methods` before pushing members; use discovery-only calls and target existing audiences instead |
 
 ## Next Steps
 

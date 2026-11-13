@@ -76,7 +76,7 @@
     "test:targeting-aware-discovery": "node --test --test-force-exit --test-timeout=30000 tests/targeting-aware-discovery.test.cjs tests/product-coverage-filters.test.cjs",
     "test:geo-region-targeting": "node --test --test-force-exit --test-timeout=30000 tests/geo-region-targeting.test.cjs",
     "test:demographic-targeting": "node --test --test-force-exit --test-timeout=30000 tests/demographic-targeting.test.cjs",
-    "test:audience-activation-methods": "node --test --test-force-exit --test-timeout=30000 tests/audience-activation-methods.test.cjs",
+    "test:audience-activation-methods": "node --test --test-force-exit --test-timeout=30000 tests/audience-activation-methods.test.cjs tests/audience-targeting-member-push.test.cjs",
     "test:principal": "node --test --test-force-exit --test-timeout=30000 tests/principal-contract.test.cjs",
     "test:signal-delivery-methods": "node --test --test-force-exit --test-timeout=30000 tests/signal-delivery-methods.test.cjs",
     "test:audience-external-sources": "node --test --test-force-exit --test-timeout=30000 tests/audience-external-sources.test.cjs",
