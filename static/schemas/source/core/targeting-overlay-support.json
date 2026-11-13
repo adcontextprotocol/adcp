@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-support.json",
   "title": "Targeting Overlay Support",
-  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package, max_packages, and max_references. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections, uniform across values except for adjustments declared by the selected fixed-price pricing option's price_adjustments, which price format option and placement_selection selections and dated windows. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. The daypart_targets boolean is the backward-compatible exception: true promises inventory_local and whole-hour granularity only, and structured support opts into IANA zones and finer time_granularity. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching. A product declares at most one of frequency_cap: true and frequency_cap_support. Legacy frequency_cap: true keeps its broad meaning within seller-wide limits, including update support. A constrained or create-only product instead advertises frequency_cap_support, so older buyers safely treat it as unsupported.",
+  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package, max_packages, and max_references. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. The daypart_targets boolean is the backward-compatible exception: true promises inventory_local and whole-hour granularity only, and structured support opts into IANA zones and finer time_granularity. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching. A product declares at most one of frequency_cap: true and frequency_cap_support. Legacy frequency_cap: true keeps its broad meaning within seller-wide limits, including update support. A constrained or create-only product instead advertises frequency_cap_support, so older buyers safely treat it as unsupported.",
   "type": "object",
   "definitions": {
     "supported": {
@@ -28,7 +28,7 @@
             }
           },
           "required": ["max_values_per_package"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -62,7 +62,7 @@
             }
           },
           "required": ["systems"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -96,7 +96,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["countries", "current_version", "system_versions"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "x-adcp-validation": {
         "member_of": { "field": "current_version", "array_field": "system_versions" },
         "description": "JSON Schema draft-07 cannot express scalar membership in a sibling array; conformance tooling MUST verify current_version is present in system_versions."
@@ -121,7 +121,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["systems"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "collectionListsSupport": {
       "x-status": "experimental",
@@ -143,7 +143,7 @@
             }
           },
           "required": ["max_references"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -168,7 +168,7 @@
             }
           },
           "required": ["supported_match_types"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -188,7 +188,7 @@
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
           "required": ["families"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -253,7 +253,7 @@
               }
             }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     }
@@ -317,7 +317,7 @@
             { "required": ["geometry"] },
             { "required": ["transport_modes"] }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -327,7 +327,13 @@
     "signal_targeting_groups": { "$ref": "#/definitions/supported" },
     "demographics": {
       "anyOf": [
-        { "$ref": "#/definitions/supported" },
+        {
+          "$ref": "#/definitions/supported",
+          "deprecated": true,
+          "x-deprecated-in": "3.3.0",
+          "x-removed-in": "4.0.0",
+          "description": "Deprecated in 3.3. The 3.2 shorthand for { age: true }. Senders MUST send the object; receivers MUST accept true."
+        },
         {
           "type": "object",
           "properties": {
@@ -336,7 +342,7 @@
               "$ref": "#/definitions/supported",
               "x-status": "experimental",
               "x-added-in": "3.3.0",
-              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
+              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting)."
             },
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
@@ -367,7 +373,7 @@
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
           "minProperties": 1,
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },

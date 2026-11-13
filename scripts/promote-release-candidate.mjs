@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Promote the final 3.2 beta to rc.0 without publishing an intermediate
+ * Promote the current line's final beta (`X.Y.0-beta.N`, read from
+ * package.json) to `X.Y.0-rc.0` without publishing an intermediate beta or
  * stable release. Changesets increments the numeric suffix across tag changes,
  * so its default beta -> rc path would turn beta.N into rc.(N+1).
  *
@@ -23,19 +24,30 @@ const { inc, parse } = semver;
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const markerRelativePath = '.changeset/rc-promotion.json';
 
+// `X.Y.Z` of a parsed version: the release line its prereleases belong to.
+function releaseLine({ major, minor, patch }) {
+  return `${major}.${minor}.${patch}`;
+}
+
 export function planRcPromotion({ packageVersion, preState, pendingChangesets }) {
   const parsed = parse(packageVersion);
-  if (!parsed || parsed.prerelease[0] !== 'beta' || typeof parsed.prerelease[1] !== 'number') {
+  if (
+    !parsed
+    || parsed.prerelease.length !== 2
+    || parsed.prerelease[0] !== 'beta'
+    || typeof parsed.prerelease[1] !== 'number'
+  ) {
     throw new Error(`Expected the final beta version, received ${JSON.stringify(packageVersion)}.`);
   }
-  if (parsed.major !== 3 || parsed.minor !== 2 || parsed.patch !== 0) {
-    throw new Error(`RC promotion is restricted to the 3.2.0 release line, received ${JSON.stringify(packageVersion)}.`);
+  // Candidates exist only for a new minor or major line; patches ship stable.
+  if (parsed.patch !== 0) {
+    throw new Error(`RC promotion requires an X.Y.0 beta, received ${JSON.stringify(packageVersion)}.`);
   }
   if (preState?.mode !== 'pre' || preState?.tag !== 'beta') {
     throw new Error('Expected .changeset/pre.json to remain in beta pre mode.');
   }
   const targetVersion = inc(packageVersion, 'prerelease', 'rc');
-  if (targetVersion !== `${parsed.major}.${parsed.minor}.${parsed.patch}-rc.0`) {
+  if (targetVersion !== `${releaseLine(parsed)}-rc.0`) {
     throw new Error(`Refusing unexpected RC target ${JSON.stringify(targetVersion)}.`);
   }
 
@@ -101,7 +113,12 @@ export function readPreparedRcPromotion(root = repoRoot) {
   if (preState?.mode !== 'pre' || preState?.tag !== 'beta') {
     throw new Error('Prepared RC promotion requires beta pre mode until versioning.');
   }
-  if (marker?.from !== packageJson.version || marker?.to !== '3.2.0-rc.0') {
+  const { targetVersion } = planRcPromotion({
+    packageVersion: packageJson.version,
+    preState,
+    pendingChangesets: [],
+  });
+  if (marker?.from !== packageJson.version || marker?.to !== targetVersion) {
     throw new Error('RC promotion marker does not match the current package version and rc.0 target.');
   }
   if (!Array.isArray(marker?.pendingChangesets)) {
@@ -186,7 +203,7 @@ export function versionPreparedRc(root = repoRoot, options = {}) {
   let intermediateVersion = null;
   if (plan.pendingChangesets.length > 0) {
     intermediateVersion = inc(plan.currentVersion, 'prerelease', 'beta');
-    if (!intermediateVersion?.startsWith('3.2.0-beta.')) {
+    if (!intermediateVersion?.startsWith(`${releaseLine(parse(plan.currentVersion))}-beta.`)) {
       throw new Error(`Refusing unexpected intermediate version ${JSON.stringify(intermediateVersion)}.`);
     }
     (options.runChangesetVersion ?? runChangesetVersion)(root);
@@ -232,6 +249,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.log(
       `${checkOnly ? 'Ready to prepare' : prepare ? 'Prepared' : 'Versioned'} ${plan.currentVersion} -> ${plan.targetVersion}.`,
     );
+    console.log(
+      plan.pendingChangesets.length === 0
+        ? `No pending changesets: ${plan.targetVersion} is a phase-only promotion.`
+        : `Pending changesets folded into ${plan.targetVersion} (${plan.pendingChangesets.length}):`,
+    );
+    for (const file of plan.pendingChangesets) console.log(`  ${file}`);
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;

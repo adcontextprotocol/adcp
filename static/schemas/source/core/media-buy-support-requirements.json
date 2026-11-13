@@ -16,5 +16,5 @@
     "frequency_cap_constraints": ["frequency_cap"]
   },
   "minProperties": 1,
-  "additionalProperties": false
+  "additionalProperties": true
 }

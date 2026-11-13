@@ -22,6 +22,10 @@ const mocks = vi.hoisted(() => ({
   badgeEligibleVersionsForTargetSelection: vi.fn(),
   selectComplianceTargetForAgentSelection: vi.fn(),
   hostedComplianceTarget: vi.fn(),
+  badgeEligibleVersionsForHostedComplianceTarget: vi.fn(),
+  agentAdvertisesBadgeEligibleHostedComplianceTarget: vi.fn(),
+  deriveVerificationStatus: vi.fn(),
+  getStoryboardsForVersion: vi.fn(),
   logOutboundRequest: vi.fn(),
   adaptAuthForSdk: vi.fn(),
   revokeUnsupportedPublicBadges: vi.fn(),
@@ -83,6 +87,7 @@ vi.mock('../../src/addie/services/compliance-testing.js', () => ({
   classifyCapabilityResolutionError: mocks.classifyCapabilityResolutionError,
   presentCapabilityResolutionError: mocks.presentCapabilityResolutionError,
   badgeEligibleVersionsForTargetSelection: mocks.badgeEligibleVersionsForTargetSelection,
+  deriveVerificationStatus: mocks.deriveVerificationStatus,
   hasTrustworthyComplianceTarget: (selection: { source?: string }) => selection.source !== 'default',
   selectedComplianceTargetMatchesObservedProfile: (
     selection: { source?: string; target?: { requested?: string } },
@@ -94,6 +99,8 @@ vi.mock('../../src/addie/services/compliance-testing.js', () => ({
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: mocks.hostedComplianceTarget,
+  badgeEligibleVersionsForHostedComplianceTarget: mocks.badgeEligibleVersionsForHostedComplianceTarget,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget: mocks.agentAdvertisesBadgeEligibleHostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS: 600_000,
   HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS: 1_800_000,
   HOSTED_COMPLIANCE_OVERRUN_MS: 300_000,
@@ -122,6 +129,12 @@ vi.mock('../../src/services/verification-profile-shadow.js', () => ({
   deriveVerificationProfileShadowAssessment: mocks.deriveVerificationProfileShadowAssessment,
 }));
 
+// The real tool-obligation helper runs; only its release catalog is stubbed,
+// because the real catalog resolves bundles through the mocked hosted target.
+vi.mock('../../src/services/storyboards.js', () => ({
+  getStoryboardsForVersion: mocks.getStoryboardsForVersion,
+}));
+
 vi.mock('../../src/notifications/compliance.js', () => ({
   notifyComplianceChange: vi.fn(),
   notifyComplianceTimeout: vi.fn(),
@@ -145,6 +158,10 @@ describe('runComplianceHeartbeatJob', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hostedComplianceTarget.mockReturnValue(target);
+    mocks.badgeEligibleVersionsForHostedComplianceTarget.mockReturnValue([]);
+    mocks.agentAdvertisesBadgeEligibleHostedComplianceTarget.mockReturnValue(false);
+    mocks.deriveVerificationStatus.mockReturnValue({ verified: false, roles: [] });
+    mocks.getStoryboardsForVersion.mockReturnValue([]);
     mocks.getAgentsDueForCheck.mockResolvedValue([
       { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null, heartbeat_orphan_streak: 0 },
     ]);
@@ -795,6 +812,88 @@ describe('runComplianceHeartbeatJob', () => {
         lifecycleStage: 'testing',
       }),
     );
+  });
+
+  it('records a passing Strict assessment when universal bundles lack only undeclared-surface tools', async () => {
+    // A signals-only agent (#8527): the runner skipped two universal
+    // storyboards for missing tools, one owed only by media-buy agents and one
+    // only by agents declaring principal support. The helper caches each
+    // release's catalog per module, so this case owns a version no other uses.
+    const catalogVersion = '3.1.98';
+    const complianceResult = {
+      adcp_version: catalogVersion,
+      completeness: 'complete',
+      overall_status: 'passing',
+      summary: { headline: 'All good' },
+      agent_profile: {
+        specialisms: ['signal-owned'],
+        adcp_supported_versions: ['3.1'],
+        supported_protocols: ['signals'],
+        tools: ['get_adcp_capabilities', 'get_signals', 'activate_signal'],
+        raw_capabilities: { supported_protocols: ['signals'] },
+      },
+      storyboards_missing_tools: ['schema_validation', 'principal'],
+      bundle_results: [
+        { kind: 'universal', id: 'capability-discovery', storyboard_ids: ['capability_discovery'], status: 'passing' },
+        { kind: 'universal', id: 'schema-validation', storyboard_ids: ['schema_validation'], status: 'partial' },
+        { kind: 'universal', id: 'principal', storyboard_ids: ['principal'], status: 'partial' },
+        { kind: 'protocol', id: 'signals', storyboard_ids: ['signals_baseline'], status: 'passing' },
+        { kind: 'specialism', id: 'signal-owned', storyboard_ids: ['signal_owned'], status: 'passing' },
+      ],
+    };
+    mocks.comply.mockResolvedValueOnce(complianceResult);
+    mocks.complianceResultToDbInput.mockReturnValueOnce({
+      agent_url: 'https://agent.example.com/mcp',
+      lifecycle_stage: 'testing',
+      overall_status: 'passing',
+      headline: 'All good',
+      tracks_json: [],
+      storyboard_statuses: [],
+      completeness: 'complete',
+      requested_compliance_target: '3.1',
+    });
+    mocks.badgeEligibleVersionsForHostedComplianceTarget.mockReturnValue(['3.1']);
+    mocks.agentAdvertisesBadgeEligibleHostedComplianceTarget.mockReturnValue(true);
+    mocks.deriveVerificationStatus.mockReturnValue({
+      verified: true,
+      roles: [{
+        role: 'signals',
+        verified: true,
+        specialisms: ['signal-owned'],
+        passing: ['signal-owned'],
+        failing: [],
+        untested: [],
+      }],
+    });
+    mocks.getStoryboardsForVersion.mockImplementation((version: string) => version === catalogVersion
+      ? [
+        { id: 'capability_discovery', required_tools: ['get_adcp_capabilities'] },
+        { id: 'schema_validation', required_tools: ['get_products'] },
+        { id: 'principal', required_tools: ['sync_principal', 'get_principal'] },
+      ]
+      : []);
+    mocks.recordComplianceRun.mockResolvedValueOnce({
+      run: { id: 'run-signals' },
+      statusTransition: null,
+      storyboardStatuses: [],
+    });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(mocks.getStoryboardsForVersion).toHaveBeenCalledWith(catalogVersion);
+    const [dbInput] = mocks.recordComplianceRun.mock.calls[0];
+    const strict = dbInput.grading_profile_assessments
+      ?.find((assessment: { grading_profile: string }) => assessment.grading_profile === 'spec');
+    expect(strict).toMatchObject({
+      role: 'signals',
+      adcp_version: '3.1',
+      status: 'passing',
+      evidence: expect.objectContaining({
+        incomplete_bundle_count: 0,
+        not_applicable_universal_bundle_ids: ['schema-validation', 'principal'],
+      }),
+    });
   });
 
   it('keeps public compliance successful when shadow persistence fails', async () => {

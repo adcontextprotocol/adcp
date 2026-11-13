@@ -11,7 +11,7 @@
  *
  * These wrap the compact lifecycle handlers on the sales tenant's default
  * routes. Fields are served only to callers whose served version is 3.3 (the
- * opt-in `3.3-beta.3` preview pin, or candidate mode); other callers see the
+ * opt-in hosted preview pin, or candidate mode); other callers see the
  * engine exactly as before, except that a draft served to a 3.3 caller with a
  * terms-only policy is never committed for a caller below 3.3.
  *

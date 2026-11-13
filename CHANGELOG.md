@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.3.0-beta.5
+
+### Minor Changes
+
+- 5ae0658: feat(media-buy): declare supported match keys and connect them to cross-publisher frequency capping (experimental, #8375).
+  
+  Adds `core/match-key.json` (`uid_type`, `vendor` BrandRef, `scopes[]`, `uses[]`, seller-wide `property_types[]`) and `enums/match-key-use.json` (`audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`). Match keys appear seller-wide as `media_buy.supported_match_keys` on `get_adcp_capabilities`, per product as `Product.identity.match_keys`, and on TMP provider registration as `match_keys` alongside `uid_types`.
+  
+  `frequency_cap` covers caps the seller enforces; `identity_match` declares that a product forwards the key to buyer-side TMP Identity Match, the only place a cap can count across sellers. Two keys are compatible at a scope when they share `uid_type`, both list the scope, and their vendor domains match when both declare one. A product with `persistent_identifier: false` cannot declare `frequency_cap` or `identity_match` keys; `pairid` and `hashed_email` keys cannot declare `identity_match`. `vendor` is required for `other`, for `households` scope, and for `maid` or `publisher_first_party` at `individuals`, because those scopes come from a graph. Match-key changes are material capability changes signalled through `adcp.capability_changes` and `capabilities.changed`.
+  
+  `supported_match_keys` holds at most 64 entries and `scopes` at most 5. `core/match-key.json` admits additional properties, like other capability entries, so it can grow after graduation. All fields are additive and optional. Sellers using them list the new `media_buy.match_keys` experimental feature. `enums/uid-type.json`, `supported_uid_types`, and TMP routing on `uid_types` are unchanged.
+- 35209cf: compliance: promote `sales-fixed-rate` from `preview` to `stable`
+  
+  DR-0028 kept the specialism in preview until the working group settled its name and the controller-scenario gating of the optional hold phases. The record is now accepted (WG Session C consent, 2026-10-30). The `sales_fixed_rate` storyboard is unchanged: it is fully graded, the training agent passes it in the storyboard matrix, and an independent fixed-price seller (sell.nofluffadvisory.com) passes it on the 3.3 bundle, 19 of 19 steps. A passing `sales-fixed-rate` claim now counts toward the AAO Verified media-buy badge and badge eligibility, so a seller whose only claim is `sales-fixed-rate` no longer reports `no_declared_specialisms`.
+
+### Patch Changes
+
+- c6ab3c2: Compliance: the `deterministic_testing` storyboard now declares the Acme Outdoor / Pinnacle sandbox account as the owner of its product and pricing-option fixtures, and explicitly scopes media-buy, creative, delivery and budget controller calls to that same consuming account. Its separate `test.example` account-provisioning and account-state checks keep their own identity, with account listing filtered to the effective run account so unrelated visible accounts cannot supply the state-transition account ID. The same filter preserves a caller-selected account ID when the seller does not support buyer account provisioning. This prevents later lifecycle controls from following the account selected by `sync_accounts` and targeting the wrong sandbox account.
+- cab2151: Define an explicitly gated, offline test-kit catalog for legacy creative asset fixtures. Require exact format references and distinguish missing preparation from malformed fixture inputs without imposing Creative Protocol tools on media-buy-only sellers.
+- a0f95e1: Public Suffix List (#8409, DR-0037): verifiers compute eTLD+1 with a PSL bundled with the verifier, ICANN and PRIVATE sections, never fetched at runtime, and refreshed through normal dependency updates. AdCP names no reference snapshot, and `security.mdx` no longer says two verifiers on different PSL versions are non-conformant against each other, or names PSL libraries. On the trust-record path, a verifier whose list lacks a newly added PRIVATE suffix fails closed. Spec R3a step 1, the threat table, L2 §Grants in trust records, and the trust.json `grantee` description now say the same.
+- 8b9fa18: Fetch historical file contents on demand in the authoritative current/frozen storyboard CI matrix while retaining the complete checked-out protocol corpus and the same conformance assertions and floors. This reduces checkout work that was preventing protocol conformance tests from running.
+
 ## 3.3.0-beta.4
 
 ### Minor Changes
@@ -878,6 +900,27 @@
 - b3461a2: The `wba-profile` conformance vectors README says how the vectors are graded: by the judge in `tests/wba-interop/`, which is Cloudflare's `web-bot-auth` 0.2.0 and `http-message-sig` 0.3.0, run bare and with the profile's rules. It also points to `tests/wba-interop/run.mjs`, which grades a Web Bot Auth implementation through an adapter against the same judge, and to `tests/wba-interop/PROTOCOL.md`, which defines the adapter protocol.
   
   Directory scenarios in `scenarios.json` can carry `requests`, which a harness signs with a named key and verifies against that directory. D03 and D11 use them: a request signed with a key that has no valid directory signature gets `403`. D15 adds malformed extra Ed25519 keys, one with no `x` and one with a 31-byte `x`, which a verifier ignores.
+
+## 3.2.10
+
+### Patch Changes
+
+- bdc61ec: Stop the 3.2 collection and reporting storyboards from failing sellers on features they do not offer. Backports the applicability part of #8336 and narrows #8428 for the 3.2 runner (#8744).
+  
+  `advanced_delivery_reporting` no longer seeds a video product. It discovers a native wholesale sandbox product that advertises format breakdown, with a fixed-price CPM option, and grades metric narrowing, the `by_format` array, truncation disclosure and the applied-sort echo on that product. When no product qualifies, the storyboard reports `fixture_unsatisfied`: the feature was not tested, which is neither a pass nor proof of nonsupport. It no longer grades `time_based_views`, because the controller cannot inject view observations and the old checks expected an invented 2-second threshold.
+  
+  `collection_selection` and `owner_sold_channel_carriage` keep their existing checks. They now run only when wholesale discovery finds a native product that allows collection targeting and declares at least one domain-qualified collection. Otherwise they report `fixture_unsatisfied`. Discovery failures still fail. Sellers that do not advertise the wholesale buying mode grade all three storyboards not applicable.
+  
+  Full independent collection grading needs the 3.3 fixture contract and runner, and ships in 3.3. No schema changes.
+- 5541479: Stop the `dependency_impairment` and `dependency_impairment_cardinality` storyboards from failing sellers whose selected format option is not an image format (adcp#8770). Both storyboards send a fixed 300x250 image creative against the first product's first format option. When that option is a `display_tag`, `video_vast` or other non-image kind, the creative phases are now skipped instead of failing a seller that correctly refuses an image it does not accept. Image sellers run the storyboards unchanged.
+- 8f159e4: Gate `product_signal_targeting` and `cross_path_targeting_provenance` on wholesale support in both `media_buy.buying_modes` and `signals.discovery_modes`. A seller that advertises only brief discovery no longer runs them. Their negative probes now cascade-skip when product discovery fails, instead of sending an unresolved `$context.product_id`.
+
+## 3.2.9
+
+### Patch Changes
+
+- 03e8e2a: Compliance: the `typed_proposal_negotiation` and `refine_frequency_cap_negotiation` storyboards seeded their native product (`native_feed_q4` and `no_fcap_native_q4`) with `format_kind: "native"` and `channels: ["native"]`, neither of which is a valid value. The format declaration matched no `core/product-format-declaration.json` branch, so a seller that echoed the seeded product failed product schema validation. The declaration now uses `native_in_feed`, the canonical kind for in-feed native, and carries the `params` that every format declaration requires (title and body length limits and a 1200×627 main image). The channel is now `display`. Both fixtures now match `main`. No storyboard step depends on the format kind or channel, and the product's role in both storyboards is unchanged. Released bundles are unchanged.
+- 03e8e2a: Make shared signals error compliance runnable for discovery-only owned agents. Use malformed get_signals requests for error-code and context checks; move activation negatives into a required signal-marketplace scenario so marketplaces retain their activation checks. The training agent rejects non-string signal_spec inputs instead of silently dropping them and returning a catalog. Missing required tools, controller evidence and genuine assertion failures remain blocking. Existing released bundles are unchanged.
 
 ## 3.2.8
 
@@ -1977,6 +2020,17 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 0547bde: Seed fixture accounts in package_correlation_legacy_fallback storyboard so account-scoped requests resolve before attribution is checked.
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
+
+## 3.1.33
+
+### Patch Changes
+
+- a740dd9: Gate `product_signal_targeting` on wholesale support in both `media_buy.buying_modes` and `signals.discovery_modes`. A seller that advertises only brief discovery no longer runs it. Its negative probe now cascade-skips when product discovery fails, instead of sending an unresolved `$context.product_id`.
+- 7237866: Stop the 3.1 creative storyboards from failing sellers whose catalog offers only third-party display tags and VAST tags (adcp#8770).
+
+  - `dependency_impairment`, `dependency_impairment_cardinality` and `media_buy_seller`'s `creative_sync` build their test creatives from the product format's own declaration with `$build_assets_from_format`, as `creative_fate_after_cancellation` already does. A format whose required assets the test kit cannot supply is graded `not_applicable` with `fixture_unavailable` instead of being sent a fixed image (or, in `media_buy_seller`, a fixed video plus a placeholder image). `media_buy_seller`'s `creative_sync` now runs after `delivery_monitoring`, so that coverage gap cannot drop delivery grading.
+  - `creative_lifecycle`, `creative/creative_lifecycle_webhooks` and `deterministic_testing`'s creative state machine push a fixed display image only when the seller declares a format that accepts image assets.
+  - `creative/native_in_feed` and `media_buy_seller/creative_reception` push their fixed native bundle only when the seller declares a format that accepts text and image assets.
 
 ## 3.1.32
 

@@ -32,9 +32,10 @@
         }
       },
       "required": ["country", "system", "values"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
+      "description": "Rejects `country`: the fused legacy system already names the country.",
       "title": "PostalAreaWithFusedSystem",
       "deprecated": true,
       "type": "object",
@@ -54,7 +55,8 @@
         }
       },
       "required": ["system", "values"],
-      "additionalProperties": false
+      "not": { "required": ["country"] },
+      "additionalProperties": true
     }
   ]
 }

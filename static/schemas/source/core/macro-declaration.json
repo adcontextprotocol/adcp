@@ -74,7 +74,7 @@
         "context": { "$ref": "/schemas/enums/macro-value-context.json" }
       },
       "required": ["field", "occurrence", "context"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "encoding": {
       "$ref": "/schemas/core/macro-encoding.json",
@@ -102,7 +102,7 @@
     "required",
     "unavailable_behavior"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": { "properties": { "dialect": { "enum": ["iab_vast", "iab_daast", "vendor"] } }, "required": ["dialect"] },

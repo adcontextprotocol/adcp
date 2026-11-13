@@ -47,6 +47,12 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
+    "include_execution_readiness": {
+      "type": "boolean",
+      "description": "Experimental (`media_buy.execution_readiness`). With `account`, asks for the response-level `execution_readiness` map for the page's products. Ignored without `account`; an unresolved `account` still returns `ACCOUNT_NOT_FOUND`. Outside the `feed_version`, `pricing_version` and `cache_scope` selection. Schemas before 3.2.8 reject unknown fields here, so send it only to a seller listing `media_buy.execution_readiness` in `experimental_features`.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "cursor": { "type": "string", "minLength": 1 },
     "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
     "if_feed_version": {

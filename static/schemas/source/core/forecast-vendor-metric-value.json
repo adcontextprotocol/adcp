@@ -41,7 +41,7 @@
     }
   },
   "required": ["vendor", "metric_id", "value"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "vendor": { "domain": "attentionvendor.example" },

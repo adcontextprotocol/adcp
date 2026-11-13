@@ -53,16 +53,42 @@ const calendar = {
   non_working_dates: ['2027-01-01'],
 };
 
-test('legacy elapsed SLA windows retain their wire shape and default clock', async () => {
+const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+test('SLA windows keep their 3.2.8 elapsed-time shape (#8501)', async () => {
+  const source = readJson(path.join(SOURCE, 'core/sla-window.json'));
+  const released = readJson(path.join(ROOT, 'dist/schemas/3.2.8/core/sla-window.json'));
+  const { $id: sourceId, ...sourceRest } = source;
+  const { $id: releasedId, ...releasedRest } = released;
+  assert.equal(sourceId, '/schemas/core/sla-window.json');
+  assert.match(releasedId, /\/3\.2\.8\/core\/sla-window\.json$/);
+  assert.deepEqual(sourceRest, releasedRest, 'core/sla-window.json must match its 3.2.8 publication');
+
   const validate = await compile('core/sla-window.json');
-  for (const value of [{}, escalation, { completion_max: 'PT24H' }, { clock: 'elapsed', completion_max: 'P1D' }, { response_max: 'PT4H', completion_max: 'PT2H' }]) accepts(validate, value);
-  assert.equal(read('core/sla-window.json').properties.clock.default, 'elapsed');
+  for (const value of [{}, escalation, { completion_max: 'PT24H' }, { response_max: 'PT4H', completion_max: 'PT2H' }]) accepts(validate, value);
   rejects(validate, { response_time_minutes: 15 });
+  for (const value of [
+    { clock: 'elapsed', completion_max: 'P1D' },
+    business,
+    { business_calendar_id: 'review_team_2027_q1', completion_max: 'P1D' },
+  ]) rejects(validate, value);
+});
+
+test('only creative review carries a business clock, which defaults to elapsed', async () => {
+  const schema = read('core/creative-review-sla.json');
+  assert.equal(schema.properties.clock.default, 'elapsed');
+  assert.equal(schema.additionalProperties, true, 'a new 3.3 schema defaults to open (DR-0009, DR-0036)');
+  assert.ok(!JSON.stringify(schema).includes('sla-window.json'), 'creative review must not compose the closed sla-window');
+  const validate = await compile('core/creative-review-sla.json');
+  for (const value of [{ completion_max: 'PT24H' }, { clock: 'elapsed', completion_max: 'P1D' }, { response_max: 'PT4H', completion_max: 'PT2H' }]) accepts(validate, value);
+  accepts(validate, { completion_max: 'PT24H', later_minor_field: true });
+  rejects(validate, {});
+  rejects(validate, { response_max: 'PT4H' });
   rejects(validate, { clock: 'business_days', completion_max: 'P1D' });
 });
 
-test('business SLAs require a calendar and calendar references require an explicit business clock', async () => {
-  const validate = await compile('core/sla-window.json');
+test('business review SLAs require a calendar and calendar references require an explicit business clock', async () => {
+  const validate = await compile('core/creative-review-sla.json');
   accepts(validate, business);
   accepts(validate, { ...business, response_max: 'PT4H', completion_max: 'P1DT2H30M15S' });
   rejects(validate, { clock: 'business', completion_max: 'P1D' });
@@ -121,10 +147,29 @@ test('creative review is distinct from action ingestion and restricted to review
   }
 });
 
+test('action SLAs are elapsed time on product and buy actions', async () => {
+  const elapsed = { response_max: 'PT4H', completion_max: 'P1D' };
+  for (const name of ['core/product-allowed-action.json', 'core/canonical-product-action.json']) {
+    const validate = await compile(name);
+    const value = { action: 'pause', modes: ['seller_managed'] };
+    accepts(validate, { ...value, sla: elapsed });
+    rejects(validate, { ...value, sla: business });
+    rejects(validate, { ...value, sla: { ...elapsed, clock: 'elapsed' } });
+  }
+  for (const name of ['core/media-buy-available-action.json', 'core/canonical-media-buy-action.json']) {
+    const validate = await compile(name);
+    const value = { action: 'pause', task: 'control_media_buy', mode: 'seller_managed' };
+    accepts(validate, { ...value, sla: elapsed });
+    rejects(validate, { ...value, sla: business });
+    rejects(validate, { ...value, sla: { ...elapsed, clock: 'elapsed' } });
+  }
+});
+
 test('escalation commitments require human response timing and prohibit business clocks', async () => {
   const validate = await compile('core/escalation-sla.json');
   accepts(validate, escalation);
-  accepts(validate, { clock: 'elapsed', response_max: 'PT15M' });
+  assert.equal(read('core/escalation-sla.json').properties.clock, undefined);
+  rejects(validate, { clock: 'elapsed', response_max: 'PT15M' });
   rejects(validate, {});
   rejects(validate, { completion_max: 'PT2H' });
   rejects(validate, { ...escalation, completion_max: 'PT2H' });
@@ -179,10 +224,18 @@ test('report requests require replay identity, authorized resource context, seve
 
 test('review declarations and operational reports do not add negotiated change rights', async () => {
   const validate = await compile('media-buy/change-term.json');
-  const term = { term_id: 'creative_change', action: 'replace_creative', service_mode: 'seller_managed', processing_sla: business };
+  const term = { term_id: 'creative_change', action: 'replace_creative', service_mode: 'seller_managed', processing_sla: { completion_max: 'P2D' } };
   accepts(validate, term);
   rejects(validate, { ...term, review_sla: business });
   rejects(validate, { ...term, action: 'report_media_buy_issue' });
+});
+
+test('signed change terms keep elapsed-time processing SLAs', async () => {
+  const validate = await compile('media-buy/change-term.json');
+  const term = { term_id: 'pause_right', action: 'pause', service_mode: 'seller_managed', processing_sla: { response_max: 'PT4H', completion_max: 'P1D' } };
+  accepts(validate, term);
+  rejects(validate, { ...term, processing_sla: business });
+  rejects(validate, { ...term, processing_sla: { ...term.processing_sla, clock: 'elapsed' } });
 });
 
 test('polling a report requires account, media buy, and issue identities', async () => {
@@ -222,8 +275,11 @@ test('issue receipts omit revision and duplicated commitment metadata', async ()
   accepts(validate, { ...issue, severity: 'warning' });
   for (const fields of [
     { revision: 1 }, { sla: escalation },
-    { response_due_at: issue.received_at }, { completion_due_at: issue.received_at },
   ]) rejects(validate, { ...issue, ...fields });
+  // Open by default (DR-0036): response_due_at and completion_due_at are declared nowhere, so they validate.
+  for (const fields of [{ response_due_at: issue.received_at }, { completion_due_at: issue.received_at }]) {
+    accepts(validate, { ...issue, ...fields });
+  }
 });
 
 test('report and polling responses separate stored snapshots from task errors', async () => {

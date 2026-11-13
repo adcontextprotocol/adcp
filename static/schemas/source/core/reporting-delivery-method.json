@@ -26,7 +26,7 @@
         "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"], "description": "Physical file format." }
       },
       "required": ["pattern", "transport", "orchestration", "destination", "format"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Dataset share",
@@ -38,7 +38,7 @@
         "destination": { "$ref": "/schemas/core/reporting-dataset-share-destination.json" }
       },
       "required": ["pattern", "transport", "orchestration", "destination"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Warehouse materialization",
@@ -50,7 +50,7 @@
         "destination": { "$ref": "/schemas/core/reporting-write-destination.json" }
       },
       "required": ["pattern", "transport", "orchestration", "destination"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

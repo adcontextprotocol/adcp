@@ -19,9 +19,9 @@
  *   release cannot validate.
  *
  * The same flow runs at the opt-in 3.3 preview (#8181,
- * candidate-version.ts): an exact `3.3-beta.3` pin is echoed and every
- * response validates against the published 3.3.0-beta.3 bundle, the release
- * the preview claims. The local candidate wire contract is covered in
+ * candidate-version.ts): an exact preview pin is echoed and every response
+ * validates against the preview's published bundle, the release the preview
+ * claims. The local candidate wire contract is covered in
  * tests/unit/training-agent-candidate-version.test.ts.
  */
 
@@ -64,6 +64,7 @@ const RESPONSE_SCHEMAS: Record<string, string> = {
   get_property_list: 'property/get-property-list-response.json',
   list_collection_lists: 'collection/list-collection-lists-response.json',
   list_content_standards: 'content-standards/list-content-standards-response.json',
+  get_creative_features: 'creative/get-creative-features-response.json',
   get_brand_identity: 'brand/get-brand-identity-response.json',
   get_rights: 'brand/get-rights-response.json',
   acquire_rights: 'brand/acquire-rights-response.json',
@@ -89,7 +90,7 @@ const ROUTES: Record<string, readonly string[]> = {
     'list_tasks', 'sync_audiences', 'sync_event_sources',
   ],
   signals: ['get_adcp_capabilities', 'list_accounts', 'get_signals', 'list_tasks'],
-  governance: ['get_adcp_capabilities', 'list_accounts', 'list_property_lists', 'create_property_list', 'get_property_list', 'list_collection_lists', 'list_content_standards', 'list_tasks'],
+  governance: ['get_adcp_capabilities', 'list_accounts', 'list_property_lists', 'create_property_list', 'get_property_list', 'list_collection_lists', 'list_content_standards', 'get_creative_features', 'list_tasks'],
   creative: ['get_adcp_capabilities', 'list_accounts', 'list_creative_formats', 'list_creatives', 'list_transformers', 'list_tasks'],
   'creative-builder': ['get_adcp_capabilities', 'list_accounts', 'list_creative_formats', 'list_transformers', 'list_tasks'],
   brand: ['get_adcp_capabilities', 'list_accounts', 'get_brand_identity', 'get_rights', 'acquire_rights', 'search_brands', 'list_tasks'],
@@ -148,9 +149,9 @@ function argsFor(tool: string, label: string, version: string, state: FlowState)
   const image = { asset_type: 'image', url: 'https://cdn.example.com/served-release.png', width: 300, height: 250 };
   switch (tool) {
     case 'get_products':
-      // Every release is asked for collection cards (experimental 3.3,
-      // #8181): get_products accepts unknown fields, so a stable caller's
-      // flag is ignored and only the preview answers with `collections`.
+      // Every release still sends include_collections: get_products accepts
+      // unknown fields and the flag was withdrawn from it (adcp#8501), so no
+      // release answers with `collections`; list_products carries them.
       return { buying_mode: 'brief', brief: 'Display and video for sports fans in the US', include_collections: true };
     case 'create_media_buy': {
       const product = state.products?.find(candidate => {
@@ -207,6 +208,8 @@ function argsFor(tool: string, label: string, version: string, state: FlowState)
       return { name: 'Served release list', idempotency_key: key('property-list') };
     case 'get_property_list':
       return state.propertyListId ? { list_id: state.propertyListId } : undefined;
+    case 'get_creative_features':
+      return { creative_manifest: { format_id: { agent_url: 'https://creative.example.com', id: 'display_300x250' }, assets: { image } } };
     case 'get_brand_identity':
       return { brand_id: 'daan_janssen' };
     case 'get_rights':
@@ -406,14 +409,8 @@ describe('served-release response shape below 3.3 (#8487)', () => {
             )))}`);
           }
           if (tool === 'get_products') {
-            const isPreview = version === TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
-            const referencesCollections = (structured.products as Array<Record<string, unknown>>)
-              .some(product => Array.isArray(product.collections) && product.collections.length > 0);
-            if (!isPreview && structured.collections !== undefined) {
-              failures.push(`${label} get_products @${version}: collection cards served to a stable caller`);
-            }
-            if (isPreview && referencesCollections && !Array.isArray(structured.collections)) {
-              failures.push(`${label} get_products @${version}: include_collections answered without collections`);
+            if (structured.collections !== undefined) {
+              failures.push(`${label} get_products @${version}: served collection cards (withdrawn from get_products, adcp#8501)`);
             }
           }
           // A 3.0 product card is a format reference plus its manifest; the
@@ -462,8 +459,10 @@ describe('served-release response shape below 3.3 (#8487)', () => {
     const failures: string[] = [];
     // Preview reads first: they must not leave anything behind that a later
     // stable read of the shared catalog could see.
+    // get_products no longer returns cards even at the preview, but keeps the
+    // sample_content card projection (adcp#8501).
     const previewProducts = await call(sales, 'get_products', { adcp_version: preview, ...brief });
-    expect(Array.isArray(previewProducts.structured?.collections), JSON.stringify(previewProducts.raw).slice(0, 300)).toBe(true);
+    expect(previewProducts.structured?.collections, JSON.stringify(previewProducts.raw).slice(0, 300)).toBeUndefined();
     expect(JSON.stringify(previewProducts.structured)).toContain('"sample_content"');
     await call(`${baseUrl}/mcp`, 'get_products', { adcp_version: preview, ...brief });
     for (const pin of [{ adcp_version: '3.2' }, { adcp_version: '3.1' }, { adcp_version: '3.0' }, { adcp_major_version: 3 }, {}]) {
@@ -497,7 +496,9 @@ describe('served-release response shape below 3.3 (#8487)', () => {
     const previewListing = await rpc(sales, rpcId += 1, 'tools/list', { _meta: { adcp_version: preview } });
     const previewTools = (previewListing.result as { tools: Array<{ name: string; inputSchema?: { properties?: Record<string, unknown> } }> }).tools;
     expect(previewTools.map(tool => tool.name)).toContain('list_collections');
-    expect(previewTools.find(tool => tool.name === 'get_products')?.inputSchema?.properties).toHaveProperty('include_collections');
+    // include_collections is withdrawn from get_products at every release and stays on list_products.
+    expect(previewTools.find(tool => tool.name === 'get_products')?.inputSchema?.properties).not.toHaveProperty('include_collections');
+    expect(previewTools.find(tool => tool.name === 'list_products')?.inputSchema?.properties).toHaveProperty('include_collections');
   }, 120_000);
 
   it('answers /mcp search_brands without a query with the correctable error the request schema requires', async () => {

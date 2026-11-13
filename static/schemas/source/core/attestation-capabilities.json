@@ -95,8 +95,8 @@
                 "url": {
                   "type": "string",
                   "format": "uri",
-                  "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
-                  "description": "Evaluator-configured HTTPS resolver endpoint. Calls use POST with Content-Type application/json and a body containing only credential_id; query-string and path interpolation are forbidden. The evaluator still applies the attestation fetch contract before every call."
+                  "pattern": "^https://",
+                  "description": "Evaluator-configured HTTPS resolver endpoint. Calls use POST with Content-Type application/json and a body containing only credential_id; query-string and path interpolation are forbidden. It never carries userinfo; resolver credentials stay in the evaluator's own secret store. The evaluator still applies the attestation fetch contract before every call."
                 },
                 "authentication": {
                   "type": "string",
@@ -105,7 +105,7 @@
                 }
               },
               "required": ["resolver_id", "url", "authentication"],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "minItems": 1,
             "x-max-items-4.0": 8
@@ -115,7 +115,7 @@
           }
         },
         "required": ["issuer"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "x-max-items-4.0": 32
@@ -129,7 +129,7 @@
           "agent_url": {
             "type": "string",
             "format": "uri",
-            "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+            "pattern": "^https://"
           },
           "claim_types": {
             "type": "array",
@@ -156,7 +156,7 @@
           }
         },
         "required": ["agent_url"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "x-max-items-4.0": 16
@@ -194,7 +194,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "accepted_claim_types": [

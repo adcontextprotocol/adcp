@@ -954,7 +954,8 @@ describe('managed reporting status contract', () => {
       `the count stays optional for sellers that do not advertise consumer_status_task: ${JSON.stringify(validateResponse.errors)}`,
     );
     response.obligation_counts.consumer_status_overdue = 4;
-    assert.equal(validateResponse(response), false, 'obligation_counts stays a closed object');
+    // Open by default (DR-0036): an unknown count key validates.
+    assert.equal(validateResponse(response), true, 'obligation_counts accepts an unknown key');
     assert.match(
       readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].incremental_repair,
       /requires obligation_counts.consumer_status_pending on the summary view/,
@@ -1411,7 +1412,8 @@ describe('managed reporting status contract', () => {
       /at most one statement for each logical chain/,
     );
     const syncRequestSchema = readSchema('/schemas/media-buy/sync-reporting-status-request.json');
-    assert.equal(syncRequestSchema.additionalProperties, false);
+    // Open by default (DR-0036).
+    assert.equal(syncRequestSchema.additionalProperties, true);
     assert.ok(
       (syncRequestSchema.allOf || []).some((arm) => arm.$ref === '/schemas/core/version-envelope.json'),
       'closed request composes the version envelope via root allOf',
@@ -1914,11 +1916,19 @@ describe('managed reporting status contract', () => {
     ledgerOnly.media_buy.reporting_delivery.ledger_notification = 'reporting.ledger_changed';
     delete ledgerOnly.webhook_signing;
     assert.equal(validateCapabilities(ledgerOnly), false, 'ledger notifications require webhook signing');
+    // The document URIs check the scheme only (#8398). An IP literal is refused
+    // at fetch time by safe_schema_fetch, not by the schema.
     capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.schema_uri = 'https://127.0.0.1/admin';
+    assert.equal(validateCapabilities(capabilities), true, JSON.stringify(validateCapabilities.errors));
+    capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.schema_uri = 'http://schemas.example/media-buy-delivery/v1.json';
     assert.equal(validateCapabilities(capabilities), false);
     capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.schema_uri = 'https://schemas.example/media-buy-delivery/v1.json';
-    capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.canonicalization_uri = 'https://127.0.0.1/canonicalization.json';
+    capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.canonicalization_uri = 'http://schemas.example/canonicalization.json';
     assert.equal(validateCapabilities(capabilities), false);
+    assert.match(
+      readSchema('/schemas/core/reporting-delivery-offering.json')['x-adcp-validation'].safe_schema_fetch,
+      /Reject userinfo, IP literals, localhost, private\/reserved DNS results, redirects/,
+    );
     capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.canonicalization_uri = 'https://schemas.example/reporting-canonicalization/v1.json';
     assert.match(readSchema('/schemas/core/reporting-delivery-capabilities.json')['x-adcp-validation'].unique_offerings, /provider, access_mode, format/);
     delete capabilities.webhook_signing;

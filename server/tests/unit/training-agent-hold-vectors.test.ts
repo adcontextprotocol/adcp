@@ -3,7 +3,7 @@
  * reference grader (tests/helpers/hold-policy-grader.cjs, the grader that
  * replays static/compliance/source/test-vectors/hold-policy/vectors.json).
  *
- * Each case calls the hosted preview (`3.3-beta.3` pin) on /sales/mcp, then
+ * Each case calls the hosted preview (its exact pin) on /sales/mcp, then
  * assembles the vector the grader reads from what the agent actually
  * returned: the drafts as served, the request, the observed request/response
  * window, the response or task error, and (for installment products) the

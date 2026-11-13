@@ -105,10 +105,10 @@
             }
           },
           "required": ["lower", "upper", "level"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "evidence_ref": {
       "type": "string",

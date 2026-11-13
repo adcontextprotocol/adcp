@@ -252,7 +252,7 @@ For ongoing partnerships, the asset origin can authorize an identity already con
 }
 ```
 
-The `service_account.credentials` field is deprecated in AdCP 3.2. Its presence denotes only the legacy inline-credential form, not workload-identity authorization. Consumers must continue parsing and validating the field for 3.x wire compatibility, but must not activate received credentials automatically. They may process the legacy form only for a peer explicitly allowlisted for legacy compatibility; otherwise they must reject or quarantine it. New producers must omit it. The field is eligible for removal in 4.0 or later only after the six-month notice and full-release-cycle gates in the deprecation policy are satisfied.
+The `service_account.credentials` field is deprecated in AdCP 3.2. Its presence denotes only the legacy inline-credential form, not workload-identity authorization. Consumers must continue parsing and validating the field for 3.x wire compatibility, but must not activate received credentials automatically. They may process the legacy form only for a peer explicitly allowlisted for legacy compatibility; otherwise they must reject or quarantine it. New producers must omit it. The field is eligible for removal in 4.0 or later, under the [deprecation policy](/docs/reference/versioning#deprecation-policy).
 
 ### Bearer tokens
 

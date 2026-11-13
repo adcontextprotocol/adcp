@@ -54,5 +54,5 @@
     { "required": ["value"] }
   ],
   "not": { "required": ["q", "value"] },
-  "additionalProperties": false
+  "additionalProperties": true
 }

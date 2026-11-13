@@ -1,0 +1,657 @@
+{
+  "contract_version": "3.3",
+  "feature": "media_buy.reporting_subscriptions",
+  "status": "experimental",
+  "description": "Seller-side offering checks an SDK runs before it enables reporting subscriptions, with the codes from error-codes.json in this directory: SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS and SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY. Each case gives the advertised offerings and, keyed by reporting_profile.schema_uri, the row schemas the SDK has fetched, and expected lists every failure: in offering order and, per offering, standard_dimensions, then the primary_keys part of the account_id rule, then the row-schema part. Empty expected means the offerings pass. scripts/reference/reporting-coverage/offering-checks.cjs reproduces every case, and every offering validates against core/reporting-delivery-offering.json.",
+  "cases": [
+    {
+      "id": "managed-offering-keyed-by-account-id-passes",
+      "rule": "A managed-delivery offering whose primary_keys include account_id and whose row schema declares account_id as a required string passes.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/destination"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_s3_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_s3_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_s3_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": [
+                "existing"
+              ],
+              "provider": {
+                "domain": "seller.example"
+              },
+              "format": "jsonl"
+            }
+          }
+        ],
+        "row_schemas": {
+          "https://seller.example/schemas/delivery.json": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": [
+              "account_id",
+              "package_id",
+              "impressions"
+            ],
+            "properties": {
+              "account_id": {
+                "type": "string"
+              },
+              "package_id": {
+                "type": "string"
+              },
+              "impressions": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "id": "managed-offering-without-account-id-in-primary-keys",
+      "rule": "primary_keys must include account_id on every offering with method, so rows from several accounts in one destination never collide.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/destination"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_s3_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_s3_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_s3_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": [
+                "existing"
+              ],
+              "provider": {
+                "domain": "seller.example"
+              },
+              "format": "jsonl"
+            }
+          }
+        ],
+        "row_schemas": {
+          "https://seller.example/schemas/delivery.json": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": [
+              "account_id",
+              "package_id",
+              "impressions"
+            ],
+            "properties": {
+              "account_id": {
+                "type": "string"
+              },
+              "package_id": {
+                "type": "string"
+              },
+              "impressions": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+          "offering_id": "off_s3_pkg",
+          "missing": "primary_key"
+        }
+      ]
+    },
+    {
+      "id": "managed-offering-row-schema-does-not-require-account-id",
+      "rule": "The row schema must list account_id in required; declaring the property alone is not enough.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_s3_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_s3_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_s3_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": [
+                "existing"
+              ],
+              "provider": {
+                "domain": "seller.example"
+              },
+              "format": "jsonl"
+            }
+          }
+        ],
+        "row_schemas": {
+          "https://seller.example/schemas/delivery.json": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": [
+              "package_id",
+              "impressions"
+            ],
+            "properties": {
+              "account_id": {
+                "type": "string"
+              },
+              "package_id": {
+                "type": "string"
+              },
+              "impressions": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+          "offering_id": "off_s3_pkg",
+          "missing": "row_schema"
+        }
+      ]
+    },
+    {
+      "id": "managed-offering-row-schema-types-account-id-as-a-number",
+      "rule": "account_id must be declared as a string.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_s3_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_s3_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_s3_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": [
+                "existing"
+              ],
+              "provider": {
+                "domain": "seller.example"
+              },
+              "format": "jsonl"
+            }
+          }
+        ],
+        "row_schemas": {
+          "https://seller.example/schemas/delivery.json": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": [
+              "account_id",
+              "package_id",
+              "impressions"
+            ],
+            "properties": {
+              "account_id": {
+                "type": "integer"
+              },
+              "package_id": {
+                "type": "string"
+              },
+              "impressions": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+          "offering_id": "off_s3_pkg",
+          "missing": "row_schema"
+        }
+      ]
+    },
+    {
+      "id": "row-schema-not-fetched-checks-primary-keys-only",
+      "rule": "Without the row schema an SDK checks what the offering itself publishes, primary_keys; it does not fail for a schema it has not fetched.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_s3_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_s3_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_s3_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": [
+                "existing"
+              ],
+              "provider": {
+                "domain": "seller.example"
+              },
+              "format": "jsonl"
+            }
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "id": "core-offering-is-exempt",
+      "rule": "Core offerings (no method), delivered per account through the API transports, are exempt from the account_id rule.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "id": "offering-without-standard-dimensions",
+      "rule": "Sellers advertising subscriptions publish standard_dimensions on every offering, Core or managed.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/properties/standard_dimensions"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS",
+          "offering_id": "off_a_pkg"
+        }
+      ]
+    },
+    {
+      "id": "every-failure-is-reported-in-offering-order",
+      "rule": "Every failure is reported, in offering order and, per offering, standard_dimensions before the account_id key, primary_keys before the row schema.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows",
+        "static/schemas/source/core/reporting-delivery-offering.json#/properties/standard_dimensions"
+      ],
+      "input": {
+        "offerings": [
+          {
+            "offering_id": "off_s3_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_s3_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_s3_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": [
+                "existing"
+              ],
+              "provider": {
+                "domain": "seller.example"
+              },
+              "format": "jsonl"
+            }
+          },
+          {
+            "offering_id": "off_a_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ]
+          },
+          {
+            "offering_id": "off_t_gcs_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_t_gcs_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_t_gcs_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "gcs",
+              "orchestration": "producer_managed",
+              "destination_modes": [
+                "existing"
+              ],
+              "provider": {
+                "domain": "seller.example"
+              },
+              "format": "jsonl"
+            }
+          }
+        ],
+        "row_schemas": {
+          "https://seller.example/schemas/delivery.json": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": [
+              "package_id"
+            ],
+            "properties": {
+              "account_id": {
+                "type": "string"
+              },
+              "package_id": {
+                "type": "string"
+              },
+              "impressions": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS",
+          "offering_id": "off_s3_pkg"
+        },
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+          "offering_id": "off_s3_pkg",
+          "missing": "primary_key"
+        },
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+          "offering_id": "off_s3_pkg",
+          "missing": "row_schema"
+        },
+        {
+          "code": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+          "offering_id": "off_t_gcs_pkg",
+          "missing": "row_schema"
+        }
+      ]
+    }
+  ]
+}

@@ -8,4 +8,4 @@ The buyer accepts with `accept_proposal`, declines with `decline_proposals`, or 
 
 Seller-held change terms (pre-agreed seller changes inside `commercial_terms.change_terms[]`) are not part of 3.3: `commercial_terms` and `change-term.json` stay closed for the whole 3.x major, so the design is recorded for 4.0 as the `seller_held_change_terms_required_in_4_0` check in the 4.0 compatibility registry and in a "Planned for 4.0" note in the proposal-negotiation guide (#8087). In 3.3 every seller-initiated change to a signed buy is an offer.
 
-Compatibility: sellers MUST NOT send offers or `proposal.offered` notifications to callers served below AdCP 3.3, because `proposal_initiator` is a 3.3 field on a schema reopened in 3.3, and 3.3 fields on reopened schemas go only to 3.3 peers (DR-0036); a caller with no declared pin is treated as below 3.3.
+Compatibility: sellers MUST NOT send offers or `proposal.offered` notifications to callers served below AdCP 3.3, because `proposal_initiator` is a 3.3 field on a schema reopened in 3.3, and a seller shapes each response to the caller's served release (DR-0024); a caller with no declared pin is treated as below 3.3.
