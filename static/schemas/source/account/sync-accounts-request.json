@@ -53,7 +53,7 @@
           },
           "operator": {
             "type": "string",
-            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode.",
+            "description": "Registrable domain (eTLD+1 under the Public Suffix List, ICANN and private sections) of the organization operating on the brand's behalf, such as 'pinnacle-media.com', not a subdomain of it such as 'team.pinnacle-media.com'. When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json and trust.json grants, which name organizations by registrable domain. A seller MAY refuse an operator that is neither a registrable domain nor the brand's domain, treating reserved .example names as account-ref.json says. Required for **provisioning mode**; MUST be absent in settings-update mode.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "operator_unit": {

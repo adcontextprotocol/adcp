@@ -10,14 +10,14 @@ AdCP distinguishes four entities in every billable operation:
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | Brand reference: `domain` + optional `brand_id` ([brand.json](/docs/brand-protocol/brand-json)) |
 | **Account** | Who gets billed? What rates apply? | Seller-assigned `account_id` ([Account references](#account-references)) |
-| **Operator** | Who operates on the brand's behalf? | Domain (e.g., `pinnacle-media.com`) |
+| **Operator** | Who operates on the brand's behalf? | Registrable domain (e.g., `pinnacle-media.com`) |
 | **Agent** | What software is placing the buy? | Authenticated session |
 
 **Brand** — The advertiser whose products or services are promoted. Identified by `domain` plus optional `brand_id`, resolved via `/.well-known/brand.json`. The reference's ISO country `countries[]` is an account attribute, not identity, and never becomes delivery targeting.
 
 **Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, operational timezone, and who receives invoices. Every billable operation requires an account reference: the seller-assigned `account_id` in both account models. A buyer-declared account opens with `brand` and `operator` through `sync_accounts`, which returns its `account_id`.
 
-**Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
+**Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by its registrable domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
 
 **Agent** — The software placing buys and managing campaigns. Authenticates with the seller and may operate on behalf of multiple operators and brands.
 
@@ -337,7 +337,7 @@ Brands declare who can represent them in `/.well-known/brand.json` via the `auth
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `domain` | Yes | Operator's domain |
+| `domain` | Yes | Operator's registrable domain (eTLD+1 under the Public Suffix List, ICANN and private sections), such as `pinnacle-media.com`, not a subdomain of it |
 | `brands` | Yes | Brand IDs this operator can represent. `["*"]` means all brands. |
 | `countries` | No | ISO 3166-1 alpha-2 country codes. Omit for global authorization. |
 

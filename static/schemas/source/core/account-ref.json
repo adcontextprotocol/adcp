@@ -25,7 +25,7 @@
         },
         "operator": {
           "type": "string",
-          "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+          "description": "Registrable domain (eTLD+1 under the Public Suffix List, ICANN and private sections) of the organization operating on the brand's behalf, such as 'pinnacle-media.com', not a subdomain of it such as 'team.pinnacle-media.com'. The brand's authorized_operators and trust.json grants name organizations by registrable domain. When the brand operates directly, this is the brand's domain. A seller MAY refuse an operator that is neither a registrable domain nor the brand's domain. For this check, a name under the reserved .example TLD (RFC 2606) takes the list's default rule, so 'pinnacle-agency.example' is a registrable domain and 'team.pinnacle-agency.example' is not.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
           "x-entity": "operator"
         },

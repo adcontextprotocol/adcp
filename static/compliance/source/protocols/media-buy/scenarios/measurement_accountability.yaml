@@ -73,7 +73,7 @@ context:
   account:
     brand:
       domain: acmeoutdoor.example
-    operator: measurement-accountability.pinnacle-agency.example
+    operator: pinnacle-measurement-accountability.example
     sandbox: true
 fixtures:
   accounts:
@@ -81,7 +81,7 @@ fixtures:
       fixture:
         brand:
           domain: acmeoutdoor.example
-        operator: measurement-accountability.pinnacle-agency.example
+        operator: pinnacle-measurement-accountability.example
         sandbox: true
         billing: operator
         status: active
@@ -120,7 +120,7 @@ phases:
           account:
             brand:
               domain: acmeoutdoor.example
-            operator: measurement-accountability.pinnacle-agency.example
+            operator: pinnacle-measurement-accountability.example
             sandbox: true
           scenario: seed_product
           params:
@@ -155,7 +155,7 @@ phases:
           account:
             brand:
               domain: acmeoutdoor.example
-            operator: measurement-accountability.pinnacle-agency.example
+            operator: pinnacle-measurement-accountability.example
             sandbox: true
           scenario: seed_pricing_option
           params:
@@ -192,7 +192,7 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "measurement-accountability.pinnacle-agency.example"
+              operator: "pinnacle-measurement-accountability.example"
               billing: "operator"
               payment_terms: "net_30"
               sandbox: true
@@ -227,7 +227,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "measurement-accountability.pinnacle-agency.example"
+            operator: "pinnacle-measurement-accountability.example"
             sandbox: true
         context_outputs:
           - path: "products[0].product_id"
@@ -268,7 +268,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "measurement-accountability.pinnacle-agency.example"
+            operator: "pinnacle-measurement-accountability.example"
             sandbox: true
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
@@ -307,7 +307,7 @@ phases:
           account:
             brand:
               domain: acmeoutdoor.example
-            operator: measurement-accountability.pinnacle-agency.example
+            operator: pinnacle-measurement-accountability.example
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -354,7 +354,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "measurement-accountability.pinnacle-agency.example"
+            operator: "pinnacle-measurement-accountability.example"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"

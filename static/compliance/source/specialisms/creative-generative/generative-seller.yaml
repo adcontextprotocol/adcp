@@ -170,7 +170,7 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "generative-seller.pinnacle-agency.example"
+              operator: "pinnacle-generative-seller.example"
               billing: "operator"
               payment_terms: "net_30"
 
@@ -234,7 +234,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "generative-seller.pinnacle-agency.example"
+            operator: "pinnacle-generative-seller.example"
 
           context:
             correlation_id: "creative_generative--seller--get_products_brief"
@@ -306,7 +306,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "generative-seller.pinnacle-agency.example"
+            operator: "pinnacle-generative-seller.example"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -383,7 +383,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "generative-seller.pinnacle-agency.example"
+            operator: "pinnacle-generative-seller.example"
           creatives:
             - creative_id: "gen_display_summer_sale"
               name: "Summer Sale - Generated Display 300x250"
@@ -479,7 +479,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "generative-seller.pinnacle-agency.example"
+            operator: "pinnacle-generative-seller.example"
           creatives:
             - creative_id: "static_display_300x250"
               name: "Trail Pro 3000 - Pre-built Display 300x250"
@@ -531,7 +531,7 @@ phases:
           account:
             brand:
               domain: "nonexistent-brand-xyz.example"
-            operator: "generative-seller.pinnacle-agency.example"
+            operator: "pinnacle-generative-seller.example"
           creatives:
             - creative_id: "gen_invalid_brand"
               name: "Invalid Brand Test"
@@ -600,7 +600,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "generative-seller.pinnacle-agency.example"
+            operator: "pinnacle-generative-seller.example"
           creatives:
             - creative_id: "gen_display_summer_sale"
               name: "Summer Sale - Generated Display 300x250"
@@ -674,7 +674,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "generative-seller.pinnacle-agency.example"
+            operator: "pinnacle-generative-seller.example"
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
