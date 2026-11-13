@@ -18,7 +18,7 @@
     "type",
     "value"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": {

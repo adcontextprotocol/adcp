@@ -39,7 +39,7 @@
           "description": "ISO 3166-1 alpha-2 country code."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "price": {
       "$ref": "/schemas/core/price.json",
@@ -81,7 +81,7 @@
         }
       },
       "required": ["value", "unit"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "description": {
       "type": "string",
@@ -105,7 +105,7 @@
         }
       },
       "required": ["lat", "lng"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "image_url": {
       "type": "string",

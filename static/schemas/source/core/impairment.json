@@ -40,7 +40,7 @@
           "description": "Current (offline) status of the resource. Drawn from the resource_type's canonical lifecycle enum; see impairment-offline-state for per-value resource_type pairing. The pairing is validated by impairment.coherence."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "reason_code": {
       "$ref": "/schemas/enums/impairment-reason-code.json",

@@ -137,10 +137,11 @@ components:
         brand_manifest:
           type: object
           additionalProperties: {}
+          description: "Stored or origin brand manifest. Each logo object in `logos[]` (and in `brands[].logos[]`) carries `background`, the brand.json field naming the background the logo is drawn for: `light-bg` (dark ink), `dark-bg` (light ink) or `transparent-bg`. A declared `background` in that enum is returned as published; any other declared value is treated as undeclared and is never returned. Otherwise it comes from a `light-bg` or `dark-bg` tag, then a `transparent-bg` tag, and for AgenticAdvertising.org-hosted logos from the luminance of the rendered logo (`light-bg` or `dark-bg`). It is absent when none of these is known."
         brand:
           type: object
           additionalProperties: {}
-          description: Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.
+          description: Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization. Logos in `brand.logos[]` carry `background` on the same rules as `brand_manifest.logos[]`.
         source:
           type: string
           enum:
@@ -6938,6 +6939,209 @@ paths:
                 $ref: "#/components/schemas/Error"
         "503":
           description: Too much resolution work is already queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /assets/brands/{domain}/{logoId}.{ext}:
+    get:
+      operationId: getBrandLogoAsset
+      summary: Get brand logo
+      description: |-
+        Download an approved AgenticAdvertising.org-hosted brand logo. This is the URL form that `brand_manifest.logos[].url` uses. When `ext` does not match the stored type, the response is a 301 to the canonical extension, keeping `format` and `w`.
+
+        Add `?format=png&w=<width>` for a PNG rendition, for clients that cannot draw SVG. Renditions are rasterised from the stored, sanitised logo only; the endpoint never fetches a remote URL.
+      tags:
+        - Brand Resolution
+      parameters:
+        - schema:
+            type: string
+            example: acmecorp.com
+          required: true
+          name: domain
+          in: path
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: logoId
+          in: path
+        - schema:
+            type: string
+            example: svg
+          required: true
+          name: ext
+          in: path
+        - schema:
+            type: string
+            enum:
+              - png
+            description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          required: false
+          description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          name: format
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "64"
+              - "128"
+              - "256"
+              - "512"
+              - "1024"
+            description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+            example: "512"
+          required: false
+          description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+          name: w
+          in: query
+      responses:
+        "200":
+          description: "The logo, or its PNG rendition. Served with `Cache-Control: public, max-age=2592000`: a logo id names immutable bytes, so a changed logo gets a new id and URL."
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "301":
+          description: Redirect to the URL with the stored type's extension
+        "400":
+          description: Invalid domain, logo id, `format` or `w`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No approved logo with this id for this domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: The stored logo type (for example ICO) has no PNG rendition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The stored logo could not be rendered as PNG
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too many renditions are already being rendered; retry after the `Retry-After` interval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /logos/brands/{domain}/{logoId}:
+    get:
+      operationId: getBrandLogoLegacy
+      summary: Get brand logo (legacy URL)
+      description: Legacy form of the brand logo URL, without an extension. Accepts the same `format` and `w` rendition parameters as `/assets/brands/{domain}/{logoId}.{ext}`.
+      tags:
+        - Brand Resolution
+      parameters:
+        - schema:
+            type: string
+            example: acmecorp.com
+          required: true
+          name: domain
+          in: path
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: logoId
+          in: path
+        - schema:
+            type: string
+            enum:
+              - png
+            description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          required: false
+          description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          name: format
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "64"
+              - "128"
+              - "256"
+              - "512"
+              - "1024"
+            description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+            example: "512"
+          required: false
+          description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+          name: w
+          in: query
+      responses:
+        "200":
+          description: "The logo, or its PNG rendition. Served with `Cache-Control: public, max-age=2592000`: a logo id names immutable bytes, so a changed logo gets a new id and URL."
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid domain, logo id, `format` or `w`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No approved logo with this id for this domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: The stored logo type (for example ICO) has no PNG rendition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The stored logo could not be rendered as PNG
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too many renditions are already being rendered; retry after the `Retry-After` interval
           content:
             application/json:
               schema:

@@ -268,7 +268,14 @@ describe('list_products canonical product projection', () => {
     expect([...threeThree.values()].some(product => Array.isArray(product.installments))).toBe(true);
     for (const product of threeTwo) {
       const { installments: _installments, ...rest } = threeThree.get(product.product_id)!;
-      expect(product).toEqual(rest);
+      // The 3.3 `card_image_sizes` carousel param is withheld from 3.2 too.
+      const formatOptions = (rest as { format_options?: unknown[] }).format_options?.map(option => {
+        const { params, ...declaration } = option as { params?: Record<string, unknown> };
+        if (!params || !('card_image_sizes' in params)) return option;
+        const { card_image_sizes: _cardImageSizes, ...threeTwoParams } = params;
+        return { ...declaration, params: threeTwoParams };
+      });
+      expect(product).toEqual(formatOptions ? { ...rest, format_options: formatOptions } : rest);
     }
 
     const slotProduct = [...threeThree.values()].find(product => Array.isArray(product.installments));

@@ -89,7 +89,7 @@
         }
       },
       "required": ["domain", "brand_id"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "localized_name": {
       "type": "object",
@@ -248,7 +248,7 @@
           "required": ["kind", "surface"]
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "guideline_severity": {
       "type": "string",
@@ -483,7 +483,7 @@
         { "required": ["url"] },
         { "required": ["email"] }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "brand": {
       "type": "object",
@@ -1121,7 +1121,7 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "brand_shapes": {
       "type": "object",
@@ -1360,7 +1360,7 @@
             "width": { "type": "string", "description": "Minimum width, such as 48px or 12mm." },
             "height": { "type": "string", "description": "Minimum height, such as 18px or 6mm." }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "clear_space": {
           "type": "string",

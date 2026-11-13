@@ -32,7 +32,7 @@
       "description": "Opaque pagination cursor. Absent or null on the terminal page. Stable across the directory's refresh cycle for the lifetime of the cursor."
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "definitions": {
     "PublisherEntry": {
       "type": "object",
@@ -112,7 +112,7 @@
           }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   }
 }

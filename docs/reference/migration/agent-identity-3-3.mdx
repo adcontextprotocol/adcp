@@ -29,7 +29,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 | Release | What happens |
 |---|---|
-| **3.3** | Web Bot Auth, trust.json evaluation, grants, onboarding posture, and relationship status ship as experimental. The RFC 9421 profile is deprecated (6-month notice). JWS artifacts (governance context, designated-task response signing, rights attestations) from a Web Bot Auth identity are verified with keys from its key directory; from any other issuer they stay on the RFC 9421 chain. |
+| **3.3** | Web Bot Auth, trust.json evaluation, grants, onboarding posture, and relationship status ship as experimental. The RFC 9421 profile is deprecated and stays functional through 3.x. JWS artifacts (governance context, designated-task response signing, rights attestations) from a Web Bot Auth identity are verified with keys from its key directory; from any other issuer they stay on the RFC 9421 chain. |
 | **3.4 (direction, not decided)** | Experimental surfaces graduate once they meet the [graduation criteria](/docs/reference/experimental-status). |
 | **4.0** | The RFC 9421 profile, the brand.json trust fields (`agents[].jwks_uri`, `authorized_operators`), and `identity.brand_json_url` are removed. |
 
@@ -95,7 +95,7 @@ Once a trust record lists your origin, JWS artifacts your origin signed under th
 
 ### Publisher
 
-`adagents.json` is unchanged. A `signing_keys` pin still narrows keys by RFC 7638 thumbprint, which is also the Web Bot Auth key ID. An `authorized_agents[].url` stays a canonical URL under the RFC 9421 profile, and matches a Web Bot Auth signer by canonical origin.
+The `adagents.json` schema is unchanged. A `signing_keys` pin still narrows keys by RFC 7638 thumbprint, which is also the Web Bot Auth key ID. An `authorized_agents[].url` matches a Web Bot Auth signer by canonical origin. For an agent identified by the URL it is connected at, an origin-only entry (`https://agent.example.com`) authorizes the agent at that origin whatever its path, and an entry with a path matches that canonical URL only. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
 
 ## SDK support
 

@@ -70,5 +70,5 @@
       "then": { "properties": { "action": { "enum": ["sync_creatives", "replace_creative", "update_creative_assignments"] } } }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
