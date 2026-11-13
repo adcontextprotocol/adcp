@@ -731,12 +731,12 @@ A migration note: a legacy installment that carries only the deprecated `collect
 
 ### Installment selection and per-installment creatives (experimental)
 
-{/* depends on the #8967 and #8968 PRs (numbers to follow) */}
+{/* depends on #8972 (per-installment creatives) and the #8967 PR (number to follow) */}
 
 Optional, two features, each gated on its feature id in `experimental_features`.
 
 - **Installment selection (`media_buy.installment_refinement`, [#8967](https://github.com/adcontextprotocol/adcp/issues/8967)).** A buyer asks for specific installments with `refine_proposals` `installment_changes`: entries of `{ product_id, installment_ref, action }`, unique by `(product_id, installment_ref)`. The seller answers with a revised draft whose purchase references a product that declares exactly the chosen installments, which may be one it derives for the selection, and reports what it can't satisfy in `unsatisfied_installment_changes`. Nothing new goes into `commercial_terms`.
-- **Per-installment creatives (`media_buy.installment_creative_assignment`, [#8968](https://github.com/adcontextprotocol/adcp/issues/8968)).** `installment_refs` on a creative assignment limits it to those installments of the package; absent, it applies to every installment, as before. Each ref must be an installment the package bought, and the installment's `change_cutoff` applies. `get_media_buys` reads the field back on `creative_assignments`.
+- **Per-installment creatives (`media_buy.installment_creative_assignment`, [#8972](https://github.com/adcontextprotocol/adcp/pull/8972)).** `installment_refs`, a unique list of 1 to 500 canonical installment references, is optional on the `sync_creatives` `assignment_operations` `assign` and `replace` operations. It limits the assignment to those installments of the package; absent, the assignment applies to every installment, as before, and placement routing intersects with the installment scope. A seller rejects a ref outside the purchased product's installments with `VALIDATION_ERROR`, and a change past an installment's `change_cutoff` with `CREATIVE_DEADLINE_EXCEEDED`; `unassign` and `merge` reject the field by name. `get_media_buys` `packages[].creative_approvals[]` and `list_creatives` `assignments.assigned_packages[]` read it back. It sits on no deprecated surface. See [Assigning to specific installments](/docs/creative/task-reference/sync_creatives#assigning-to-specific-installments-experimental).
 
 ### Creative `seller_revision`
 
