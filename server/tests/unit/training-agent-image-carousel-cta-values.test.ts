@@ -128,6 +128,17 @@ describe('training agent holds image_carousel card cta to declared cta_values (#
     });
   });
 
+  it('refuses the same card cta when the creative uses the legacy format_id identity', async () => {
+    const { format_kind: _formatKind, ...rest } = carousel('carousel_legacy_bad_cta', ['SHOP_NOW', 'EXPLORE_MORE'], DECLARED_OPTION);
+    const legacy = { ...rest, format_id: { agent_url: 'https://creatives.adcontextprotocol.org', id: 'image_carousel' } };
+    const result = await sync([legacy]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'CREATIVE_VALUE_NOT_ALLOWED',
+      field: 'creatives[0].assets.cards[1].cta',
+    });
+  });
+
   it('accepts the same creative once every card cta is a declared value', async () => {
     const result = await sync([carousel('carousel_bad_cta', ['SHOP_NOW', 'SHOP_NOW', 'LEARN_MORE'], DECLARED_OPTION)]);
     expectAccepted(result);

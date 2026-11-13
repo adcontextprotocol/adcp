@@ -7745,6 +7745,7 @@ function imageCarouselParamViolation(
  */
 function imageCarouselValidationError(
   creative: {
+    format_id?: FormatID;
     format_kind?: string;
     format_option_ref?: unknown;
     assets?: Record<string, unknown>;
@@ -7756,7 +7757,7 @@ function imageCarouselValidationError(
   session: SessionState,
   assignments: readonly CreativeAssignmentInput[],
 ): TaskError | null {
-  if (creative.format_kind !== 'image_carousel') return null;
+  if (creative.format_kind !== 'image_carousel' && creative.format_id?.id !== 'image_carousel') return null;
   const assets = isRecord(creative.assets) ? creative.assets : creative.manifest?.assets;
   if (!isRecord(assets)) return null;
   return declaredFormatOptionError(
