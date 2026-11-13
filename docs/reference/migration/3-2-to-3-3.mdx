@@ -77,7 +77,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 
 ## Withdrawn from 3.3, planned for 4.0
 
-Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` and the term objects inside it are held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it. The decision is in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
+Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` and the term objects inside it are held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). A buyer must not be bound by terms it cannot read: `terms_digest` covers every member of `commercial_terms`, including members under the open schemas inside it, and a party that cannot interpret every member must not accept the terms ([Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently)). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it. The decision is in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
 
 ### Definition pins (published in beta.0 and beta.1, removed after beta.1)
 

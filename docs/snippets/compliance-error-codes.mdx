@@ -128,6 +128,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `STALE_RESPONSE` | transient | advisory — emitted alongside a populated payload that was served from cache past the seller's freshness target because an upstream or sub-agent was unreachable. The response is usable; treat as non-fatal. Inspect <code>{"error.details.cache_age_seconds"}</code> to decide whether to immediately retry for fresh data or accept the cached value; the seller's own service is healthy, so retry is safe (it does not amplify the upstream failure) |
 | `TERMS_REJECTED` | correctable | adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults |
 | `UNPRICEABLE_OUTPUT` | correctable | target an output format the transformer prices, or have the seller add a pricing option covering it |
+| `UNRECOGNIZED_TERMS` | correctable | remove the member the seller cannot interpret, or send it only to sellers that interpret it |
 | `UNSUPPORTED_FEATURE` | correctable | check get_adcp_capabilities (or the product's overlay_support for a rejected targeting dimension), remove unsupported fields, and use details.replacement_dimension when present |
 | `UNSUPPORTED_GRANULARITY` | correctable | pick a granularity from the product's reporting_capabilities.windowed_pull_granularities (via get_adcp_capabilities) and resubmit, or omit time_granularity to fall back to cumulative date-range pulls |
 | `UNSUPPORTED_PROVISIONING` | correctable | re-issue with the entry shape the seller supports — <code>{"account: {account_id: ...}"}</code> for settings-update sellers with account-id namespaces, or <code>{"brand+operator+billing"}</code> for provisioning sellers; check seller documentation or capability declaration for which modes are implemented |
@@ -1254,6 +1255,15 @@ Buyer-proposed measurement_terms were rejected by the seller. The error details 
 **Suggested action:** target an output format the transformer prices, or have the seller add a pricing option covering it
 
 A creative transformer build targets an output capability that no pricing option covers — no transformer.pricing_options entry has a matching applies_to_output_capability_ids and none is unscoped. The build is rejected rather than billed at a guessed rate. Recovery: correctable.
+
+</Accordion>
+<a id="error-code-unrecognized-terms"></a>
+
+<Accordion title="UNRECOGNIZED_TERMS — correctable">
+
+**Suggested action:** remove the member the seller cannot interpret, or send it only to sellers that interpret it
+
+The request carries commercial terms the seller would record and be bound by, such as a buy_products purchase, and at least one member of them, at any depth and including ext, is one the seller cannot interpret. Accepting signed terms binds the accepting party to every member, so the seller MUST reject the request instead of accepting it, dropping the member, or carrying it without interpreting it. A member whose schema defines it as opaque, such as context, is interpreted by that definition. The seller SHOULD set error.field to the path of the first such member. Distinct from UNSUPPORTED_FEATURE (a field the seller recognizes but does not support) and INVALID_REQUEST (a request that fails the schema). Recovery: correctable (remove the member, or send it only to sellers that interpret it).
 
 </Accordion>
 <a id="error-code-unsupported-feature"></a>

@@ -81,7 +81,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
-import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease } from './served-release-fields.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease, undeclaredMembers } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -10721,6 +10721,16 @@ function idempotencyPayloadForServedVersion(
   return toolName === 'get_products' ? args : { ...args, __adcp_operation: toolName };
 }
 
+/**
+ * The reasons a proposal decline may carry: the closed enum in
+ * enums/proposal-decline-reason.json, read from the source schema so both
+ * decline checks below accept exactly what the schema does.
+ */
+export const PROPOSAL_DECLINE_REASONS: ReadonlySet<string> = new Set(
+  (loadSourceSchema('enums/proposal-decline-reason.json').enum as unknown[])
+    .filter((reason): reason is string => typeof reason === 'string'),
+);
+
 export function validateProductDiscoveryAliasInput(
   toolName: string,
   args: Record<string, unknown>,
@@ -10892,10 +10902,6 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'declines exceeds the maximum batch size (25)', field: 'declines' };
     }
     const proposalIds = new Set<string>();
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     for (let index = 0; index < args.declines.length; index += 1) {
       const entry = args.declines[index];
       if (!isRecord(entry)) {
@@ -10908,7 +10914,7 @@ export function validateProductDiscoveryAliasInput(
         return { message: 'proposal_id values in declines must be unique', field: `declines[${index}].proposal_id` };
       }
       proposalIds.add(entry.proposal_id);
-      if (typeof entry.reason !== 'string' || !reasons.has(entry.reason)) {
+      if (typeof entry.reason !== 'string' || !PROPOSAL_DECLINE_REASONS.has(entry.reason)) {
         return { message: 'a supported reason is required for every decline', field: `declines[${index}].reason` };
       }
       if (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0)) {
@@ -24111,6 +24117,20 @@ export async function handleBuyProducts(
   const targetedPackageCounts = new Map<string, number>();
   for (let index = 0; index < args.purchases.length; index++) {
     const purchase = args.purchases[index]!;
+    // Each purchase becomes accepted commercial_terms the seller is bound by,
+    // member for member (media-buy/commercial-terms.json). A member the agent
+    // cannot interpret is rejected, never dropped or carried uninterpreted.
+    const [unrecognized] = undeclaredMembers(purchase, 'media-buy/product-purchase-input.json');
+    if (unrecognized) {
+      return {
+        errors: [{
+          code: 'UNRECOGNIZED_TERMS',
+          message: 'The purchase carries a member this seller cannot interpret, so it cannot accept the terms.',
+          field: `purchases[${index}]${unrecognized.map(segment => (/^\d+$/.test(segment) ? `[${segment}]` : `.${segment}`)).join('')}`,
+          recovery: 'correctable',
+        }],
+      };
+    }
     const product = catalog.get(purchase.product_id);
     const pricing = product?.pricing_options.find(
       option => option.pricing_option_id === purchase.pricing_option_id,
@@ -25241,10 +25261,6 @@ function validateIdempotencyProtectedInput(
         field: 'refine',
       };
     }
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     const invalidIndex = (args.refine as unknown[]).findIndex(entry => (
       isRecord(entry)
       && entry.scope === 'proposal'
@@ -25252,7 +25268,7 @@ function validateIdempotencyProtectedInput(
       && (
         typeof entry.proposal_id !== 'string'
         || typeof entry.reason !== 'string'
-        || !reasons.has(entry.reason)
+        || !PROPOSAL_DECLINE_REASONS.has(entry.reason)
         || (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0))
       )
     ));

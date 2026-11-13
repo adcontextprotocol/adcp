@@ -622,7 +622,7 @@ When buyer and seller have negotiated discounts and commissions, the `price_brea
 - `adjustments` — ordered list of adjustments, each categorized by `kind`
 - `fixed_price` (on the parent pricing option) — must equal the result of applying all `fee` and `discount` adjustments sequentially to `list_price`. A breakdown from the operator's buying platform also applies `operator_fee` adjustments; see [Operator fees](#operator-fees)
 
-Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility. A reader that meets an unrecognized adjustment `kind` SHOULD skip the invariant check rather than report a mismatch.
+Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility. A reader that meets an unrecognized adjustment `kind` SHOULD skip the invariant check rather than report a mismatch. Reading is not accepting: inside a proposal's `commercial_terms`, `terms_digest` covers every member of the breakdown, and a party that cannot interpret every member must not accept the terms (see [Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently)).
 
 ### Adjustment Kinds
 
