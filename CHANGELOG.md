@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.2.11
+
+### Patch Changes
+
+- a07826a: Open the 3.2 schemas that were closed by accident, so a 3.2 validator no longer rejects a newer 3.x payload because it carries a field 3.2 does not know. Backports the 3.3 opening decided by the working group on 2026-11-09.
+  
+  `additionalProperties` goes from `false` to `true` at 674 of the 775 closed locations in the 3.2 source tree.
+  
+  101 locations stay closed, matching 3.3: most for a structural reason, and the commercial terms as a hold until 4.0.
+  
+  - `oneOf` branches told apart only by which keys are present (`a2ui/bound-value.json`, `brand.json`).
+  - Metric qualifiers and forecast dimensions, which consumers join on.
+  - The JWS response envelope.
+  - Privacy boundaries: the TMP match requests, the not-found error, the per-agent permission-denied and billing-not-permitted details, the `get_principal` recognized, unconfigured and failed results, the failed `sync_principal` result, and the `get_reporting_status` unavailable-lookup result.
+  - The credential-free reporting destinations and the destination `setup` action.
+  - `placement-presentation`, which carries no key material or markup.
+  - `patternProperties` maps keyed by IDs.
+  - Held closed until 4.0: the commercial terms and the hard `proposal-budget-constraint`. This is a hold, not a structural reason; 4.0 gives `commercial_terms` a declared extension point with must-understand.
+  
+  Where closure was the only thing rejecting a specific field that the protocol defines elsewhere or forbids (for example `trackers` on `unassign`, `staged_update` on `creative.status_changed`, `auth_token` on list-application receipts, or credentials on a notification-config readback), the opened schema now rejects that field by name with `not`. `access_token` on the delivery-ready webhook is rejected as a credential clamp. The same applies to unions whose branches were told apart only by which keys are present: an account ref, compact or not, carries `account_id` or the natural key, not both; a geo-region country entry carries `all_values` or `values`; image bleed is uniform or per-side; a deprecated fused-system postal area carries no `country`; and a reporting-receipt result carries `receipt` or `adjustment_receipt`, a failed one neither. Each node with a named rejection says in its description what it rejects and why, since generated types cannot express `not`. Descriptions of opened schemas no longer say they are closed.
+  
+  The MCP model-context projection now omits `additionalProperties: true` as well as `false`, since `true` is the JSON Schema default.
+- 8558eef: Stop `creative/policy_backed_rejections` failing sellers that do not enforce registry policies (adcp#8850). The storyboard seeds a product with `enforced_policies` through the controller and then asserted that the seller published and enforced both fixture policies, so a seller that never claimed registry policy enforcement failed it. The 3.2 schemas have no capability a seller can use to opt out, so this patch gates on what the seller publishes instead: the discovery read now asserts only a schema-valid `get_products` response and captures the returned products, and the policy-universe confirmation and the dual-violation `sync_creatives` phases run only when the first discovered product carries a non-empty `enforced_policies` list. The gate reads the seller's response, not the controller seed. A seller that omits the field, publishes an empty list, or returns no products under `required_policies` is not sent the violating creative and is not failed; its enforcement phases are skipped. A seller that publishes any enforced policy runs every step and is still graded on the exact two-policy universe and the one-`CREATIVE_REJECTED`-entry-per-policy result. No schema fields change. The 3.3 line gates the storyboard on the new `creative.supports_registry_policy_enforcement` capability instead (adcp#8857).
+- 8558eef: Stop signed functional storyboard requests from exhausting the per-keyid cap that the signed-requests `rate_abuse` vector grades (adcp#8877). Functional dispatch in `test-kits/signed-requests-runner.yaml` signed with `test-ed25519-2026`, the same keyid vector 020-rate-abuse caps at 100 for the test counterparty, so a full compliance run could hit the cap before the signed-requests vectors started and fail them with `request_signature_rate_abuse`. Functional dispatch now signs with a dedicated `test-functional-2026` Ed25519 key that no conformance vector uses, published in the request-signing `keys.json` and declared in `runner_signing_keys`. The `rate_abuse` block now states that agents MAY lower the per-keyid cap to the grading target for the vector 020 keyid (`test-ed25519-2026`) only, and MUST NOT apply the lowered cap to the functional-dispatch keyid. Sellers that register the runner signing keys individually rather than loading the published `keys.json` must add `test-functional-2026` to their test counterparty. Sellers that configure one global per-keyid cap on their replay store (as the SDK reference stores take, e.g. `maxEntriesPerKeyid: 100`) must scope the lowered cap to `test-ed25519-2026`, for example with a keyid-aware wrapper, or functional storyboards hit the cap on `test-functional-2026` instead.
+
 ## 3.2.10
 
 ### Patch Changes

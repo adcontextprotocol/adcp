@@ -1,0 +1,16 @@
+{
+  "adcp_version": "3.2",
+  "adcp_major_version": 3,
+  "account": { "account_id": "account-1" },
+  "idempotency_key": "reporting-adjustment-accepted-0001",
+  "adjustment_receipts": [
+    {
+      "reporting_receipt_id": "receipt-adjustment-accepted-0001",
+      "reporting_adjustment_id": "adjustment-august-invalid-traffic",
+      "adjusts_reporting_revision_id": "revision-august-official",
+      "status": "accepted",
+      "observed_adjustment_sha256": "401d1428f22fc0c3f2a7a82a1fceb766d81c4971e1f4458a26398c80163ddd2d",
+      "observed_at": "2026-08-29T10:01:00Z"
+    }
+  ]
+}
