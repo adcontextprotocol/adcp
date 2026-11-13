@@ -1,0 +1,65 @@
+---
+title: Carousel Ads
+description: "Canonical image-carousel creative contracts for multi-card advertising."
+"og:title": "AdCP — Carousel Ads"
+---
+
+Use `image_carousel` when one creative contains an ordered set of cards. Card count, fields, image constraints, and optional hero assets live in canonical parameters and slots.
+
+```json
+{
+  "format_option_id": "product_carousel",
+  "format_kind": "image_carousel",
+  "params": {
+    "min_cards": 3,
+    "max_cards": 10,
+    "card_aspect_ratio": "1:1",
+    "card_image_sizes": [{ "width": 1080, "height": 1080 }],
+    "slots": [
+      { "asset_group_id": "cards", "asset_type": "card", "required": true, "min": 3, "max": 10 },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "image_carousel",
+  "assets": {
+    "cards": [
+      {
+        "asset_type": "card",
+        "headline": "Trail Pro",
+        "media": { "asset_type": "image", "url": "https://cdn.acmeoutdoor.example/trail-pro.jpg" },
+        "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/trail-pro" }
+      },
+      {
+        "asset_type": "card",
+        "headline": "Summit Pack",
+        "media": { "asset_type": "image", "url": "https://cdn.acmeoutdoor.example/summit-pack.jpg" },
+        "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/summit-pack" }
+      },
+      {
+        "asset_type": "card",
+        "headline": "Alpine Shell",
+        "media": { "asset_type": "image", "url": "https://cdn.acmeoutdoor.example/alpine-shell.jpg" },
+        "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/alpine-shell" }
+      }
+    ]
+  }
+}
+```
+
+## Card image size
+
+`card_aspect_ratio` fixes the shape every card shares. `card_image_sizes` (added in AdCP 3.3) fixes the pixel size of card images. It is a list of accepted logical `{ width, height }` pairs, the same shape as `main_image_sizes` on `native_in_feed`.
+
+- **Exact match.** Each card whose `media` is an `image` asset MUST match one listed pair. A larger image at the same ratio does not match. When the `cards` slot declares `pixel_ratios`, the intrinsic size is the matched pair times the selected ratio, as described under [pixel ratios](/dist/docs/3.3.0-beta.6/creative/canonical-formats); without it, 1x.
+- **One shape per carousel.** Mixed orientations are not allowed, so every card image in one creative matches pairs of the same aspect ratio. A product that accepts 1:1 and 4:5 cards lists both, and each creative picks one.
+- **Images only.** `card_image_sizes` does not constrain video card media. Video cards follow `card_video_max_file_size_kb` and `card_video_max_duration_ms`.
+- **Agreement with `card_aspect_ratio`.** When both are declared, every listed pair MUST have that ratio, within 1% (so 1200×627 matches `1.91:1`). A declaration where they disagree is invalid; neither field wins. When only `card_image_sizes` is declared, the listed sizes imply the accepted card ratios. When only `card_aspect_ratio` is declared, buyers match the ratio and choose the pixel size.
+
+For catalog-composed collections where the seller reads product rows and renders tiles, use `sponsored_placement` rather than a buyer-authored carousel bundle.
+
+See [Catalogs](/dist/docs/3.3.0-beta.6/creative/catalogs) and [Canonical formats](/dist/docs/3.3.0-beta.6/creative/canonical-formats).
