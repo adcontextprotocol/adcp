@@ -789,7 +789,18 @@ Two qualifications matter in practice.
 
 ### Buying a product that names installments
 
-A purchase buys the product as offered: run-of-collection when the product names no installments, and the product's complete installment set when it does. In 3.3 a purchase cannot name the exact slots it buys, and `refine_proposals` cannot drop or swap one. `commercial_terms` is held closed until 4.0, so a slot selection waits for 4.0's declared extension point. Installment selection is planned for 4.0, where `commercial_terms` gets a declared extension point with must-understand; see [Planned for 4.0](/docs/reference/migration/v4-compatibility#installment_selection_required_in_4_0).
+A purchase buys the product as offered: run-of-collection when the product names no installments, and the product's complete installment set when it does. A purchase can't name a subset of a product's installments, because `commercial_terms` is held closed until 4.0. In 3.3 a buyer instead asks for specific installments during negotiation, and the seller answers with a product whose installments are exactly the chosen set ([below](#choosing-installments-experimental)). 4.0 puts the chosen installments in the signed terms themselves; see [Planned for 4.0](/docs/reference/migration/v4-compatibility#installment_selection_required_in_4_0).
+
+#### Choosing installments (experimental)
+
+A seller that lists `media_buy.installment_refinement` in `experimental_features`, and `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, lets a buyer choose installments with [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals#choose-installments-experimental). Buyers MUST NOT send `installment_changes` to any other seller. Each entry names a product the proposal buys, an installment by its `(collection_ref, installment_id)` reference, and `include` or `omit`.
+
+For each product named, the **selected set** is that product's installments with every `omit` removed and every `include` added. The seller satisfies the request by returning a draft that buys one product whose `installments[]` is exactly the selected set. That can be the product itself, when its set is already the selection, or a product the seller offers for that selection in its place, such as `creator_juniper_vale__2026-12-03`. Buying that product buys its complete installment set, which is the selection, so `terms_digest` binds the choice through the `product_id` as it always has and every 3.x buyer reads the purchase the way it already does.
+
+- **A product's installments never change once it is offered.** A different set is a different `product_id`. The digest binds the `product_id`, not the slots, so this rule is what keeps an accepted selection fixed.
+- **The buyer checks the answer.** Before finalizing, the buyer compares each selected set with the `installments[]` of the product the returned draft buys, and rejects a mismatch. After finalize, `holds[]` reads back which installments the hold covers ([Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental)).
+- **Membership comes before resolution.** The seller checks that each entry's `product_id` is one the source proposal buys, or one `product_changes` adds in the same request, before it resolves any installment reference, so an unauthorized caller never makes it resolve one.
+- **What the seller can't satisfy, it reports.** Each unmet entry comes back in `unsatisfied_installment_changes` with a `reason`, on a `partial` or `unable` result whose `reason_code` is `constraint_unsatisfiable`.
 
 A committed proposal can read back which installments its hold covers, in `holds[]` (experimental, `media_buy.installment_holds`); see [Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental). `holds[]` is readback about the hold finalize placed, not contract, and is not covered by `terms_digest`.
 

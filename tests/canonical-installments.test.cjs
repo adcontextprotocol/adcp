@@ -225,7 +225,8 @@ test('the documentation records the closed gap, the live boundaries, and the wit
   assert.match(limitations, /canonical and legacy installment shapes will stay forked/);
 
   const experimental = readDoc('reference/experimental-status.mdx');
-  assert.doesNotMatch(experimental, /media_buy\.installment_selection/, 'the withdrawn feature id has no registry row');
+  // The refinement row's prose may name the withdrawn id (adcp#8967); it must not be a row of its own.
+  assert.doesNotMatch(experimental, /^\| `media_buy\.installment_selection` \|/m, 'the withdrawn feature id has no registry row');
 
   const guide = readDoc('media-buy/product-discovery/collections-and-installments.mdx');
   assert.match(guide, /## Installments in the compact lifecycle/);

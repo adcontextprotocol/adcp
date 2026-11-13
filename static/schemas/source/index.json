@@ -369,6 +369,14 @@
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
         },
+        "installment-change": {
+          "$ref": "/schemas/core/installment-change.json",
+          "description": "One installment-level include or omit action in a refine_proposals request (experimental)"
+        },
+        "installment-change-set": {
+          "$ref": "/schemas/core/installment-change-set.json",
+          "description": "Installment-level include and omit actions for a refine_proposals request (experimental)"
+        },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",
           "description": "A deadline for creative material submission at a specific stage"
