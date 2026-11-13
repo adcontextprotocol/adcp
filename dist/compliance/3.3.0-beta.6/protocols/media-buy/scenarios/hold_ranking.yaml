@@ -1,0 +1,303 @@
+id: media_buy_seller/hold_ranking
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Two buyers hold the same rankable slot first and second"
+category: media_buy_seller
+summary: "Two buyers finalize drafts over the same rankable product: the first gets hold_rank 1 and the second hold_rank 2. When the first buyer declines its hold, the second buyer's hold moves to first position and can be accepted."
+track: media_buy
+
+requires_all_capabilities:
+  - path: "experimental_features"
+    contains: "media_buy.hold_policy"
+  - path: "experimental_features"
+    contains: "media_buy.hold_ranking"
+  - path: "compliance_testing.scenarios"
+    contains: "compact_product_lifecycle_probe"
+
+requires:
+  - controller
+
+required_tools:
+  - request_proposals
+  - refine_proposals
+  - decline_proposals
+  - accept_proposal
+  - comply_test_controller
+
+narrative: |
+  Experimental (`media_buy.hold_ranking`). A policy with `rankable: true`
+  allows a hold behind other buyers' holds, and the committed proposal reports
+  the buyer's own position in `hold_rank`: `1` is first position, and `n`
+  means `n - 1` holds are ahead. Positions never get worse, and once every
+  hold ahead has been released or declined the hold is at first position.
+  `hold_rank` is a snapshot as of placement, or as of an extension.
+
+  The storyboard seeds one rankable product, a single sellable slot, and has
+  two buyers (two accounts of the same caller) finalize drafts over it. The
+  first buyer's hold is ahead of the second's. The first buyer then declines
+  its committed proposal, which releases its hold, so the second buyer's hold
+  is at first position with the full acceptance guarantee, and it books.
+  Refreshing `hold_rank` through an `extend_hold` successor is covered by the
+  training agent's hold vectors; the storyboard runner cannot send
+  `extend_hold` yet (adcontextprotocol/adcp-client#3601).
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+  examples:
+    - "Out-of-home seller that holds frames first, second, and third"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller lists media_buy.hold_policy and media_buy.hold_ranking,
+    advertises compact_product_lifecycle_probe, honors the hold_policy of
+    seeded products, and queues holds on a seeded product across the caller's
+    accounts.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_c2b6a69bd4d6"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_hold_ranking-8d1e2a6b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_sandbox_39a3592f0b99"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_hold_ranking-8d1e2a6b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "hold_rank_frame"
+      delivery_type: "guaranteed"
+      channels: ["dooh"]
+      format_options:
+        - format_option_id: "hold_rank_frame_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
+      hold_policy:
+        available: true
+        min_duration: "P1D"
+        max_duration: "P3D"
+        extendable: true
+        max_total_duration: "P10D"
+        rankable: true
+  pricing_options:
+    - product_id: "hold_rank_frame"
+      pricing_option_id: "hold_rank_frame_flat"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 30
+
+phases:
+  - id: prepare_product
+    title: "Prepare the seeded product"
+    steps:
+      - id: prepare_rank_frame
+        title: "Prepare the rankable product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_ranking-8d1e2a6b"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "hold_rank_frame"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares the seeded product"
+
+  - id: two_buyers
+    title: "Two buyers hold the same slot"
+    depends_on: [prepare_product]
+    steps:
+      - id: request_first_buyer_draft
+        title: "The first buyer requests a draft"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_ranking_request_first"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_ranking-8d1e2a6b"
+            sandbox: true
+          brief: "Hold a digital out-of-home frame for a summer campaign."
+          criteria:
+            product_ids: ["hold_rank_frame"]
+        context_outputs:
+          - name: first_buyer_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].hold_policy.rankable"
+            value: true
+            description: "A draft is rankable if any allocated product is"
+
+      - id: request_second_buyer_draft
+        title: "The second buyer requests a draft"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_ranking_request_second"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_ranking-8d1e2a6b"
+            sandbox: true
+          brief: "Hold the same digital out-of-home frame for a model launch."
+          criteria:
+            product_ids: ["hold_rank_frame"]
+        context_outputs:
+          - name: second_buyer_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].hold_policy.rankable"
+            value: true
+            description: "A draft is rankable if any allocated product is"
+
+      - id: finalize_first_buyer_draft
+        title: "The first buyer finalizes"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_ranking_finalize_first"
+          refinements:
+            - proposal_id: "$context.first_buyer_draft_id"
+              action: "finalize"
+        context_outputs:
+          - name: first_buyer_committed_id
+            path: "results[0].proposal.proposal_id"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The draft is finalized"
+          - check: field_value
+            path: "results[0].proposal.hold_rank"
+            value: 1
+            description: "No hold is ahead: first position"
+
+      - id: finalize_second_buyer_draft
+        title: "The second buyer finalizes"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_ranking_finalize_second"
+          refinements:
+            - proposal_id: "$context.second_buyer_draft_id"
+              action: "finalize"
+        context_outputs:
+          - name: second_buyer_committed_id
+            path: "results[0].proposal.proposal_id"
+          - name: second_buyer_terms_digest
+            path: "results[0].proposal.terms_digest"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "A rankable draft is finalized behind the hold ahead rather than refused"
+          - check: field_value
+            path: "results[0].proposal.hold_rank"
+            value: 2
+            description: "One hold is ahead on the same slot: second position"
+
+      - id: decline_first_buyer_hold
+        title: "The first buyer declines its committed proposal"
+        task: decline_proposals
+        schema_ref: "media-buy/decline-proposals-request.json"
+        response_schema_ref: "media-buy/decline-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/decline_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_ranking_decline_first"
+          declines:
+            - proposal_id: "$context.first_buyer_committed_id"
+              reason: "inventory_fit"
+              detail: "The campaign moved to a different market."
+        validations:
+          - check: field_value
+            path: "results[0].outcome"
+            value: "declined"
+            description: "The decline is recorded and the hold ahead is released"
+
+  - id: queue_moves_up
+    title: "The second buyer's hold moves to first position and books"
+    depends_on: [two_buyers]
+    steps:
+      - id: accept_second_buyer_hold
+        title: "The second buyer accepts its committed proposal"
+        task: accept_proposal
+        schema_ref: "media-buy/accept-proposal-request.json"
+        response_schema_ref: "media-buy/accept-proposal-response.json"
+        doc_ref: "/media-buy/task-reference/accept_proposal"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_ranking_accept_second"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_ranking-8d1e2a6b"
+            sandbox: true
+          proposal_id: "$context.second_buyer_committed_id"
+          proposal_terms_digest: "$context.second_buyer_terms_digest"
+        validations:
+          - check: field_present
+            path: "media_buy_id"
+            description: "With the hold ahead declined, the hold is at first position and keeps the acceptance guarantee"
+          - check: field_equals_context
+            path: "accepted_proposal.proposal_id"
+            context_key: "second_buyer_committed_id"
+            description: "The MediaBuy binds the second buyer's committed snapshot"

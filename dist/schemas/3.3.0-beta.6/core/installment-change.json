@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.6/core/installment-change.json",
+  "title": "Installment Change",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "One installment-level action in a refine_proposals request (media_buy.installment_refinement). It names a product by product_id and an installment by its closed canonical reference. It is a request, not a term: nothing in commercial_terms changes shape.",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product",
+      "description": "A product the source proposal purchases, or one that product_changes includes in the same request. The seller checks this membership before it resolves installment_ref, so an unauthorized caller never causes reference resolution."
+    },
+    "installment_ref": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.6/core/canonical-installment-ref.json",
+      "description": "Installment the action applies to. An omit names one in the product's installments. An include names an installment of a collection the product's collections name. A reference the seller cannot resolve fails the request at task level with REFERENCE_NOT_FOUND, not as an unsatisfied change."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "include",
+        "omit"
+      ],
+      "description": "include puts the installment in the selection and omit takes it out. It is required, because a drop that silently defaulted to include is the expensive failure. Swapping a slot is one omit plus one include in the same request."
+    }
+  },
+  "required": [
+    "product_id",
+    "installment_ref",
+    "action"
+  ],
+  "additionalProperties": true
+}
