@@ -219,19 +219,23 @@ checks:
     issue: 8125
     change: new_requirement
     applies_to: [sellers]
-    detection: "A seller that lists media_buy.audience_evidence_targets in experimental_features does not accept target_audiences on buy_products purchases and list_products offer_filters."
+    detection: "A seller does not accept target_audiences beside audience_evidence_requirements on buy_products purchases and list_products offer_filters, or does not record it in the accepted purchase snapshot."
     fix: >-
-      Accept the experimental target_audiences sibling of
-      audience_evidence_requirements on buy_products purchases and
-      list_products offer_filters, and record it in the accepted purchase
-      snapshot. 3.3 carries it only on get_products filters and
-      create_media_buy packages, because the purchase and offer-filter
-      schemas are closed and a minor release does not change a closed schema.
+      Nothing in 3.3. The experimental target_audiences sibling of
+      audience_evidence_requirements (#8215) shipped in the 3.3 betas only on
+      the deprecated get_products filters and create_media_buy and
+      update_media_buy packages, and is withdrawn from both because 3.3 adds
+      nothing to deprecated tasks (adcp#8501), so 3.3 has no wire form for
+      it. 4.0 adds it to buy_products purchases and list_products
+      offer_filters, which are open in 3.3 but do not define it, and records
+      it in the accepted purchase snapshot, which is held closed with the
+      commercial terms until 4.0. Until then, a buyer that needs an audit record keeps
+      its own copy of the requirements and targets it sent.
     observed_by:
       none:
         reason: >-
-          Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
-          run cannot send or observe it.
+          Buyer-sent field with no 3.3 wire form. A 3.x seller run cannot
+          send or observe it.
   - id: seller_held_change_terms_required_in_4_0
     issue: 8087
     change: new_requirement
@@ -311,17 +315,42 @@ checks:
     issue: 6878
     change: new_requirement
     applies_to: [sellers]
-    detection: "A seller that lists media_buy.measurement_provenance in experimental_features declares counting_mechanisms on measurement_terms.billing_measurement but not on the canonical commercial terms."
+    detection: "A seller that lists media_buy.measurement_provenance in experimental_features cannot declare counting_mechanisms on the canonical commercial terms' billing_measurement."
     fix: >-
-      Declare the experimental billing_measurement.counting_mechanisms on the
-      canonical commercial terms too. 3.3 carries it only on
-      core/measurement-terms.json, because canonical-measurement-terms.json is a
-      closed schema and a minor release does not change a closed schema.
+      Nothing in 3.3. billing_measurement.counting_mechanisms shipped from
+      3.3.0-beta.2 on core/measurement-terms.json, which only the deprecated
+      get_products, create_media_buy and update_media_buy tasks use, and is
+      withdrawn from 3.3 because 3.3 adds nothing to deprecated tasks
+      (adcp#8501). canonical-measurement-terms.json is held closed with the
+      commercial terms until 4.0, so 4.0 adds the declaration there. vendor_metric_provenance[].mechanisms[] on delivery
+      rows stays in 3.3.
     observed_by:
       none:
         reason: >-
-          The canonical schema is closed in 3.x and does not carry the field, so
-          a 3.x seller run cannot send or observe it.
+          The canonical schema is held closed until 4.0 and 3.3 has no wire
+          form for the declaration, so a 3.x seller run cannot send or observe it.
+
+  - id: canonical_price_adjustments_required_in_4_0
+    issue: 7659
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A seller that prices format option or placement selections and dated windows from a published rate table cannot carry that table as price_adjustments on a canonical pricing option."
+    fix: >-
+      Nothing in 3.3. The experimental price_adjustments table
+      (media_buy.price_adjustments) shipped in 3.3.0-beta.1 through
+      3.3.0-beta.5 on the pricing options of the deprecated get_products and
+      is withdrawn after beta.5 (adcp#8501): 3.3 adds no field that exists only on a deprecated task,
+      and canonical-pricing-option.json is held closed with the commercial
+      terms until 4.0. Do not return a
+      table or emit error-details/price-adjustments-mismatch.json. Until 4.0,
+      return a priced option per configured product. 4.0 adds the table to
+      the canonical pricing option.
+    observed_by:
+      none:
+        reason: >-
+          A seller-authored field on the canonical pricing option, which is
+          held closed until 4.0, and 3.3 has no wire form for it after beta.5.
+          A 3.x run cannot observe it.
 
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
@@ -339,7 +368,6 @@ schema_removals_not_checked:
       - "creative/list-creative-formats-request.json#/properties/format_ids"
       - "media-buy/list-creative-formats-request.json#/properties/format_ids"
       - "media-buy/package-request.json#/properties/format_ids"
-      - "media-buy/package-forecast-input.json#/properties/format_ids"
 
   - change: "Exact plural format_ids projections outside the product"
     issue: 7629
@@ -465,3 +493,12 @@ schema_removals_not_checked:
     sites:
       - "core/media-buy-legacy-terms-ref.json#"
       - "media-buy/request-proposals-response.json#/properties/purchase_continuation"
+
+  - change: "Boolean demographics, the 3.2 shorthand for { age: true }"
+    issue: 8778
+    reason: >-
+      Product support is seller-emitted and observable on get_products, but
+      not graded yet. Requirements are buyer-sent.
+    sites:
+      - "core/targeting-overlay-support.json#/properties/demographics/anyOf/0"
+      - "core/targeting-overlay-requirements.json#/properties/demographics/anyOf/0"

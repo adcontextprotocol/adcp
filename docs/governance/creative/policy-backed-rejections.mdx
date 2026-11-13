@@ -14,6 +14,8 @@ AdCP separates four questions that are often collapsed into one rejection code:
 
 Keeping these axes separate gives buyers stable, actionable identifiers without putting every scanner signature, platform rule, or vendor outcome into a protocol enum.
 
+Sellers opt in to policy-backed rejection conformance testing with `creative.supports_registry_policy_enforcement: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (added in 3.3). Omitting the flag or setting it to `false` skips the policy-backed rejection storyboard, even when `has_creative_library` is true. Publishing `enforced_policies` on products is optional, but a seller that publishes a policy must enforce it.
+
 ## The policy-backed feature convention
 
 A policy-backed creative feature uses `registry:{policy_id}`. Its value is a binary compliance result:

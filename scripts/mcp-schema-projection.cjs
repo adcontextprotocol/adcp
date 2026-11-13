@@ -813,6 +813,15 @@ function stripPresentationAnnotations(schema) {
   return stripped;
 }
 
+/** True for `{ required: [...] }` or an `anyOf` of only such clauses. */
+function isNamedRejection(not) {
+  const requiredOnly = value => value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === 1 && Array.isArray(value.required);
+  if (requiredOnly(not)) return true;
+  return Boolean(not) && typeof not === 'object' && Object.keys(not).length === 1
+    && Array.isArray(not.anyOf) && not.anyOf.length > 0 && not.anyOf.every(requiredOnly);
+}
+
 function stripModelContextAnnotations(schema) {
   const stripped = stripPresentationAnnotations(schema);
   walkSchema(stripped, node => {
@@ -840,6 +849,10 @@ function stripModelContextAnnotations(schema) {
     // JSON Schema's default, so omit that redundant spelling as well. Retain
     // schema-valued additionalProperties to describe typed dictionary values.
     if (typeof node.additionalProperties === 'boolean') delete node.additionalProperties;
+    // A named rejection (`not` over required names only, beside declared
+    // properties) is validation, like the bounds omitted above; the validation
+    // profile keeps it. A bare `not` branch of a union is logic and stays.
+    if (node.properties && isNamedRejection(node.not)) delete node.not;
     for (const keyword of Object.keys(node)) {
       if (keyword.startsWith('x-')) delete node[keyword];
     }

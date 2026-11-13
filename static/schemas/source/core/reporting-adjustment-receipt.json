@@ -37,5 +37,5 @@
     "acceptance_match": "accepted requires observed_adjustment_sha256 to equal the referenced adjustment's canonical_adjustment_sha256 and adjusts_reporting_revision_id to equal its target. A digest or semantic disagreement is rejected with stable rejection_codes.",
     "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict. A new ID may supersede only the current rejected receipt for this adjustment; history remains append-only and an accepted current leaf is terminal."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

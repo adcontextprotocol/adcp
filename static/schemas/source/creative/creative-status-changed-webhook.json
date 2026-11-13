@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/creative-status-changed-webhook.json",
   "title": "Creative Status Changed Webhook",
-  "description": "Account-level push notification fired when a creative in the library transitions status by seller or system initiative. Fires per registered subscriber against each `notification_configs[]` entry whose `event_types` includes `creative.status_changed`. Buyer-initiated transitions (archive, unarchive, resubmit) do NOT fire — those are acknowledged on the `sync_creatives` response path. Receivers MUST verify signing per the registered scheme (RFC 9421 webhook profile by default; legacy Bearer / HMAC-SHA256 when `authentication` was supplied at registration) and dedupe by `idempotency_key`. See docs/protocol/snapshot-and-log.mdx for the snapshot/log duality rules — the current status is always authoritative on `list_creatives`.",
+  "description": "Account-level push notification fired when a creative in the library transitions status by seller or system initiative. Fires per registered subscriber against each `notification_configs[]` entry whose `event_types` includes `creative.status_changed`. Buyer-initiated transitions (archive, unarchive, resubmit) do NOT fire — those are acknowledged on the `sync_creatives` response path. Receivers MUST verify signing per the registered scheme (RFC 9421 webhook profile by default; legacy Bearer / HMAC-SHA256 when `authentication` was supplied at registration) and dedupe by `idempotency_key`. See docs/protocol/snapshot-and-log.mdx for the snapshot/log duality rules — the current status is always authoritative on `list_creatives`. Rejects `staged_update`: staged outcomes don't ride on status_changed.",
   "type": "object",
   "properties": {
     "idempotency_key": {
@@ -91,7 +91,7 @@
         "to",
         "observed_at"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "allOf": [
         {
           "if": {
@@ -180,7 +180,8 @@
     "reason_code",
     "initiator"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
+  "not": { "required": ["staged_update"] },
   "examples": [
     {
       "description": "Approved → rejected post-approval revocation (paired with a media-buy impairment)",

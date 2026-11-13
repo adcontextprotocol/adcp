@@ -433,7 +433,7 @@ A single vendor number can be built from very different inputs: set-top-box retu
 - **Not a reconciliation key.** `vendor_metric_provenance` describes how a value was produced and does not partition rows, so it stays out of the `(vendor, metric_id, qualifier)` join.
 - **Protocol-defined keys, neutral values, not a provider.** `vendor_metric_provenance` says how a value was built, never who provided it. `measurement_source` on delivery metrics names the provider (`nielsen`, `videoamp`, `ivw`) and is unrelated. Buyers MAY filter or group rows on `mechanisms`; readers MUST ignore unknown keys. The values are not a quality ranking, and the same value from two vendors is not thereby comparable. Vendor-specific detail still belongs in `breakdown`.
 
-The same vocabulary appears at discovery time as [`billing_measurement.counting_mechanisms[]`](/docs/media-buy/advanced-topics/billing-authority#declaring-how-the-billing-count-is-built-experimental). Standard scalar metrics such as `impressions` have no report-time provenance slot in this release. Broadcast as-run logs and station affidavits are airing evidence, not a counting mechanism for audience measurement, and are not values in this vocabulary; as-run data is carried in `by_spot[]`, separately from the audience rows.
+A discovery-time declaration of the billing count's mechanisms, `billing_measurement.counting_mechanisms[]`, is [planned for 4.0](/docs/media-buy/advanced-topics/billing-authority#declaring-how-the-billing-count-is-built). Standard scalar metrics such as `impressions` have no report-time provenance slot in this release. Broadcast as-run logs and station affidavits are airing evidence, not a counting mechanism for audience measurement, and are not values in this vocabulary; as-run data is carried in `by_spot[]`, separately from the audience rows.
 
 ```json
 {
@@ -1702,7 +1702,7 @@ A `by_installment` row can follow one installment from plan to proof. `installme
 - **Publication.** `publication` has a required `published_at` and a `posts[]` array with at least one entry. Each entry is a [`published_post`](https://adcontextprotocol.org/schemas/v3/core/assets/published-post-asset.json) reference, one per place the installment was published, so cross-posts are separate entries and a buyer can pass an entry to [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for paid amplification. Optional `evidence` is a capture or archive of the live post. Optional `verified_by` names an independent verifier; when it is absent the record is seller-reported. `publication` MUST be absent on `scheduled`, `tentative`, `postponed`, `cancelled`, and `live` rows. Sellers SHOULD populate it on each `by_installment` row for a digital installment they report as `published`.
 - **Not a billing event.** `publication` is seller-reported evidence. Billing follows the accepted terms, and invoices surface through [`get_account_financials`](/docs/accounts/tasks/get_account_financials).
 - **No notification.** There is no new notification type. A buyer reads publication from the next reporting fire or from `get_media_buy_delivery`, and a change-feed seller records a `delivery_report` change.
-- **Not reported versus not delivered.** `reporting_capabilities.available_installment_statuses` lists the statuses a seller reports and is meaningful only with `supports_installment_breakdown: true`. A status that is not listed is not reported, so the absence of such rows proves nothing. `published`, `aired`, and `live` are delivery statuses and need not be listed. A seller that has committed to `publication` and cannot yet produce it reports `{ "scope": "standard", "metric_id": "publication" }` in `by_package[].missing_metrics`.
+- **Not reported versus not delivered.** `available_installment_statuses` on a canonical product's `reporting_capabilities` (`core/canonical-reporting-capabilities.json`, returned by `list_products`, `request_proposals`, and `refine_proposals`) lists the statuses a seller reports and is meaningful only with `supports_installment_breakdown: true`. The deprecated `get_products` product does not carry it ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). A status that is not listed is not reported, so the absence of such rows proves nothing. `published`, `aired`, and `live` are delivery statuses and need not be listed. A seller that has committed to `publication` and cannot yet produce it reports `{ "scope": "standard", "metric_id": "publication" }` in `by_package[].missing_metrics`.
 - **Compatibility.** Rows with no `installment_status` stay valid. Sellers MUST NOT send rows with `installment_status` `scheduled`, `tentative`, `postponed`, or `cancelled` to callers pinned below AdCP 3.3, because AdCP 3.2 validators require `impressions` on every installment row. A caller with no declared pin is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. Sellers also MUST NOT send `available_installment_statuses` to those callers, so their view of the capability is unchanged. 3.2 validators ignore `publication` and `installment_status` on delivery rows. A `published` row that reports views and omits `impressions`, as in the example below, is subject to the general rule for optional `impressions`: a seller MUST NOT omit it toward a caller pinned below AdCP 3.3 and instead omits the row.
 - **Registry.** A seller that returns `installment_status`, `publication`, or `available_installment_statuses` MUST list `media_buy.installment_lifecycle` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). These fields apply to `by_installment` only, not to `by_installment_property`.
 
@@ -1783,11 +1783,11 @@ A `by_installment` row can follow one installment from plan to proof. `installme
 }
 ```
 
-A seller that reports these rows declares them in the product's reporting capabilities:
+A seller that reports these rows declares them in the canonical product's reporting capabilities:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/core/reporting-capabilities.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/canonical-reporting-capabilities.json",
   "available_reporting_frequencies": ["daily"],
   "expected_delay_minutes": 240,
   "timezone": "America/New_York",

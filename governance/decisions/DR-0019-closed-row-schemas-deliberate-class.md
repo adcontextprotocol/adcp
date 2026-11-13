@@ -2,11 +2,12 @@
 id: DR-0019
 title: Closed row schemas are a deliberate class; optional additions to them are minor
 class: normative
-status: recorded
+status: superseded
 date: 2026-09-04
 decided: ~2026-09 (practice operative since 3.0)
 decided_by: maintainer practice
 refs: ["#7224", "PR #7177", "#7150", "DR-0009"]
+superseded_by: DR-0036  # 2026-11-09: a schema is closed only for a structural reason
 dissent: none recorded; #7224 leaves open whether current practice is design or drift (B. Masse, Triton) — options B/C there may supersede this record in 3.3
 ---
 
@@ -43,13 +44,14 @@ Consequences, stated so they can be applied without argument:
 - **Adding an optional field to a closed schema is a `minor` change**, never a
   patch, because strict validators on the prior version reject payloads that
   carry it. PR authors declare the `minor` changeset and cite this record;
-  reviewers do not relitigate. *Superseded by DR-0036: a minor release never
-  adds a property to a closed schema, so such a field moves to an open schema
-  or waits for the next major.*
+  reviewers do not relitigate. *Superseded by DR-0036: a minor adds no
+  property to a schema that stays closed. A schema closed without a structural
+  reason is opened instead, and later minors add to it.*
 - **Loosening a closed schema to open is Normative**, non-breaking, and must
   name this record and the unknown-key lint that replaces the validation the
-  closed schema provided. *Amended by DR-0036: loosening permits no additions
-  within the major, unless DR-0036 records it as a correction.*
+  closed schema provided. *Superseded by DR-0036: opening a schema closed
+  without a structural reason is a correction, and the opened schema takes
+  additions like any open schema.*
 - **Tightening an open schema remains Breaking** per DR-0009.
 
 ## Rationale

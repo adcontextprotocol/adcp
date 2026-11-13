@@ -34,7 +34,7 @@
           "description": { "type": "string", "minLength": 1 }
         },
         "required": ["facet_id", "name", "description"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -64,7 +64,7 @@
           }
         },
         "required": ["name", "summary"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "restricted_attributes": {
@@ -100,5 +100,5 @@
       { "path": "facets", "field": "facet_id" }
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

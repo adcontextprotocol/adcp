@@ -35,8 +35,8 @@ automatically a GA blocker.
 
 4.0 retains its established early-2027 target. The 18-month major-release
 spacing commitment in `docs/reference/versioning.mdx` applies from 4.0 onward,
-not to this transition. Each removal still needs its own deprecation notice
-period, and the prior-major security-support commitment remains applicable.
+not to this transition. A removal needs no minimum notice period, and the
+prior-major security-support commitment remains applicable.
 
 ## 1. Discovery: prices declare amounts, products declare behavior
 

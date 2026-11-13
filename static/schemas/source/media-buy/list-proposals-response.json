@@ -86,7 +86,7 @@
             }
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "opportunities": {
@@ -124,7 +124,7 @@
         },
         "then": { "required": ["close_reason"] },
         "else": { "not": { "required": ["close_reason"] } },
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "next_cursor": { "type": "string", "minLength": 1 },

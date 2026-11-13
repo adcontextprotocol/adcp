@@ -99,7 +99,7 @@
     "cta_values": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD']). When set, narrows the cta slot to a closed enum."
+      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD']). When set, narrows the cta slot to a closed enum. When absent, the cta slot takes free text within any declared `cta_max_chars`, and a seller does not refuse a CTA value as `CREATIVE_VALUE_NOT_ALLOWED`."
     },
     "main_image_sizes": {
       "type": "array",
@@ -111,7 +111,7 @@
           "width": { "type": "integer", "minimum": 1 },
           "height": { "type": "integer", "minimum": 1 }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "description": "Accepted logical (width, height) pairs for the main_image slot. Common IAB native sizes: 1200×627 (1.91:1), 1080×1080 (1:1), 1080×1350 (4:5). When the effective main_image slot declares `pixel_ratios`, intrinsic asset dimensions are the matched logical pair multiplied by the selected ratio; absence remains 1x."
     },
@@ -122,7 +122,7 @@
         "width": { "type": "integer", "minimum": 1 },
         "height": { "type": "integer", "minimum": 1 }
       },
-      "additionalProperties": false,
+      "additionalProperties": true,
       "description": "Required logical (width, height) for the icon slot when present (typical: 80×80 or 100×100). When the effective icon slot declares `pixel_ratios`, intrinsic dimensions are multiplied by the selected ratio; absence remains 1x."
     },
     "max_image_file_size_kb": {

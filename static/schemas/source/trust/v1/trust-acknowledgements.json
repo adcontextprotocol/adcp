@@ -30,5 +30,5 @@
   "required": [
     "acknowledgements"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

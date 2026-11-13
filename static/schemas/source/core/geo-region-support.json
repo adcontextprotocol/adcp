@@ -12,6 +12,7 @@
         "pattern": "^[A-Z]{2}$"
       },
       "additionalProperties": {
+        "description": "`all_values` and `values` exclude each other.",
         "anyOf": [
           {
             "type": "object",
@@ -23,7 +24,8 @@
               }
             },
             "required": ["all_values"],
-            "additionalProperties": false
+            "not": { "required": ["values"] },
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -41,7 +43,8 @@
               }
             },
             "required": ["values"],
-            "additionalProperties": false
+            "not": { "required": ["all_values"] },
+            "additionalProperties": true
           }
         ]
       },
@@ -74,7 +77,7 @@
     }
   },
   "required": ["countries"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-validation": {
     "verifier_constraints": {
       "country_prefix_matches_map_key": {

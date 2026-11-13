@@ -65,14 +65,14 @@
                     "schemes",
                     "credentials"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               },
               "required": [
                 "url",
                 "authentication"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "minItems": 1,
             "maxItems": 1
@@ -82,7 +82,7 @@
           "account",
           "governance_agents"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "maxItems": 100
