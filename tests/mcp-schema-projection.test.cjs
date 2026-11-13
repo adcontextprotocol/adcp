@@ -1298,7 +1298,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // measured), so the cap moves to 23 MiB. Composing the protocol envelope
   // into every task response (every response bundles the envelope) also
   // grows it; the 23 MiB cap holds both.
-  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // Naming the account operator by its registrable domain (#8913) lengthens
+  // the operator description on account refs, which nearly every tool bundles
+  // (24,119,654 bytes measured), so the cap moves to 24 MiB.
+  assert.ok(totalBytes < 24 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
