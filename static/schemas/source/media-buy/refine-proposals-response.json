@@ -66,6 +66,21 @@
             "allOf": [{ "$ref": "/schemas/core/product-change-map.json" }],
             "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
           },
+          "unsatisfied_installment_changes": {
+            "type": "array",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (media_buy.installment_refinement). Requested installment actions not satisfied by every returned draft. Each entry repeats a request installment_changes entry exactly and adds the reason it was not satisfied. It is a subset of the request list and is valid only on partial or unable results, whose reason_code is constraint_unsatisfiable. Every draft on a partial result satisfies every entry absent from this list.",
+            "items": {
+              "allOf": [{ "$ref": "/schemas/core/installment-change.json" }],
+              "properties": {
+                "reason": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "Why the seller did not satisfy this entry, for example that the installment is sold, held for another buyer, past its booking deadline, or sold only with others." }
+              },
+              "required": ["reason"]
+            },
+            "minItems": 1,
+            "maxItems": 500
+          },
           "suggestions": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
@@ -95,7 +110,8 @@
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] }
+                { "required": ["unsatisfied_product_changes"] },
+                { "required": ["unsatisfied_installment_changes"] }
               ]
             }
           },
@@ -130,7 +146,8 @@
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] }
+                { "required": ["unsatisfied_product_changes"] },
+                { "required": ["unsatisfied_installment_changes"] }
               ]
             }
           },
@@ -154,7 +171,8 @@
             "then": {
               "anyOf": [
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] }
+                { "required": ["unsatisfied_product_changes"] },
+                { "required": ["unsatisfied_installment_changes"] }
               ]
             }
           }

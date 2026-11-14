@@ -23,6 +23,7 @@ requires_scenarios:
   - media_buy_seller/external_audience_source_binding
   - media_buy_seller/measurement_terms_rejected
   - media_buy_seller/measurement_terms_accepted
+  - media_buy_seller/unrecognized_terms_rejected
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match

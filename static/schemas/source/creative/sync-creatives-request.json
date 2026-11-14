@@ -246,11 +246,22 @@
     },
     "assignment_operations": {
       "type": "array",
-      "description": "Explicit, ordered assignment mutations. These operations may be sent without creatives to traffic existing creative IDs independently from MediaBuy commercial control. The entire request is atomic under idempotency_key and therefore requires strict validation; lenient partial processing is not permitted. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review.",
+      "description": "Explicit, ordered assignment mutations. These operations may be sent without creatives to traffic existing creative IDs independently from MediaBuy commercial control. The entire request is atomic under idempotency_key and therefore requires strict validation; lenient partial processing is not permitted. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review. Buyers MUST NOT send an operation the seller does not list in get_adcp_capabilities creative.assignment_operations; a seller rejects an unlisted operation with UNSUPPORTED_FEATURE and applies nothing.",
       "minItems": 1,
       "maxItems": 500,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "capability_gate": {
+            "required_capability": "creative.assignment_operations",
+            "description": "Each item's operation must be listed in creative.assignment_operations; the seller rejects an unlisted operation, and applies nothing.",
+            "without_capability": "UNSUPPORTED_FEATURE",
+            "error_field": "assignment_operations[i].operation"
+          }
+        },
+        "spec": "docs/creative/task-reference/sync_creatives.mdx#which-operations-a-seller-accepts"
+      },
       "items": {
-        "description": "`trackers` and `landing_page_url` belong only to assign: unassign, replace and merge reject them, and merge also rejects `weight`, which a later assign changes.",
+        "description": "`trackers` and `landing_page_url` belong only to assign: unassign, replace and merge reject them, and merge also rejects `weight`, which a later assign changes. `installment_refs` belongs to assign and replace: unassign and merge reject it.",
         "type": "object",
         "discriminator": {
           "propertyName": "operation"
@@ -280,6 +291,16 @@
                 "items": { "type": "string", "minLength": 1 },
                 "minItems": 1,
                 "uniqueItems": true
+              },
+              "installment_refs": {
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "type": "array",
+                "items": { "$ref": "/schemas/core/canonical-installment-ref.json" },
+                "minItems": 1,
+                "maxItems": 500,
+                "uniqueItems": true,
+                "description": "Experimental (media_buy.installment_creative_assignment). Limits this assignment to these installments of the package, such as one post of a creator package. Absent: the assignment applies to every installment, as before. Within one installment, weight, rotation and placement routing work unchanged over the assignments that apply to it; with placement routing, the creative serves only in the routed placements of these installments (the intersection). An installment that no assignment applies to has none: the seller MUST NOT serve it another installment's creative. Each ref MUST name an installment the package bought, one in the installments of the product its purchase references; the seller MUST reject any other with VALIDATION_ERROR, with error.field at that ref. The installment's deadlines.change_cutoff applies: the seller MUST reject an operation that changes an installment past its cutoff with CREATIVE_DEADLINE_EXCEEDED, naming the installment, and MUST NOT accept that change silently or apply it to the other installments alone. A supplied list replaces the assignment's installment scope; omission on an additive upsert preserves it. To return to every installment, atomically unassign then assign without this field. Buyers MUST NOT send this field unless the seller lists media_buy.installment_creative_assignment in experimental_features; a seller that does not support it MUST reject it with UNSUPPORTED_FEATURE."
               }
             },
             "required": ["operation", "creative_id", "package_id"],
@@ -308,11 +329,11 @@
             },
             "required": ["operation", "creative_id", "package_id"],
             "additionalProperties": true,
-            "not": { "anyOf": [{ "required": ["trackers"] }, { "required": ["landing_page_url"] }] }
+            "not": { "anyOf": [{ "required": ["trackers"] }, { "required": ["landing_page_url"] }, { "required": ["installment_refs"] }] }
           },
           {
             "title": "Replace assignment",
-            "description": "Atomically swap the currently assigned replaces_creative_id for creative_id on package_id. The replacement takes over the replaced assignment's authored settings: weight, placement routing (placement_ids and placement_refs), rotation_mode, group_id, sequence_position, assignment trackers, and the landing_page_url override. Supplied weight replaces the transferred weight. Supplied placement_ids replaces the transferred placement routing entirely: neither the replaced assignment's placement_ids nor its placement_refs transfer. The seller MUST validate every transferred setting against the replacement (format tracker slots, landing-page applicability, destination review) and MUST reject the atomic request rather than drop or partially apply one. To change transferred trackers or the landing page in the same request, follow this operation with an assign for creative_id.",
+            "description": "Atomically swap the currently assigned replaces_creative_id for creative_id on package_id. The replacement takes over the replaced assignment's authored settings: weight, placement routing (placement_ids and placement_refs), rotation_mode, group_id, sequence_position, assignment trackers, the landing_page_url override, and its installment scope (installment_refs, experimental). Supplied weight replaces the transferred weight. Supplied placement_ids replaces the transferred placement routing entirely: neither the replaced assignment's placement_ids nor its placement_refs transfer. The seller MUST validate every transferred setting against the replacement (format tracker slots, landing-page applicability, destination review) and MUST reject the atomic request rather than drop or partially apply one. To change transferred trackers or the landing page in the same request, follow this operation with an assign for creative_id.",
             "properties": {
               "operation": { "const": "replace" },
               "creative_id": { "type": "string", "minLength": 1, "description": "Replacement creative ID.", "x-entity": "creative" },
@@ -325,6 +346,16 @@
                 "items": { "type": "string", "minLength": 1 },
                 "minItems": 1,
                 "uniqueItems": true
+              },
+              "installment_refs": {
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "type": "array",
+                "items": { "$ref": "/schemas/core/canonical-installment-ref.json" },
+                "minItems": 1,
+                "maxItems": 500,
+                "uniqueItems": true,
+                "description": "Experimental (media_buy.installment_creative_assignment). Installment scope for the replacement. Supplied: replaces the transferred scope. Omitted: the replaced assignment's scope transfers, so a replaced assignment without installment_refs leaves the replacement on every installment. The installment, cutoff and capability rules of assign's installment_refs apply. The cutoff covers every installment that either creative applies to before or after the swap."
               }
             },
             "required": ["operation", "creative_id", "replaces_creative_id", "package_id"],
@@ -347,7 +378,7 @@
           },
           {
             "title": "Merge seller copy",
-            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, and placement routing to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires creative.supports_assignment_merge.",
+            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, placement routing, and installment scope to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires merge in creative.assignment_operations.",
             "properties": {
               "operation": { "const": "merge" },
               "creative_id": { "type": "string", "minLength": 1, "description": "Buyer's creative that takes over the assignment. It need not already be assigned to package_id.", "x-entity": "creative" },
@@ -356,12 +387,13 @@
             },
             "required": ["operation", "creative_id", "package_id", "merged_creative_id"],
             "additionalProperties": true,
-            "not": { "anyOf": [{ "required": ["trackers"] }, { "required": ["landing_page_url"] }, { "required": ["weight"] }] },
+            "not": { "anyOf": [{ "required": ["trackers"] }, { "required": ["landing_page_url"] }, { "required": ["weight"] }, { "required": ["installment_refs"] }] },
             "x-added-in": "3.3.0",
             "x-adcp-validation": {
               "verifier_constraints": {
                 "capability_gate": {
-                  "required_capability": "creative.supports_assignment_merge",
+                  "required_capability": "creative.assignment_operations",
+                  "description": "creative.assignment_operations must list merge.",
                   "without_capability": "UNSUPPORTED_FEATURE"
                 },
                 "on_rejection": {

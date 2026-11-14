@@ -226,6 +226,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // #8501 entries 11-12 restore sla-window to its 3.2.8 text and give the
 // creative review SLA its own clock, durations and calendar constraints in
 // place of a $ref; the controller measures 1_387_457 bytes, bound at 1_388_000.
+// The no-buyer-secrets rule and the https_put transport text (#8149) reach the
+// controller through reporting-write-destination.json and
+// reporting-delivery-method.json; after the #8501 withdrawals the controller
+// measures 1_330_813 bytes, within the bound.
 const PARITY_COMPILE_LIMIT = 1_388_000;
 
 function readJson(filename) {

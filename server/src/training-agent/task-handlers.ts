@@ -59,7 +59,7 @@ import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
-import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem } from './assignment-operations.js';
+import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem, TRAINING_ASSIGNMENT_OPERATIONS } from './assignment-operations.js';
 import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
@@ -81,7 +81,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
-import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease } from './served-release-fields.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease, undeclaredMembers } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -7396,17 +7396,17 @@ function supportedCanonicalBuildCapability(formatId: string): {
   return slots ? { formatKind, slots, params: CANONICAL_CAPABILITY_PARAMS[capability.capabilityId] ?? {} } : undefined;
 }
 
-/** A native_in_feed declaration a creative is held to: a product format option
+/** A format declaration a creative is held to: a product format option
  * (resolved from format_option_ref or an assigned package) or this agent's own
  * creative.supported_formats capability. */
-interface NativeInFeedDeclaration {
+interface FormatOptionDeclaration {
   params: Record<string, unknown>;
   formatOptionId?: string;
 }
 
-/** One declared native_in_feed constraint a creative breaks. `field` is the
- * path within the creative (`assets.title.content`). */
-interface NativeInFeedViolation {
+/** One declared constraint a creative breaks. `field` is the path within the
+ * creative (`assets.title.content`, `assets.cards[2].cta`). */
+interface FormatOptionViolation {
   code: 'VALIDATION_ERROR' | 'CREATIVE_VALUE_NOT_ALLOWED';
   constraint: string;
   field: string;
@@ -7451,7 +7451,7 @@ function imageSizeViolation(
   params: Record<string, unknown>,
   slotId: 'main_image' | 'icon',
   constraint: 'main_image_sizes' | 'icon_size',
-): NativeInFeedViolation | null {
+): FormatOptionViolation | null {
   const sizes = declaredSizes(params[constraint]);
   // An absent narrowing parameter leaves the slot unconstrained.
   if (sizes.length === 0) return null;
@@ -7488,7 +7488,7 @@ function imageSizeViolation(
 function nativeInFeedParamViolation(
   assets: Record<string, unknown>,
   params: Record<string, unknown>,
-): NativeInFeedViolation | null {
+): FormatOptionViolation | null {
   for (const [slotId, constraint] of NATIVE_IN_FEED_TEXT_LIMITS) {
     const limit = params[constraint];
     if (typeof limit !== 'number') continue;
@@ -7546,57 +7546,61 @@ function nativeInFeedTrackerError(assets: Record<string, unknown>, fieldPrefix: 
   return null;
 }
 
-/** A native_in_feed declaration that takes a buyer-supplied asset bundle.
- * Options with buyer_asset_acceptance: rejected (creator briefs) are produced
- * by the seller, so they are never an alternative a synced bundle satisfies. */
-function isNativeInFeedDeclaration(value: unknown): value is Record<string, unknown> {
+/** A format declaration that takes a buyer-supplied asset bundle. Options
+ * with buyer_asset_acceptance: rejected (creator briefs) are produced by the
+ * seller, so they are never an alternative a synced bundle satisfies. */
+function isBuyerAssetDeclaration(value: unknown, formatKind: string): value is Record<string, unknown> {
   return isRecord(value)
-    && value.format_kind === 'native_in_feed'
+    && value.format_kind === formatKind
     && !(isRecord(value.params) && value.params.buyer_asset_acceptance === 'rejected');
 }
 
-function toNativeInFeedDeclaration(declaration: Record<string, unknown>): NativeInFeedDeclaration {
+function toFormatOptionDeclaration(declaration: Record<string, unknown>): FormatOptionDeclaration {
   return {
     params: isRecord(declaration.params) ? declaration.params : {},
     ...(typeof declaration.format_option_id === 'string' && { formatOptionId: declaration.format_option_id }),
   };
 }
 
-function productNativeInFeedDeclarations(product: Product | undefined): Record<string, unknown>[] {
+function productDeclarationsOfKind(product: Product | undefined, formatKind: string): Record<string, unknown>[] {
   const options = (product as unknown as { format_options?: unknown[] } | undefined)?.format_options;
-  return Array.isArray(options) ? options.filter(isNativeInFeedDeclaration) : [];
+  return Array.isArray(options) ? options.filter(option => isBuyerAssetDeclaration(option, formatKind)) : [];
 }
 
 /**
- * The native_in_feed declarations a synced creative is held to, as groups of
+ * The `formatKind` declarations a synced creative is held to, as groups of
  * alternatives: the creative must satisfy at least one declaration in every
  * group. Resolution order:
  *  1. the option named by the creative's `format_option_ref`;
- *  2. otherwise the native options of each package the creative is, or is
- *     being, assigned to (one group per package);
- *  3. otherwise this agent's own native_in_feed creative capability, which
- *     get_adcp_capabilities publishes in creative.supported_formats.
+ *  2. otherwise the options of that kind on each package the creative is, or
+ *     is being, assigned to (one group per package);
+ *  3. otherwise this agent's own creative capability for that kind, which
+ *     get_adcp_capabilities publishes in creative.supported_formats (no
+ *     constraints when the agent declares none).
  */
-function nativeInFeedDeclarationGroups(
+function formatOptionDeclarationGroups(
+  formatKind: string,
   creative: { format_option_ref?: unknown; manifest?: { format_option_ref?: unknown } },
   creativeId: string,
   products: Map<string, Product>,
   session: SessionState,
   assignments: readonly CreativeAssignmentInput[],
-): NativeInFeedDeclaration[][] {
+): FormatOptionDeclaration[][] {
   const manifestRef = creative.manifest?.format_option_ref;
   const ref = isRecord(creative.format_option_ref)
     ? creative.format_option_ref
     : (isRecord(manifestRef) ? manifestRef : undefined);
   if (ref && typeof ref.format_option_id === 'string') {
-    const matches = [...products.values()].flatMap(productNativeInFeedDeclarations).filter(declaration => {
-      if (declaration.format_option_id !== ref.format_option_id) return false;
-      const declarationDomain = typeof declaration.publisher_domain === 'string' ? declaration.publisher_domain : undefined;
-      if (ref.scope === 'publisher') return declarationDomain !== undefined && declarationDomain === ref.publisher_domain;
-      if (ref.scope === 'product') return declarationDomain === undefined;
-      return declarationDomain === ref.publisher_domain;
-    });
-    if (matches.length > 0) return [matches.map(toNativeInFeedDeclaration)];
+    const matches = [...products.values()]
+      .flatMap(product => productDeclarationsOfKind(product, formatKind))
+      .filter(declaration => {
+        if (declaration.format_option_id !== ref.format_option_id) return false;
+        const declarationDomain = typeof declaration.publisher_domain === 'string' ? declaration.publisher_domain : undefined;
+        if (ref.scope === 'publisher') return declarationDomain !== undefined && declarationDomain === ref.publisher_domain;
+        if (ref.scope === 'product') return declarationDomain === undefined;
+        return declarationDomain === ref.publisher_domain;
+      });
+    if (matches.length > 0) return [matches.map(toFormatOptionDeclaration)];
   }
 
   const assignedPackages = new Map<string, PackageState>();
@@ -7611,12 +7615,12 @@ function nativeInFeedDeclarationGroups(
       if (pkg.creativeAssignments.includes(creativeId)) assignedPackages.set(`${mediaBuyId}:${pkg.packageId}`, pkg);
     }
   }
-  const packageGroups: NativeInFeedDeclaration[][] = [];
+  const packageGroups: FormatOptionDeclaration[][] = [];
   for (const pkg of assignedPackages.values()) {
     // Prefer the package-time snapshot of the product's declarations.
     let declarations = Array.isArray(pkg.formatsToProvide) && pkg.formatsToProvide.length > 0
-      ? pkg.formatsToProvide.filter(isNativeInFeedDeclaration)
-      : productNativeInFeedDeclarations(products.get(pkg.productId));
+      ? pkg.formatsToProvide.filter(declaration => isBuyerAssetDeclaration(declaration, formatKind))
+      : productDeclarationsOfKind(products.get(pkg.productId), formatKind);
     const selectedOptionIds = new Set((pkg.formatOptionRefs ?? []).flatMap(selected => (
       isRecord(selected) && typeof selected.format_option_id === 'string' ? [selected.format_option_id] : []
     )));
@@ -7626,16 +7630,56 @@ function nativeInFeedDeclarationGroups(
       ));
       if (selected.length > 0) declarations = selected;
     }
-    if (declarations.length > 0) packageGroups.push(declarations.map(toNativeInFeedDeclaration));
+    if (declarations.length > 0) packageGroups.push(declarations.map(toFormatOptionDeclaration));
   }
   if (packageGroups.length > 0) return packageGroups;
 
-  return [[{ params: CANONICAL_CAPABILITY_PARAMS.native_in_feed ?? {} }]];
+  return [[{ params: CANONICAL_CAPABILITY_PARAMS[formatKind] ?? {} }]];
+}
+
+/**
+ * The first group whose every declaration the assets break, as a
+ * correctable TaskError naming the constraint. A creative passes a group by
+ * satisfying any one declaration in it.
+ */
+function declaredFormatOptionError(
+  groups: FormatOptionDeclaration[][],
+  assets: Record<string, unknown>,
+  check: (assets: Record<string, unknown>, params: Record<string, unknown>) => FormatOptionViolation | null,
+  fieldPrefix: string,
+): TaskError | null {
+  for (const group of groups) {
+    let failure: { declaration: FormatOptionDeclaration; violation: FormatOptionViolation } | undefined;
+    for (const declaration of group) {
+      const violation = check(assets, declaration.params);
+      if (!violation) {
+        failure = undefined;
+        break;
+      }
+      failure ??= { declaration, violation };
+    }
+    if (!failure) continue;
+    const { declaration, violation } = failure;
+    return {
+      code: violation.code,
+      message: violation.message,
+      field: `${fieldPrefix}.${violation.field}`,
+      recovery: 'correctable',
+      details: {
+        constraint: violation.constraint,
+        declared: violation.expected,
+        ...(violation.code === 'CREATIVE_VALUE_NOT_ALLOWED' && { allowed_values: violation.expected }),
+        ...(violation.constraint === 'main_image_sizes' && { allowed_sizes: violation.expected }),
+        ...(declaration.formatOptionId && { format_option_id: declaration.formatOptionId }),
+      },
+    };
+  }
+  return null;
 }
 
 /**
  * Refuse a native_in_feed creative only for breaking a constraint its
- * governing declaration states (see nativeInFeedDeclarationGroups). Accepted
+ * governing declaration states (see formatOptionDeclarationGroups). Accepted
  * values come from the declaration, never from a fixed profile, so a creative
  * built to a declared option is accepted.
  */
@@ -7660,33 +7704,68 @@ function nativeInFeedValidationError(
   const trackerError = nativeInFeedTrackerError(assets, fieldPrefix);
   if (trackerError) return trackerError;
 
-  for (const group of nativeInFeedDeclarationGroups(creative, creativeId, products, session, assignments)) {
-    let failure: { declaration: NativeInFeedDeclaration; violation: NativeInFeedViolation } | undefined;
-    for (const declaration of group) {
-      const violation = nativeInFeedParamViolation(assets, declaration.params);
-      if (!violation) {
-        failure = undefined;
-        break;
-      }
-      failure ??= { declaration, violation };
-    }
-    if (!failure) continue;
-    const { declaration, violation } = failure;
+  return declaredFormatOptionError(
+    formatOptionDeclarationGroups('native_in_feed', creative, creativeId, products, session, assignments),
+    assets,
+    nativeInFeedParamViolation,
+    fieldPrefix,
+  );
+}
+
+/**
+ * Check image_carousel cards against the parameters a declaration states.
+ * `cta_values` (3.3) closes each card's `cta` to the listed values; a card
+ * without a `cta` is not refused, and a declaration without `cta_values`
+ * leaves `cta` free text. Returns the first offending card.
+ */
+function imageCarouselParamViolation(
+  assets: Record<string, unknown>,
+  params: Record<string, unknown>,
+): FormatOptionViolation | null {
+  if (!Array.isArray(params.cta_values) || params.cta_values.length === 0) return null;
+  const allowed = params.cta_values.filter((value): value is string => typeof value === 'string');
+  const cards = Array.isArray(assets.cards) ? assets.cards : [];
+  for (const [index, card] of cards.entries()) {
+    if (!isRecord(card) || typeof card.cta !== 'string' || allowed.includes(card.cta)) continue;
     return {
-      code: violation.code,
-      message: violation.message,
-      field: `${fieldPrefix}.${violation.field}`,
-      recovery: 'correctable',
-      details: {
-        constraint: violation.constraint,
-        declared: violation.expected,
-        ...(violation.code === 'CREATIVE_VALUE_NOT_ALLOWED' && { allowed_values: violation.expected }),
-        ...(violation.constraint === 'main_image_sizes' && { allowed_sizes: violation.expected }),
-        ...(declaration.formatOptionId && { format_option_id: declaration.formatOptionId }),
-      },
+      code: 'CREATIVE_VALUE_NOT_ALLOWED',
+      constraint: 'cta_values',
+      field: `assets.cards[${index}].cta`,
+      message: `image_carousel cards[${index}].cta value "${card.cta}" is not in the format option's declared cta_values.`,
+      expected: allowed,
+      predicted: card.cta,
     };
   }
   return null;
+}
+
+/**
+ * Refuse an image_carousel creative only for breaking a constraint its
+ * governing declaration states (see formatOptionDeclarationGroups).
+ */
+function imageCarouselValidationError(
+  creative: {
+    format_id?: FormatID;
+    format_kind?: string;
+    format_option_ref?: unknown;
+    assets?: Record<string, unknown>;
+    manifest?: { format_option_ref?: unknown; assets?: Record<string, unknown> };
+  },
+  creativeId: string,
+  fieldPrefix: string,
+  products: Map<string, Product>,
+  session: SessionState,
+  assignments: readonly CreativeAssignmentInput[],
+): TaskError | null {
+  if (creative.format_kind !== 'image_carousel' && creative.format_id?.id !== 'image_carousel') return null;
+  const assets = isRecord(creative.assets) ? creative.assets : creative.manifest?.assets;
+  if (!isRecord(assets)) return null;
+  return declaredFormatOptionError(
+    formatOptionDeclarationGroups('image_carousel', creative, creativeId, products, session, assignments),
+    assets,
+    imageCarouselParamViolation,
+    fieldPrefix,
+  );
 }
 
 function signalMatchesRef(
@@ -10721,6 +10800,16 @@ function idempotencyPayloadForServedVersion(
   return toolName === 'get_products' ? args : { ...args, __adcp_operation: toolName };
 }
 
+/**
+ * The reasons a proposal decline may carry: the closed enum in
+ * enums/proposal-decline-reason.json, read from the source schema so both
+ * decline checks below accept exactly what the schema does.
+ */
+export const PROPOSAL_DECLINE_REASONS: ReadonlySet<string> = new Set(
+  (loadSourceSchema('enums/proposal-decline-reason.json').enum as unknown[])
+    .filter((reason): reason is string => typeof reason === 'string'),
+);
+
 export function validateProductDiscoveryAliasInput(
   toolName: string,
   args: Record<string, unknown>,
@@ -10892,10 +10981,6 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'declines exceeds the maximum batch size (25)', field: 'declines' };
     }
     const proposalIds = new Set<string>();
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     for (let index = 0; index < args.declines.length; index += 1) {
       const entry = args.declines[index];
       if (!isRecord(entry)) {
@@ -10908,7 +10993,7 @@ export function validateProductDiscoveryAliasInput(
         return { message: 'proposal_id values in declines must be unique', field: `declines[${index}].proposal_id` };
       }
       proposalIds.add(entry.proposal_id);
-      if (typeof entry.reason !== 'string' || !reasons.has(entry.reason)) {
+      if (typeof entry.reason !== 'string' || !PROPOSAL_DECLINE_REASONS.has(entry.reason)) {
         return { message: 'a supported reason is required for every decline', field: `declines[${index}].reason` };
       }
       if (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0)) {
@@ -18699,6 +18784,16 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       (req.assignments ?? []) as unknown as CreativeAssignmentInput[],
     );
     if (nativeError) return { errors: [nativeError] as TaskError[] };
+    // image_carousel per-card constraints (3.3 cta_values) resolve the same way.
+    const carouselError = imageCarouselValidationError(
+      creativeShape,
+      creativeId,
+      `creatives[${creativeIndex}]`,
+      productValidationMap,
+      session,
+      (req.assignments ?? []) as unknown as CreativeAssignmentInput[],
+    );
+    if (carouselError) return { errors: [carouselError] as TaskError[] };
 
     const existingCreative = session.creatives.get(creativeId)
       ?? getSharedAccountCreative(accountId, creativeId);
@@ -18848,6 +18943,8 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             action: 'failed',
             errors: [{
               code: 'CREATIVE_LIVE_UPDATE_UNSUPPORTED',
+              // Naming replace is safe: a seller declaring live_updates lists it
+              // in creative.assignment_operations, as this one does.
               message: `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`,
               field: `creatives[${creativeId}]`,
               recovery: 'correctable',
@@ -19068,6 +19165,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const statusById = new Map(results.filter(result => result.status).map(result => [result.creative_id, result.status as string]));
     const settings = declaresAssignmentSettings(ctx);
     const plan = await planAssignmentOperations(session, assignmentOperations, {
+      acceptedOperations: acceptedAssignmentOperations(ctx),
       supportsTrackers: settings,
       supportsLandingPage: settings,
       requestCreativeIds: accepted,
@@ -19235,6 +19333,16 @@ function assignmentTrackerSlotProblem(
     if (problem) return `${problem} (format option ${label})`;
   }
   return undefined;
+}
+
+/** The sync_creatives assignment_operations this tenant accepts. The
+ * monolith (no tenant) lists them in creative.assignment_operations here;
+ * /sales lists the same set in tenants/router.ts. The served-release
+ * projection withholds the list below 3.3, but enforcement applies at every
+ * served version: the creative routes, which have no packages to assign to,
+ * accept none and refuse every operation, including at 3.2. */
+function acceptedAssignmentOperations(ctx: TrainingContext): ReadonlyArray<string> {
+  return ctx.tenantId == null || ctx.tenantId === 'sales' ? TRAINING_ASSIGNMENT_OPERATIONS : [];
 }
 
 /** Assignment trackers and landing-page overrides (3.3) ride the same gate:
@@ -21362,6 +21470,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         supports_registry_policy_enforcement: true,
       }),
       ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
+      ...(!isThreeZeroStoryboardCompat(ctx) && acceptedAssignmentOperations(ctx).length > 0 && {
+        assignment_operations: [...acceptedAssignmentOperations(ctx)],
+      }),
       ...(declaresAssignmentSettings(ctx) && {
         supports_assignment_trackers: true,
         supports_assignment_landing_page: true,
@@ -24111,6 +24222,20 @@ export async function handleBuyProducts(
   const targetedPackageCounts = new Map<string, number>();
   for (let index = 0; index < args.purchases.length; index++) {
     const purchase = args.purchases[index]!;
+    // Each purchase becomes accepted commercial_terms the seller is bound by,
+    // member for member (media-buy/commercial-terms.json). A member the agent
+    // cannot interpret is rejected, never dropped or carried uninterpreted.
+    const [unrecognized] = undeclaredMembers(purchase, 'media-buy/product-purchase-input.json');
+    if (unrecognized) {
+      return {
+        errors: [{
+          code: 'UNRECOGNIZED_TERMS',
+          message: 'The purchase carries a member this seller cannot interpret, so it cannot accept the terms.',
+          field: `purchases[${index}]${unrecognized.map(segment => (/^\d+$/.test(segment) ? `[${segment}]` : `.${segment}`)).join('')}`,
+          recovery: 'correctable',
+        }],
+      };
+    }
     const product = catalog.get(purchase.product_id);
     const pricing = product?.pricing_options.find(
       option => option.pricing_option_id === purchase.pricing_option_id,
@@ -25241,10 +25366,6 @@ function validateIdempotencyProtectedInput(
         field: 'refine',
       };
     }
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     const invalidIndex = (args.refine as unknown[]).findIndex(entry => (
       isRecord(entry)
       && entry.scope === 'proposal'
@@ -25252,7 +25373,7 @@ function validateIdempotencyProtectedInput(
       && (
         typeof entry.proposal_id !== 'string'
         || typeof entry.reason !== 'string'
-        || !reasons.has(entry.reason)
+        || !PROPOSAL_DECLINE_REASONS.has(entry.reason)
         || (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0))
       )
     ));

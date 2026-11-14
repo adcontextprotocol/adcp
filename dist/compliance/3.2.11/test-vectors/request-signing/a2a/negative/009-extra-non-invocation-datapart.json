@@ -1,0 +1,37 @@
+{
+  "name": "Unsigned A2A 1.0 SendMessage with an invocation DataPart plus a second DataPart that has no skill",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "tier": "contradiction-resolution",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-009\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-009\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"get_products\",\"input\":{\"buying_mode\":\"brief\",\"brief\":\"Premium CTV inventory for a spring campaign\"}}},{\"data\":{\"note\":\"extra\"}}]}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_body_malformed",
+    "failed_step": 0
+  },
+  "$comment": "A Message carries exactly one DataPart. A gate that counts only DataParts shaped like an invocation and a dispatcher that counts every DataPart can disagree about which Part is authoritative."
+}

@@ -98,7 +98,7 @@
     "terms_digest": {
       "type": "string",
       "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
-      "description": "Base64url SHA-256 digest of the RFC 8785 JCS serialization of commercial_terms, prefixed with sha256:."
+      "description": "Base64url SHA-256 digest of the RFC 8785 JCS serialization of commercial_terms, prefixed with sha256:. It covers the entire commercial_terms JSON value: every member at every depth, including ext and members a party does not recognize. A party computes or verifies it over the JSON value as received, never over a re-serialized parsed model, which can drop members the model does not declare. Accepting the terms binds the accepting party to every member, and a party that cannot interpret every member MUST NOT accept them (see commercial-terms.json)."
     },
     "insertion_order": { "$ref": "/schemas/core/insertion-order.json" },
     "total_budget_guidance": {

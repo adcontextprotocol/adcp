@@ -305,7 +305,8 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "wholesale_feed_bulk_webhooks"
 )
 REQUIRED_EXACT_CURRENT_SALES=(
-  "media_buy_seller/compact_direct_buy_lifecycle:8:0"
+  # 9 steps since 1.1.0 added the assignment_operations check (#8933).
+  "media_buy_seller/compact_direct_buy_lifecycle:9:0"
   "media_buy_seller/compact_product_lifecycle:10:0"
   "media_buy_seller/declined_proposal_refinement:7:0"
   "media_buy_seller/declined_proposal_execution:9:0"
