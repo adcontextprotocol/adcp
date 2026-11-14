@@ -15,8 +15,8 @@ dist/docs/*
 # fails if it drifts. Older snapshots remain in Git and on Mintlify; the
 # server indexes only configured snapshots. Retired selectors stay out of
 # the runtime image.
-!dist/docs/3.2.8
-!dist/docs/3.2.8/**
+!dist/docs/3.2.10
+!dist/docs/3.2.10/**
 !dist/docs/3.3.0-beta.5
 !dist/docs/3.3.0-beta.5/**
 !dist/docs/3.1.32
