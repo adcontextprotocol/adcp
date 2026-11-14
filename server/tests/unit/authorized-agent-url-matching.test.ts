@@ -18,6 +18,7 @@ import {
   isOriginOnlyAgentUrl,
   registryAgentUrlKey,
   registryAgentUrlLookupKey,
+  specExactAgentUrl,
 } from '../../src/db/registry-agent-url-key.js';
 import { AgentValidator } from '../../src/validator.js';
 import {
@@ -38,6 +39,21 @@ describe('agentUrlAuthorizedBy', () => {
     expect(agentUrlAuthorizedBy('*', '*')).toBe(true);
     expect(agentUrlAuthorizedBy('*', 'https://agent.example.com/mcp')).toBe(false);
     expect(agentUrlAuthorizedBy('https://agent.example.com', '*')).toBe(false);
+  });
+
+  it('removes one trailing root dot and rejects more than one (spec step 2)', () => {
+    expect(specExactAgentUrl('HTTPS://Agent.Example.COM.:443/mcp')).toBe('https://agent.example.com/mcp');
+    expect(specExactAgentUrl('https://agent.example.com.:8443')).toBe('https://agent.example.com:8443/');
+    expect(specExactAgentUrl('https://agent.example.com../mcp')).toBeNull();
+    expect(agentUrlAuthorizedBy('https://agent.example.com..', 'https://agent.example.com/mcp')).toBe(false);
+    // IPv6 literals are not DNS names; the root-dot rule does not touch them.
+    expect(specExactAgentUrl('https://[2001:DB8::1]:8443/mcp')).toBe('https://[2001:db8::1]:8443/mcp');
+  });
+
+  it('rejects userinfo rather than stripping it, so a credential-bearing URL matches nothing', () => {
+    expect(specExactAgentUrl('https://user:pw@agent.example.com/mcp')).toBeNull();
+    expect(canonicalAgentOrigin('https://user@agent.example.com/mcp')).toBeNull();
+    expect(agentUrlAuthorizedBy('https://agent.example.com', 'https://user@agent.example.com/mcp')).toBe(false);
   });
 
   it('matches nothing when either side cannot be canonicalized', () => {
@@ -81,6 +97,11 @@ describe('canonicalAgentOrigin', () => {
     expect(canonicalAgentOrigin('https://[2001:DB8::1]:8443/mcp')).toBe('https://[2001:db8::1]:8443');
     expect(canonicalAgentOrigin('not a url')).toBeNull();
   });
+
+  it('drops a single trailing root dot, as the spec canonical origin does', () => {
+    expect(canonicalAgentOrigin('https://agent.example.com./mcp')).toBe('https://agent.example.com');
+    expect(canonicalAgentOrigin('https://agent.example.com.:8443/')).toBe('https://agent.example.com:8443');
+  });
 });
 
 describe('authorizationLookupKeys', () => {
@@ -100,6 +121,18 @@ describe('authorizationLookupKeys', () => {
   it('keeps a non-default port in the origin key', () => {
     expect(authorizationLookupKeys('https://agent.example.com:8443/mcp'))
       .toEqual(['https://agent.example.com:8443/mcp', 'https://agent.example.com:8443']);
+  });
+
+  it('adds the key of the canonical form for a spelling the registry cannot key raw', () => {
+    // The validator canonicalizes `https:agent.example.com/mcp` to
+    // `https://agent.example.com/mcp` and matches an entry for it; the
+    // directory must look that entry's key up too.
+    expect(registryAgentUrlKey('https:agent.example.com/mcp')).toBeNull();
+    expect(authorizationLookupKeys('https:agent.example.com/mcp')).toEqual([
+      'https:agent.example.com/mcp',
+      'https://agent.example.com/mcp',
+      'https://agent.example.com',
+    ]);
   });
 
   it('falls back to the raw lookup key alone for an input that cannot be canonicalized', () => {

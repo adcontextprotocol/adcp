@@ -36,6 +36,13 @@ export const AUTHORIZED_CASES: readonly AgentUrlMatchCase[] = [
   { entry: 'HTTPS://Agent.Example.COM', agent: 'https://agent.example.com/mcp', why: 'scheme and host case do not matter' },
   { entry: 'https://agent.example.com/x/..', agent: 'https://agent.example.com/mcp', why: 'dot segments resolving to the root are origin-only' },
   { entry: 'https://agent.example.com#frag', agent: 'https://agent.example.com/mcp', why: 'fragment is ignored' },
+  // A single trailing root-label dot on the host is removed (spec step 2).
+  { entry: 'https://agent.example.com.', agent: 'https://agent.example.com/mcp', why: 'trailing root dot on an origin-only entry' },
+  { entry: 'https://agent.example.com', agent: 'https://agent.example.com./mcp', why: 'trailing root dot on the agent host' },
+  { entry: 'https://agent.example.com.:8443/mcp', agent: 'https://agent.example.com:8443/mcp', why: 'trailing root dot before a port' },
+  // An agent URL the registry cannot key raw, but the canonicalizer accepts.
+  { entry: 'https://agent.example.com/mcp', agent: 'https:agent.example.com/mcp', why: 'agent URL without // after the scheme' },
+  { entry: 'https://agent.example.com/mcp', agent: 'https://agent.example.com\\mcp', why: 'agent URL with a backslash for a slash' },
   // An entry with a path still matches its canonical URL.
   { entry: 'https://agent.example.com/mcp', agent: 'https://agent.example.com/mcp', why: 'path entry, same URL' },
   { entry: 'https://agent.example.com/mcp', agent: 'HTTPS://Agent.Example.COM:443/mcp', why: 'path entry, canonically equal URL' },

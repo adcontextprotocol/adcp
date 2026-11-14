@@ -231,12 +231,30 @@ export function registryAgentUrlLookupKey(raw: string): string {
  * The spec-exact canonical form of an agent URL: AdCP URL canonicalization
  * with NOTHING folded that the spec keeps — a non-root trailing slash, path
  * case and the query are significant. Returns null for a URL the algorithm
- * rejects (userinfo, a raw non-ASCII host, anything unparseable), which then
- * matches nothing.
+ * rejects (a raw non-ASCII host, more than one trailing host dot, anything
+ * unparseable), which then matches nothing.
  *
  * The canonical form always carries a path: an empty path becomes `/`, so
  * `https://agent.example` and `https://agent.example/` both canonicalize to
  * `https://agent.example/`.
+ *
+ * Two points where this goes beyond the SDK's `canonicalTargetUri`:
+ *
+ *   - A single trailing root-label dot on a DNS host is removed
+ *     (`https://agent.example./mcp` → `https://agent.example/mcp`) and more
+ *     than one is rejected, per docs/reference/url-canonicalization step 2.
+ *     The SDK's 3.2 profile keeps the dot; `registryAgentUrlKey` already
+ *     drops it (WHATWG host parsing), so without this the validator and the
+ *     registry key would disagree about a dotted host.
+ *   - USERINFO IS REJECTED, not stripped, deliberately. Spec step 3 strips
+ *     `user:pass@` for comparison, but an `authorized_agents[].url` or an
+ *     agent URL carrying credentials is malformed input: the registry refuses
+ *     to key one (see `registryAgentUrlKey`), the SDK's
+ *     `canonicalizeAgentUrl` returns null for one, and `canonicalTargetUri`
+ *     throws on one. Rejecting keeps all three in agreement and fails closed —
+ *     such an entry authorizes nothing, and such an agent URL is "Invalid
+ *     agent URL" to the validator — instead of letting a credential-bearing
+ *     URL silently match the credential-free agent.
  *
  * This is the canonicalizer under `agentUrlAuthorizedBy`, the one rule both
  * `AgentValidator` and the registry's directory reads apply to decide whether
@@ -246,11 +264,35 @@ export function registryAgentUrlLookupKey(raw: string): string {
  * has one row. Key for the index, this for the answer.
  */
 export function specExactAgentUrl(raw: string): string | null {
+  let canonical: string;
   try {
-    return canonicalTargetUri(raw);
+    canonical = canonicalTargetUri(raw);
   } catch {
     return null;
   }
+  return stripRootDot(canonical);
+}
+
+/**
+ * Remove one trailing root-label dot from the DNS host of a canonical URL,
+ * or return null when the host ends in more than one dot (an empty label,
+ * which the spec rejects). IPv6 literals are left alone; the root-dot rule
+ * does not apply to them.
+ */
+function stripRootDot(canonical: string): string | null {
+  const authorityStart = canonical.indexOf('://');
+  if (authorityStart < 0) return canonical;
+  const hostStart = authorityStart + 3;
+  const pathStart = canonical.indexOf('/', hostStart);
+  const authorityEnd = pathStart < 0 ? canonical.length : pathStart;
+  const authority = canonical.slice(hostStart, authorityEnd);
+  if (authority.startsWith('[')) return canonical;
+  const portAt = authority.lastIndexOf(':');
+  const host = portAt < 0 ? authority : authority.slice(0, portAt);
+  if (!host.endsWith('.')) return canonical;
+  if (host.endsWith('..') || host === '.') return null;
+  const port = portAt < 0 ? '' : authority.slice(portAt);
+  return `${canonical.slice(0, hostStart)}${host.slice(0, -1)}${port}${canonical.slice(authorityEnd)}`;
 }
 
 /**
@@ -269,9 +311,10 @@ function originOfCanonical(canonical: string): string | null {
 
 /**
  * The canonical origin of `raw` — scheme, host and port after AdCP
- * canonicalization (lowercase scheme and host, default port dropped) — or
- * null when `raw` cannot be canonicalized.
- * `HTTPS://Agent.Example:443/mcp` → `https://agent.example`.
+ * canonicalization (lowercase scheme and host, default port dropped, one
+ * trailing root dot removed) — or null when `raw` cannot be canonicalized.
+ * `HTTPS://Agent.Example.:443/mcp` → `https://agent.example`. A URL with
+ * userinfo has no canonical origin here: see `specExactAgentUrl`.
  */
 export function canonicalAgentOrigin(raw: string): string | null {
   const canonical = specExactAgentUrl(raw.trim());
@@ -342,10 +385,11 @@ export function agentUrlAuthorizedBy(entryUrl: string, agentUrl: string): boolea
 
 /**
  * The registry identity keys under which a row that AUTHORIZES `agentUrl`
- * can be stored: the agent's own lookup key, plus the key of its canonical
- * origin, which is where an origin-only entry for that origin lives
- * (`https://agent.example/` keys as `https://agent.example`). Deduplicated;
- * the agent's own key is always first.
+ * can be stored: the agent's own lookup key, the key of its canonical form,
+ * and the key of its canonical origin, which is where an origin-only entry
+ * for that origin lives (`https://agent.example/` keys as
+ * `https://agent.example`). Deduplicated; the agent's own key is always
+ * first.
  *
  * An authorization read looks rows up by these keys — the index work — and
  * then keeps only the raw `agent_url` values `agentUrlAuthorizedBy` accepts,
@@ -355,11 +399,18 @@ export function agentUrlAuthorizedBy(entryUrl: string, agentUrl: string): boolea
  */
 export function authorizationLookupKeys(agentUrl: string): string[] {
   const keys = [registryAgentUrlLookupKey(agentUrl)];
-  const origin = canonicalAgentOrigin(agentUrl);
-  if (origin !== null) {
-    const originKey = registryAgentUrlKey(origin);
-    if (originKey !== null && !keys.includes(originKey)) keys.push(originKey);
-  }
+  const add = (candidate: string | null) => {
+    if (candidate === null) return;
+    const key = registryAgentUrlKey(candidate);
+    if (key !== null && !keys.includes(key)) keys.push(key);
+  };
+  // The key of the agent's CANONICAL form. Usually the same as the first, but
+  // a spelling the registry refuses to key raw yet the canonicalizer accepts
+  // — `https:agent.example/mcp`, a backslash, a space in the path — would
+  // otherwise only be looked up under its raw spelling and miss the row the
+  // validator matches. This keeps the two in agreement for such input.
+  add(specExactAgentUrl(agentUrl.trim()));
+  add(canonicalAgentOrigin(agentUrl));
   return keys;
 }
 

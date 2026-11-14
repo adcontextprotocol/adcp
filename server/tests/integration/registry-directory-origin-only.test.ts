@@ -21,6 +21,7 @@ import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
 import { AuthorizationSnapshotDatabase } from '../../src/db/authorization-snapshot-db.js';
 import { registryAgentUrlKey } from '../../src/db/registry-agent-url-key.js';
 import { AgentValidator } from '../../src/validator.js';
+import { FederatedIndexService } from '../../src/federated-index.js';
 import {
   AUTHORIZED_CASES,
   UNAUTHORIZED_CASES,
@@ -66,6 +67,14 @@ describe('directory reads apply origin-only matching (#8943)', () => {
       [`adagents_json:${likePub}`]);
     await pool.query(`DELETE FROM catalog_properties WHERE created_by LIKE $1`, [`adagents_json:${likePub}`]);
     await pool.query(`DELETE FROM publishers WHERE domain LIKE $1`, [likePub]);
+    // The writes above fire change-feed triggers (catalog_events). Drop the
+    // events this file caused, last, so they cannot crowd another file's
+    // events off the first page of the shared feed (registry-feed.test.ts
+    // reads the feed from the start with the default page size).
+    await pool.query(
+      `DELETE FROM catalog_events WHERE payload::text LIKE $1 OR payload::text LIKE $2`,
+      ['%origin-only.example%', '%agent.example.com%'],
+    );
   }
 
   async function seedPublisherWide(publisherDomain: string, entryUrl: string, signingKeys = false) {
@@ -166,11 +175,82 @@ describe('directory reads apply origin-only matching (#8943)', () => {
   });
 
   it('getPublishersForAgentDetail reports the origin-only publisher with its pinned signing key', async () => {
-    const rows = await db.getPublishersForAgentDetail(DEEP_AGENT, { limit: 10 });
+    const rows = await db.getPublishersForAgentDetail(DEEP_AGENT, { limit: 10, includePropertyIds: true });
     expect(rows.map(r => r.publisher_domain)).toEqual([ORIGIN_PUB]);
     expect(rows[0].signing_keys_pinned).toBe(true);
+    // Property counts follow the origin-only entry's catalog rows too.
+    expect(rows[0].properties_authorized).toBe(1);
+    expect(rows[0].property_ids).toEqual([PROPERTY_ID]);
+    const counted = await db.getPublishersForAgentDetail(DEEP_AGENT, { limit: 10 });
+    expect(counted[0].properties_authorized).toBe(1);
+    expect(counted[0].property_ids ?? null).toBeNull();
     expect(await db.getPublishersForAgentDetail('https://other.origin-only.example/mcp', { limit: 10 }))
       .toEqual([]);
+  });
+
+  it('signing_keys_pinned counts only entries that authorize the agent', async () => {
+    // KEYS_PUB lists the bare origin WITHOUT keys and `/mcp/` WITH keys. An
+    // agent at `/mcp` is authorized by the origin entry only; the `/mcp/`
+    // entry shares its registry key but does not authorize it, so its keys
+    // must not be reported. An agent at `/mcp/` is authorized by both.
+    const KEYS_PUB = `keys${PUB_SUFFIX}`;
+    const slashed = 'https://agent.origin-only.example/mcp/';
+    await pool.query(
+      `INSERT INTO publishers (domain, source_type, adagents_json)
+       VALUES ($1, 'adagents_json', $2::jsonb)`,
+      [KEYS_PUB, JSON.stringify({
+        authorized_agents: [
+          { url: ORIGIN_ENTRY },
+          { url: slashed, signing_keys: [{ kty: 'OKP', crv: 'Ed25519', x: 'AAAA', kid: 'k1' }] },
+        ],
+      })],
+    );
+    for (const url of [ORIGIN_ENTRY, slashed]) {
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence)
+         VALUES ($1, $2, $3, 'adagents_json')`,
+        [url, registryAgentUrlKey(url)!, KEYS_PUB],
+      );
+    }
+    const pinnedFor = async (agent: string) => (await db.getPublishersForAgentDetail(agent, { limit: 10 }))
+      .find(r => r.publisher_domain === KEYS_PUB)?.signing_keys_pinned;
+    expect(await pinnedFor(DEEP_AGENT)).toBe(false);
+    expect(await pinnedFor(slashed)).toBe(true);
+  });
+
+  it('a spelling the registry cannot key raw still finds what the validator matches', async () => {
+    // `https:host/path` canonicalizes to `https://host/path` for the
+    // validator; the directory must reach the same rows.
+    const unkeyable = 'https:agent.origin-only.example/tenants/acme/mcp';
+    expect(registryAgentUrlKey(unkeyable)).toBeNull();
+    const domains = (await db.getDomainsForAgent(unkeyable)).map(r => r.publisher_domain).sort();
+    expect(domains).toEqual([ORIGIN_PUB, PATH_PUB].sort());
+  });
+
+  it('getAuthorizationsForAgent lists a publisher once when two of its entries authorize the agent', async () => {
+    // PATH_PUB also lists the bare origin, so it authorizes the tenant URL twice.
+    await pool.query(
+      `INSERT INTO catalog_agent_authorizations
+         (agent_url, agent_url_canonical, publisher_domain, evidence)
+       VALUES ($1, $2, $3, 'adagents_json')`,
+      [ORIGIN_ENTRY, registryAgentUrlKey(ORIGIN_ENTRY)!, PATH_PUB],
+    );
+    expect((await db.getDomainsForAgent(PATH_ENTRY)).filter(r => r.publisher_domain === PATH_PUB))
+      .toHaveLength(2);
+    const service = new FederatedIndexService();
+    const auths = await service.getAuthorizationsForAgent(PATH_ENTRY);
+    expect(auths.map(a => a.publisher_domain).sort()).toEqual([ORIGIN_PUB, PATH_PUB].sort());
+    expect((await service.getDomainsForAgent(PATH_ENTRY)).sort()).toEqual([ORIGIN_PUB, PATH_PUB].sort());
+  });
+
+  it('bulkGetFirstAuthForAgents answers each input by position, even when two inputs share a key', async () => {
+    // `/tenants/acme/mcp` and `/tenants/acme/mcp/` share a registry key but
+    // are different agents: only the first is authorized by PATH_PUB.
+    const tenantSlashed = `${PATH_ENTRY}/`;
+    const result = await db.bulkGetFirstAuthForAgents([PATH_ENTRY, tenantSlashed]);
+    expect(result.get(PATH_ENTRY)).toBeDefined();
+    expect(result.get(tenantSlashed)?.publisher_domain).toBe(ORIGIN_PUB);
   });
 
   it('bulkGetFirstAuthForAgents attributes an origin-only row to every input at that origin', async () => {
