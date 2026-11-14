@@ -143,8 +143,8 @@ Governance agents support incremental adoption through their internal mode confi
 
 In practice, organizations configure their governance agent to progress through three stages:
 
-1. **Audit** — Log everything, approve everything. The governance agent evaluates fully but always returns `approved` with findings attached. The organization reviews findings to assess false positive rates and calibrate policies.
-2. **Advisory** — Approve with prominent findings and recommended corrections. The decision is still unambiguously `approved`; humans review findings post-hoc.
+1. **Audit** — Log everything, approve everything. The governance agent evaluates fully but always returns `approved` with findings attached, except for plans with `human_review_required: true`, which escalate in every mode. The organization reviews findings to assess false positive rates and calibrate policies.
+2. **Advisory** — Approve with prominent findings and recommended corrections. The decision is still unambiguously `approved`; humans review findings post-hoc. The same exception applies: plans with `human_review_required: true` escalate in every mode.
 3. **Enforce** — Block on violations. The default for production governance.
 
 This works the same way for a single brand buying direct and for a holding company with 35 brands and multiple agency partners.

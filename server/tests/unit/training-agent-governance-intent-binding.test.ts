@@ -6,6 +6,7 @@ import { decodeJwt } from 'jose';
 import { handleUpdateMediaBuy } from '../../src/training-agent/task-handlers.js';
 import {
   handleCheckGovernance,
+  handleGetPlanAuditLogs,
   handleSyncPlans,
 } from '../../src/training-agent/governance-handlers.js';
 import {
@@ -851,24 +852,104 @@ describe('check_governance request-shape binding', () => {
     expect(result).not.toHaveProperty('governance_context');
   });
 
-  it('rejects execution by an agent other than the intent token audience', async () => {
+  const ownerAudit = () => handleGetPlanAuditLogs({
+    brand: PLAN.brand,
+    plan_ids: [PLAN.plan_id],
+    include_entries: true,
+  }, CTX) as Promise<Record<string, any>>;
+
+  const executionAs = (caller: string, governanceContext: unknown, ctx: TrainingContext) =>
+    handleCheckGovernance({
+      caller,
+      governance_context: governanceContext,
+      phase: 'purchase',
+      planned_delivery: { total_budget: 1_000, currency: 'USD' },
+    }, ctx) as Promise<Record<string, any>>;
+
+  const approvedIntent = () => check({
+    tool: 'create_media_buy',
+    target_agent: 'https://seller.example',
+    payload: {
+      total_budget: { amount: 1_000, currency: 'USD' },
+    },
+  });
+
+  // adcp#8733 A4: an authenticated caller that is not the audience gets a verdict.
+  it('denies execution by an authenticated agent other than the intent token audience and audits the attempt', async () => {
+    const { result, audit } = await withPlan(async () => {
+      const intent = await approvedIntent();
+      const result = await executionAs(
+        'https://attacker.example',
+        intent.governance_context,
+        { ...CTX, authenticatedAgentUrl: 'https://attacker.example' },
+      );
+      return { result, audit: await ownerAudit() };
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.verdict).toBe('denied');
+    expect(result.check_type).toBe('execution');
+    expect(result.check_id).toEqual(expect.any(String));
+    expect(result.findings).toEqual([
+      expect.objectContaining({ category_id: 'seller_compliance', severity: 'critical' }),
+    ]);
+    expect(result).not.toHaveProperty('governance_context');
+    expect(result).not.toHaveProperty('plan_id');
+    expect(audit.plans[0].entries).toContainEqual(expect.objectContaining({
+      id: result.check_id,
+      type: 'check',
+      caller: 'https://attacker.example',
+      check_type: 'execution',
+      verdict: 'denied',
+    }));
+  });
+
+  it.each(['advisory', 'audit'])('denies a non-audience execution caller in %s mode', async (mode) => {
     const result = await withPlan(async () => {
-      const intent = await check({
-        tool: 'create_media_buy',
-        target_agent: 'https://seller.example',
-        payload: {
-          total_budget: { amount: 1_000, currency: 'USD' },
-        },
-      });
-      return handleCheckGovernance({
-        caller: 'https://attacker.example',
-        governance_context: intent.governance_context,
-        phase: 'purchase',
-        planned_delivery: { total_budget: 1_000, currency: 'USD' },
-      }, { ...CTX, authenticatedAgentUrl: 'https://attacker.example' }) as Promise<Record<string, any>>;
+      const resync = await handleSyncPlans({ plans: [{ ...PLAN, mode }] }, CTX) as Record<string, any>;
+      expect(resync.errors, JSON.stringify(resync)).toBeUndefined();
+      const intent = await approvedIntent();
+      return executionAs(
+        'https://attacker.example',
+        intent.governance_context,
+        { ...CTX, authenticatedAgentUrl: 'https://attacker.example' },
+      );
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.verdict).toBe('denied');
+    expect(result).not.toHaveProperty('governance_context');
+  });
+
+  it('keeps PERMISSION_DENIED for an unauthenticated execution check and writes no audit entry', async () => {
+    const { result, audit } = await withPlan(async () => {
+      const intent = await approvedIntent();
+      const result = await executionAs('https://seller.example', intent.governance_context, { mode: 'open' });
+      return { result, audit: await ownerAudit() };
     });
 
     expect(result.errors?.[0]?.code).toBe('PERMISSION_DENIED');
+    expect(result).not.toHaveProperty('check_id');
+    // Only the buyer's own intent check is in the log.
+    expect(audit.plans[0].summary.checks_performed).toBe(1);
+  });
+
+  it('rejects an expired context before the audience check, so it writes no audit entry', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-04T12:00:00Z'));
+    const { result, audit } = await withPlan(async () => {
+      const intent = await approvedIntent();
+      vi.setSystemTime(new Date('2026-08-04T12:16:01Z'));
+      const result = await executionAs(
+        'https://attacker.example',
+        intent.governance_context,
+        { ...CTX, authenticatedAgentUrl: 'https://attacker.example' },
+      );
+      return { result, audit: await ownerAudit() };
+    });
+
+    expect(result.errors?.[0]?.code).toBe('PERMISSION_DENIED');
+    expect(audit.plans[0].summary.checks_performed).toBe(1);
   });
 
   it.each([

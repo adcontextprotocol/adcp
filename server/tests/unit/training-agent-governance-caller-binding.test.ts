@@ -142,6 +142,119 @@ describe('check_governance authenticated caller binding', () => {
     });
   });
 
+  // adcp#8733 A4: a buyer-side caller that lost its delegation gets a verdict.
+  it('denies a re-check by a caller whose delegation was removed and audits the attempt', async () => {
+    await runWithSessionContext(async () => {
+      const delegateCtx: TrainingContext = { mode: 'open', authenticatedAgentUrl: DELEGATE };
+      const policies = [{ policy_id: 'frequency', policy: 'Apply a frequency cap.', enforcement: 'must' }];
+      expect((await sync({
+        delegations: [{ agent_url: DELEGATE, authority: 'full' }],
+        custom_policies: policies,
+      })).errors).toBeUndefined();
+      const conditioned = await check(DELEGATE, delegateCtx);
+      expect(conditioned.verdict, JSON.stringify(conditioned)).toBe('conditions');
+
+      expect((await sync({ custom_policies: policies })).errors).toBeUndefined();
+      const result = await handleCheckGovernance({
+        plan_id: PLAN.plan_id,
+        caller: DELEGATE,
+        target_agent: 'https://seller.example',
+        tool: 'create_media_buy',
+        consultation_context: conditioned.consultation_context,
+        payload: {
+          total_budget: { amount: 10_000, currency: 'USD' },
+          geo: { countries: ['US'] },
+          ext: { governance_policy_acknowledgements: ['frequency'] },
+        },
+      }, delegateCtx) as Record<string, any>;
+      const audit = await handleGetPlanAuditLogs({
+        brand: BRAND,
+        plan_ids: [PLAN.plan_id],
+        include_entries: true,
+      }, OWNER_CTX) as Record<string, any>;
+
+      expect(result.errors).toBeUndefined();
+      expect(result.verdict).toBe('denied');
+      expect(result.check_id).toEqual(expect.any(String));
+      expect(result.findings).toEqual([
+        expect.objectContaining({ category_id: 'delegation_authority', severity: 'critical' }),
+      ]);
+      expect(result).not.toHaveProperty('governance_context');
+      expect(result).not.toHaveProperty('consultation_context');
+      expect(audit.plans[0].entries).toContainEqual(expect.objectContaining({
+        id: result.check_id,
+        type: 'check',
+        caller: DELEGATE,
+        verdict: 'denied',
+      }));
+    });
+  });
+
+  it('answers a caller with no relationship to the plan as it answers an unknown plan, and writes nothing', async () => {
+    await runWithSessionContext(async () => {
+      expect((await sync()).errors).toBeUndefined();
+      const strangerCtx: TrainingContext = { mode: 'open', authenticatedAgentUrl: ATTACKER };
+      const existing = await check(ATTACKER, strangerCtx);
+      const unknown = await handleCheckGovernance({
+        plan_id: 'plan-that-does-not-exist',
+        caller: ATTACKER,
+        target_agent: 'https://seller.example',
+        tool: 'create_media_buy',
+        payload: {
+          total_budget: { amount: 10_000, currency: 'USD' },
+          geo: { countries: ['US'] },
+        },
+      }, strangerCtx) as Record<string, any>;
+      const audit = await handleGetPlanAuditLogs({
+        brand: BRAND,
+        plan_ids: [PLAN.plan_id],
+        include_entries: true,
+      }, OWNER_CTX) as Record<string, any>;
+
+      expect(existing.errors).toBeUndefined();
+      expect(existing.verdict).toBe('denied');
+      const comparable = (response: Record<string, any>, planId: string) =>
+        JSON.parse(JSON.stringify({ ...response, check_id: undefined }).split(planId).join('PLAN'));
+      expect(comparable(existing, PLAN.plan_id)).toEqual(comparable(unknown, 'plan-that-does-not-exist'));
+      expect(audit.plans[0].summary.checks_performed).toBe(0);
+    });
+  });
+
+  it('denies the preserved audience once it is removed from approved_sellers and audits the attempt', async () => {
+    await runWithSessionContext(async () => {
+      const seller = 'https://seller.example';
+      expect((await sync({ approved_sellers: [seller] })).errors).toBeUndefined();
+      const intent = await check(OWNER, OWNER_CTX);
+      expect(intent.verdict, JSON.stringify(intent)).toBe('approved');
+
+      expect((await sync({ approved_sellers: ['https://other-seller.example'] })).errors).toBeUndefined();
+      const result = await handleCheckGovernance({
+        caller: seller,
+        governance_context: intent.governance_context,
+        phase: 'purchase',
+        planned_delivery: { media_buy_id: 'mb_removed_seller', total_budget: 10_000, currency: 'USD' },
+      }, { mode: 'open', authenticatedAgentUrl: seller }) as Record<string, any>;
+      const audit = await handleGetPlanAuditLogs({
+        brand: BRAND,
+        plan_ids: [PLAN.plan_id],
+        include_entries: true,
+      }, OWNER_CTX) as Record<string, any>;
+
+      expect(result.errors).toBeUndefined();
+      expect(result.verdict).toBe('denied');
+      expect(result.findings).toContainEqual(
+        expect.objectContaining({ category_id: 'seller_compliance', severity: 'critical' }),
+      );
+      expect(result).not.toHaveProperty('governance_context');
+      expect(audit.plans[0].entries).toContainEqual(expect.objectContaining({
+        id: result.check_id,
+        caller: seller,
+        check_type: 'execution',
+        verdict: 'denied',
+      }));
+    });
+  });
+
   it('rejects a same-owner re-sync that would move an existing plan to a fresh scope', async () => {
     await runWithSessionContext(async () => {
       expect((await sync()).errors).toBeUndefined();

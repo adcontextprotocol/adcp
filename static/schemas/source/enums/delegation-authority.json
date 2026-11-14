@@ -11,7 +11,7 @@
   ],
   "enumDescriptions": {
     "full": "Can execute any action within the delegation's budget and market constraints.",
-    "execute_only": "Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget.",
+    "execute_only": "Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget. A pre-approved action is one whose opaque action binding already holds an approved intent check in the plan's lifecycle: the delegate may act only on such an action, and may not initiate an intent check that would create a new binding or increase committed spend.",
     "propose_only": "Can propose actions for governance review but cannot execute without explicit approval."
   }
 }

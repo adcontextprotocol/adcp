@@ -111,6 +111,8 @@ Plans originate in external systems -- an agency's planning tool, a brand's budg
 
 Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version. Active media buys approved under the previous version are not re-validated automatically; the governance agent evaluates them against the updated plan on their next [`check_governance`](/docs/governance/campaign/tasks/check_governance) call. This handles mid-flight amendments like budget increases or channel additions. Content-standards configurations are separate resources, and their wire contract does not define how running media buys adopt later updates; see [updating content-standards policies](/docs/governance/content-standards/index#updating-policies).
 
+A `plan_id` names at most one plan within a governance agent: the authenticated buyer principal that first syncs it owns the plan, and the governance agent MUST reject a `sync_plans` naming that `plan_id` from any other principal with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) and MUST NOT create a second plan under the same ID.
+
 Multiple campaigns (identified by `governance_context` in [`check_governance`](/docs/governance/campaign/tasks/check_governance) and [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome)) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 
 The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. The governance agent resolves applicable policies from the brand's compliance configuration, but plans can also reference registry policies directly via `policy_ids` and include campaign-specific rules via `custom_policies`. This supports both centralized policy management (brand-level) and campaign-specific overrides when the buying team needs additional requirements for a particular campaign.
@@ -180,7 +182,7 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `plans` | array | Yes | One or more campaign plans to sync. |
-| `plans[].plan_id` | string | Yes | Unique identifier for this plan. |
+| `plans[].plan_id` | string | Yes | Identifier for this plan. It names at most one plan within the governance agent, and the principal that first syncs it owns the plan. See [How it works](#how-it-works). |
 | `plans[].brand` | BrandRef | Yes | Brand being governed. The governance agent resolves the brand's compliance configuration to determine applicable policies. |
 | `plans[].objectives` | string | Yes | Natural language campaign objectives. Used for strategic alignment validation. |
 | `plans[].budget` | object | Yes | Budget parameters. |
@@ -287,8 +289,9 @@ Policy categories are distinct from `brand.industries`. Industries describe what
 | Code | Recovery | Description |
 |------|----------|-------------|
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | correctable | Plan is missing required fields or has invalid values. For `budget.periods`, this covers a duplicate `budget_period_id`, overlapping or empty windows, a window outside `flight`, amounts above `budget.total`, and more than 366 periods. `error.field` identifies the offending plan field. |
-| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | correctable | Brand domain could not be resolved via the Brand Protocol, or a registry policy ID in `policy_ids` could not be resolved in the policy registry. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve, or name the `policy_ids` array parameter. |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | Cannot reduce budget below the amount already committed (on plan update), leave a dated commitment outside every budget period, or set a period `amount` below what is already committed to it. `error.field` identifies the budget field. |
+| [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) | correctable | A `plan_id` in the request names a plan owned by a different authenticated principal. The governance agent does not create a second plan under that ID. `error.field` identifies the `plan_id`. Sync as the plan's owner, or use a different `plan_id`. |
 
 ## Related tasks
 

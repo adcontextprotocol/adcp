@@ -176,15 +176,14 @@ Findings are how the audit trail communicates risk. Two patterns worth knowing:
 
 ### Security-shaped finding: an unauthorized seller
 
-The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` and gets denied:
+The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` with an execution check and gets denied:
 
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
   "status": "completed",
   "check_id": "chk_0ac8d7de",
-  "check_type": "intent",
-  "plan_id": "plan_2027_apex_athletic",
+  "check_type": "execution",
   "verdict": "denied",
   "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
@@ -239,8 +238,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "$schema": "/schemas/governance/check-governance-response.json",
   "status": "completed",
   "check_id": "chk_enforce_001",
-  "check_type": "intent",
-  "plan_id": "plan_mode_enforce",
+  "check_type": "execution",
   "verdict": "denied",
   "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
@@ -262,8 +260,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "$schema": "/schemas/governance/check-governance-response.json",
   "status": "completed",
   "check_id": "chk_advisory_001",
-  "check_type": "intent",
-  "plan_id": "plan_mode_advisory",
+  "check_type": "execution",
   "verdict": "approved",
   "explanation": "Approved with 1 advisory finding(s).",
   "expires_at": "2027-01-15T15:32:41Z",
@@ -287,8 +284,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "$schema": "/schemas/governance/check-governance-response.json",
   "status": "completed",
   "check_id": "chk_audit_001",
-  "check_type": "intent",
-  "plan_id": "plan_mode_audit",
+  "check_type": "execution",
   "verdict": "approved",
   "explanation": "All governance checks passed.",
   "expires_at": "2027-01-15T15:32:41Z",
