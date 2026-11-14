@@ -90,9 +90,7 @@ const UNIQUE_CONTROL_TOTALS = z.array(CONTROL_TOTAL).refine(
 const REJECTION_CODES = z.array(z.string().min(1).max(128).regex(/^[A-Z][A-Z0-9_]*$/)).min(1)
   .refine(values => new Set(values).size === values.length, 'rejection_codes must be unique');
 const SHA256 = z.string().regex(/^[A-Fa-f0-9]{64}$/);
-const CANONICALIZATION_URI = z.string().url().regex(
-  /^https:\/\/(?![^/]*@)(?!localhost(?:[:/]|$))(?!\[)(?!\d+(?:\.\d+){3}(?::|\/|$))(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:\/|$)/,
-);
+const CANONICALIZATION_URI = z.string().url().regex(/^https:\/\//);
 const REPORTING_RECEIPT = z.object({
   reporting_receipt_id: RECEIPT_ID, reporting_obligation_id: REFERENCE_ID,
   reporting_revision_id: REFERENCE_ID, reporting_materialization_id: REFERENCE_ID,

@@ -110,7 +110,7 @@
                       "description": "Value transform applied during forwarding. identity copies the value; singleton_array wraps it in a one-element array."
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }

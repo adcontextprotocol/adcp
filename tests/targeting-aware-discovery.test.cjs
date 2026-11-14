@@ -271,8 +271,9 @@ test("frequency cap detail preserves the legacy boolean and separates aggregate 
     validateConstraints({
       max_impressions_constraints: { minimum: 1, maximum: 10, step: 2 },
     }),
-    false,
-    "count ranges have no step"
+    // Open by default (DR-0036): `step` is defined nowhere, so it is an unknown key and validates.
+    true,
+    "count ranges declare no step; it is an ignored unknown key"
   );
 
   const requirementsSchema = JSON.parse(
@@ -654,13 +655,15 @@ test("product responses expose symmetric property and collection list applicatio
   );
   assert.equal(
     validateReceipt({ ...collectionReceipt, mode: "exclude" }),
-    false,
-    "effect is the only application discriminator"
+    // Open by default (DR-0036): `mode` is defined nowhere, so it is an unknown key and validates.
+    true,
+    "effect is the only declared application discriminator; mode is ignored"
   );
   assert.equal(
     validateReceipt({ ...collectionReceipt, entries_total: 200 }),
-    false,
-    "counts are represented only by the closed summary partition"
+    // Open by default (DR-0036): `entries_total` is an unknown key and validates.
+    true,
+    "counts are declared only by the summary partition; entries_total is ignored"
   );
   assert.equal(
     validateCanonicalProduct({
@@ -2008,9 +2011,19 @@ test("required overlay requirements exclude seller limit fields", async () => {
     false,
     "seller maxima are response-only"
   );
+  // The requirements container is open (a correction under DR-0036). An unknown
+  // hard requirement still isn't ignored: matching fails closed on it. The
+  // functional case is in server/tests/unit/training-agent.test.ts.
   assert.equal(
     validate({ future_unknown_dimension: true }),
-    false,
+    true,
+    errors(validate)
+  );
+  assert.match(
+    JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting-overlay-requirements.json"), "utf8")
+    ).description,
+    /Missing or unknown required fields do not match\./,
     "unknown hard requirements must not be ignored"
   );
   for (const zeroCapability of [
@@ -2078,7 +2091,6 @@ test("required overlay requirements exclude seller limit fields", async () => {
     { geo_countries: {} },
     { geo_countries: { ext: { vendor: "hint" } } },
     { geo_countries: { max_values_per_package: 0 } },
-    { geo_countries: { max_values_per_package: 1, unknown: true } },
     { geo_proximity: { radius: true, max_values_per_package: 0 } },
     { geo_proximity: { max_values_per_package: 1 } },
   ]) {
@@ -2090,6 +2102,13 @@ test("required overlay requirements exclude seller limit fields", async () => {
       )}`
     );
   }
+
+  // Open by default (DR-0036): an unknown key beside a valid seller maximum validates.
+  assert.equal(
+    validateSupport({ geo_countries: { max_values_per_package: 1, unknown: true } }),
+    true,
+    errors(validateSupport)
+  );
 
   const requirements = JSON.parse(
     fs.readFileSync(
@@ -2107,6 +2126,36 @@ test("required overlay requirements exclude seller limit fields", async () => {
     assert.match(description, /requirement value of true|requirement true/i);
     assert.match(description, /support true|matches true/i);
     assert.match(description, /numeric seller limits|numeric limits/i);
+  }
+});
+
+test("boolean demographics is the deprecated 3.2 shorthand for { age: true }", async () => {
+  for (const name of ["targeting-overlay-support", "targeting-overlay-requirements"]) {
+    const uri = `/schemas/core/${name}.json`;
+    const validate = await compile(uri);
+    for (const demographics of [true, { age: true }, { gender: true }, { age: true, gender: true }]) {
+      assert.equal(
+        validate({ demographics }),
+        true,
+        `${name} accepts demographics ${JSON.stringify(demographics)}: ${errors(validate)}`
+      );
+    }
+    assert.equal(validate({ demographics: false }), false, `${name} rejects demographics false`);
+
+    const source = JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core", `${name}.json`), "utf8")
+    );
+    for (const schema of [source, readBuiltSchema(uri)]) {
+      const [booleanBranch, objectBranch] = schema.properties.demographics.anyOf;
+      assert.equal(booleanBranch.deprecated, true, `${name} marks the boolean branch deprecated`);
+      assert.equal(booleanBranch["x-deprecated-in"], "3.3.0");
+      assert.equal(booleanBranch["x-removed-in"], "4.0.0");
+      assert.match(booleanBranch.description, /^Deprecated in 3\.3\./);
+      assert.match(booleanBranch.description, /The 3\.2 shorthand for \{ age: true \}\./);
+      assert.match(booleanBranch.description, /Senders MUST send the object; receivers MUST accept true\./);
+      assert.equal(objectBranch.type, "object");
+      assert.equal(objectBranch.deprecated, undefined, `${name} keeps the object branch current`);
+    }
   }
 });
 

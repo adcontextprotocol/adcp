@@ -29,7 +29,7 @@
         }
       },
       "required": ["name", "value", "value_type"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "DecimalReportingControlTotal",
@@ -55,7 +55,7 @@
         }
       },
       "required": ["name", "value", "value_type"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

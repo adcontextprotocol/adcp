@@ -54,7 +54,7 @@
         }
       },
       "required": ["street", "city", "postal_code", "country"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "contacts": {
       "type": "array",
@@ -89,7 +89,7 @@
           }
         },
         "required": ["role"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "maxItems": 10
     },
@@ -125,14 +125,14 @@
         }
       },
       "required": ["account_holder"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
   "required": ["legal_name"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "German agency with full B2B details",

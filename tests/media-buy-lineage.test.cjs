@@ -77,6 +77,8 @@ for (const [task, { uri, base }] of Object.entries(REQUESTS)) {
     }
   });
 
+  if (task === 'create_media_buy') continue; // deprecated task: 3.3 adds no lineage (adcp#8501)
+
   test(`${task} requires the two lineage fields together and rejects off-enum reasons`, async () => {
     const validate = await compile(readSchema(uri));
     assert.equal(validate({ ...base, predecessor_media_buy_id: 'mb_pinnacle_q3' }), false);
@@ -91,6 +93,15 @@ for (const [task, { uri, base }] of Object.entries(REQUESTS)) {
     assert.equal('replacement_media_buy_id' in props, false);
   });
 }
+
+test('create_media_buy is a deprecated task and declares no lineage field (adcp#8501)', () => {
+  const schema = readSchema(REQUESTS.create_media_buy.uri);
+  assert.equal('predecessor_media_buy_id' in schema.properties, false);
+  assert.equal('lineage_reason' in schema.properties, false);
+  const deps = schema.dependencies || {};
+  assert.equal('predecessor_media_buy_id' in deps, false);
+  assert.equal('lineage_reason' in deps, false);
+});
 
 test('the core media buy pairs the lineage fields', async () => {
   const validate = await compile(readSchema('/schemas/core/media-buy.json'));
@@ -138,7 +149,6 @@ test('get_media_buys items and the core media buy echo the lineage fields', asyn
 
 test('every new lineage property is experimental, marked 3.3.0, and listed in the registry', () => {
   const SCHEMAS = [
-    ['/schemas/media-buy/create-media-buy-request.json', (d) => d.properties],
     ['/schemas/media-buy/buy-products-request.json', (d) => d.properties],
     ['/schemas/media-buy/accept-proposal-request.json', (d) => d.properties],
     ['/schemas/media-buy/get-media-buys-response.json', (d) => d.properties.media_buys.items.properties],

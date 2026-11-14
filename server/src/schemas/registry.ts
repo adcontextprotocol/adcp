@@ -631,9 +631,11 @@ export const ResolvedBrandSchema = z
       description: "Loss or ambiguity encountered while promoting a pre-v3 document. A `house` warning means the legacy house object was preserved only as opaque metadata and did not establish a trusted relationship.",
     }),
     brand_agent_url: z.string().optional(),
-    brand_manifest: z.record(z.string(), z.unknown()).optional(),
+    brand_manifest: z.record(z.string(), z.unknown()).optional().openapi({
+      description: "Stored or origin brand manifest. Each logo object in `logos[]` (and in `brands[].logos[]`) carries `background`, the brand.json field naming the background the logo is drawn for: `light-bg` (dark ink), `dark-bg` (light ink) or `transparent-bg`. A declared `background` in that enum is returned as published; any other declared value is treated as undeclared and is never returned. Otherwise it comes from a `light-bg` or `dark-bg` tag, then a `transparent-bg` tag, and for AgenticAdvertising.org-hosted logos from the luminance of the rendered logo (`light-bg` or `dark-bg`). It is absent when none of these is known.",
+    }),
     brand: z.record(z.string(), z.unknown()).optional().openapi({
-      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.",
+      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization. Logos in `brand.logos[]` carry `background` on the same rules as `brand_manifest.logos[]`.",
     }),
     source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
       description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
@@ -906,8 +908,11 @@ const BadgeGradingEvidenceSchema = z.object({
   relevant_bundle_ids: z.array(z.string()),
   failing_bundle_count: z.number().int().nonnegative(),
   incomplete_bundle_count: z.number().int().nonnegative(),
+  incomplete_bundle_ids: z.array(z.string()).optional().openapi({
+    description: "Relevant bundles, as kind:id, that keep Strict Spec partial because their evidence is incomplete: an untested or partially covered storyboard, including runner and test-kit gaps.",
+  }),
   not_applicable_universal_bundle_ids: z.array(z.string()).optional().openapi({
-    description: "Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.",
+    description: "Universal bundles left partial only because the agent does not offer the surface: it advertises none of the tools for a surface it does not declare, or it does not advertise request signing for signed_requests. They do not count as incomplete.",
   }),
   relevant_failure_count: z.number().int().nonnegative(),
   missing_universal_bundle: z.boolean(),

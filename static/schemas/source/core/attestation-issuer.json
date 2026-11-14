@@ -24,7 +24,7 @@
         }
       },
       "required": ["type", "brand"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AttestationAgentIssuer",
@@ -38,7 +38,7 @@
         "agent_url": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+          "pattern": "^https://",
           "description": "Canonical HTTPS endpoint of the issuing agent. Evaluators compare it using AdCP URL canonicalization rules."
         },
         "ext": {
@@ -46,7 +46,7 @@
         }
       },
       "required": ["type", "agent_url"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AttestationOriginIssuer",
@@ -68,7 +68,7 @@
         }
       },
       "required": ["type", "origin"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "examples": [

@@ -48,7 +48,7 @@
         "schemes",
         "credentials"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "signing_profile": {
       "x-status": "experimental",

@@ -151,7 +151,7 @@
           }
         },
         "required": ["system", "code"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -251,7 +251,7 @@
           "minItems": 1
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "audience_activation_methods": {
       "type": "array",
@@ -266,7 +266,7 @@
               "pattern": { "type": "string", "const": "sync_audiences" }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -280,11 +280,11 @@
                   "agent_url": { "type": "string", "format": "uri" }
                 },
                 "required": ["agent_url"],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -311,7 +311,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -324,7 +324,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -337,7 +337,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -350,7 +350,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -449,7 +449,7 @@
             }
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -521,7 +521,7 @@
               }
             },
             "required": ["value", "unit"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "transport_mode": {
             "$ref": "/schemas/enums/transport-mode.json",
@@ -542,7 +542,7 @@
               }
             },
             "required": ["value", "unit"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "geometry": {
             "type": "object",
@@ -559,7 +559,7 @@
               }
             },
             "required": ["type", "coordinates"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "oneOf": [
@@ -633,7 +633,7 @@
           }
         },
         "anyOf": [{ "required": ["vendor"] }, { "required": ["metric_id"] }],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "examples": [
@@ -668,7 +668,7 @@
           }
         },
         "required": ["keyword"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -676,23 +676,10 @@
       "$ref": "/schemas/core/audience-evidence-requirements.json",
       "description": "Buyer policy for evaluating Product.audience_evidence. In required mode, sellers MUST apply the evidence_presence and admissibility semantics and exclude non-matching products; they MUST NOT ignore an unsupported hard requirement. In preferred mode, sellers use matches for ranking and explain the evidence selected. Buyers SHOULD inspect media_buy.audience_evidence capabilities before sending this object."
     },
-    "target_audiences": {
-      "type": "array",
-      "x-status": "experimental",
-      "x-added-in": "3.3.0",
-      "items": { "$ref": "/schemas/core/audience-evidence-target.json" },
-      "minItems": 1,
-      "maxItems": 10,
-      "uniqueItems": true,
-      "description": "Experimental (media_buy.audience_evidence_targets). Audiences the buyer wants evidence for, evaluated against the admissibility rules, requirement_mode and evidence_presence of the sibling audience_evidence_requirements, which MUST be present with it. Targets combine with AND. required excludes a product whose published evidence misses any target; preferred only ranks and explains via audience_evidence_selections. A seller that does not list media_buy.audience_evidence_targets in experimental_features MUST NOT apply it and, when audience_evidence_requirements.requirement_mode is required, MUST fail with UNSUPPORTED_FEATURE. Not a targeting predicate."
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json",
       "description": "Vendor-namespaced extension parameters for seller-specific filter criteria not covered by standard fields. Keys MUST be namespaced under a vendor or platform key (e.g., ext.gam, ext.platform_x). Sellers MUST treat all values as untrusted buyer input; do not interpolate into LLM prompts, SQL queries, or system commands without sanitization. Persistent use of an extension key across multiple buyers is a signal to propose standardization."
     }
-  },
-  "dependencies": {
-    "target_audiences": ["audience_evidence_requirements"]
   },
   "additionalProperties": true
 }

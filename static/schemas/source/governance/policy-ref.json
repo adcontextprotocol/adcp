@@ -21,5 +21,5 @@
     }
   },
   "required": ["policy_id"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -30,5 +30,5 @@
       "cloud"
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

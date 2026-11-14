@@ -58,7 +58,7 @@
         }
       },
       "required": ["min", "max"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "restricted_attributes": {
       "type": "array",

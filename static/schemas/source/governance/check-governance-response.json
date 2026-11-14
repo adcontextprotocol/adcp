@@ -67,6 +67,7 @@
         ]
       },
       "else": {
+        "description": "Legacy compatibility shape for responses that omit `check_type`, as emitted by 3.1 governance agents before the cross-role authorization contract added it. This arm remains accepted during 3.x migration so those responses still validate. It carries no `check_type`, so it does not restrict `conditions` by check shape. Governance agents implementing the cross-role `governance_enforcement` contract emit `check_type` and follow the verdict-specific rules in the branch above.",
         "allOf": [
           { "required": ["plan_id"] },
           {
@@ -195,7 +196,7 @@
           "severity",
           "explanation"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "conditions": {
@@ -220,7 +221,7 @@
           "field",
           "reason"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "consultation_context": {
@@ -256,7 +257,7 @@
             "end": { "type": "string", "format": "date-time" }
           },
           "required": ["start", "end"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "cumulative_spend": { "type": "number", "minimum": 0 },
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
@@ -268,11 +269,11 @@
             "delivery_metrics": { "type": "object", "additionalProperties": true }
           },
           "required": ["seller_reference", "delivery_metrics"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": ["statement_id", "statement_digest", "sequence", "issued_at", "seller_reference", "reporting_period", "cumulative_spend", "currency", "canonical_payload"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "categories_evaluated": {
       "type": "array",

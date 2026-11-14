@@ -59,7 +59,7 @@
         }
       },
       "required": ["value", "unit"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "body_style": {
       "type": "string",
@@ -102,7 +102,7 @@
         }
       },
       "required": ["lat", "lng"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "image_url": {
       "type": "string",

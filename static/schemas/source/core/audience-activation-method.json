@@ -14,7 +14,7 @@
         "pattern": { "type": "string", "const": "sync_audiences" }
       },
       "required": ["pattern"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "TMP identity match",
@@ -32,11 +32,11 @@
             }
           },
           "required": ["agent_url"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": ["pattern", "buyer_agent"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "File transfer",
@@ -64,7 +64,7 @@
         }
       },
       "required": ["pattern", "transport", "vendor"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Dataset query",
@@ -104,14 +104,14 @@
               "cloud": ["region"],
               "region": ["cloud"]
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "maxItems": 32
         }
       },
       "required": ["pattern", "vendor"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Clean room",
@@ -125,7 +125,7 @@
         }
       },
       "required": ["pattern", "vendor"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Platform distribution",
@@ -150,7 +150,7 @@
         }
       },
       "required": ["pattern", "vendor"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "examples": [

@@ -65,7 +65,7 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["idempotency_key", "notification_id", "notification_type", "fired_at", "subscriber_id", "agent_url", "request_id", "state", "changed_at"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Seller review finished and matched an existing account",

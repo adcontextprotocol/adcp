@@ -110,7 +110,7 @@ export function isClassifiedTask(tool: string): boolean {
   return KNOWN_TASKS.has(tool);
 }
 
-function record(value: unknown): Record<string, unknown> | undefined {
+export function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined;
