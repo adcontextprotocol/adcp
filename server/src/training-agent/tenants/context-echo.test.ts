@@ -44,41 +44,6 @@ const CONTEXT = {
 } as const;
 const CONTEXT_JSON = JSON.stringify(CONTEXT);
 
-/**
- * Tools whose MCP input schema rejects a request with no required fields
- * before AdCP code runs (`-32602`, no structuredContent, no context). The SDK
- * registers these from `customTools` and its own zod schemas; framework tools
- * validate at the AdCP layer instead. Tracked in adcontextprotocol/adcp-client#3666.
- * When the SDK fix lands these tools start echoing and the test below fails:
- * delete the entry.
- */
-const SDK_INPUT_SCHEMA_CONTEXT_GAP: Readonly<Record<Route, readonly string[]>> = {
-  sales: [
-    'build_creative', 'comply_test_controller', 'get_reporting_status', 'list_account_changes',
-    'preview_creative', 'report_usage', 'sync_agent_notification_configs', 'sync_catalogs',
-    'sync_governance', 'sync_principal', 'sync_reporting_receipts', 'sync_reporting_status',
-    'tasks_get', 'validate_input',
-  ],
-  signals: ['comply_test_controller', 'sync_governance', 'tasks_get'],
-  governance: ['comply_test_controller', 'report_plan_adjustment', 'tasks_get'],
-  creative: ['comply_test_controller', 'report_usage', 'sync_governance', 'tasks_get', 'validate_input'],
-  'creative-builder': ['comply_test_controller', 'sync_governance', 'tasks_get', 'validate_input'],
-  brand: [
-    'comply_test_controller', 'search_brands', 'sync_governance', 'tasks_get',
-    'verify_brand_claim', 'verify_brand_claims',
-  ],
-  si: ['sync_catalogs', 'tasks_get'],
-  legacy: [],
-};
-
-/**
- * The SDK's `tasks_get` input schema does not declare `context`, so MCP input
- * parsing strips it and even a valid request gets no echo (adcp-client#3666).
- * The legacy monolith registers its own `tasks_get`. When the SDK fix lands
- * the test below fails: delete this entry.
- */
-const SDK_STRIPS_CONTEXT: ReadonlySet<string> = new Set(['tasks_get']);
-
 /** Storyboard sample requests tried per tool before the schema-derived fallback. */
 const MAX_SAMPLES_PER_TOOL = 2;
 
@@ -161,11 +126,6 @@ function expectContextEchoed(response: RpcResponse, label: string): void {
 function reachedAdcpLayer(response: RpcResponse): boolean {
   const structured = response.result?.structuredContent;
   return structured !== undefined && structured !== null && typeof structured === 'object';
-}
-
-function isSdkInputSchemaRejection(response: RpcResponse): boolean {
-  const text = response.result?.content?.[0]?.text ?? '';
-  return response.result?.isError === true && !reachedAdcpLayer(response) && text.includes('-32602');
 }
 
 // ── Valid requests for the handler path ─────────────────────────────
@@ -297,13 +257,6 @@ describe('training agent context echo', () => {
           const response = await callTool(routeUrl(route), tool.name, { ...request, context: CONTEXT });
           if (!reachedAdcpLayer(response)) continue;
           reached += 1;
-          if (route !== 'legacy' && SDK_STRIPS_CONTEXT.has(tool.name)) {
-            expect(
-              echoedContexts(response).structured,
-              `${route} ${tool.name} now echoes context; adcp-client#3666 is fixed here — remove it from SDK_STRIPS_CONTEXT.`,
-            ).toBeUndefined();
-            continue;
-          }
           expectContextEchoed(response, `${route} ${tool.name}`);
         }
         if (reached === 0) unreached.push(tool.name);
@@ -315,25 +268,13 @@ describe('training agent context echo', () => {
 
     it.each(VERSIONS)('echoes context on the error path at release %s', async version => {
       const tools = await toolsFor(route);
-      const gap = new Set(SDK_INPUT_SCHEMA_CONTEXT_GAP[route]);
-      const stillBroken: string[] = [];
       for (const tool of tools) {
         const response = await callTool(routeUrl(route), tool.name, {
           context: CONTEXT,
           ...(version !== undefined && { adcp_version: version }),
         });
-        if (gap.has(tool.name)) {
-          expect(
-            isSdkInputSchemaRejection(response),
-            `${route} ${tool.name} now answers at the AdCP layer; if it echoes context, adcp-client#3666 is fixed here — remove it from SDK_INPUT_SCHEMA_CONTEXT_GAP. ${JSON.stringify(response).slice(0, 400)}`,
-          ).toBe(true);
-          stillBroken.push(tool.name);
-          continue;
-        }
         expectContextEchoed(response, `${route} ${tool.name} @ ${version ?? 'default'}`);
       }
-      // Every gap entry names a tool this route registers.
-      expect(stillBroken.sort()).toEqual([...gap].sort());
     }, 120_000);
   });
 
