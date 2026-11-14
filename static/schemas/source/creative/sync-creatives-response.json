@@ -361,20 +361,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": ["creatives"]
-          },
-          {
-            "required": ["merges"]
-          },
-          {
-            "required": ["warnings"]
-          }
-        ]
-      }
+      "additionalProperties": true
     }
   ],
   "properties": {}

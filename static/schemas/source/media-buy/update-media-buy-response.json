@@ -139,8 +139,15 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "errors"
+        "anyOf": [
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "$ref": "/schemas/core/task-submitted.json"
+          }
         ]
       }
     },
@@ -225,17 +232,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": ["media_buy_id"]
-          },
-          {
-            "required": ["warnings"]
-          }
-        ]
-      }
+      "additionalProperties": true
     }
   ],
   "properties": {}
