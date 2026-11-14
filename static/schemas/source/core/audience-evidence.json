@@ -55,7 +55,7 @@
         "description": { "type": "string" }
       },
       "required": ["system", "population_id", "version"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "evidence_type": {
       "type": "string",
@@ -147,5 +147,5 @@
       "then": { "properties": { "unit": { "const": "count" }, "value": { "type": "integer" } } }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

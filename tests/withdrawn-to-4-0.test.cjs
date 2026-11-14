@@ -1,13 +1,12 @@
 /**
  * Contract test for the 3.3 features withdrawn to 4.0 (adcp#8501).
  *
- * commercial-terms is closed on purpose: a buyer must not be bound by terms it
- * cannot read, and terms_digest signs exactly those terms. A minor release
- * never changes a closed schema (DR-0036), so definition pins, purchase rights
- * and installment selection wait for 4.0, where commercial_terms gets a
- * declared extension point with must-understand. This test fails if any of
- * them returns to a 3.x schema, and checks that the release story and the 4.0
- * registry say where the designs went.
+ * commercial-terms and the term objects inside it are held closed until 4.0
+ * (DR-0036), so definition pins, purchase rights and installment selection
+ * wait for 4.0, where commercial_terms gets a declared extension point with
+ * must-understand. This test fails if any of them returns to a 3.x schema,
+ * and checks that the release story and the 4.0 registry say where the
+ * designs went.
  */
 'use strict';
 
@@ -39,7 +38,6 @@ test('the withdrawn schemas, enum values and error code are gone', () => {
     'enums/definition-pin-ref-kind.json',
     'error-details/reference-definition-changed.json',
     'brand/rights-scope.json',
-    'core/installment-change-set.json',
   ]) {
     assert.equal(exists(file), false, `${file} is withdrawn`);
   }
@@ -49,15 +47,12 @@ test('the withdrawn schemas, enum values and error code are gone', () => {
   const rightUse = readSchema('enums/right-use.json').enum;
   assert.ok(!rightUse.includes('paid_amplification') && !rightUse.includes('content_reuse'));
 
-  const refinement = readSchema('media-buy/proposal-refinement.json');
-  assert.equal(refinement.properties.installment_changes, undefined);
+  // installment_changes and unsatisfied_installment_changes returned as the
+  // experimental media_buy.installment_refinement surface (adcp#8967); see
+  // tests/installment-refinement.test.cjs. Only the signed field stays withdrawn.
   const row = readSchema('media-buy/refine-proposals-response.json').properties.results.items.properties;
   assert.equal(row.drifted_pins, undefined);
-  assert.equal(row.unsatisfied_installment_changes, undefined);
 
-  const capabilities = readSchema('protocol/get-adcp-capabilities-response.json');
-  const dimensions = capabilities.properties.media_buy.properties.proposal_refinement.properties.supported_dimensions;
-  assert.equal(dimensions.items.enum.includes('installment_changes'), false);
 });
 
 test('rights-terms keeps its 3.2 shape without the hoisted scope', () => {

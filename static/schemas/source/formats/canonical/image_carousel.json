@@ -4,6 +4,13 @@
   "title": "Canonical Format: Image Carousel",
   "description": "Multi-card swipeable carousel. The buyer ships a `cards` slot whose value is an **array** of [card-asset](/schemas/core/assets/card-asset.json) objects (a single key with an array value — NOT one key per card, NOT dotted/bracketed paths). Each card-asset carries: `asset_type: \"card\"`, `media` (an image or video asset), optional `headline` (text), optional `landing_page_url` (url asset). Per-card structure is the same across all cards; mixed orientations not allowed within a single carousel. Tracking model: per-card impression and engagement pixels + carousel-level engagement (swipe, view-time). Allowed asset types for a card's `media` field: `image` and `video` (Meta-style mixed-media); platforms can narrow to image-only or video-only via `allowed_card_media_asset_types`.\n\nThe manifest's `assets.cards` value is an array of card-asset objects. Example: `\"cards\": [{\"asset_type\": \"card\", \"media\": {\"asset_type\": \"image\", \"url\": \"...\"}, \"headline\": \"Buy now\", \"landing_page_url\": {\"asset_type\": \"url\", \"url_type\": \"clickthrough\", \"url\": \"...\"}}, ...]`. Each card-asset validates against the card schema; per-card platform extensions attach via the card's `platform_extensions` field, never via inline non-canonical keys.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "card_size_ratio_agreement": "Every card_image_sizes pair is within 1% of card_aspect_ratio when both are declared; otherwise the declaration is invalid",
+      "card_image_size_match": "Each image card matches one card_image_sizes pair (times the cards slot pixel ratio), and all image cards in a creative share one aspect ratio"
+    },
+    "spec": "docs/creative/channels/carousels.mdx"
+  },
   "properties": {
     "v1_translatable": {
       "default": false,
@@ -20,7 +27,22 @@
     "card_aspect_ratio": {
       "type": "string",
       "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
-      "description": "Aspect ratio shared across all cards (e.g., '1:1', '1.91:1', '4:5')."
+      "description": "Aspect ratio shared across all cards (e.g., '1:1', '1.91:1', '4:5'). When `card_image_sizes` is also declared, every listed size MUST have this ratio; see `card_image_sizes`."
+    },
+    "card_image_sizes": {
+      "x-added-in": "3.3.0",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["width", "height"],
+        "properties": {
+          "width": { "type": "integer", "minimum": 1 },
+          "height": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "description": "Accepted logical (width, height) pairs for image card media, the same shape as `native_in_feed` `main_image_sizes`. Each card image MUST match one pair exactly (a larger image at the same ratio does not match), times the selected ratio when the `cards` slot declares `pixel_ratios`. All card images in one creative MUST share one aspect ratio. Does not constrain video card media. When `card_aspect_ratio` is also declared, every pair MUST have that ratio within 1% (1200×627 matches '1.91:1'); a disagreeing declaration is invalid and neither field wins. Without `card_aspect_ratio`, the sizes imply the accepted ratios."
     },
     "min_cards": {
       "type": "integer",

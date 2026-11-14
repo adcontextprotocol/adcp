@@ -139,6 +139,18 @@ phases:
             path: "context.expected_negative_delivery_types"
             value: ["guaranteed"]
             description: "The requested delivery-type comparand is echoed unchanged"
+          - check: field_excludes
+            path: "products[*].pricing_options[*].eligible_adjustments[*]"
+            value: "operator_fee"
+            severity: advisory
+            expires_after_version: "17.0.0"
+            description: "Sellers never declare operator_fee in eligible_adjustments; only the operator's buying platform adds it (pricing models: Operator fees)"
+          - check: field_excludes
+            path: "products[*].pricing_options[*].price_breakdown.adjustments[*].kind"
+            value: "operator_fee"
+            severity: advisory
+            expires_after_version: "17.0.0"
+            description: "Seller-authored price_breakdown never carries an operator_fee adjustment (pricing models: Operator fees)"
 
       - id: get_filtered_brief_guaranteed_products
         title: "Exclude non-guaranteed inventory from a guaranteed-delivery request"

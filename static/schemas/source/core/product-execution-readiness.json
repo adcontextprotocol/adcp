@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-execution-readiness.json",
   "title": "Product Execution Readiness",
-  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy a product's `execution_requirements[]`: one entry per requirement plus a rollup. Carried only in the `get_products` `execution_readiness` map. Annotate, never filter: a product that is not `ready`, including `unknown`, may still be runnable.",
+  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy a product's `execution_requirements[]`: one entry per requirement plus a rollup. Carried only in the `list_products` `execution_readiness` map. Annotate, never filter: a product that is not `ready`, including `unknown`, may still be runnable.",
   "type": "object",
   "properties": {
     "readiness_status": {

@@ -265,7 +265,7 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "execution_commitment": {
       "type": "object",
@@ -275,7 +275,7 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "tool": {
       "type": "string",
@@ -289,7 +289,7 @@
     },
     "proposal": {
       "$ref": "/schemas/core/canonical-proposal.json",
-      "description": "Exact committed proposal being authorized for accept_proposal. The governance agent verifies proposal.terms_digest against commercial_terms and binds that digest into its decision state; the downstream payload carries the same digest without repeating the terms."
+      "description": "Exact committed proposal being authorized for accept_proposal. The governance agent verifies proposal.terms_digest against commercial_terms as received and binds that digest into its decision state; the downstream payload carries the same digest without repeating the terms. A governance agent that cannot interpret every member of commercial_terms, including ext, denies the check (see commercial-terms.json)."
     },
     "governance_context": {
       "type": "string",
@@ -357,7 +357,7 @@
             "start",
             "end"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "spend": {
           "type": "number",
@@ -455,13 +455,13 @@
             "baseline",
             "indices"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": [
         "reporting_period"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "modification_summary": {
       "type": "string",

@@ -22,7 +22,7 @@
         "description": { "type": "string" }
       },
       "required": ["system", "population_id", "version"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "evidence_type": { "type": "string", "enum": ["measured", "forecast", "seller_declared"] },
     "methodology": { "$ref": "/schemas/enums/audience-evidence-methodology.json" },
@@ -49,5 +49,5 @@
     { "if": { "properties": { "relationship": { "const": "index" } }, "required": ["relationship"] }, "then": { "properties": { "unit": { "const": "ratio" } } } },
     { "if": { "properties": { "relationship": { "const": "reach_estimate" } }, "required": ["relationship"] }, "then": { "properties": { "unit": { "const": "count" }, "value": { "type": "integer" } } } }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

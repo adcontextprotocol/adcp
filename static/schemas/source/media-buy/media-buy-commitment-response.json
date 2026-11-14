@@ -82,7 +82,7 @@
               "package_id": { "type": "string", "minLength": 1, "x-entity": "package" }
             },
             "required": ["purchase_index", "product_id", "package_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "uniqueItems": true

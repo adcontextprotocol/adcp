@@ -393,6 +393,32 @@
       }
     },
     {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "proposal_refinement": {
+                "properties": {
+                  "supported_dimensions": { "contains": { "const": "installment_changes" } }
+                },
+                "required": ["supported_dimensions"]
+              }
+            },
+            "required": ["proposal_refinement"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.installment_refinement" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
       "description": "Listing media_buy.collection_catalog (list_collections and collection card webhooks) requires media_buy.collection_cards, because the response carries card fields.",
       "if": {
         "properties": {
@@ -831,7 +857,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "x-added-in": "3.3.0",
-      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment.",
+      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock creative review SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment.",
       "maxItems": 32
     },
     "adcp": {
@@ -878,7 +904,7 @@
         "implementation": {
           "x-added-in": "3.3.0",
           "type": "object",
-          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation.",
+          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation. Rejects `approved`, here and on each sdks entry: an agent can't assert its own approval.",
           "properties": {
             "sdks": {
               "type": "array",
@@ -922,14 +948,16 @@
                   }
                 },
                 "required": ["name", "version", "components"],
-                "additionalProperties": false
+                "additionalProperties": true,
+                "not": { "required": ["approved"] }
               },
               "uniqueItems": true,
               "maxItems": 16
             }
           },
           "required": ["sdks"],
-          "additionalProperties": false
+          "additionalProperties": true,
+          "not": { "required": ["approved"] }
         },
         "idempotency": {
           "type": "object",
@@ -1074,7 +1102,7 @@
                   }
                 },
                 "required": ["pattern", "transports", "verification_profiles"],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
             "suspension_interval_seconds": {
@@ -1135,7 +1163,7 @@
             "task_presence": "The agent's MCP tools/list or A2A skill list MUST include sync_principal and get_principal when this block is present.",
             "offering_boundary": "Requests are rejected atomically for schema violations, authorization failures, unsupported sections, and out-of-offering destinations. In-offering destinations that fail provider-side setup are reported per destination as validating, action_required, or rejected inside an applied response, never as a failed request."
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "capability_changes": {
           "type": "object",
@@ -1266,7 +1294,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1280,7 +1308,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1294,7 +1322,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1308,7 +1336,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1322,7 +1350,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1336,7 +1364,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1350,7 +1378,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1364,7 +1392,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "properties": {
@@ -1378,7 +1406,7 @@
                       }
                     },
                     "required": ["task", "modes"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 ]
               },
@@ -1393,7 +1421,7 @@
           },
           "required": ["tasks"],
           "x-status": "experimental",
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "attestations": {
           "$ref": "/schemas/core/attestation-capabilities.json",
@@ -1685,7 +1713,7 @@
                 "supported",
                 "supported_changes"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             {
               "title": "AccountIdentityUpdatesUnsupported",
@@ -1704,7 +1732,7 @@
                   "supported_changes"
                 ]
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           ]
         },
@@ -1762,13 +1790,23 @@
             }
           },
           "required": ["catalog_url", "catalog_digest"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "supported_pricing_models": {
           "type": "array",
           "description": "Pricing models this seller supports across its product portfolio. Buyers can use this for pre-flight filtering before querying individual products. Individual products may support a subset of these models.",
           "items": {
             "$ref": "/schemas/enums/pricing-model.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "supported_delivery_types": {
+          "x-added-in": "3.3.0",
+          "type": "array",
+          "description": "Delivery types this seller sells across its product portfolio: guaranteed (reserved inventory) and/or non_guaranteed. Buyers can use this for pre-flight filtering before querying individual products. Like every capability declaration, it is a commitment: the products this seller returns carry a delivery_type listed here. When absent, the seller has not declared its delivery types, and buyers treat them as unknown rather than as an empty set. Values come from the product delivery_type enum (guaranteed, non_guaranteed); this is unrelated to the display_tag format parameter of the same name, which lists creative serving modes such as inline_markup.",
+          "items": {
+            "$ref": "/schemas/enums/delivery-type.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -1812,10 +1850,10 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; installment_changes (experimental, media_buy.installment_refinement) covers installment_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },
@@ -1885,7 +1923,7 @@
                 "required": ["supported"]
               },
               "then": { "required": ["max_open_duration"] },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "if": {
@@ -1901,7 +1939,7 @@
             "properties": { "list_proposals": { "const": true } },
             "required": ["list_proposals"]
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "reporting_delivery_methods": {
           "type": "array",
@@ -2042,7 +2080,7 @@
             }
           },
           "required": ["supported", "registration_task", "event_types", "repair_tasks"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "features": {
           "allOf": [
@@ -2231,7 +2269,7 @@
                       "type": "boolean"
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "geo_postal_areas": {
                   "description": "Postal area targeting. Prefer the native country-keyed map where each ISO 3166-1 alpha-2 country lists supported country-local postal systems. Deprecated legacy country-fused postal-system boolean aliases may be emitted alongside native country keys during migration.",
@@ -2448,7 +2486,7 @@
             }
           },
           "required": ["requirement"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "audience_targeting": {
           "type": "object",
@@ -2505,7 +2543,7 @@
                   "minimum": 0
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "required": ["supported_identifier_types", "minimum_audience_size"],
@@ -2993,17 +3031,17 @@
                 }
               },
               "required": ["requirement", "claim_types"],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "required": ["signal_activation"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "aggregation_window_days": {
           "type": "integer",
           "minimum": 1,
           "maximum": 365,
-          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
+          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (owner_principal, seller_agent), where owner_principal is the authenticated buyer principal that synchronized the plan, and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
         },
         "supports_budget_periods": {
           "x-added-in": "3.3.0",
@@ -3239,6 +3277,12 @@
           "default": false,
           "x-added-in": "3.3.0"
         },
+        "supports_registry_policy_enforcement": {
+          "type": "boolean",
+          "description": "When true, this seller supports registry-backed creative policy enforcement on sync_creatives: it publishes the registry policy IDs it enforces on products through enforced_policies and rejects a violating creative with one CREATIVE_REJECTED error entry per violated policy whose details.policy_id cites the registry policy. Merely hosting a creative library does not imply this capability. False or absent makes policy-backed rejection conformance storyboards not applicable; it does not exempt a seller from enforcing any policy it publishes in enforced_policies.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "stable_creative_ids": {
           "type": "boolean",
           "description": "When true, this agent gives every creative that entered its library outside sync_creatives (seller UI or API, automation, or another system) a creative_id that is stable for the creative's lifetime and unique within the account, so a buyer connecting to an existing advertiser can reference those creatives in later requests. The agent MUST keep such IDs stable, MUST NOT reuse a creative_id a buyer has used on the account, and under sync_creatives delete_missing MUST NOT archive those creatives. Requires has_creative_library: true. When false or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them.",
@@ -3274,13 +3318,13 @@
         },
         "supports_assignment_trackers": {
           "type": "boolean",
-          "description": "When true, this agent accepts trackers on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits where the format declares tracker slots, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "description": "When true, this agent accepts trackers on creative assignments in sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits where the format declares tracker slots, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
           "default": false,
           "x-added-in": "3.3.0"
         },
         "supports_assignment_landing_page": {
           "type": "boolean",
-          "description": "When true, this agent accepts landing_page_url on creative assignments in create_media_buy, update_media_buy, and sync_creatives, serves that destination on the specified package or rejects the assignment, and returns the effective serving destination when unique in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "description": "When true, this agent accepts landing_page_url on creative assignments in sync_creatives, serves that destination on the specified package or rejects the assignment, and returns the effective serving destination when unique in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
           "default": false,
           "x-added-in": "3.3.0"
         },
@@ -3467,7 +3511,7 @@
                     "description": "Informational implementation origin. platform_native means the route uses the serving platform's preview machinery; agent_approximation means the agent renders an approximation. Neither value grants authority without a publisher preview_provider delegation."
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "minItems": 1,
               "x-adcp-validation": {
@@ -3476,7 +3520,7 @@
               "x-max-items-4.0": 128
             }
           },
-          "additionalProperties": false,
+          "additionalProperties": true,
           "x-adcp-validation": {
             "verifier_constraints": {
               "routes": "capability_id_set_equals_routable_capability_ids_of_creative.supported_formats_entries_with_preview_operation"
@@ -3871,7 +3915,7 @@
         "profiles": {
           "x-status": "experimental",
           "type": "array",
-          "description": "Webhook-signing profiles this agent can sign outbound webhooks with, named by the RFC 9421 `tag` value. `adcp/webhook-signing/v1` is the AdCP webhook profile named in `profile`. `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx (Webhooks), under which a webhook is an ordinary signed request from the seller's identity. The seller signs each delivery with the one profile the subscriber selected in the registration's `signing_profile` (on `push_notification_config`, `reporting_webhook`, `artifact_webhook`, `accounts[].notification_configs[]`, or an agent-level notification configuration), and rejects a registration that selects a profile not listed here. Omission means `[\"adcp/webhook-signing/v1\"]`. The list includes the value of `profile`.",
+          "description": "Webhook-signing profiles this agent can sign outbound webhooks with, named by the RFC 9421 `tag` value. `adcp/webhook-signing/v1` is the AdCP webhook profile named in `profile`. `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx (Webhooks), under which a webhook is an ordinary signed request from the seller's identity. The seller signs each delivery with the one profile the subscriber selected in the registration's `signing_profile` (on `push_notification_config`, `reporting_webhook`, `accounts[].notification_configs[]`, or an agent-level notification configuration), and rejects a registration that selects a profile not listed here. Omission means `[\"adcp/webhook-signing/v1\"]`. The list includes the value of `profile`.",
           "items": {
             "$ref": "/schemas/enums/webhook-signing-profile.json"
           },
@@ -3968,7 +4012,7 @@
               "description": "Origin (scheme + host) serving the TMP-signing JWKS, when this operator participates in TMP."
             }
           },
-          "additionalProperties": false,
+          "additionalProperties": true,
           "x-adcp-validation": {
             "verifier_constraints": {
               "purpose_anchoring": {
@@ -3996,7 +4040,7 @@
               "default": false
             }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "additionalProperties": true
@@ -4102,7 +4146,7 @@
                     }
                   },
                   "required": ["accrediting_body"],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "uniqueItems": true,
                 "maxItems": 8
@@ -4142,7 +4186,7 @@
               }
             },
             "required": ["metric_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "uniqueItems": true,

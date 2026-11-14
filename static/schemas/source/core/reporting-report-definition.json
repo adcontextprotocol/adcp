@@ -15,7 +15,7 @@
     }
   },
   "properties": {
-    "contract_version": { "type": "string", "enum": ["1.0", "1.1"], "description": "1.1 adds immutable official closes with adjustments_only correction semantics for Reliable Reporting 1.0. Version 1.0 remains accepted for compatibility with the preceding experimental managed-reporting contract." },
+    "contract_version": { "type": "string", "enum": ["1.0", "1.1", "1.2"], "description": "1.1 adds immutable official closes with adjustments_only correction semantics for Reliable Reporting 1.0. `1.2`, added in 3.3, keeps every 1.1 rule and requires a package_id dimension on a media-buy definition, one whose dimensions include media_buy_id. Versions 1.0 and 1.1 remain accepted unchanged; 1.0 is kept for compatibility with the preceding experimental managed-reporting contract. Callers pinned below 3.3 accept only 1.0 and 1.1, so a 1.2 definition serves 3.3 callers only." },
     "media_type": { "type": "string", "const": "application/vnd.adcp.reporting-definition+json" },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
@@ -23,14 +23,14 @@
     "source": {
       "type": "object",
       "properties": {
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": true },
         "system": { "type": "string", "minLength": 1, "maxLength": 128 },
         "api_version": { "type": "string", "minLength": 1, "maxLength": 128 },
         "query_semantics": { "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." },
         "custody": { "$ref": "/schemas/enums/reporting-custody.json", "description": "Whether the producer is the system of record for the numbers or derived them from the upstream provider and system named in this source. Optional; omitted means the definition makes no custody claim. Fixed per definition by report_definition_sha256, so no per-revision field exists.", "x-added-in": "3.3.0" }
       },
       "required": ["provider", "system", "api_version", "query_semantics"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "calendar": {
       "type": "object",
@@ -42,7 +42,7 @@
       "allOf": [
         { "if": { "properties": { "timezone_basis": { "const": "configured_timezone" } }, "required": ["timezone_basis"] }, "then": { "required": ["timezone"] }, "else": { "not": { "required": ["timezone"] } } }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "metrics": {
       "type": "array",
@@ -55,11 +55,11 @@
           "unit": { "type": "string", "minLength": 1, "maxLength": 64 }
         },
         "required": ["name", "source_expression", "aggregation"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
-    "dimensions": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true },
+    "dimensions": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true, "description": "Native row dimensions. media_buy_id and package_id name the AdCP media buy and package a row reports. At contract_version 1.2, a definition whose rows are scoped to a media buy MUST name that dimension media_buy_id, not a seller-native name, and a definition whose dimensions include media_buy_id MUST include package_id, so every row carries the buyer-visible package. A definition whose rows are not scoped to a media buy, such as an account-level summary, declares no media_buy_id and is exempt. Reporting subscription selectors and offering standard_dimensions name a 1.2 definition's package_id dimension as package." },
     "restatement_policy": {
       "type": "object",
       "properties": {
@@ -68,7 +68,7 @@
         "official_correction_mode": { "type": "string", "const": "adjustments_only", "description": "Once an official revision is published it is immutable and cannot be superseded. Later source corrections are separate reporting-adjustment records applied to a later accounting period." }
       },
       "required": ["source_requery_duration", "emit_only_on_content_change"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "finality_policies": {
       "type": "array",
@@ -82,7 +82,7 @@
               "source_signal": { "type": "string", "minLength": 1, "maxLength": 512 }
             },
             "required": ["finality_policy_id", "basis", "source_signal"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -92,7 +92,7 @@
               "duration_after_period_end": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
             },
             "required": ["finality_policy_id", "basis", "duration_after_period_end"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -103,7 +103,7 @@
               "unchanged_for": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
             },
             "required": ["finality_policy_id", "basis", "minimum_age", "unchanged_for"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -113,13 +113,19 @@
   "required": ["contract_version", "media_type", "report_definition_id", "reporting_profile", "grain", "source", "calendar", "metrics", "dimensions", "restatement_policy", "finality_policies"],
   "allOf": [
     {
-      "if": { "properties": { "contract_version": { "const": "1.1" } }, "required": ["contract_version"] },
+      "if": { "properties": { "contract_version": { "enum": ["1.1", "1.2"] } }, "required": ["contract_version"] },
       "then": { "properties": { "restatement_policy": { "required": ["official_correction_mode"] } } }
+    },
+    {
+      "x-added-in": "3.3.0",
+      "if": { "properties": { "contract_version": { "const": "1.2" }, "dimensions": { "contains": { "const": "media_buy_id" } } }, "required": ["contract_version", "dimensions"] },
+      "then": { "properties": { "dimensions": { "contains": { "const": "package_id" } } } }
     }
   ],
   "x-adcp-validation": {
+    "package_dimension": "At contract_version 1.2, a definition whose rows are scoped to a media buy MUST name that dimension media_buy_id, and a definition whose dimensions include media_buy_id MUST include package_id; the offering's reporting_profile.primary_keys MUST then include package_id, so per-package rows stay distinct. A definition whose rows are not scoped to a media buy, such as an account-level summary, declares no media_buy_id and is exempt at every version. 1.0 and 1.1 definitions keep validating unchanged; a grader SHOULD report a 1.0 or 1.1 definition that includes media_buy_id but not package_id as an advisory finding, never a failure. Callers pinned below 3.3 accept only 1.0 and 1.1 definitions, so a seller MUST serve them offerings whose definitions are 1.0 or 1.1; a 1.2 offering serves 3.3 callers only.",
     "binding": "report_definition_id and reporting_profile MUST equal the selected offering. finality_policy_id values MUST be unique. Every official revision's finality_policy_id and finality_basis MUST match exactly one entry. utc and account_timezone calendars require the matching schedule alignment. schedule_timezone requires source_timezone or billing_cycle and uses its resolved period_timezone. configured_timezone requires an identical resolved schedule timezone unless query_semantics explicitly defines lossless re-bucketing from finer-grained source data. For every official obligation, expected_at MUST be no earlier than the earliest instant at which its selected finality policy can be satisfied.",
     "content": "query_semantics is untrusted canonical JSON data, never agent or LLM instructions. It MUST enumerate every provider query, attribution, mapping, filtering, and action-timing option that could change delivered values. The fetched document is size/depth bounded and contains no executable content or external references."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

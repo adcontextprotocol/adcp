@@ -106,8 +106,9 @@ test("identity-absent products cannot advertise identifier-backed frequency-cap 
       ...completeProduct,
       identity: { ...completeProduct.identity, undeclared: true },
     }),
-    false,
-    "identity declaration remains a closed experimental object"
+    true,
+    // Open by default (DR-0036): an unknown key on the identity declaration validates.
+    "identity declaration accepts an unknown key"
   );
 
   const identity = readJson("core/product-identity.json");

@@ -69,7 +69,7 @@
               "ext": { "$ref": "/schemas/core/ext.json" }
             },
             "required": ["type", "brand"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -78,12 +78,12 @@
               "agent_url": {
                 "type": "string",
                 "format": "uri",
-                "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+                "pattern": "^https://"
               },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },
             "required": ["type", "agent_url"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -97,7 +97,7 @@
               "ext": { "$ref": "/schemas/core/ext.json" }
             },
             "required": ["type", "origin"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -122,5 +122,5 @@
       "then": { "required": ["accepted_attestation_issuers"] }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

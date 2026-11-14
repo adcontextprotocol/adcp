@@ -64,5 +64,5 @@
     }
   },
   "required": ["list_id", "name"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

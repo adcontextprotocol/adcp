@@ -114,7 +114,7 @@
         "content_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 of RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows}, where reporting_rows is the complete ordered sequence concatenated across every cursor page; identical to reporting_revision.revision_content_sha256." }
       },
       "required": ["reporting_revision_id", "row_count", "control_totals", "content_sha256"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "reporting_revision": { "$ref": "/schemas/core/reporting-revision.json", "description": "Full immutable revision metadata, identical to the get_reporting_status revision record." },
     "reporting_rows": { "type": "array", "items": { "type": "object" }, "description": "One page of authoritative logical rows for an exact reporting_revision_id read. Validate every row against the revision's digest-pinned schema; concatenate pages in cursor order before verifying the binding digest." },

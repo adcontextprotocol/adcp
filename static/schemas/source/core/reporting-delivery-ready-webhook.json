@@ -3,7 +3,7 @@
   "$id": "/schemas/core/reporting-delivery-ready-webhook.json",
   "title": "Reporting Delivery Ready Webhook",
   "x-status": "experimental",
-  "description": "Compact account-anchored readiness doorbell registered through sync_accounts notification_configs using reporting.delivery_ready. Managed-delivery tier only: it names a materialization at a destination, so Core (API-delivered) configurations never fire it — Core consumers subscribe to reporting.status_changed and poll get_reporting_status. The named revision/materialization MUST already be observable through the intended consumer path. Transport retries are deduplicated by (authenticated sender, idempotency_key); downstream ingestion is deduplicated independently by reporting_revision_id and reporting_materialization_id. Ordering is unconstrained and receivers repair through authenticated get_reporting_status. The event MUST be signed using the advertised AdCP webhook-signing profile and MUST NOT contain rows, object lists, signed URLs, activation URLs, credentials, or access tokens.",
+  "description": "Compact account-anchored readiness doorbell registered through sync_accounts notification_configs using reporting.delivery_ready. Managed-delivery tier only: it names a materialization at a destination, so Core (API-delivered) configurations never fire it — Core consumers subscribe to reporting.status_changed and poll get_reporting_status. The named revision/materialization MUST already be observable through the intended consumer path. Transport retries are deduplicated by (authenticated sender, idempotency_key); downstream ingestion is deduplicated independently by reporting_revision_id and reporting_materialization_id. Ordering is unconstrained and receivers repair through authenticated get_reporting_status. The event MUST be signed using the advertised AdCP webhook-signing profile and MUST NOT contain rows, object lists, signed URLs, activation URLs, credentials, or access tokens. Rejects `access_token`: the webhook never carries a bearer credential, and the receiver fetches with its own credentials.",
   "type": "object",
   "properties": {
     "idempotency_key": {
@@ -105,5 +105,6 @@
     "authorization": "The authenticated webhook signer, subscriber_id, account_id, configuration generation, revision, and materialization MUST belong to one caller/account binding; receivers MUST repair through an authenticated status read rather than trusting event contents alone.",
     "deduplication": "Deduplicate transport retries by (authenticated sender, idempotency_key), then deduplicate ingestion independently by reporting_revision_id and reporting_materialization_id."
   },
-  "additionalProperties": false
+  "additionalProperties": true,
+  "not": { "required": ["access_token"] }
 }

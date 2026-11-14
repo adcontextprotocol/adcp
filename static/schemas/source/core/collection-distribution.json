@@ -34,7 +34,7 @@
           }
         },
         "required": ["type", "value"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },

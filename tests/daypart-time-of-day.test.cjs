@@ -41,6 +41,9 @@ test("daypart entries carry exactly one of the hour or clock-time forms", async 
     { days: ["friday", "saturday"], start_time: "22:00", end_time: "02:00", label: "Late fringe" },
     { days: ["sunday"], start_time: "23:15", end_time: "00:00" },
     { days: ["monday"], start_time: "00:00", end_time: "06:00" },
+    // The window is open (a correction under DR-0036); the oneOf still keeps the
+    // two forms apart.
+    { days: WEEKDAYS, start_time: "19:30", end_time: "23:00", end_minute: 0 },
   ];
   for (const daypart of valid) {
     assert.equal(validate(daypart), true, JSON.stringify(daypart));
@@ -57,7 +60,6 @@ test("daypart entries carry exactly one of the hour or clock-time forms", async 
     ["complete time form plus stray hour", { days: WEEKDAYS, start_time: "19:30", end_time: "23:00", start_hour: 19 }],
     ["complete hour form plus stray time", { days: WEEKDAYS, start_hour: 19, end_hour: 23, end_time: "23:00" }],
     ["missing days", { start_time: "19:30", end_time: "23:00" }],
-    ["unknown field", { days: WEEKDAYS, start_time: "19:30", end_time: "23:00", end_minute: 0 }],
   ];
   for (const [label, daypart] of invalid) {
     assert.equal(validate(daypart), false, label);

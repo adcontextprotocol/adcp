@@ -28,5 +28,5 @@
       "description": "Version of /schemas/core/placement-presentation.json used to validate and compose the referenced document."
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

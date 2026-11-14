@@ -259,6 +259,7 @@ been deleted. `ext.streamhaus.ad_set_id` here is a seller-defined extension:
 | `creative_id` | Creative identifier |
 | `trackers` | Added in 3.3. Complete assignment-scoped measurement tracker list, preserving events, URL templates, order, and duplicate occurrences. Supporting sellers MUST return it, using `[]` when none exist. Excludes the creative's own trackers in `assets`; both sets fire. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers). |
 | `landing_page_url` | Added in 3.3. Effective serving destination for this creative on this package, including an assignment override. Supporting sellers return the URL (or macro-bearing template) when unique; omit when no destination exists or an unoverridden creative has multiple destinations, whose URLs remain in its creative assets. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages). |
+| `installment_refs` | Added in 3.3, experimental (`media_buy.installment_creative_assignment`). The installments this assignment is limited to. Sellers that list the feature return it on every assignment with an installment scope and omit it when the assignment applies to every installment. See [assigning to specific installments](/docs/creative/task-reference/sync_creatives#assigning-to-specific-installments-experimental). |
 | `approval_status` | `pending_review`, `approved`, `partially_approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 | `approval_scopes` | Complete publisher/placement outcomes when `approval_status` is `partially_approved` |
@@ -527,20 +528,21 @@ For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-c
 
 ### Follow a renewal chain
 
-A buyer renews `mb_pinnacle_q3` by creating a new buy with `predecessor_media_buy_id` and `lineage_reason`. The seller does not touch `mb_pinnacle_q3`; the link lives only on the successor. Creating the successor:
+A buyer renews `mb_pinnacle_q3` by creating a new buy with `predecessor_media_buy_id` and `lineage_reason` on [`buy_products`](/docs/media-buy/task-reference/buy_products) (or [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)). The seller does not touch `mb_pinnacle_q3`; the link lives only on the successor. Creating the successor:
 
 ```json
 {
-  "$schema": "/schemas/media-buy/create-media-buy-request.json",
+  "$schema": "/schemas/media-buy/buy-products-request.json",
   "idempotency_key": "6f1d0a52-7c3e-4b1a-9e0d-2a5b8c4d7e91",
   "account": { "account_id": "acct_nova_brands" },
   "brand": { "domain": "novabrands.example" },
+  "feed_version": "products-2026-09-15T12:00:00Z",
   "start_time": "2026-10-01T00:00:00Z",
   "end_time": "2026-12-31T23:59:59Z",
   "predecessor_media_buy_id": "mb_pinnacle_q3",
   "lineage_reason": "renewal",
   "total_budget": { "amount": 40000, "currency": "USD" },
-  "packages": [
+  "purchases": [
     {
       "product_id": "prod_d979b543",
       "pricing_option_id": "cpm_usd_auction",

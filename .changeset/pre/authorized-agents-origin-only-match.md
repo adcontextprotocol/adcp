@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+An origin-only `authorized_agents[].url` in `adagents.json` now authorizes the agent at that origin, whatever its path (adcp#8862). An entry whose canonical form has the root path and no query, such as `https://agent.example.com`, matches any agent URL with the same canonical origin, including `https://agent.example.com/mcp`. An entry with a path still matches only that canonical URL, so path-mounted agents on a shared host stay distinct. This aligns `adagents.json` with the accepted DR-0023 (an agent's identity is its origin, one agent per origin), under which `authorized_agents[].url` already matched a Web Bot Auth signer by canonical origin. Matching only widens: no entry that authorized an agent under 3.2 stops authorizing it. Validators, TMP providers and registries that check `authorized_agents[].url` must apply the origin-only rule. Updated: `docs/reference/url-canonicalization.mdx`, the Agent URL matching section of `docs/governance/property/adagents.mdx`, the TMP sync-time validation, the `authorized-agent-base.json` `url` description, both 3.3 migration guides, and R0 in `specs/agent-identity-3-3.md`.

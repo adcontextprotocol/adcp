@@ -1,5 +1,5 @@
 id: creative/policy_backed_rejections
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Policy-backed creative rejections"
 category: creative
@@ -12,7 +12,16 @@ required_tools:
 requires:
   - controller
 
+requires_capability:
+  path: creative.supports_registry_policy_enforcement
+  equals: true
+
 narrative: |
+  creative.supports_registry_policy_enforcement was introduced in AdCP 3.3. A
+  creative library alone does not establish registry policy enforcement
+  support. Responses served before 3.3 cannot publish this declaration, so this
+  gated coverage is unavailable on those releases.
+
   A buyer first discovers a controller-seeded product whose complete policy
   universe contains exactly two registry policies. It then submits a canonical
   display tag fixture that deterministically violates both: the hosted tag performs

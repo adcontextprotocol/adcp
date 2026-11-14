@@ -6,6 +6,8 @@ summary: "Verifies that a fixed media-buy total_budget update proportionally res
 track: media_buy
 requires:
   - controller
+  # The operator_fee exclusions on create_media_buy and update_media_buy use field_excludes.
+  - field_excludes_runner
 
 required_tools:
   - sync_accounts
@@ -131,6 +133,12 @@ phases:
           - check: field_value
             path: "total_budget"
             value: 100000
+          - check: field_excludes
+            path: "packages[*].price_breakdown.adjustments[*].kind"
+            value: "operator_fee"
+            severity: advisory
+            expires_after_version: "17.0.0"
+            description: "Seller-authored package price_breakdown never carries an operator_fee adjustment (pricing models: Operator fees)"
 
       - id: read_committed_currency
         title: "Read the committed buy's currency"
@@ -182,6 +190,12 @@ phases:
           - check: field_value
             path: "affected_packages[1].budget"
             value: 20000
+          - check: field_excludes
+            path: "affected_packages[*].price_breakdown.adjustments[*].kind"
+            value: "operator_fee"
+            severity: advisory
+            expires_after_version: "17.0.0"
+            description: "Seller-authored package price_breakdown never carries an operator_fee adjustment (pricing models: Operator fees)"
 
       - id: read_redistributed_budget
         title: "Verify the persisted package budgets"

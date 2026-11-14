@@ -1,5 +1,5 @@
 id: media_buy_seller/create_media_buy_async_lifecycle
-version: "1.0.0"
+version: "1.1.0"
 introduced_in: "3.2"
 title: "Seller exposes create_media_buy tasks through read and list lifecycle tools"
 category: media_buy_seller
@@ -35,7 +35,9 @@ narrative: |
   get_task_status and list_tasks are optional AdCP task-reconciliation tools.
   Their steps use requires_tool so a baseline media-buy seller that does not
   advertise either surface is not failed for omitting it. When advertised,
-  each surface is graded.
+  each surface is graded. Each read runs in its own phase and depends only on
+  the phases that created or completed the task, so an absent surface never
+  blocks the other surface or the controller completion.
 
 agent:
   interaction_model: media_buy_seller
@@ -53,9 +55,10 @@ caller:
 prerequisites:
   description: |
     Seller exposes comply_test_controller in sandbox mode and advertises
-    force_create_media_buy_arm. The terminal phase also requires the seller to
-    advertise force_task_completion. Task read/list steps run only when the
-    corresponding optional tools are advertised.
+    force_create_media_buy_arm. The completion phase and the completed-task
+    reads also require the seller to advertise force_task_completion. Task
+    read/list steps run only when the corresponding optional tools are
+    advertised.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -187,11 +190,16 @@ phases:
             path: "packages"
             description: "Packages are issued only on terminal completion"
 
-  - id: reconcile_submitted_task
-    title: "Read the submitted task consistently"
+  # A missing_tool skip cascades prerequisite_failed onto stateful peers in the
+  # same phase and onto phases that depend on it. Keeping each optional read
+  # as the only stateful step of a phase, with explicit depends_on, keeps an
+  # absent surface not applicable instead of failing the steps after it.
+  - id: poll_submitted_task
+    title: "Poll the submitted task"
+    depends_on: [submit_async_media_buy]
     narrative: |
-      Optional task-reconciliation surfaces must resolve the task identity from
-      create_media_buy and agree that it is still submitted.
+      get_task_status, when advertised, must resolve the task identity from
+      create_media_buy and report that it is still submitted.
 
     steps:
       - id: get_submitted_media_buy_task
@@ -234,6 +242,14 @@ phases:
             value: "submitted"
             description: "Task remains submitted before controller completion"
 
+  - id: list_submitted_task
+    title: "Discover the submitted task"
+    depends_on: [submit_async_media_buy]
+    narrative: |
+      list_tasks, when advertised, must discover the same task and report
+      that it is still submitted.
+
+    steps:
       - id: list_submitted_media_buy_task
         title: "Discover the submitted task through list_tasks"
         task: list_tasks
@@ -283,14 +299,15 @@ phases:
             value: "submitted"
             description: "List and read surfaces agree on submitted status"
 
-  - id: complete_and_reconcile_task
-    title: "Complete the task and observe its terminal result"
+  - id: complete_task
+    title: "Complete the submitted task"
+    depends_on: [submit_async_media_buy]
     requires_capability:
       path: compliance_testing.scenarios
       contains: force_task_completion
     narrative: |
-      Resolve the submitted task with a valid media-buy response, then verify
-      get_task_status and list_tasks converge on the same completed identity.
+      Resolve the submitted task with a valid media-buy response so the read
+      surfaces can observe its terminal result.
 
     steps:
       - id: complete_async_media_buy_task
@@ -342,6 +359,17 @@ phases:
             value: "completed"
             description: "Controller reports the terminal task state"
 
+  - id: poll_completed_task
+    title: "Poll the completed task with its result"
+    depends_on: [submit_async_media_buy, complete_task]
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_task_completion
+    narrative: |
+      get_task_status, when advertised, must return the completed task with
+      the controller-supplied media-buy result.
+
+    steps:
       - id: get_completed_media_buy_task
         title: "Poll the completed task with its result"
         task: get_task_status
@@ -391,6 +419,17 @@ phases:
             value: "create_media_buy_async_lifecycle--terminal_result"
             description: "Controller-supplied terminal context round-trips unchanged"
 
+  - id: list_completed_task
+    title: "Discover the completed task"
+    depends_on: [submit_async_media_buy, complete_task]
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_task_completion
+    narrative: |
+      list_tasks, when advertised, must report that the task completed under
+      the same identity.
+
+    steps:
       - id: list_completed_media_buy_task
         title: "Discover the completed task through list_tasks"
         task: list_tasks

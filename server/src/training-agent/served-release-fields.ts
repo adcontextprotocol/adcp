@@ -233,6 +233,57 @@ export function omitFieldsAddedAfterRelease<T>(value: T, schemaFile: string, ser
   return copy;
 }
 
+function collectUndeclared(
+  value: unknown,
+  schemas: readonly Located[],
+  path: string[],
+  found: string[][],
+): void {
+  if (schemas.length === 0) return;
+  // context is opaque by definition (core/context.json), so its members are
+  // interpreted as opaque correlation data, not as terms.
+  if (schemas.some(({ file }) => file === 'core/context.json')) return;
+  if (Array.isArray(value)) {
+    const items = alternativesOf(schemas
+      .filter(({ node }) => node.items !== undefined)
+      .map(({ node, file }) => ({ node: node.items as Schema, file })));
+    value.forEach((item, index) => collectUndeclared(item, items, [...path, String(index)], found));
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const [key, child] of Object.entries(value)) {
+    const declarations: Located[] = [];
+    for (const { node, file } of schemas) {
+      const properties = node.properties;
+      if (isRecord(properties) && properties[key] !== undefined) {
+        declarations.push({ node: properties[key] as Schema, file });
+      } else if (isRecord(node.additionalProperties)) {
+        declarations.push({ node: node.additionalProperties, file });
+      }
+    }
+    if (declarations.length === 0) {
+      found.push([...path, key]);
+      continue;
+    }
+    collectUndeclared(child, alternativesOf(declarations), [...path, key], found);
+  }
+}
+
+/**
+ * Paths of the members of `value` that no declaration in `schemaFile`
+ * (relative to static/schemas/source) covers, at any depth: keys under an
+ * open object that names no such property, `ext` members included. The walk
+ * treats composition as a union, like the release gate above, so a key any
+ * branch declares counts as declared. A party that interprets exactly the
+ * source schemas cannot interpret these members, so it must not accept
+ * commercial terms that carry them (media-buy/commercial-terms.json).
+ */
+export function undeclaredMembers(value: unknown, schemaFile: string): string[][] {
+  const found: string[][] = [];
+  collectUndeclared(value, alternatives(sourceSchemaDocument(schemaFile), schemaFile), [], found);
+  return found;
+}
+
 const servedEnums = new Map<string, ReadonlySet<string> | null>();
 
 function enumValues(schemaRef: string, version: string): unknown {
