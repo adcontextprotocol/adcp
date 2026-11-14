@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/media-buy/list-products-response.json",
+  "title": "List Products Response",
+  "description": "Canonical product offers and continuation state. Every product carries product_id and name; other compact detail fields follow the request's fields selection. Legacy named-format identifiers are never returned. This response never contains proposals or proposal-lifecycle fields.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/protocol-envelope.json"
+    }
+  ],
+  "discriminator": {
+    "propertyName": "outcome"
+  },
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "listed",
+        "unchanged"
+      ],
+      "description": "Whether this response carries a product page or confirms that the selected feed has not changed."
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/canonical-product.json"
+      }
+    },
+    "collections": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the collections selectors of products on this page. Sellers MUST NOT return this array unless the request set include_collections to true; when it is set, sellers SHOULD include every referenced collection and MUST NOT include one that no returned product references. At most one entry per (publisher_domain, collection_id). If a key appears more than once, that collection is unresolvable from this response; buyers fall back to the publisher's adagents.json, as they do for an omitted collection, and ignore entries that no returned product references. These are convenience copies, never authorization evidence: a copy wins over adagents.json only on images, sample_content, url, description, season, cadence and distribution[].followers (see core/response-collection.json). Present only alongside products, so never on an unchanged outcome.",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/response-collection.json"
+      },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "execution_readiness": {
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (`media_buy.execution_readiness`). Whether the request's `account` can satisfy the `execution_requirements[]` of the products on this page, keyed by `product_id`. Present only when the request set `include_execution_readiness: true` and carried an authorized `account`. Advisory: the purchase task revalidates. Not part of the cache layer: it does not change `cache_scope`, `feed_version`, or `pricing_version`, buyers key it by (account, `version`) and MUST NOT cache it under the public key, sellers MUST NOT put it in wholesale feed webhooks, and it is present only alongside products, so never on an unchanged outcome. Covers only this page's products; merge pages by `product_id`. See the media-buy specification, 'Per-account execution readiness'.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque token for the account's readiness state, independent of `feed_version` and `pricing_version`. Compare for equality only. Equal versions MUST imply identical entries for any product present in both responses."
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller read the account's resources. Readiness may be stale by then; the purchase task is authoritative."
+        },
+        "products": {
+          "type": "object",
+          "description": "Readiness keyed by `product_id`, for returned products that declare `execution_requirements`. A missing entry means not evaluated, not ready.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/product-execution-readiness.json"
+          }
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/ext.json"
+        }
+      },
+      "required": [
+        "version",
+        "products"
+      ],
+      "additionalProperties": true
+    },
+    "next_cursor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cursor for the next page. Omitted when this is the last page."
+    },
+    "feed_version": {
+      "type": "string",
+      "description": "Opaque version of the selected offer feed. Scoped to the selection, including include_collections: without it collection copies are outside the version, and with it the version also changes when any returned collection copy changes; sellers issue distinct tokens for the two settings. For wholesale webhook consumers this is the same scope-keyed token carried as wholesale_feed_version on product.* and wholesale_feed.bulk_change notifications."
+    },
+    "pricing_version": {
+      "type": "string",
+      "description": "Opaque version of the selected pricing layer."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "account"
+      ]
+    },
+    "incomplete": {
+      "type": "array",
+      "description": "Usable partial response with explicitly missing product-list scopes.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "products",
+              "pricing",
+              "forecast",
+              "wholesale_feed"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "estimated_wait": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/duration.json"
+          }
+        },
+        "required": [
+          "scope",
+          "description"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/ext.json"
+    }
+  },
+  "dependencies": {
+    "collections": [
+      "products"
+    ],
+    "execution_readiness": [
+      "products"
+    ]
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "listed"
+        }
+      },
+      "required": [
+        "outcome",
+        "products",
+        "feed_version",
+        "cache_scope"
+      ]
+    },
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      },
+      "required": [
+        "outcome",
+        "feed_version",
+        "cache_scope"
+      ],
+      "not": {
+        "required": [
+          "products"
+        ]
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "proposals"
+        ]
+      },
+      {
+        "required": [
+          "refinement_applied"
+        ]
+      },
+      {
+        "required": [
+          "pagination"
+        ]
+      },
+      {
+        "required": [
+          "unchanged"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}
