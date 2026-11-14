@@ -95,7 +95,7 @@ Once a trust record lists your origin, JWS artifacts your origin signed under th
 
 ### Publisher
 
-The `adagents.json` schema is unchanged. A `signing_keys` pin still narrows keys by RFC 7638 thumbprint, which is also the Web Bot Auth key ID. An `authorized_agents[].url` matches a Web Bot Auth signer by canonical origin. For an agent identified by the URL it is connected at, an origin-only entry (`https://agent.example.com`) authorizes the agent at that origin whatever its path, and an entry with a path matches that canonical URL only. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
+The `adagents.json` schema is unchanged. A `signing_keys` pin still narrows keys by RFC 7638 thumbprint, which is also the Web Bot Auth key ID. An `authorized_agents[].url` matches a Web Bot Auth signer by canonical origin. For an agent identified by the URL it is connected at, an origin-only entry (`https://agent.example.com`) authorizes the agent at that origin whatever its path, and an entry with a path matches that canonical URL only. When more than one entry matches the agent and authorizes the message's scope, the agent is pinned only if every such entry carries `signing_keys`, and it may then sign with a key from any of them; an entry that authorizes nothing for the message neither pins nor unpins it. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
 
 ## SDK support
 

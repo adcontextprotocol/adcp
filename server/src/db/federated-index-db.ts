@@ -523,16 +523,29 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Which of `publisherDomains` pin at least one signing key for the agent
-   * at `agentUrl`, read from each publisher's cached manifest.
+   * Which of `publisherDomains` pin signing keys for the agent at
+   * `agentUrl`, read from each publisher's cached manifest.
+   *
+   * A publisher pins the agent only when EVERY entry that authorizes it pins
+   * at least one key (#9016). Under 3.3 an origin-only entry and the agent's
+   * full URL can both authorize it; if either has no `signing_keys` the
+   * agent may sign with any key for that publisher, so it is unpinned.
+   * Entries outside their effective window are skipped.
+   *
+   * This is a SCOPE-AGNOSTIC SUMMARY. The directory row has no message, so it
+   * cannot apply country, property or placement scope; a verifier computes
+   * the pin per message from the entries that authorize that message's
+   * scope, and can enforce a pin where this flag reads false (an unpinned
+   * entry for another country, say).
    *
    * Only entries that AUTHORIZE the agent under the adagents.json rule count
    * (`agentUrlAuthorizedBy`: its canonical URL, or an origin-only entry for
    * its origin — #8943). Not registry-key equality: the key folds a trailing
    * slash, so keys pinned on a `/mcp/` entry would be reported for an agent
-   * at `/mcp` that the entry does not authorize. Split out of
-   * getPublishersForAgentDetail because the comparison is only computable in
-   * the app (#7830). Bounded by the caller's page size.
+   * at `/mcp` that the entry does not authorize, and an unpinned `/mcp/`
+   * entry would unpin it. Split out of getPublishersForAgentDetail because
+   * the comparison is only computable in the app (#7830). Bounded by the
+   * caller's page size.
    */
   private async signingKeysPinnedByPublisher(
     agentUrl: string,
@@ -540,11 +553,21 @@ export class FederatedIndexDatabase {
   ): Promise<Set<string>> {
     const pinned = new Set<string>();
     if (publisherDomains.length === 0) return pinned;
-    const result = await query<{ publisher_domain: string; agent_url: string; has_keys: boolean }>(
+    const result = await query<{
+      publisher_domain: string;
+      agent_url: string;
+      has_keys: boolean;
+      effective_from: string | null;
+      effective_until: string | null;
+    }>(
       `SELECT pub.domain AS publisher_domain,
               agent->>'url' AS agent_url,
-              (jsonb_typeof(agent->'signing_keys') = 'array'
-               AND jsonb_array_length(agent->'signing_keys') > 0) AS has_keys
+              agent->>'effective_from' AS effective_from,
+              agent->>'effective_until' AS effective_until,
+              -- COALESCE: an entry with no signing_keys member yields NULL
+              -- from jsonb_typeof, and NULL must read as unpinned.
+              COALESCE(jsonb_typeof(agent->'signing_keys') = 'array'
+                       AND jsonb_array_length(agent->'signing_keys') > 0, false) AS has_keys
          FROM publishers pub
         CROSS JOIN LATERAL jsonb_array_elements(
           CASE WHEN jsonb_typeof(pub.adagents_json->'authorized_agents') = 'array'
@@ -555,10 +578,22 @@ export class FederatedIndexDatabase {
           AND jsonb_typeof(agent->'url') = 'string'`,
       [publisherDomains],
     );
+    // `has_keys` is `entryPinsSigningKeys` (services/matched-signing-keys.ts)
+    // in SQL, so the JWKs themselves never leave the database. A publisher is
+    // pinned when at least one entry authorizes the agent and every one of
+    // them pins (`everyMatchingEntryPins`); false as soon as one is unpinned.
+    const everyEntryPins = new Map<string, boolean>();
+    const now = Date.now();
     for (const row of result.rows) {
-      if (!row.has_keys) continue;
       if (!agentUrlAuthorizedBy(row.agent_url, agentUrl)) continue;
-      pinned.add(row.publisher_domain);
+      // An entry outside its effective window authorizes nothing, so it
+      // neither pins nor unpins (the validator's matchesTimeWindow rule).
+      if (!withinEffectiveWindow(row.effective_from, row.effective_until, now)) continue;
+      const pinsSoFar = everyEntryPins.get(row.publisher_domain) ?? true;
+      everyEntryPins.set(row.publisher_domain, pinsSoFar && row.has_keys === true);
+    }
+    for (const [publisherDomain, allPin] of everyEntryPins) {
+      if (allPin) pinned.add(publisherDomain);
     }
     return pinned;
   }
@@ -2005,4 +2040,21 @@ export class FederatedIndexDatabase {
       properties_by_type: propsByType,
     };
   }
+}
+
+/**
+ * Whether an `authorized_agents[]` entry's `effective_from` /
+ * `effective_until` window contains `now`, as `AgentValidator` reads it: no
+ * window always applies, and an unparseable bound never does.
+ */
+function withinEffectiveWindow(from: string | null, until: string | null, now: number): boolean {
+  if (from) {
+    const start = Date.parse(from);
+    if (Number.isNaN(start) || now < start) return false;
+  }
+  if (until) {
+    const end = Date.parse(until);
+    if (Number.isNaN(end) || now > end) return false;
+  }
+  return true;
 }

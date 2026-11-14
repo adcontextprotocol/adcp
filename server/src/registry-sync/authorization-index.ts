@@ -16,6 +16,7 @@
 
 import type { CatalogPropertyIndex } from './property-index.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
+import { combinedSigningKeys } from '../services/matched-signing-keys.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -169,6 +170,11 @@ export class AuthorizationIndex {
   /**
    * Hot-path authorization check for TMP routers.
    * Resolves property to publisher domain, then evaluates scoping.
+   *
+   * `signing_keys` on an authorized result is the #9016 pin across every
+   * entry that authorizes the query: absent when any of them is unpinned,
+   * else the union of their keys. Entries are looked up by exact `agent_url`
+   * (no origin-only matching; #9014).
    */
   check(query: AuthorizationQuery): AuthorizationResult {
     // Resolve publisher domain from property_rid if needed
@@ -245,7 +251,16 @@ export class AuthorizationIndex {
   }
 
   /**
-   * Get publisher-attested signing keys for an agent.
+   * Get publisher-attested signing keys for an agent: every key any entry
+   * stored under exactly this `agent_url` and publisher pins, with no scope
+   * applied. Unchanged by #9016, so callers of the scope-less form keep the
+   * pre-3.3 behaviour.
+   *
+   * This index is keyed by the exact `agent_url` string from the change
+   * feed. It does not apply origin-only matching, so an origin-only entry is
+   * not returned for an agent at a deeper path (#9014). To check a signature
+   * about a specific message, use `getSigningKeysForScope`, which applies the
+   * #9016 rule across the entries that authorize that message.
    */
   getSigningKeys(agentUrl: string, publisherDomain: string): SigningKey[] {
     const byDomain = this.primary.get(agentUrl);
@@ -263,18 +278,45 @@ export class AuthorizationIndex {
     return keys;
   }
 
+  /**
+   * The publisher's signing-key pin for the message `query` describes
+   * (#9016). Only entries that authorize the query count (property, placement,
+   * country, collection, time window): the publisher pins the agent only if
+   * every one of them pins, and the pin is the union of their keys.
+   *
+   * Returns `null` when no entry authorizes the query (reject: the agent is
+   * not authorized for it), `[]` when the publisher does not pin the agent
+   * for it (fall back to the agent's own JWKS), else the pinned keys. Always
+   * agrees with `check(query).signing_keys`. Exact `agent_url` only, like the
+   * rest of this index (#9014).
+   */
+  getSigningKeysForScope(query: AuthorizationQuery): SigningKey[] | null {
+    const result = this.check(query);
+    if (!result.authorized) return null;
+    return result.signing_keys ?? [];
+  }
+
   // ── Evaluation ──────────────────────────────────────────────────
 
   private evaluateEntries(entries: AuthorizationEntry[], query: AuthorizationQuery): AuthorizationResult {
-    // Find the first matching entry (most permissive wins)
+    // Every entry that authorizes the query counts (the scope union). The
+    // descriptive fields come from the first; `signing_keys` is the union of
+    // their pins, or absent when any of them is unpinned (#9016).
     let lastReason = 'no matching authorization entry';
+    const authorizing: AuthorizationEntry[] = [];
+    let first: AuthorizationResult | undefined;
     for (const entry of entries) {
       const result = this.evaluateEntry(entry, query);
-      if (result.authorized) return result;
-      if (result.reason) lastReason = result.reason;
+      if (result.authorized) {
+        authorizing.push(entry);
+        first ??= result;
+      } else if (result.reason) {
+        lastReason = result.reason;
+      }
     }
 
-    return { authorized: false, reason: lastReason };
+    if (!first) return { authorized: false, reason: lastReason };
+    return { ...first, signing_keys: combinedSigningKeys(authorizing) };
   }
 
   private evaluateEntry(entry: AuthorizationEntry, query: AuthorizationQuery): AuthorizationResult {

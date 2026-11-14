@@ -321,6 +321,13 @@ export interface AuthorizationResult {
     placement_tags?: string[];
     effective_from?: string;
     effective_until?: string;
+    /**
+     * The keys the agent may sign with for this publisher, across EVERY
+     * entry that authorizes it for the requested scope (#9016): the union of
+     * their pins, or absent when any of them has no `signing_keys`, which
+     * means no restriction. The other fields above describe the first such
+     * entry in document order.
+     */
     signing_keys?: AgentSigningKey[];
   };
 }
