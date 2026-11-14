@@ -379,7 +379,7 @@
           },
           "by_package": {
             "type": "array",
-            "description": "Metrics broken down by package",
+            "description": "Metrics broken down by package. Every media buy has at least one package, so sellers SHOULD return at least one row, one per package in the media buy. A seller that cannot report a buy SHOULD omit its delivery row and return an error rather than return an empty array. AdCP 4.0 is expected to require at least one row (adcp#8973).",
             "items": {
               "allOf": [
                 {
