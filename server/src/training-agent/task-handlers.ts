@@ -15387,6 +15387,35 @@ async function validateCreativeForProduct(
   return result.result_kind === 'validated_fail' ? (result.violations ?? []) : [];
 }
 
+// A manifest without format_option_ref routes by format_kind alone only when
+// the target product declares one option of that kind. With two or more, the
+// seller must not pick one from the assets (canonical-formats.mdx, routing
+// rule). Counts the product's format_options, not the package's selection.
+// Legacy format_id manifests route through v1_format_ref.
+function missingFormatOptionRefViolation(
+  product: Product,
+  manifest: CreativeManifest,
+): ValidateInputViolation[] {
+  if (manifest.format_option_ref !== undefined || manifest.format_id !== undefined) return [];
+  if (typeof manifest.format_kind !== 'string') return [];
+  const sameKind = productCanonicalFormatOptions(product).filter(format => format.format_kind === manifest.format_kind);
+  if (sameKind.length < 2) return [];
+  return [{
+    rule: 'format_option_ref_required',
+    field: 'format_option_ref',
+    expected: sameKind.flatMap(format => typeof format.format_option_id === 'string' ? [format.format_option_id] : []),
+  }];
+}
+
+async function validateAssignedCreative(
+  product: Product,
+  manifest: CreativeManifest,
+): Promise<ValidateInputViolation[]> {
+  const routing = missingFormatOptionRefViolation(product, manifest);
+  if (routing.length > 0) return routing;
+  return validateCreativeForProduct(product, manifest);
+}
+
 function creativeValidationErrors(
   violations: ValidateInputViolation[],
   fieldPrefix: string,
@@ -17058,7 +17087,7 @@ async function handleCreateMediaBuyUnlocked(
       }
       const assignedManifest = session.creatives.get(creativeId)?.manifest;
       if (assignedManifest) {
-        const violations = await validateCreativeForProduct(product, assignedManifest);
+        const violations = await validateAssignedCreative(product, assignedManifest);
         errors.push(...creativeValidationErrors(violations, `packages[${i}].creative_assignments[${j}]`));
       }
       creativeAssignments.push(creativeId);
@@ -17073,7 +17102,7 @@ async function handleCreateMediaBuyUnlocked(
           : undefined;
         const manifest = normalizedCreativeManifest(creative, existingCreative, identity.identity);
         if (!manifest) continue;
-        const violations = await validateCreativeForProduct(product, manifest);
+        const violations = await validateAssignedCreative(product, manifest);
         errors.push(...creativeValidationErrors(violations, `packages[${i}].creatives[${creativeIndex}]`));
       }
     }
@@ -18886,7 +18915,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
           if (!pkg.creativeAssignments.includes(creativeId)) continue;
           const product = productValidationMap.get(pkg.productId);
           if (!product) continue;
-          assignedViolations.push(...await validateCreativeForProduct(product, candidateManifest));
+          assignedViolations.push(...await validateAssignedCreative(product, candidateManifest));
         }
       }
       if (assignedViolations.length > 0) {
@@ -19049,7 +19078,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       const candidateManifest = stagedCreativeManifests.get(creativeId)
         ?? session.creatives.get(creativeId)?.manifest;
       if (product && candidateManifest) {
-        const violations = await validateCreativeForProduct(product, candidateManifest);
+        const violations = await validateAssignedCreative(product, candidateManifest);
         if (violations.length > 0) {
           assignmentResults.push({
             creative_id: creativeId,
@@ -19084,7 +19113,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         const manifest = stagedCreativeManifests.get(creativeId)
           ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.manifest;
         if (!product || !manifest) return undefined;
-        const violations = await validateCreativeForProduct(product, manifest);
+        const violations = await validateAssignedCreative(product, manifest);
         return violations.length > 0
           ? `Creative ${creativeId} does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`
           : undefined;
