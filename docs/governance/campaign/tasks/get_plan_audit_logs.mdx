@@ -205,7 +205,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "id": "out_del_001",
           "type": "outcome",
           "timestamp": "2026-03-22T00:00:00Z",
-          "caller": "https://ads.seller-example.com/adcp",
+          "caller": "https://orchestrator.pinnacle-media.com/agent",
           "governance_context": "gc_mb_seller_456",
           "purchase_type": "media_buy",
           "outcome": "delivery",
@@ -321,7 +321,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].plan_id` | string | Plan this entry belongs to. Present when querying multiple plans or a portfolio. |
 | `plans[].entries[].caller` | string | URL of the agent that made the request. Resolved from the credentials used on the governance callback. |
 | `plans[].entries[].tool` | string | The AdCP tool (present for `check` entries). |
-| `plans[].entries[].status` | enum | Governance check status (present for `check` entries). |
+| `plans[].entries[].verdict` | enum | Governance verdict: `approved`, `denied`, or `conditions` (present for `check` entries). Renamed from `status` in 3.1. |
 | `plans[].entries[].check_type` | enum | `intent` or `execution` (present for `check` entries). Inferred from the fields present on the original check request. |
 | `plans[].entries[].mode` | enum | `audit`, `advisory`, or `enforce` — governance mode active when this check was evaluated. Recorded by the governance agent from its runtime configuration at check time, not from a plan field. Present on check entries; absent on outcome entries and on governance agents that have not yet adopted this field. Lets auditors distinguish `approved` decisions made under `enforce` from those made under `audit` (where the agent could not have blocked anything). |
 | `plans[].entries[].explanation` | string | Human-readable explanation of the governance decision (present for `check` entries). |
