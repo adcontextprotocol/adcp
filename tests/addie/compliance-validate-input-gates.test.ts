@@ -177,6 +177,9 @@ describe.each(['source', 'published bundle'])('3.2 validate_input gates: %s', su
       expect(complianceResultToDbInput(result, result.agent_url, 'production').tracks_json[0].status).toBe('fail');
     });
 
+    // Each result loads its pinned storyboard from the hosted bundle, uncached
+    // on 3.2.x (main caches it since #8507). Two results here take 2.5-7 s on
+    // a CI runner, too close to the 10 s default.
     it('keeps fixture-unavailable coverage untested without masking independent validator failures', () => {
       const storyboard = loadStoryboard(name, surface);
       const [first, second] = storyboard.phases[0].steps;
@@ -202,6 +205,6 @@ describe.each(['source', 'published bundle'])('3.2 validate_input gates: %s', su
       }, ...gapSteps]);
       expect(deriveStoryboardStatuses(mixed)[0]).toMatchObject({ status: 'failing', failure_count: 1 });
       expect(complianceResultToDbInput(mixed, mixed.agent_url, 'production').tracks_json[0].status).toBe('fail');
-    });
+    }, 30_000);
   });
 });
