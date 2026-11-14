@@ -2,6 +2,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import { agentUrlAuthorizedBy, specExactAgentUrl } from "./db/registry-agent-url-key.js";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
+import { combinedSigningKeys } from "./services/matched-signing-keys.js";
 import type {
   AdAgentsJson,
   AuthorizationResult,
@@ -140,7 +141,12 @@ export class AgentValidator {
         };
       }
 
-      const matchedAuthorization = data.authorized_agents.find((agent) =>
+      // Every entry that authorizes the agent for this scope. Under 3.3 more
+      // than one can (an origin-only entry and the agent's full URL, say), and
+      // each one authorizes it (#9011). The descriptive fields below come from
+      // the first in document order; `signing_keys` combines across all of
+      // them (#9016).
+      const matchedAuthorizations = data.authorized_agents.filter((agent) =>
         this.matchesAuthorization(
           agent,
           normalizedDomain,
@@ -151,6 +157,7 @@ export class AgentValidator {
           data.placement_tags || {}
         )
       );
+      const matchedAuthorization = matchedAuthorizations[0];
 
       return {
         authorized: !!matchedAuthorization,
@@ -170,7 +177,10 @@ export class AgentValidator {
               placement_tags: matchedAuthorization.placement_tags,
               effective_from: matchedAuthorization.effective_from,
               effective_until: matchedAuthorization.effective_until,
-              signing_keys: matchedAuthorization.signing_keys,
+              // Pinned only if every entry that authorizes this scope pins;
+              // then the union of their keys. Absent means no restriction
+              // (#9016, services/matched-signing-keys.ts).
+              signing_keys: combinedSigningKeys(matchedAuthorizations),
             }
           : undefined,
       };

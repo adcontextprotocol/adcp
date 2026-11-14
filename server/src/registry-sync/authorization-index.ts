@@ -16,6 +16,7 @@
 
 import type { CatalogPropertyIndex } from './property-index.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
+import { combinedSigningKeys } from '../services/matched-signing-keys.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -245,7 +246,11 @@ export class AuthorizationIndex {
   }
 
   /**
-   * Get publisher-attested signing keys for an agent.
+   * Get publisher-attested signing keys for an agent: the union of the pins
+   * on every entry this publisher lists for it, or `[]` (no publisher pin;
+   * fall back to the agent's own JWKS) when any of those entries has no
+   * `signing_keys` (#9016). An unpinned entry already authorizes the agent
+   * with any key, so another entry's pin restricts nothing.
    */
   getSigningKeys(agentUrl: string, publisherDomain: string): SigningKey[] {
     const byDomain = this.primary.get(agentUrl);
@@ -254,27 +259,30 @@ export class AuthorizationIndex {
     const entries = byDomain.get(publisherDomain);
     if (!entries) return [];
 
-    const keys: SigningKey[] = [];
-    for (const entry of entries) {
-      if (entry.signing_keys) {
-        keys.push(...entry.signing_keys);
-      }
-    }
-    return keys;
+    return combinedSigningKeys(entries) ?? [];
   }
 
   // ── Evaluation ──────────────────────────────────────────────────
 
   private evaluateEntries(entries: AuthorizationEntry[], query: AuthorizationQuery): AuthorizationResult {
-    // Find the first matching entry (most permissive wins)
+    // Every entry that authorizes the query counts (the scope union). The
+    // descriptive fields come from the first; `signing_keys` is the union of
+    // their pins, or absent when any of them is unpinned (#9016).
     let lastReason = 'no matching authorization entry';
+    const authorizing: AuthorizationEntry[] = [];
+    let first: AuthorizationResult | undefined;
     for (const entry of entries) {
       const result = this.evaluateEntry(entry, query);
-      if (result.authorized) return result;
-      if (result.reason) lastReason = result.reason;
+      if (result.authorized) {
+        authorizing.push(entry);
+        first ??= result;
+      } else if (result.reason) {
+        lastReason = result.reason;
+      }
     }
 
-    return { authorized: false, reason: lastReason };
+    if (!first) return { authorized: false, reason: lastReason };
+    return { ...first, signing_keys: combinedSigningKeys(authorizing) };
   }
 
   private evaluateEntry(entry: AuthorizationEntry, query: AuthorizationQuery): AuthorizationResult {

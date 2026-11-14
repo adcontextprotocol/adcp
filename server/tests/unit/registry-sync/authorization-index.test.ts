@@ -490,6 +490,44 @@ describe('AuthorizationIndex', () => {
       expect(result.authorized).toBe(true);
       expect(result.signing_keys).toHaveLength(1);
     });
+
+    // #9016: pinned only if every entry for the agent pins; then the union.
+    it.each([
+      ['unpinned first', [undefined, [{ algorithm: 'ed25519', public_key: 'key1' }]]],
+      ['pinned first', [[{ algorithm: 'ed25519', public_key: 'key1' }], undefined]],
+      ['empty array', [[], [{ algorithm: 'ed25519', public_key: 'key1' }]]],
+    ] as const)('is unpinned when any authorizing entry is unpinned (%s)', (_label, pins) => {
+      for (const signing_keys of pins) {
+        index.addEntry(makeEntry({ signing_keys: signing_keys as AuthorizationEntry['signing_keys'] }));
+      }
+      const result = index.check({ agent_url: 'https://agent.example.com', property_rid: 'rid-001' });
+      expect(result.authorized).toBe(true);
+      expect(result.signing_keys).toBeUndefined();
+      expect(index.getSigningKeys('https://agent.example.com', 'publisher.example.com')).toEqual([]);
+    });
+
+    it('is the union of the keys when every authorizing entry pins', () => {
+      index.addEntry(makeEntry({ signing_keys: [{ algorithm: 'ed25519', public_key: 'key1' }] }));
+      index.addEntry(makeEntry({
+        signing_keys: [
+          { algorithm: 'ed25519', public_key: 'key2' },
+          { algorithm: 'ed25519', public_key: 'key1' },
+        ],
+      }));
+      const result = index.check({ agent_url: 'https://agent.example.com', property_rid: 'rid-001' });
+      expect(result.signing_keys?.map(k => k.public_key)).toEqual(['key1', 'key2']);
+      expect(index.getSigningKeys('https://agent.example.com', 'publisher.example.com').map(k => k.public_key))
+        .toEqual(['key1', 'key2']);
+    });
+
+    it('lets an entry that does not authorize the query neither pin nor unpin it', () => {
+      index.addEntry(makeEntry({ countries: ['GB'] }));
+      index.addEntry(makeEntry({ signing_keys: [{ algorithm: 'ed25519', public_key: 'key1' }] }));
+      const us = index.check({ agent_url: 'https://agent.example.com', property_rid: 'rid-001', country: 'US' });
+      expect(us.signing_keys?.map(k => k.public_key)).toEqual(['key1']);
+      const gb = index.check({ agent_url: 'https://agent.example.com', property_rid: 'rid-001', country: 'GB' });
+      expect(gb.signing_keys).toBeUndefined();
+    });
   });
 
   // ── Delegation and exclusivity ──────────────────────────────────
