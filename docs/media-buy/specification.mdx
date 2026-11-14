@@ -941,7 +941,13 @@ selection and impairment rules and do not re-arm the gate.
 Compact buyers check support before booking, commit through `buy_products` or
 `accept_proposal`, set the gate through `control_media_buy` using the returned
 package IDs and latest revision, then assign the complete set through one
-strict `sync_creatives.assignment_operations` batch. No creative assignment
+strict `sync_creatives.assignment_operations` batch, which needs `assign` in
+the seller's `creative.assignment_operations`. A seller that exposes
+`buy_products` or `accept_proposal` and declares
+`creative.has_creative_library: true` MUST list `assign` in
+`creative.assignment_operations` in every capabilities response served at
+3.3 or later, since this batch is the only way a compact buy gets its
+creatives. No creative assignment
 belongs in the purchase request. For staged supply, keep the buy or package
 paused until the intended set is assigned, then resume when review permits it.
 
