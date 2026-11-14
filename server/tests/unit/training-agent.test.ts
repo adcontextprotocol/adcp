@@ -73,6 +73,7 @@ function futureFlight(): { start_time: string; end_time: string } {
 }
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
+import { computePlanHash } from '../../src/training-agent/plan-hash.js';
 import {
   CANONICAL_GOV_ISS,
   clearGovernanceTokenReplayRegistry,
@@ -18965,8 +18966,8 @@ describe('sync_plans input validation', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
     });
-    expect(result.status).toBe('denied');
-    expect(result.explanation).toContain('Plan not found');
+    expect(result.code).toBe('PLAN_NOT_FOUND');
+    expect(result.field).toBe('plan_id');
   });
 });
 
@@ -25391,11 +25392,71 @@ describe('human_review_required auto-flip and enforcement', () => {
 
   it('auto-flips human_review_required when policy_categories contains fair_lending', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'derived.example' }, operator: 'test.example' };
+    // The plan omits the flag; the governance agent derives it from the category.
     const { result, isError } = await simulateCallTool(server, 'sync_plans', {
-      plans: [{ ...PLAN_BASE, policy_categories: ['fair_lending'], human_review_required: true }],
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'derived.example' },
+        policy_categories: ['fair_lending'],
+      }],
     });
     expect(isError).toBeFalsy();
     expect((result.plans as Array<{ status: string }>)[0].status).toBe('active');
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload: { type: 'media_buy', account, total_budget: 20 },
+    });
+    expect(check.status).toBe('denied');
+    const findings = check.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.find(f => f.category_id === 'human_review')?.severity).toBe('critical');
+  });
+
+  it('keeps the derived flag out of the plan_hash preimage', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'preimage.example' }, operator: 'test.example' };
+    const plan = {
+      ...PLAN_BASE,
+      brand: { ...PLAN_BASE.brand, domain: 'preimage.example' },
+      policy_categories: ['fair_lending'],
+    };
+    await simulateCallTool(server, 'sync_plans', { account, plans: [plan] });
+
+    const payload = { type: 'media_buy', account, total_budget: 20 };
+    const { result: denied } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload,
+    });
+    expect(denied.status).toBe('denied');
+
+    const { result: approved } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      ext: {
+        human_approval: {
+          approved_by: 'human-reviewer-1',
+          approved_at: '2099-03-15T12:00:00Z',
+          approval_reference: denied.check_id,
+        },
+      },
+      payload,
+    });
+    expect(approved.status).toBe('approved');
+
+    const token = approved.governance_context as string;
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as { plan_hash: string };
+    expect(claims.plan_hash).toBe(computePlanHash(plan));
+    expect(claims.plan_hash).not.toBe(computePlanHash({ ...plan, human_review_required: true }));
   });
 
   it('rejects plan that sets human_review_required=false with fair_housing category', async () => {

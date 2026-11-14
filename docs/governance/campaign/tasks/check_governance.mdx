@@ -284,7 +284,7 @@ See the [specification](/docs/governance/campaign/specification#spend-commit-inv
 
 `conditions` is valid only for intent checks and carries no `governance_context`. It returns a separate `consultation_context`, which is only a negotiation handle: the buyer returns it with the adjusted `plan_id` + `tool` + `payload` re-check and MUST NOT send it to a service. The governance agent binds that handle to the authenticated principal, caller, plan, tool, purchase type, and target audience; any mismatch is rejected. The caller must receive `approved` before proceeding. Conditions with a `required_value` are machine-actionable; conditions without one describe the adjustment the buyer must make. Execution and lifecycle checks return either `approved` or `denied`.
 
-Governance agents SHOULD return `denied` after 3 unsuccessful intent re-calls for the same action. This prevents infinite negotiation loops.
+Governance agents SHOULD return `denied` after 3 unsuccessful intent re-calls for the same action. "The same action" means re-checks that carry the same `consultation_context`. This prevents infinite negotiation loops.
 
 ### Human review
 
@@ -738,10 +738,10 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| [`PLAN_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-plan-not-found) | correctable | No plan with this ID. The buyer may not have synced the plan yet. |
+| [`PLAN_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-plan-not-found) | correctable | No plan with this ID, or the plan is not accessible to the caller. The two cases are indistinguishable in the response. The buyer may not have synced the plan yet. |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | The request mixes intent and execution fields, omits a shape-dependent field such as `target_agent` or `execution_commitment`, changes a consultation binding, or carries an invalid amount/currency. Correct the named field and retry; send exactly one check shape. |
 | [`CAMPAIGN_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-campaign-suspended) | transient | Campaign governance is suspended pending human review. Wait for the escalation to resolve; contact the plan operator if it persists. |
-| [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) | correctable | Authenticated identity is missing/mismatched, the buyer-side caller is not authorized by `delegations`, or the target/executing service is not authorized by `approved_sellers`. Retry only with the correct authenticated identity or after authority is granted. |
+| [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) | correctable | Authenticated identity is missing or does not match the declared `caller`. Retry only with the correct authenticated identity. A failed `delegations` or `approved_sellers` evaluation for an authenticated caller is a `denied` verdict with a finding, not this error. |
 | [`GOVERNANCE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-governance-unavailable) | transient | The configured governance agent could not be reached. Retry with backoff; do not perform the governed action while the gate is unavailable. |
 
 ## Related tasks

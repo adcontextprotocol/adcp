@@ -766,7 +766,7 @@ export const GOVERNANCE_TOOLS = [
                 },
                 required: ['total', 'currency'],
               },
-              human_review_required: { type: 'boolean', description: 'When true, every plan action escalates for human review. MUST be true when policy_categories contains a regulated vertical (fair_housing, fair_lending, fair_employment, pharmaceutical_advertising) or policy_ids contains eu_ai_act_annex_iii.' },
+              human_review_required: { type: 'boolean', description: 'When true, every plan action escalates for human review. Omit it to let the governance agent derive it. false is rejected when policy_categories contains a regulated vertical (fair_housing, fair_lending, fair_employment, pharmaceutical_advertising) or policy_ids contains eu_ai_act_annex_iii.' },
               human_override: {
                 type: 'object',
                 description: 'Required to downgrade an existing plan from human_review_required=true to false. Training agent requires approver (email) and reason (>=20 chars); production agents should bind to signed identity.',
@@ -816,7 +816,7 @@ export const GOVERNANCE_TOOLS = [
                   required: ['policy'],
                 },
               },
-              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Governance enforcement mode. Defaults to enforce.' },
+              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Training-agent test control, not an AdCP sync_plans field: sets the governance mode this sandbox applies to the plan. Production governance agents configure mode out of band. Defaults to enforce.' },
               approved_sellers: { type: ['array', 'null'], description: 'Seller allowlist. null = unrestricted, [] = deny all, [...urls] = only listed sellers.' },
               delegations: {
                 type: 'array',
@@ -1276,6 +1276,20 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
         }
       }
     }
+
+    // A re-sync may not reduce budget.total below what is already committed
+    // to the plan. The prior plan stays in force.
+    if (existing
+      && plan.budget.total < existing.budget.total
+      && exceedsBound(existing.committedBudget, plan.budget.total)) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `plan ${plan.plan_id} budget.total ${plan.budget.total} is below the $${existing.committedBudget} already committed to it`,
+          field: `plans[${i}].budget.total`,
+        }],
+      };
+    }
   }
 
   for (const [planIndex, plan] of input.plans.entries()) {
@@ -1724,14 +1738,42 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     };
   }
 
+  // An authenticated caller that fails an authority gate before plan
+  // evaluation gets a denied verdict, not an error: the attempt has a check_id
+  // and, when the plan owner is known, an entry in that plan's audit log. The
+  // record carries no governance_context and no action binding, and the
+  // response reveals nothing about the plan. The denial does not depend on the
+  // plan's mode.
+  const denyBeforeEvaluation = (
+    finding: GovernanceFinding,
+    explanation: string,
+    extra: Partial<Pick<GovernanceCheckState, 'planOwnerAgentUrl' | 'tool'>> = {},
+  ) => {
+    const checkId = `chk_${randomUUID().slice(0, 8)}`;
+    const check: GovernanceCheckState = {
+      checkId,
+      planId,
+      binding,
+      status: 'denied',
+      caller,
+      tool,
+      phase,
+      findings: [finding],
+      explanation,
+      mode: 'enforce',
+      categoriesEvaluated: [finding.categoryId],
+      policiesEvaluated: [],
+      purchaseType,
+      timestamp: new Date().toISOString(),
+      ...extra,
+    };
+    session.governanceChecks.set(checkId, check);
+    return buildCheckResponse(check, governanceServedVersion(ctx));
+  };
+
   if (
     binding === 'committed'
-    && (
-      !priorCheck?.targetAudience
-      || authenticatedCaller === undefined
-      || authenticatedCaller !== priorCheck.targetAudience
-      || claimedCaller !== priorCheck.targetAudience
-    )
+    && (!priorCheck?.targetAudience || authenticatedCaller === undefined)
   ) {
     return {
       errors: [{
@@ -1739,6 +1781,18 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
         message: 'Execution governance caller must authenticate as the service audience bound by the prior approved context.',
       }],
     };
+  }
+
+  if (binding === 'committed' && authenticatedCaller !== priorCheck?.targetAudience) {
+    const explanation = `Caller ${caller} is not the service audience bound by the approved intent.`;
+    return denyBeforeEvaluation(
+      { categoryId: 'seller_compliance', severity: 'critical', explanation },
+      `Denied: ${explanation}`,
+      {
+        ...(priorCheck?.planOwnerAgentUrl ? { planOwnerAgentUrl: priorCheck.planOwnerAgentUrl } : {}),
+        tool: priorCheck?.tool,
+      },
+    );
   }
 
   if (
@@ -1869,27 +1923,17 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     };
   }
 
+  // One response for a plan that does not exist and for a plan the caller
+  // cannot access (error-code.json PLAN_NOT_FOUND). Nothing is stored and no
+  // check_id is issued.
   if (!plan) {
-    const checkId = `chk_${randomUUID().slice(0, 8)}`;
-    const check: GovernanceCheckState = {
-      checkId,
-      planId,
-      governanceContext,
-      binding,
-      status: 'denied',
-      caller,
-      tool,
-      phase,
-      findings: [{ categoryId: 'plan_lookup', severity: 'critical', explanation: `Plan not found: ${planId}` }],
-      explanation: `Plan not found: ${planId}. Call sync_plans first.`,
-      mode: 'enforce',
-      categoriesEvaluated: ['plan_lookup'],
-      policiesEvaluated: [],
-      purchaseType,
-      timestamp: new Date().toISOString(),
+    return {
+      errors: [{
+        code: 'PLAN_NOT_FOUND',
+        message: 'No plan with this plan_id exists or is accessible to the caller. Call sync_plans first.',
+        field: 'plan_id',
+      }],
     };
-    session.governanceChecks.set(checkId, check);
-    return buildCheckResponse(check, governanceServedVersion(ctx));
   }
 
   const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
@@ -1897,9 +1941,12 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       delegation.agentUrl === authenticatedCaller
       && (!delegation.expiresAt || new Date(delegation.expiresAt) >= new Date())));
   if (binding === 'proposed' && !ownerOrDelegated) {
-    return {
-      errors: [{ code: 'PERMISSION_DENIED', message: 'The authenticated buyer does not own this plan and has no active delegation.' }],
-    };
+    const explanation = `Buyer-side caller ${caller} is not the plan owner and holds no current delegation on this plan.`;
+    return denyBeforeEvaluation(
+      { categoryId: 'delegation_authority', severity: 'critical', explanation },
+      `Denied: ${explanation}`,
+      { planOwnerAgentUrl: plan.ownerAgentUrl },
+    );
   }
 
   const originalIntentCheck = priorCheck?.binding === 'proposed'
@@ -2598,7 +2645,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     findings.push({
       categoryId: 'human_review_override',
       severity: 'info',
-      explanation: `plan.mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
+      explanation: `governance mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
     });
   }
 

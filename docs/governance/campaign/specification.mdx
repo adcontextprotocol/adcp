@@ -87,7 +87,7 @@ When `purchase_type` is omitted, the governance agent assumes `media_buy`.
 
 ### Budget reallocation
 
-`budget.reallocation_threshold` (required number) governs budget reallocation autonomy. It does not cover mandatory human review of decisions that affect data subjects — for that, see the plan-level `human_review_required` field.
+`budget.reallocation_threshold` (a number, required unless `budget.reallocation_unlimited` is `true`; the two are mutually exclusive) governs budget reallocation autonomy. It does not cover mandatory human review of decisions that affect data subjects — for that, see the plan-level `human_review_required` field.
 
 | Value | Meaning |
 |-------|---------|
@@ -149,7 +149,7 @@ Periods are optional and additive. A plan without them behaves exactly as before
 
 ### Human review required
 
-`human_review_required` is a plan-level boolean (default `false`) that mandates human oversight of every action on the plan, independent of budget reallocation autonomy.
+`human_review_required` is an optional plan-level boolean that mandates human oversight of every action on the plan, independent of budget reallocation autonomy. When a plan omits it, the governance agent derives the value from the plan's resolved policies and policy categories.
 
 The governance agent sets `human_review_required: true` automatically when any resolved policy or policy_category on the plan carries `requires_human_review: true`. This includes regulated verticals such as `fair_housing`, `fair_lending`, `fair_employment`, and `pharmaceutical_advertising`, and the `eu_ai_act_annex_iii` policy covering decisions in Annex III use cases.
 
@@ -162,7 +162,7 @@ This field is distinct from `budget.reallocation_threshold`:
 | `budget.reallocation_threshold` | Operational | Controls agent autonomy for budget reallocation within the plan |
 | `human_review_required` | Regulatory | Mandates human review of decisions affecting individuals (e.g., GDPR Art 22, EU AI Act Annex III) |
 
-Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and overrides a caller-supplied `false` when a triggering policy is present.
+Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and rejects a caller-supplied `false` when a triggering policy is present.
 
 ### Spend-commit invocation
 
@@ -212,7 +212,7 @@ Applicability is resolved from the commercial account, not from token presence. 
 
 For any task declared with `signed_context`, the service commits only after verifying the approved context. Media-buy tasks may additionally declare `online_execution_check`; those services follow **prepare → check → commit** by computing `planned_delivery` without externally committing it, calling `check_governance`, and committing atomically only after `approved`. Execution checks return `approved` or `denied`. Other roles do not claim online execution checking until AdCP defines a prepared-result contract for that role; they MUST NOT invent `planned_delivery` or `media_buy_id` values.
 
-Identity is role-specific. On the buyer's intent check, `caller` is the authenticated buyer-side principal and is evaluated against `delegations`; `approved_sellers` is evaluated against the target service that becomes the token `aud`, never against that buyer. Every later execution check resolves that original intent by its opaque action binding before evaluating delegation—the immediately prior check's caller may be the seller. On an execution check, the authenticated `caller` MUST equal the audience preserved from the approved intent, and that seller identity is evaluated against `approved_sellers`. The execution commitment may narrow the approved intent but MUST use the same currency and MUST NOT exceed the intent's `authorized_commitment`. For `update_media_buy`, the seller computes `max(0, new committed total − authoritative current total)` atomically with its revision check and write, enforces the signed intent ceiling, and reports that value as `execution_commitment`; the governance agent never infers a delta by reading seller state or subtracting from the seller's post-update total. A buyer/seller delta mismatch fails closed and requires a fresh intent.
+Identity is role-specific. On the buyer's intent check, `caller` is the authenticated buyer-side principal and is evaluated against `delegations`; `approved_sellers` is evaluated against the target service that becomes the token `aud`, never against that buyer. Every later execution check resolves that original intent by its opaque action binding before evaluating delegation—the immediately prior check's caller may be the seller. On an execution check, the authenticated `caller` MUST equal the audience preserved from the approved intent, and that seller identity is evaluated against `approved_sellers`. A failed `delegations` or `approved_sellers` evaluation for an authenticated caller, including an execution check whose authenticated caller is not that preserved audience, is returned as a `denied` verdict with a finding and a `check_id`, never as an error; `check_governance` returns `PERMISSION_DENIED` when the caller is unauthenticated or its authenticated identity does not match `caller`, and `PLAN_NOT_FOUND` when the plan is not accessible to the caller, exactly as for an unknown `plan_id`. The execution commitment may narrow the approved intent but MUST use the same currency and MUST NOT exceed the intent's `authorized_commitment`. For `update_media_buy`, the seller computes `max(0, new committed total − authoritative current total)` atomically with its revision check and write, enforces the signed intent ceiling, and reports that value as `execution_commitment`; the governance agent never infers a delta by reading seller state or subtracting from the seller's post-update total. A buyer/seller delta mismatch fails closed and requires a fresh intent.
 
 Sellers MUST persist the accepted intent token and any lifecycle tokens they subsequently hold, keyed at minimum by `jti` with `iss`, `aud`, the opaque action binding in `sub`, `phase`, decision outcome, and the timestamp of acceptance. They MUST NOT treat `sub` as a plan identifier. Retention follows the seller's regulatory retention period. Without seller-side retention, the audit log is single-sourced from the governance agent; independent reconciliation between seller records and `get_plan_audit_logs` is the cross-check that catches a compromised or misbehaving governance agent.
 
@@ -337,7 +337,7 @@ Authority levels:
 | `execute_only` | Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget |
 | `propose_only` | Can propose actions for governance review but cannot execute without explicit approval |
 
-The governance agent resolves the authenticated transport credential to an agent URL and requires the request's `caller` assertion to match it. For a non-owner caller, it then compares that resolved URL with the delegation's `agent_url`. It MUST NOT authorize from the body assertion alone. Matching is exact and case-sensitive after normalization per RFC 3986. Every call fails closed when the credential has no agent-URL mapping. An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels.
+The governance agent resolves the authenticated transport credential to an agent URL and requires the request's `caller` assertion to match it. For a non-owner caller, it then compares that resolved URL with the delegation's `agent_url`. It MUST NOT authorize from the body assertion alone. Matching is exact and case-sensitive after normalization per RFC 3986. Every call fails closed when the credential has no agent-URL mapping. An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels. A pre-approved action is one whose opaque action binding already holds an approved intent check in this plan's lifecycle: an `execute_only` delegate MAY act only on such an action, and MUST NOT initiate an intent check that would create a new binding or increase committed spend.
 
 The authenticated buyer principal that synchronized the plan is its owner and
 always retains full authority. Delegations add explicitly scoped non-owner
@@ -484,7 +484,7 @@ Policies are declared directly on the plan via `policy_ids` and `custom_policies
 **`custom_policies` are additive only.** Governance agents MUST pin registry-sourced policy text as system-level instructions and MUST NOT permit `custom_policies` (or the plan's `objectives` field) to relax, override, or disable registry-sourced policies. Custom policies may add tighter restrictions — they cannot lower enforcement levels or exempt categories. A `custom_policies` entry that contradicts a registry policy is evaluated alongside it, not instead of it; the stricter constraint governs.
 </Warning>
 
-The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject governed actions targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects actions not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
+The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject governed actions targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects actions not explicitly targeting Massachusetts, even if they are otherwise compliant. An action with no geographic targeting, or with country-level targeting only, is treated as targeting the whole country and is outside a regions-restricted plan: an intent check returns `conditions` naming the region constraint, and an execution check returns `denied`. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 
 The resolved policy set is what the governance agent evaluates during [`check_governance`](/docs/governance/campaign/tasks/check_governance). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
 
@@ -619,7 +619,7 @@ Organizations set only the thresholds relevant to their concern. An `escalation_
 
 ### Plan amendments
 
-Calling `sync_plans` with an existing `plan_id` updates the plan (upsert). The governance agent increments `plan_version` and applies the new parameters immediately. Active media buys that were approved under the previous plan version are not automatically re-validated -- the governance agent evaluates them against the updated plan on the next `check_governance` call (e.g., the next delivery check). If an amendment reduces the budget below the currently committed amount, the governance agent flags this as a finding on the next governance check.
+Calling `sync_plans` with an existing `plan_id` updates the plan (upsert). The governance agent increments `plan_version` and applies the new parameters immediately. Active media buys that were approved under the previous plan version are not automatically re-validated -- the governance agent evaluates them against the updated plan on the next `check_governance` call (e.g., the next delivery check). A sync that reduces `budget.total` (or a period `amount`) below the amount already committed is rejected with `VALIDATION_ERROR` and leaves the plan unchanged.
 
 ## Validation logic
 
@@ -878,9 +878,11 @@ The seller stores these endpoints and presents the credentials when calling `che
 Governance mode (audit, advisory, enforce) is an internal implementation detail of the governance agent, not a protocol-level field. The caller sends `check_governance` and acts on the verdict without needing to know what mode produced it. Intent checks may return `approved`, `denied`, or `conditions`; execution checks return `approved` or `denied`.
 
 This means:
-- A governance agent in audit mode internally always returns `approved` with findings attached
-- A governance agent in advisory mode returns `approved` with prominent findings and recommended corrections
+- A governance agent in audit mode internally always returns `approved` with findings attached, except for plans with `human_review_required: true`, which escalate in every mode
+- A governance agent in advisory mode returns `approved` with prominent findings and recommended corrections, with the same exception for plans with `human_review_required: true`
 - A governance agent in enforce mode returns `denied` and expects the caller to stop
+
+Mode governs how findings about the governed action are enforced. It does not relax who may call: a buyer-side caller that is neither the plan owner nor a current delegate, and an execution caller that is not the audience preserved from the approved intent, are refused in every mode.
 
 Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent MAY include mode information in its audit logs or `get_plan_audit_logs` response for post-hoc analysis, but callers MUST NOT branch behavior based on mode — they act on the status they receive.
 
@@ -916,7 +918,7 @@ What the claim delivers:
 
 `plan_hash = base64url_no_pad(SHA-256(JCS(plan_payload)))` where:
 
-- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](/docs/building/by-layer/L1/security#payload-equivalence). Governance agents and auditor verifiers SHOULD use the same library implementations listed there. JCS sorts object keys lexicographically by code point (caller key order in the `sync_plans` request does not affect the hash) and preserves the distinction between an omitted optional field and an explicit `null` (these produce different hashes). Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls.
+- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](/docs/building/by-layer/L1/security#payload-equivalence). Governance agents and auditor verifiers SHOULD use the same library implementations listed there. JCS sorts object keys lexicographically by code point (caller key order in the `sync_plans` request does not affect the hash) and preserves the distinction between an omitted optional field and an explicit `null` (these produce different hashes). Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls. Schema `default` annotations are never applied to the preimage: a field the buyer omitted stays omitted, and a value the governance agent derives for itself, such as `human_review_required`, is not written into it.
 - `plan_payload` is **one element of the `plans[]` array as supplied on `sync_plans`** — a single plan object, not the `sync_plans` request envelope and not the `plans` wrapper array. The preimage is the current plan-revision state at the time of attestation, i.e., the plan object the governance agent just evaluated. Implementations constructing the preimage start from the plan-revision object and remove the closed set of bookkeeping fields listed below.
 - `base64url_no_pad` follows RFC 4648 §5 with trailing `=` padding stripped — consistent with `jti` and other base64url values in the JWS profile. Governance agents MUST emit the unpadded form. Verifiers (governance agents re-verifying their own tokens, auditors, buyer-side compliance tooling) MUST compare by base64url-decoding both sides to the raw 32-byte SHA-256 digest and comparing bytes — NOT by string equality of the encoded form — so padding, case, or alphabet variation is rejected as a decode failure rather than producing a false non-match. A `plan_hash` that does not decode to exactly 32 bytes MUST be rejected.
 

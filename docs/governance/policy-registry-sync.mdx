@@ -47,7 +47,7 @@ When a deterministic policy text is required — a regulator pre-clearance, a fr
 }
 ```
 
-**Use a different `policy_id` from the registry one.** If the buyer reuses the canonical ID `alcohol_advertising` in `custom_policies`, governance-agent behavior is undefined by the spec — the [policy-entry schema](https://adcontextprotocol.org/schemas/v3/governance/policy-entry.json)'s additive-only rule pins registry text as authoritative for that ID. A pinning ID like `alcohol_advertising_pinned_2026Q4` (or your internal versioning convention) sidesteps the conflict.
+**Use a different `policy_id` from the registry one.** If the buyer reuses the canonical ID `alcohol_advertising` in `custom_policies` and also lists it in `policy_ids`, the governance agent rejects the sync with [`INVALID_REQUEST`](/docs/governance/campaign/tasks/sync_plans#error-codes). If the plan does not list it in `policy_ids`, governance-agent behavior is undefined by the spec — the [policy-entry schema](https://adcontextprotocol.org/schemas/v3/governance/policy-entry.json)'s additive-only rule pins registry text as authoritative for that ID. A pinning ID like `alcohol_advertising_pinned_2026Q4` (or your internal versioning convention) sidesteps the conflict.
 
 The plan revision now carries the frozen text. The `version` field on the inline policy is informational — the text is what gets evaluated — but worth setting for forensic traceability so an auditor can correlate the inline copy back to a specific registry release.
 

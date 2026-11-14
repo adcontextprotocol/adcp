@@ -176,15 +176,14 @@ Findings are how the audit trail communicates risk. Two patterns worth knowing:
 
 ### Security-shaped finding: an unauthorized seller
 
-The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` and gets denied:
+The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` with an execution check and gets denied:
 
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
   "status": "completed",
   "check_id": "chk_0ac8d7de",
-  "check_type": "intent",
-  "plan_id": "plan_2027_apex_athletic",
+  "check_type": "execution",
   "verdict": "denied",
   "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
@@ -230,7 +229,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
 
 ## The operator's dial: enforce / advisory / audit
 
-`mode` is governance agent configuration. The buyer's policy team sets it on the governance agent itself; it is not a plan field and is not sent in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans). It is the operator's primary lever, and an agent that reports `mode` records the mode in force on each check entry. The same caller, same payload, same finding produces three different outcomes depending on mode.
+`mode` is governance agent configuration. The buyer's policy team sets it on the governance agent itself; it is not a plan field and is not sent in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans). It is the operator's primary lever, and an agent that reports `mode` records the mode in force on each check entry. The same buyer, same target seller, same payload and same finding produces three different outcomes depending on mode.
 
 **`mode: "enforce"`** — the buy is blocked at the governance layer:
 
@@ -242,14 +241,14 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "check_type": "intent",
   "plan_id": "plan_mode_enforce",
   "verdict": "denied",
-  "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
+  "explanation": "Denied: Target seller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
   "policies_evaluated": [],
   "findings": [
     {
       "category_id": "seller_compliance",
       "severity": "critical",
-      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+      "explanation": "Target seller https://ads.seller-rogue.example is not in the plan's approved sellers list."
     }
   ]
 }
@@ -274,7 +273,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
     {
       "category_id": "seller_compliance",
       "severity": "critical",
-      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+      "explanation": "Target seller https://ads.seller-rogue.example is not in the plan's approved sellers list."
     }
   ]
 }
@@ -299,7 +298,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
     {
       "category_id": "seller_compliance",
       "severity": "critical",
-      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+      "explanation": "Target seller https://ads.seller-rogue.example is not in the plan's approved sellers list."
     }
   ]
 }
@@ -313,7 +312,7 @@ The trade-off:
 | `advisory` | Full velocity | Findings surface but don't block | Rolling out a new policy; observing behavior before tightening |
 | `audit` | Full velocity | Findings logged silently | Backstop telemetry; never the only governance posture |
 
-The agent's mode can change during a plan's lifetime. A different `mode` on two audit entries reflects a change to the governance agent's configuration, not a plan revision — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; today it appears on the per-`check_governance` response but not consistently on `get_plan_audit_logs` responses ([#3156](https://github.com/adcontextprotocol/adcp/issues/3156)).
+The agent's mode can change during a plan's lifetime. A different `mode` on two audit entries reflects a change to the governance agent's configuration, not a plan revision — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; it appears on the per-`check_governance` response and, for check entries, as `entries[].mode` on `get_plan_audit_logs` responses.
 
 ## What the protocol guarantees
 

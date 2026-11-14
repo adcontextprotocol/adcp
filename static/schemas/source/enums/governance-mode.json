@@ -11,8 +11,8 @@
     "enforce"
   ],
   "enumDescriptions": {
-    "audit": "Log all checks, never block. Findings are recorded but the governance agent always returns approved.",
-    "advisory": "Flag issues and return findings, but do not block execution. Human reviews happen post-hoc.",
+    "audit": "Log all checks, never block. Findings are recorded but the governance agent always returns approved, except for plans with human_review_required: true, which escalate in every mode.",
+    "advisory": "Flag issues and return findings, but do not block execution. Human reviews happen post-hoc, except for plans with human_review_required: true, which escalate in every mode.",
     "enforce": "Block on denied or escalated. Require resolution before proceeding."
   }
 }
