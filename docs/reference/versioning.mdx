@@ -95,6 +95,8 @@ Releases before 3.3 did not have this rule, so a seller that lists no release la
 
 Pre-release tags (`"3.1-beta"`, `"3.1-rc.1"`) are matched **exactly** against `supported_versions`. They are not range-resolved: a buyer pinning `"3.1-beta"` against a server that lists `["3.0", "3.1"]` (no beta in the list) gets `VERSION_UNSUPPORTED`, not a downshift to `"3.0"`. Servers MUST NOT downshift a release pin onto a pre-release (`"3.1"` → `"3.1-beta"`); when both are advertised, the release wins exact match.
 
+**Buyers** MUST send a pre-release `adcp_version` only to a peer whose `supported_versions` advertises that exact value. A pre-release pin never negotiates down, so sending one to any other peer gets `VERSION_UNSUPPORTED`, not a served release. Buyers SHOULD send the discovery `get_adcp_capabilities` call without a version pin, so a peer on any release can answer it. On `VERSION_UNSUPPORTED`, buyers SHOULD retry without a pin, or at a value from the error's `supported_versions` (described below), which is the recovery the `VERSION_UNSUPPORTED` error code names. A buyer that pins discovery to `"3.3-beta.5"` against a seller that speaks only 3.0, and stops at the error, never learns that the two could talk at 3.0.
+
 #### `VERSION_UNSUPPORTED` error data
 
 When the seller can't honor a pin, `error.data` follows [`error-details/version-unsupported.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/error-details/version-unsupported.json):

@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Docs: state how buyers and sellers keep capability discovery working across releases. A buyer MUST send a prerelease `adcp_version` only to a peer whose `supported_versions` advertises that exact value, because a prerelease pin never negotiates down. A buyer SHOULD send discovery `get_adcp_capabilities` without a version pin, and on `VERSION_UNSUPPORTED` SHOULD retry without a pin or at a value from `supported_versions`, as the error code's recovery already says. A seller SHOULD serve `get_adcp_capabilities` without credentials; this becomes a MUST in 4.0. On MCP, a gateway or auth layer that allow-lists JSON-RPC methods SHOULD let `server/discover` (MCP `2026-07-28`), `initialize`, and `tools/list` through without credentials, so current MCP clients don't treat the agent as requiring sign-in before they can read capabilities. Covered in Versioning, Authentication, the MCP guide, the 3.3 release docs, and the 4.0 compatibility page. No schema changes.
