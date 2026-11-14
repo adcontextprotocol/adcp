@@ -608,7 +608,13 @@ describe("AgentValidator", () => {
       ["https://agent.example.com/~mcp", "https://agent.example.com/%7Emcp"],
       ["https://agent.example.com/mcp", "https://agent.example.com/mcp#frag"],
       ["https://agent.example.com", "https://agent.example.com/"],
-    ])("authorizes %s for canonically equal %s", async (listed, requested) => {
+      // Origin-only entries authorize the agent at that origin, whatever its
+      // path (DR-0023, #8943). The full table is in
+      // tests/unit/authorized-agent-url-matching.test.ts.
+      ["https://agent.example.com", "https://agent.example.com/mcp"],
+      ["https://agent.example.com/", "https://agent.example.com/a2a"],
+      ["https://agent.example.com:443", "HTTPS://Agent.Example.COM/mcp"],
+    ])("authorizes %s for %s", async (listed, requested) => {
       manifestFor(listed);
 
       const result = await validator.validate("example.com", requested);
@@ -617,7 +623,10 @@ describe("AgentValidator", () => {
     });
 
     it.each([
-      ["https://agent.example.com", "https://agent.example.com/mcp"],
+      ["https://agent.example.com", "https://other.example.com/mcp"],
+      ["https://agent.example.com", "https://agent.example.com:8443/mcp"],
+      ["https://agent.example.com/mcp", "https://agent.example.com"],
+      ["https://agent.example.com/mcp", "https://agent.example.com/a2a"],
       ["https://agent.example.com/mcp", "https://agent.example.com/mcp/"],
       ["https://agent.example.com/mcp/", "https://agent.example.com/mcp"],
       ["https://agent.example.com/mcp", "https://agent.example.com/MCP"],

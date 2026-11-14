@@ -232,7 +232,9 @@ export class FederatedIndexService {
    */
   async getDomainsForAgent(agentUrl: string): Promise<string[]> {
     const authorizations = await this.db.getDomainsForAgent(agentUrl);
-    return authorizations.map(auth => auth.publisher_domain);
+    // One publisher can authorize the agent through more than one entry —
+    // say its bare origin and its full URL (#8943) — so list each domain once.
+    return [...new Set(authorizations.map(auth => auth.publisher_domain))];
   }
 
   /**

@@ -1994,7 +1994,11 @@ registry.registerPath({
   path: "/api/registry/lookup/agent/{agentUrl}/domains",
   operationId: "getAgentDomains",
   summary: "Agent domain lookup",
-  description: "Get all publisher domains associated with an agent.",
+  description:
+    "Get all publisher domains whose adagents.json authorizes an agent. `agentUrl` is matched with the " +
+    "[adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule: an " +
+    "origin-only `authorized_agents[].url` (`https://agent.example.com`) authorizes every agent URL at that " +
+    "origin, and an entry with a path matches that canonical URL only, with a non-root trailing slash significant.",
   tags: ["Authorization Lookups"],
   request: { params: z.object({ agentUrl: z.string() }) },
   responses: {
@@ -2026,11 +2030,15 @@ const AgentPublishersOpenApi = {
     "Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant " +
     "richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns " +
     "domain strings only.\n\n" +
-    "`agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a " +
-    "**non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are " +
-    "different agents and can return different publisher sets, the same rule the SDK applies in " +
-    "`verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. " +
-    "(Through 2026-10-18 this endpoint folded the two spellings together and answered both with the " +
+    "`agent_url` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) " +
+    "rule, after [AdCP URL canonicalization](/docs/reference/url-canonicalization) of both sides. A publisher " +
+    "whose `authorized_agents[].url` is **origin-only** (`https://a.example` or `https://a.example/`) authorizes " +
+    "every agent URL with that canonical origin (same scheme, host and port), so it is returned for " +
+    "`https://a.example/mcp` and `https://a.example/a2a` alike (DR-0023, AdCP 3.3). An entry **with a path** " +
+    "matches that canonical URL only, and a **non-root trailing slash is significant**: `https://a.example/mcp` " +
+    "and `https://a.example/mcp/` are different agents and can return different publisher sets. " +
+    "Ask for the spelling the publisher's adagents.json lists. " +
+    "(Through 2026-10-18 this endpoint folded the two trailing-slash spellings together and answered both with the " +
     "slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` " +
     "in the response echoes the canonicalized lookup key, slash included.",
   tags: ["Authorization Lookups"],
@@ -3505,7 +3513,7 @@ registry.registerPath({
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     query: z.object({
-      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not." }),
+      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not. Returns the rows whose `agent_url` authorizes it under adagents.json agent URL matching: rows for the same canonical URL, plus rows whose `agent_url` is origin-only (`https://agent.example.com`) for the same canonical origin, which authorize every path at that origin." }),
       include: z.enum(["raw", "effective"]).optional().openapi({ description: "`effective` (default) applies override layer; `raw` reads base table." }),
       evidence: z.string().optional().openapi({ description: "Comma-separated evidence allowlist. Defaults to `adagents_json`.", example: "adagents_json,agent_claim" }),
     }),
@@ -7089,10 +7097,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
 
       // The registry lists an agent once, under its folded identity key
-      // (#7830), but the directory answers authorization questions
-      // spec-exactly, with a non-root trailing slash significant (#7829,
-      // #8314): a publisher that declared `https://a.example/mcp/` has not
-      // authorized `https://a.example/mcp`. A consumer holding only the
+      // (#7830), but the directory answers authorization questions with the
+      // adagents.json rule, where a non-root trailing slash is significant
+      // for an entry with a path (#7829, #8314, #8943): a publisher that
+      // declared `https://a.example/mcp/` has not authorized
+      // `https://a.example/mcp`. (An origin-only entry is found for every
+      // spelling at its origin, so it needs no extra spelling here.) A consumer holding only the
       // listed URL therefore cannot ask the directory the right question for
       // such an agent — it would ask about the folded spelling and correctly
       // be told nothing. `declared_urls` is every spelling the directory has
@@ -11627,10 +11637,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     try {
       const federatedIndex = crawler.getFederatedIndex();
       // AUTHORIZATION route — deliberately NOT keyed here. "Which publishers
-      // authorize this agent" is decided spec-exactly, trailing slash
-      // significant (#7829); getDomainsForAgent keys internally for the
-      // index and then filters on the raw agent_url. Keying the parameter
-      // here would make /mcp/ inherit /mcp's authorizations.
+      // authorize this agent" is decided by the adagents.json rule
+      // (`agentUrlAuthorizedBy`): an origin-only entry authorizes every path
+      // at its origin (#8943), an entry with a path only its canonical URL,
+      // trailing slash significant (#7829). getDomainsForAgent keys
+      // internally for the index and then filters on the raw agent_url.
+      // Keying the parameter here would make /mcp/ inherit /mcp's
+      // authorizations.
       const agentUrl = decodeURIComponent(req.params.agentUrl);
       const domains = await federatedIndex.getDomainsForAgent(agentUrl);
       res.json({ agent_url: agentUrl, domains, count: domains.length });
@@ -11661,19 +11674,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       } catch {
         return res.status(400).json({ error: "Malformed agent_url percent-encoding" });
       }
-      // AUTHORIZATION route — the parameter is matched SPEC-EXACTLY, with a
-      // non-root trailing slash significant (#7829), exactly as the validator
-      // and the sibling /registry/lookup/agent/:agentUrl/domains route match
-      // it, and as docs/aao/directory-api.mdx has always specified.
+      // AUTHORIZATION route — the parameter is matched with the adagents.json
+      // rule (`agentUrlAuthorizedBy`): an origin-only entry authorizes every
+      // path at its origin (#8943), and an entry with a path matches only its
+      // canonical URL, non-root trailing slash significant (#7829) — exactly
+      // as the validator and the sibling
+      // /registry/lookup/agent/:agentUrl/domains route match it, and as
+      // docs/aao/directory-api.mdx specifies.
       //
       // `canonicalizeAgentUrl` is the registry IDENTITY key, which folds
       // `/mcp/` into `/mcp` (#7830). It is used here ONLY as a validity gate:
       // an input the registry cannot key at all cannot name an indexed agent.
       // It MUST NOT become the lookup value — that made a `/mcp/` request
       // answer with `/mcp`'s publishers, a different authorization question.
-      // `getPublishersForAgentDetail` keys internally for the index and then
-      // restricts to the raw `agent_url` spellings that match spec-exactly,
-      // so it takes the URL as the caller wrote it.
+      // `getPublishersForAgentDetail` keys internally for the index (the
+      // agent's key and its origin's key) and then restricts to the raw
+      // `agent_url` spellings whose entry authorizes it, so it takes the URL
+      // as the caller wrote it.
       if (!canonicalizeAgentUrl(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent_url after canonicalization" });
       }
