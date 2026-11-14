@@ -552,6 +552,59 @@ describe('sync_plans re-sync with existing commitments', () => {
     const result = await intent(30_000, { start_time: '2027-02-01T00:00:00Z', end_time: '2027-03-01T00:00:00Z' });
     expect(result.verdict).toBe('approved');
   }));
+
+  // adcp#8733 A1: the same rule for budget.total.
+  const totalOnly = (total: number) =>
+    plan(null, { budget: { total, currency: 'USD', reallocation_unlimited: true } });
+
+  it('rejects a budget.total reduced below what is already committed to the plan', () => run(async () => {
+    await syncOk(plan(null));
+    await commit('mb_total_a', 30_000, '2027-01-15T00:00:00Z', '2027-03-15T00:00:00Z');
+    const result = await sync(totalOnly(29_999));
+    expect(result.errors?.[0]).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: 'plans[0].budget.total',
+    });
+    expect(result.errors[0].message).toContain('below the $30000 already committed');
+  }));
+
+  it('accepts a budget.total equal to the committed amount to stop new spending', () => run(async () => {
+    await syncOk(plan(null));
+    await commit('mb_total_a', 30_000, '2027-01-15T00:00:00Z', '2027-03-15T00:00:00Z');
+    await syncOk(totalOnly(30_000));
+    const blocked = await intent(1, undefined);
+    expect(blocked.verdict).toBe('conditions');
+  }));
+
+  it('does not mutate the plan when a budget.total cut is rejected', () => run(async () => {
+    await syncOk(plan(null));
+    await commit('mb_total_a', 30_000, '2027-01-15T00:00:00Z', '2027-03-15T00:00:00Z');
+    const rejected = await sync(totalOnly(1));
+    expect(rejected.errors?.[0]?.code).toBe('VALIDATION_ERROR');
+    // The original total is still in force and the version did not advance.
+    const result = await intent(60_000, { start_time: '2027-04-01T00:00:00Z', end_time: '2027-05-01T00:00:00Z' });
+    expect(result.verdict).toBe('approved');
+    const resynced = await syncOk(plan(null));
+    expect(resynced.plans[0].version).toBe(2);
+  }));
+
+  it('still accepts a re-sync that does not reduce budget.total on an over-committed plan', () => run(async () => {
+    await syncOk(plan(null));
+    // Checks do not reserve budget, so two approvals can together exceed the total.
+    const first = await intent(60_000, { start_time: '2027-01-15T00:00:00Z', end_time: '2027-02-15T00:00:00Z' });
+    const second = await intent(60_000, { start_time: '2027-02-15T00:00:00Z', end_time: '2027-03-15T00:00:00Z' });
+    await settle(first, 'mb_total_a');
+    await settle(second, 'mb_total_b');
+    // The total is unchanged, so the plan can still be edited.
+    await syncOk(plan(null, { countries: ['US', 'CA'] }));
+    // A further cut is rejected.
+    const result = await sync(totalOnly(99_999));
+    expect(result.errors?.[0]).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: 'plans[0].budget.total',
+    });
+    expect(result.errors[0].message).toContain('below the $120000 already committed');
+  }));
 });
 
 describe('flight spoofing and ledger coverage', () => {

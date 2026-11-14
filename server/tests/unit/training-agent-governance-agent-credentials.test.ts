@@ -177,8 +177,10 @@ describe('governance agent credentials (adcp#7758)', () => {
     expect(publicAsSeller.error?.message).toContain('must match caller');
 
     const publicAsItself = await callTool(governanceMcp(), PUBLIC_TOKEN, 'check_governance', executionCheck(context, PUBLIC_IDENTITY));
-    expect(publicAsItself.error?.code).toBe('PERMISSION_DENIED');
-    expect(publicAsItself.error?.message).toContain('service audience');
+    expect(publicAsItself.error, JSON.stringify(publicAsItself.json)).toBeUndefined();
+    expect(publicAsItself.structured.verdict).toBe('denied');
+    expect(publicAsItself.structured.governance_context).toBeUndefined();
+    expect((publicAsItself.structured.findings as Array<{ category_id?: string }>)[0]?.category_id).toBe('seller_compliance');
   });
 
   it('lets a minted credential run the seller execution check at the registered governance URL', async () => {
@@ -223,8 +225,10 @@ describe('governance agent credentials (adcp#7758)', () => {
     expect(claimsSeller.error?.code).toBe('PERMISSION_DENIED');
 
     const asItself = await callTool(governanceMcp(), otherSellerCredential, 'check_governance', executionCheck(context, OTHER_SELLER));
-    expect(asItself.error?.code).toBe('PERMISSION_DENIED');
-    expect(asItself.error?.message).toContain('service audience');
+    expect(asItself.error, JSON.stringify(asItself.json)).toBeUndefined();
+    expect(asItself.structured.verdict).toBe('denied');
+    expect(asItself.structured.governance_context).toBeUndefined();
+    expect((asItself.structured.findings as Array<{ category_id?: string }>)[0]?.category_id).toBe('seller_compliance');
   });
 
   it('scopes the credential to the plans of its own hosted run', async () => {
