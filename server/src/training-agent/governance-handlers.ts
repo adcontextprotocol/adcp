@@ -766,7 +766,7 @@ export const GOVERNANCE_TOOLS = [
                 },
                 required: ['total', 'currency'],
               },
-              human_review_required: { type: 'boolean', description: 'When true, every plan action escalates for human review. MUST be true when policy_categories contains a regulated vertical (fair_housing, fair_lending, fair_employment, pharmaceutical_advertising) or policy_ids contains eu_ai_act_annex_iii.' },
+              human_review_required: { type: 'boolean', description: 'When true, every plan action escalates for human review. Omit it to let the governance agent derive it. false is rejected when policy_categories contains a regulated vertical (fair_housing, fair_lending, fair_employment, pharmaceutical_advertising) or policy_ids contains eu_ai_act_annex_iii.' },
               human_override: {
                 type: 'object',
                 description: 'Required to downgrade an existing plan from human_review_required=true to false. Training agent requires approver (email) and reason (>=20 chars); production agents should bind to signed identity.',
