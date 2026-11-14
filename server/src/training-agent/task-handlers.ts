@@ -15387,6 +15387,35 @@ async function validateCreativeForProduct(
   return result.result_kind === 'validated_fail' ? (result.violations ?? []) : [];
 }
 
+// A manifest without format_option_ref routes by format_kind alone only when
+// the target product declares one option of that kind. With two or more, the
+// seller must not pick one from the assets (canonical-formats.mdx, routing
+// rule). Counts the product's format_options, not the package's selection.
+// Legacy format_id manifests route through v1_format_ref.
+function missingFormatOptionRefViolation(
+  product: Product,
+  manifest: CreativeManifest,
+): ValidateInputViolation[] {
+  if (manifest.format_option_ref !== undefined || manifest.format_id !== undefined) return [];
+  if (typeof manifest.format_kind !== 'string') return [];
+  const sameKind = productCanonicalFormatOptions(product).filter(format => format.format_kind === manifest.format_kind);
+  if (sameKind.length < 2) return [];
+  return [{
+    rule: 'format_option_ref_required',
+    field: 'format_option_ref',
+    expected: sameKind.flatMap(format => typeof format.format_option_id === 'string' ? [format.format_option_id] : []),
+  }];
+}
+
+async function validateAssignedCreative(
+  product: Product,
+  manifest: CreativeManifest,
+): Promise<ValidateInputViolation[]> {
+  const routing = missingFormatOptionRefViolation(product, manifest);
+  if (routing.length > 0) return routing;
+  return validateCreativeForProduct(product, manifest);
+}
+
 function creativeValidationErrors(
   violations: ValidateInputViolation[],
   fieldPrefix: string,
@@ -17058,7 +17087,7 @@ async function handleCreateMediaBuyUnlocked(
       }
       const assignedManifest = session.creatives.get(creativeId)?.manifest;
       if (assignedManifest) {
-        const violations = await validateCreativeForProduct(product, assignedManifest);
+        const violations = await validateAssignedCreative(product, assignedManifest);
         errors.push(...creativeValidationErrors(violations, `packages[${i}].creative_assignments[${j}]`));
       }
       creativeAssignments.push(creativeId);
@@ -17073,7 +17102,7 @@ async function handleCreateMediaBuyUnlocked(
           : undefined;
         const manifest = normalizedCreativeManifest(creative, existingCreative, identity.identity);
         if (!manifest) continue;
-        const violations = await validateCreativeForProduct(product, manifest);
+        const violations = await validateAssignedCreative(product, manifest);
         errors.push(...creativeValidationErrors(violations, `packages[${i}].creatives[${creativeIndex}]`));
       }
     }
@@ -18886,7 +18915,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
           if (!pkg.creativeAssignments.includes(creativeId)) continue;
           const product = productValidationMap.get(pkg.productId);
           if (!product) continue;
-          assignedViolations.push(...await validateCreativeForProduct(product, candidateManifest));
+          assignedViolations.push(...await validateAssignedCreative(product, candidateManifest));
         }
       }
       if (assignedViolations.length > 0) {
@@ -19049,7 +19078,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       const candidateManifest = stagedCreativeManifests.get(creativeId)
         ?? session.creatives.get(creativeId)?.manifest;
       if (product && candidateManifest) {
-        const violations = await validateCreativeForProduct(product, candidateManifest);
+        const violations = await validateAssignedCreative(product, candidateManifest);
         if (violations.length > 0) {
           assignmentResults.push({
             creative_id: creativeId,
@@ -19084,7 +19113,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         const manifest = stagedCreativeManifests.get(creativeId)
           ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.manifest;
         if (!product || !manifest) return undefined;
-        const violations = await validateCreativeForProduct(product, manifest);
+        const violations = await validateAssignedCreative(product, manifest);
         return violations.length > 0
           ? `Creative ${creativeId} does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`
           : undefined;
@@ -20241,7 +20270,7 @@ async function handleUpdateMediaBuyUnlocked(
             : undefined;
           const manifest = normalizedCreativeManifest(inlineCreative, existingCreative, identity.identity);
           if (!manifest) continue;
-          const violations = await validateCreativeForProduct(product, manifest);
+          const violations = await validateAssignedCreative(product, manifest);
           if (violations.length > 0) {
             return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creatives[${creativeIndex}]`) };
           }
@@ -20255,12 +20284,17 @@ async function handleUpdateMediaBuyUnlocked(
           };
         }
       }
+      const storedRows = update.creatives === undefined && assignments === undefined;
       const candidateRows = update.creatives !== undefined
         ? inlineCreativeAssignmentRows(update.creatives)
         : assignments !== undefined
           ? assignments.map(assignment => structuredClone(assignment))
           : (pkg.creativeAssignmentDetails
             ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })));
+      // Rows this update supplies route a manifest onto the package, so they
+      // need format_option_ref where the product declares the kind twice.
+      // Stored rows on a targeting-only update keep the product check alone.
+      const validateRow = storedRows ? validateCreativeForProduct : validateAssignedCreative;
       for (const assignment of candidateRows) {
         const cid = assignment.creative_id;
         if (typeof cid !== 'string' || cid.length === 0) {
@@ -20269,9 +20303,11 @@ async function handleUpdateMediaBuyUnlocked(
         if (!creativeValidationSession.creatives.has(cid)) {
           return { errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative not found: ${cid}. Sync the creative via sync_creatives before assigning.`, field: `packages[${pkgId}].creative_assignments` }] };
         }
-        const manifest = session.creatives.get(cid)?.manifest;
+        // The post-update library, so an inline re-send that adds the ref is
+        // checked as sent.
+        const manifest = creativeValidationSession.creatives.get(cid)?.manifest;
         if (product && manifest) {
-          const violations = await validateCreativeForProduct(product, manifest);
+          const violations = await validateRow(product, manifest);
           if (violations.length > 0) {
             return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creative_assignments`) };
           }
@@ -20291,7 +20327,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `packages[${pkgId}].creative_assignments`,
           (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
-          { storedAssignmentSettings: update.creatives === undefined && assignments === undefined },
+          { storedAssignmentSettings: storedRows },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20683,15 +20719,13 @@ async function handleUpdateMediaBuyUnlocked(
         undefined,
         now,
       );
-      const assignmentRows = [
-        ...(Array.isArray(npkg.creative_assignments)
-          ? npkg.creative_assignments.map(assignment =>
-            structuredClone(assignment) as unknown as LegacyCreativeAssignmentRow
-          )
-          : []),
-        ...inlineCreativeAssignmentRows(npkg.creatives),
-      ];
-      for (const assignment of assignmentRows) {
+      const libraryRows = Array.isArray(npkg.creative_assignments)
+        ? npkg.creative_assignments.map(assignment =>
+          structuredClone(assignment) as unknown as LegacyCreativeAssignmentRow
+        )
+        : [];
+      const assignmentRows = [...libraryRows, ...inlineCreativeAssignmentRows(npkg.creatives)];
+      for (const [j, assignment] of assignmentRows.entries()) {
         if (enforceLifecycleSplit && (typeof assignment.creative_id !== 'string' || !creativeValidationSession.creatives.has(assignment.creative_id))) {
           return {
             errors: [{
@@ -20700,6 +20734,16 @@ async function handleUpdateMediaBuyUnlocked(
               field: `new_packages[${i}].creative_assignments`,
             }] as TaskError[],
           };
+        }
+        const manifest = enforceLifecycleSplit && typeof assignment.creative_id === 'string'
+          ? creativeValidationSession.creatives.get(assignment.creative_id)?.manifest
+          : undefined;
+        const routing = manifest ? missingFormatOptionRefViolation(product, manifest) : [];
+        if (routing.length > 0) {
+          const fieldPrefix = j < libraryRows.length
+            ? `new_packages[${i}].creative_assignments[${j}]`
+            : `new_packages[${i}].creatives[${j - libraryRows.length}]`;
+          return { errors: creativeValidationErrors(routing, fieldPrefix) };
         }
       }
       if (enforceLifecycleSplit) {

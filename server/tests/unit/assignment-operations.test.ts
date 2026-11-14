@@ -38,11 +38,12 @@ async function call(server: Server, toolName: string, args: Record<string, unkno
   return parsed.adcp_error ?? parsed;
 }
 
-function creative(creativeId: string, click = `https://assign-ops.example/${creativeId}`) {
+function creative(creativeId: string, formatOptionId?: string, click = `https://assign-ops.example/${creativeId}`) {
   return {
     creative_id: creativeId,
     name: creativeId,
     format_kind: 'image',
+    ...(formatOptionId && { format_option_ref: { scope: 'product', format_option_id: formatOptionId } }),
     assets: {
       image: { asset_type: 'image', url: `https://cdn.assign-ops.example/${creativeId}.png`, width: 300, height: 250 },
       click_url: { asset_type: 'url', url_type: 'clickthrough', url: click },
@@ -52,9 +53,14 @@ function creative(creativeId: string, click = `https://assign-ops.example/${crea
 
 const tracker = { event: 'impression', url: 'https://measure.assign-ops.example/imp?pkg=display' };
 
-async function buyWithPackage(server: Server): Promise<{ mediaBuyId: string; packageId: string }> {
+async function buyWithPackage(server: Server): Promise<{ mediaBuyId: string; packageId: string; formatOptionId?: string }> {
   const products = await call(server, 'get_products', { buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND });
   const product = products.products.find((p: any) => p.format_options?.[0]?.format_kind === 'image') ?? products.products[0];
+  // The product declares several image options, so a manifest must name one
+  // in format_option_ref; format_kind alone does not route it (adcp#8625).
+  // The test creatives name the 300x250 option their image fits.
+  const mrec = product.format_options?.find((option: any) => option.format_kind === 'image'
+    && option.params?.width === 300 && option.params?.height === 250);
   const buy = await call(server, 'create_media_buy', {
     account: ACCOUNT,
     brand: BRAND,
@@ -63,7 +69,7 @@ async function buyWithPackage(server: Server): Promise<{ mediaBuyId: string; pac
     packages: [{ product_id: product.product_id, pricing_option_id: product.pricing_options[0].pricing_option_id, budget: 10000 }],
   });
   expect(buy.media_buy_id, JSON.stringify(buy)).toBeTruthy();
-  return { mediaBuyId: buy.media_buy_id, packageId: buy.packages[0].package_id };
+  return { mediaBuyId: buy.media_buy_id, packageId: buy.packages[0].package_id, formatOptionId: mrec?.format_option_id };
 }
 
 async function approvals(server: Server, mediaBuyId: string): Promise<Array<Record<string, any>>> {
@@ -88,10 +94,10 @@ describe('sync_creatives assignment_operations', () => {
 
   it('assigns with trackers and a landing page and reads them back', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
-      creatives: [creative('hero_v1')],
+      creatives: [creative('hero_v1', formatOptionId)],
       assignment_operations: [{
         operation: 'assign', creative_id: 'hero_v1', package_id: packageId,
         trackers: [tracker], landing_page_url: 'https://assign-ops.example/spring',
@@ -126,10 +132,10 @@ describe('sync_creatives assignment_operations', () => {
 
   it('replace transfers trackers and the landing page, and advances the buy revision once', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
     await call(server, 'sync_creatives', {
       account: ACCOUNT,
-      creatives: [creative('hero_v1'), creative('hero_v2')],
+      creatives: [creative('hero_v1', formatOptionId), creative('hero_v2', formatOptionId)],
       assignment_operations: [{
         operation: 'assign', creative_id: 'hero_v1', package_id: packageId,
         trackers: [tracker], landing_page_url: 'https://assign-ops.example/spring',
@@ -152,10 +158,10 @@ describe('sync_creatives assignment_operations', () => {
 
   it('unassigns, and an unassign/assign reset restores the creative destination', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
     await call(server, 'sync_creatives', {
       account: ACCOUNT,
-      creatives: [creative('hero_v1', 'https://assign-ops.example/own')],
+      creatives: [creative('hero_v1', formatOptionId, 'https://assign-ops.example/own')],
       assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId, landing_page_url: 'https://assign-ops.example/override' }],
     });
     await call(server, 'sync_creatives', {
@@ -172,10 +178,10 @@ describe('sync_creatives assignment_operations', () => {
 
   it('is atomic: a failing operation leaves creatives and assignments unchanged', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
-      creatives: [creative('hero_v1')],
+      creatives: [creative('hero_v1', formatOptionId)],
       assignment_operations: [
         { operation: 'assign', creative_id: 'hero_v1', package_id: packageId },
         { operation: 'replace', creative_id: 'hero_v1', replaces_creative_id: 'not_assigned', package_id: packageId },
@@ -213,7 +219,7 @@ describe('sync_creatives assignment_operations', () => {
     await call(server, 'update_media_buy', { account: ACCOUNT, media_buy_id: first.mediaBuyId, canceled: true, cancellation_reason: 'test' });
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
-      creatives: [creative('hero_v1')],
+      creatives: [creative('hero_v1', first.formatOptionId)],
       assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: first.packageId }],
     });
     expect(result.code).toBe('PACKAGE_NOT_FOUND');
@@ -221,8 +227,8 @@ describe('sync_creatives assignment_operations', () => {
 
   it('assigns a rejected creative, since review status alone never blocks an assignment', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
-    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1', formatOptionId)] });
     await call(server, 'comply_test_controller', {
       account: ACCOUNT, scenario: 'force_creative_status',
       params: { creative_id: 'hero_v1', status: 'rejected', rejection_reason: 'Policy' },
@@ -237,8 +243,8 @@ describe('sync_creatives assignment_operations', () => {
 
   it('keeps legacy assignments atomic with assignment_operations', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
-    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1', formatOptionId)] });
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
       assignments: [{ creative_id: 'hero_v1', package_id: packageId, media_buy_id: mediaBuyId }],
@@ -250,9 +256,9 @@ describe('sync_creatives assignment_operations', () => {
 
   it('applies overrides when a creative replaces itself', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
     await call(server, 'sync_creatives', {
-      account: ACCOUNT, creatives: [creative('hero_v1')],
+      account: ACCOUNT, creatives: [creative('hero_v1', formatOptionId)],
       assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId, weight: 50 }],
     });
     const before = (await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] })).media_buys[0].revision;
@@ -273,7 +279,7 @@ describe('sync_creatives assignment_operations', () => {
     expect(second.packageId).toBe('pkg-1');
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
-      creatives: [creative('hero_v1')],
+      creatives: [creative('hero_v1', second.formatOptionId)],
       assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: second.packageId }],
     });
     expect(result.code, JSON.stringify(result)).toBeUndefined();
@@ -283,8 +289,8 @@ describe('sync_creatives assignment_operations', () => {
 
   it('applies nothing on dry_run', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
-    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1', formatOptionId)] });
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
       dry_run: true,
@@ -462,12 +468,334 @@ describe('assignment tracker slots', () => {
 
   it('refuses assignment trackers where the capability is not declared', async () => {
     const server = createTrainingAgentServer({ ...CTX, tenantId: 'creative' } as TrainingContext);
-    const { packageId } = await buyWithPackage(server);
-    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    const { packageId, formatOptionId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1', formatOptionId)] });
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
       assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId, trackers: [pixel(1)] }],
     });
     expect(result.code).toBe('UNSUPPORTED_FEATURE');
+  });
+});
+
+
+// adcp#8625: when two or more of the target product's format_options share a
+// format_kind, a manifest without format_option_ref is rejected even when its
+// assets fit only one of them. The rule counts the product's declarations, so
+// a package that selects one option does not make the reference optional.
+const TWO_IMAGE_PRODUCT = 'two_image_product';
+const TWO_IMAGE_PRICING = 'two_image_cpm';
+
+const imageOption = (id: string, width: number, height: number) => ({
+  format_kind: 'image',
+  format_option_id: id,
+  params: { width, height, slots: [{ asset_group_id: 'image_main', asset_type: 'image', required: true }] },
+});
+
+async function seedTwoImageProduct(server: Server): Promise<void> {
+  const seeded = await call(server, 'comply_test_controller', {
+    account: ACCOUNT, brand: BRAND, scenario: 'seed_product',
+    params: {
+      product_id: TWO_IMAGE_PRODUCT,
+      fixture: {
+        channels: ['display'],
+        delivery_type: 'non_guaranteed',
+        format_options: [imageOption('two_image_mrec', 300, 250), imageOption('two_image_leaderboard', 728, 90)],
+      },
+    },
+  });
+  expect(seeded.success, JSON.stringify(seeded)).toBe(true);
+  await call(server, 'comply_test_controller', {
+    account: ACCOUNT, brand: BRAND, scenario: 'seed_pricing_option',
+    params: { product_id: TWO_IMAGE_PRODUCT, pricing_option_id: TWO_IMAGE_PRICING, fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 } },
+  });
+}
+
+// Without selectedOptionId both image options stay on the package.
+function twoImageCreate(selectedOptionId: string | undefined, packageFields: Record<string, unknown> = {}) {
+  return {
+    account: ACCOUNT, brand: BRAND, start_time: 'asap',
+    end_time: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    packages: [{
+      product_id: TWO_IMAGE_PRODUCT, pricing_option_id: TWO_IMAGE_PRICING, budget: 10000,
+      ...(selectedOptionId && { format_option_refs: [{ scope: 'product', format_option_id: selectedOptionId }] }),
+      ...packageFields,
+    }],
+  };
+}
+
+async function twoImageBuy(server: Server, selectedOptionId?: string): Promise<{ mediaBuyId: string; packageId: string }> {
+  await seedTwoImageProduct(server);
+  const buy = await call(server, 'create_media_buy', twoImageCreate(selectedOptionId));
+  expect(buy.media_buy_id, JSON.stringify(buy)).toBeTruthy();
+  return { mediaBuyId: buy.media_buy_id, packageId: buy.packages[0].package_id };
+}
+
+const mrec = (creativeId: string, ref?: string) => ({
+  creative_id: creativeId,
+  name: creativeId,
+  format_kind: 'image',
+  ...(ref && { format_option_ref: { scope: 'product', format_option_id: ref } }),
+  assets: { image_main: { asset_type: 'image', url: `https://cdn.assign-ops.example/${creativeId}.png`, width: 300, height: 250 } },
+});
+
+describe('sync_creatives routes a manifest only when format_kind is unambiguous', () => {
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearTaskStore();
+    clearIdempotencyCache();
+    clearAccountStore();
+  });
+
+  it('accepts the manifest when format_option_ref names one of the options', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server);
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      creatives: [mrec('routed', 'two_image_mrec')],
+      assignment_operations: [{ operation: 'assign', creative_id: 'routed', package_id: packageId }],
+    });
+    expect(result.code, JSON.stringify(result)).toBeUndefined();
+    expect((await approvals(server, mediaBuyId)).map(row => row.creative_id)).toEqual(['routed']);
+  });
+
+  it('rejects the same manifest without format_option_ref and assigns nothing', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server);
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      creatives: [mrec('unrouted')],
+      assignment_operations: [{ operation: 'assign', creative_id: 'unrouted', package_id: packageId }],
+    });
+    expect(result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'assignment_operations[0].creative_id' });
+    expect(result.message).toMatch(/format_option_ref_required/);
+    expect(await approvals(server, mediaBuyId)).toEqual([]);
+  });
+
+  it('counts the product\'s declarations, so selecting one option on the package does not route the manifest', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server, 'two_image_mrec');
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      creatives: [mrec('unrouted')],
+      assignment_operations: [{ operation: 'assign', creative_id: 'unrouted', package_id: packageId }],
+    });
+    expect(result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'assignment_operations[0].creative_id' });
+    expect(result.message).toMatch(/format_option_ref_required/);
+    expect(await approvals(server, mediaBuyId)).toEqual([]);
+  });
+
+  it('reports the deprecated assignments shorthand as a failed assignment', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server);
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      creatives: [mrec('unrouted')],
+      assignments: [{ creative_id: 'unrouted', package_id: packageId, media_buy_id: mediaBuyId }],
+    });
+    expect(result.assignments, JSON.stringify(result)).toEqual([
+      expect.objectContaining({ creative_id: 'unrouted', status: 'error', message: expect.stringMatching(/format_option_ref_required/) }),
+    ]);
+  });
+});
+
+// A package that selects the 300x250 option keeps one image declaration, but
+// the product still declares two, so the manifest must name its option.
+describe('create_media_buy counts the product\'s declarations when routing a manifest', () => {
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearTaskStore();
+    clearIdempotencyCache();
+    clearAccountStore();
+  });
+
+  it('accepts an inline manifest that names its option', async () => {
+    const server = createTrainingAgentServer(CTX);
+    await seedTwoImageProduct(server);
+    const buy = await call(server, 'create_media_buy', twoImageCreate('two_image_mrec', {
+      creatives: [mrec('routed', 'two_image_mrec')],
+    }));
+    expect(buy.media_buy_id, JSON.stringify(buy)).toBeTruthy();
+    expect((await approvals(server, buy.media_buy_id)).map(row => row.creative_id)).toEqual(['routed']);
+  });
+
+  it('rejects the same inline manifest without format_option_ref', async () => {
+    const server = createTrainingAgentServer(CTX);
+    await seedTwoImageProduct(server);
+    const buy = await call(server, 'create_media_buy', twoImageCreate('two_image_mrec', {
+      creatives: [mrec('unrouted')],
+    }));
+    expect(buy).toMatchObject({ code: 'VALIDATION_ERROR', field: 'packages[0].creatives[0].format_option_ref' });
+    expect(buy.message).toMatch(/format_option_ref_required/);
+    expect(buy.media_buy_id).toBeUndefined();
+  });
+
+  it('accepts an assigned library creative that names its option', async () => {
+    const server = createTrainingAgentServer(CTX);
+    await seedTwoImageProduct(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [mrec('routed', 'two_image_mrec')] });
+    const buy = await call(server, 'create_media_buy', twoImageCreate('two_image_mrec', {
+      creative_assignments: [{ creative_id: 'routed' }],
+    }));
+    expect(buy.media_buy_id, JSON.stringify(buy)).toBeTruthy();
+    expect((await approvals(server, buy.media_buy_id)).map(row => row.creative_id)).toEqual(['routed']);
+  });
+
+  it('rejects an assigned library creative without format_option_ref', async () => {
+    const server = createTrainingAgentServer(CTX);
+    await seedTwoImageProduct(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [mrec('unrouted')] });
+    const buy = await call(server, 'create_media_buy', twoImageCreate('two_image_mrec', {
+      creative_assignments: [{ creative_id: 'unrouted' }],
+    }));
+    expect(buy).toMatchObject({ code: 'VALIDATION_ERROR', field: 'packages[0].creative_assignments[0].format_option_ref' });
+    expect(buy.message).toMatch(/format_option_ref_required/);
+    expect(buy.media_buy_id).toBeUndefined();
+  });
+});
+
+// update_media_buy routes a manifest onto an existing package (packages[]) or
+// a package it adds (new_packages[]), inline or as a library assignment. The
+// existing package selects the 300x250 option, so it keeps one image
+// declaration while the product still declares two.
+async function packageCreativeIds(server: Server, mediaBuyId: string, packageId: string): Promise<string[]> {
+  const read = await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] });
+  const pkg = read.media_buys[0].packages.find((candidate: any) => candidate.package_id === packageId);
+  return (pkg?.creative_approvals ?? []).map((row: any) => row.creative_id);
+}
+
+const twoImageNewPackage = (packageFields: Record<string, unknown>) => ({
+  product_id: TWO_IMAGE_PRODUCT, pricing_option_id: TWO_IMAGE_PRICING, budget: 5000,
+  format_option_refs: [{ scope: 'product', format_option_id: 'two_image_mrec' }],
+  ...packageFields,
+});
+
+describe('update_media_buy counts the product\'s declarations when routing a manifest', () => {
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearTaskStore();
+    clearIdempotencyCache();
+    clearAccountStore();
+  });
+
+  it('accepts an inline manifest on a package update that names its option', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server, 'two_image_mrec');
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, creatives: [mrec('routed', 'two_image_mrec')] }],
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    expect(await packageCreativeIds(server, mediaBuyId, packageId)).toEqual(['routed']);
+  });
+
+  it('rejects the same inline manifest on a package update without format_option_ref', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server, 'two_image_mrec');
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, creatives: [mrec('unrouted')] }],
+    });
+    expect(result.errors, JSON.stringify(result)).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR', field: `packages[${packageId}].creatives[0].format_option_ref`, message: expect.stringMatching(/format_option_ref_required/),
+    })]);
+    expect(await packageCreativeIds(server, mediaBuyId, packageId)).toEqual([]);
+  });
+
+  it('accepts an inline manifest that adds format_option_ref to an unrouted library creative', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server, 'two_image_mrec');
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [mrec('hero')] });
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, creatives: [mrec('hero', 'two_image_mrec')] }],
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    expect(await packageCreativeIds(server, mediaBuyId, packageId)).toEqual(['hero']);
+  });
+
+  it('accepts a library creative assigned on a package update that names its option', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server, 'two_image_mrec');
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [mrec('routed', 'two_image_mrec')] });
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, creative_assignments: [{ creative_id: 'routed' }] }],
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    expect(await packageCreativeIds(server, mediaBuyId, packageId)).toEqual(['routed']);
+  });
+
+  it('rejects a library creative assigned on a package update without format_option_ref', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await twoImageBuy(server, 'two_image_mrec');
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [mrec('unrouted')] });
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, creative_assignments: [{ creative_id: 'unrouted' }] }],
+    });
+    expect(result.errors, JSON.stringify(result)).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR', field: `packages[${packageId}].creative_assignments.format_option_ref`, message: expect.stringMatching(/format_option_ref_required/),
+    })]);
+    expect(await packageCreativeIds(server, mediaBuyId, packageId)).toEqual([]);
+  });
+
+  it('accepts an inline manifest on a new package that names its option', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId } = await twoImageBuy(server, 'two_image_mrec');
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      new_packages: [twoImageNewPackage({ creatives: [mrec('routed', 'two_image_mrec')] })],
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    const read = await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] });
+    expect(read.media_buys[0].packages).toHaveLength(2);
+    expect(await packageCreativeIds(server, mediaBuyId, read.media_buys[0].packages[1].package_id)).toEqual(['routed']);
+  });
+
+  it('rejects the same inline manifest on a new package without format_option_ref', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId } = await twoImageBuy(server, 'two_image_mrec');
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      new_packages: [twoImageNewPackage({ creatives: [mrec('unrouted')] })],
+    });
+    expect(result.errors, JSON.stringify(result)).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR', field: 'new_packages[0].creatives[0].format_option_ref', message: expect.stringMatching(/format_option_ref_required/),
+    })]);
+    const read = await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] });
+    expect(read.media_buys[0].packages).toHaveLength(1);
+  });
+
+  it('accepts a library creative assigned on a new package that names its option', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId } = await twoImageBuy(server, 'two_image_mrec');
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [mrec('routed', 'two_image_mrec')] });
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      new_packages: [twoImageNewPackage({ creative_assignments: [{ creative_id: 'routed' }] })],
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    const read = await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] });
+    expect(read.media_buys[0].packages).toHaveLength(2);
+    expect(await packageCreativeIds(server, mediaBuyId, read.media_buys[0].packages[1].package_id)).toEqual(['routed']);
+  });
+
+  it('rejects a library creative assigned on a new package without format_option_ref', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId } = await twoImageBuy(server, 'two_image_mrec');
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [mrec('unrouted')] });
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId,
+      new_packages: [twoImageNewPackage({ creative_assignments: [{ creative_id: 'unrouted' }] })],
+    });
+    expect(result.errors, JSON.stringify(result)).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR', field: 'new_packages[0].creative_assignments[0].format_option_ref', message: expect.stringMatching(/format_option_ref_required/),
+    })]);
+    const read = await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] });
+    expect(read.media_buys[0].packages).toHaveLength(1);
   });
 });
