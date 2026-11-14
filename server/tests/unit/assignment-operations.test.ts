@@ -470,4 +470,32 @@ describe('assignment tracker slots', () => {
     });
     expect(result.code).toBe('UNSUPPORTED_FEATURE');
   });
+
+  it('refuses installment-scoped assignments, since it does not list media_buy.installment_creative_assignment', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1'), creative('hero_v2')] });
+    await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId }],
+    });
+    const installment_refs = [{
+      collection_ref: { publisher_domain: 'assign-ops.example', collection_id: 'assign_ops_channel' },
+      installment_id: 'post_1',
+    }];
+    for (const operation of [
+      { operation: 'assign', creative_id: 'hero_v2', package_id: packageId, installment_refs },
+      { operation: 'replace', creative_id: 'hero_v2', replaces_creative_id: 'hero_v1', package_id: packageId, installment_refs },
+      { operation: 'unassign', creative_id: 'hero_v1', package_id: packageId, installment_refs },
+    ]) {
+      const result = await call(server, 'sync_creatives', { account: ACCOUNT, assignment_operations: [operation] });
+      expect(result.code, operation.operation).toBe('UNSUPPORTED_FEATURE');
+      expect(result.field, operation.operation).toBe('assignment_operations[0].installment_refs');
+    }
+    // Nothing was applied: hero_v1 is still the only assignment, on every installment.
+    expect((await approvals(server, mediaBuyId)).map((row: any) => row.creative_id)).toEqual(['hero_v1']);
+    expect((await approvals(server, mediaBuyId))[0]).not.toHaveProperty('installment_refs');
+    const capabilities = await call(server, 'get_adcp_capabilities', {});
+    expect(capabilities.experimental_features ?? []).not.toContain('media_buy.installment_creative_assignment');
+  });
 });
