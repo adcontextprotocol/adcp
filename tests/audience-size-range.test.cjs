@@ -149,3 +149,17 @@ test('size and match-rate semantics are stated in the field descriptions', () =>
   assert.match(core, /MUST equal upper_bound when precision is 'exact'/);
   assert.match(core, /less than or equal to upper_bound/);
 });
+
+test('a size can declare what it counts, from the reach-unit enum', async () => {
+  const validate = await compile('/schemas/core/audience-size.json');
+  const core = readSchema('/schemas/core/audience-size.json');
+  assert.ok(!core.required.includes('unit'), 'unit is optional; absent means individuals');
+  for (const unit of ['individuals', 'households', 'devices', 'accounts', 'cookies']) {
+    assert.equal(validate({ ...size, unit }), true, `${unit}: ${JSON.stringify(validate.errors)}`);
+  }
+  assert.equal(validate({ ...size, unit: 'custom' }), false, 'custom is not comparable across parties');
+  assert.equal(validate({ ...size, unit: 'homes' }), false, 'unit is drawn from reach-unit');
+  const sync = await compile('/schemas/media-buy/sync-audiences-response.json');
+  const body = response({ status: 'ready', audience_size: { ...size, unit: 'households' }, targetable_size: { ...size, unit: 'households' } });
+  assert.equal(sync(body), true, JSON.stringify(sync.errors));
+});

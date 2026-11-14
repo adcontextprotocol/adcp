@@ -207,13 +207,14 @@ The alias remains functional throughout 3.x. Removal is no earlier than AdCP 4.0
 
 Platforms report audience size in different ways. Some give an exact count, some an approximation or interval for member privacy, and some only a coarse bucket. A single `matched_count` would force the seller to invent a point value, so a seller can report the size as a range instead.
 
-`audience_size` is the number of people the audience matched to on the platform. `targetable_size` is the number of people the platform can serve to now, which can be smaller when only part of the matched audience is eligible to be served. Both use the same object, defined once as [`audience-size.json`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json):
+`audience_size` is the number of people the audience matched to on the platform, or of households or devices when the platform matches to those and says so in `unit`. `targetable_size` is the number the platform can serve to now, in the same unit, which can be smaller when only part of the matched audience is eligible to be served. Both use the same object, defined once as [`audience-size.json`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json):
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `lower_bound` | Yes | Lowest number of people the size can be. Integer, at least 0. |
-| `upper_bound` | Yes | Highest number of people the size can be. Integer, at least 0, and MUST be greater than or equal to `lower_bound`. |
+| `lower_bound` | Yes | Lowest count the size can be, in `unit`. Integer, at least 0. |
+| `upper_bound` | Yes | Highest count the size can be, in `unit`. Integer, at least 0, and MUST be greater than or equal to `lower_bound`. |
 | `precision` | Yes | `exact`, `approximate`, or `bucketed`. |
+| `unit` | No | What the bounds count, from [`reach-unit`](https://adcontextprotocol.org/schemas/latest/enums/reach-unit.json): `individuals`, `households`, `devices`, `accounts` or `cookies` (`custom` is excluded). Absent means `individuals`. |
 | `as_of` | No | ISO 8601 timestamp of when the platform computed this size. |
 
 ```json
@@ -240,6 +241,7 @@ Platforms report audience size in different ways. Some give an exact count, some
 
 Key semantics:
 - **`precision` says how to read the bounds.** With `exact`, `lower_bound` equals `upper_bound`. With `approximate`, the true size is expected to fall within the bounds. With `bucketed`, the bounds are the edges of a coarse bucket and say nothing finer than which bucket the audience falls in.
+- **Compare sizes only in the same unit.** Many CTV and streaming platforms match a list to households or devices rather than people, and the same list can produce very different counts depending on which. A seller that matches to households or devices sets `unit` instead of reporting those counts as people. Buyers MUST NOT compare or rank two sizes whose units differ.
 - **Matched is not targetable.** `targetable_size` can be smaller than `audience_size`. Plan reach against `targetable_size` when a seller reports it.
 - **`matched_count` and `effective_match_rate` can be absent.** A seller whose platform reports a size but no matched count, as with some social platforms, omits `matched_count` and `effective_match_rate`, and reports `audience_size`. Buyers MUST NOT read an absent count or rate as zero.
 - **`match_rate_basis` qualifies the rate.** `platform_reported` means the platform supplied `effective_match_rate`. `derived` means the seller computed it, for example from approximate counts, so it is itself approximate.
