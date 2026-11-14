@@ -557,7 +557,7 @@ components:
           type: array
           items:
             type: string
-          description: Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches spec-exactly with the slash significant — so a client answering "which publishers authorize this agent" must query once per spelling here and merge the results.
+          description: Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches with adagents.json agent URL matching, where the slash is significant for an entry with a path — so a client answering "which publishers authorize this agent" must query once per spelling here and merge the results. Publishers that authorize the agent's bare origin are returned for every spelling.
         publisher_domains:
           type: array
           items:
@@ -8602,7 +8602,7 @@ paths:
     get:
       operationId: getAgentDomains
       summary: Agent domain lookup
-      description: Get all publisher domains associated with an agent.
+      description: "Get all publisher domains whose adagents.json authorizes an agent. `agentUrl` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule: an origin-only `authorized_agents[].url` (`https://agent.example.com`) authorizes every agent URL at that origin, and an entry with a path matches that canonical URL only, with a non-root trailing slash significant."
       tags:
         - Authorization Lookups
       parameters:
@@ -8640,7 +8640,7 @@ paths:
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
 
-        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
+        `agent_url` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule, after [AdCP URL canonicalization](/docs/reference/url-canonicalization) of both sides. A publisher whose `authorized_agents[].url` is **origin-only** (`https://a.example` or `https://a.example/`) authorizes every agent URL with that canonical origin (same scheme, host and port), so it is returned for `https://a.example/mcp` and `https://a.example/a2a` alike (DR-0023, AdCP 3.3). An entry **with a path** matches that canonical URL only, and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two trailing-slash spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
@@ -8795,7 +8795,7 @@ paths:
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
 
-        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
+        `agent_url` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule, after [AdCP URL canonicalization](/docs/reference/url-canonicalization) of both sides. A publisher whose `authorized_agents[].url` is **origin-only** (`https://a.example` or `https://a.example/`) authorizes every agent URL with that canonical origin (same scheme, host and port), so it is returned for `https://a.example/mcp` and `https://a.example/a2a` alike (DR-0023, AdCP 3.3). An entry **with a path** matches that canonical URL only, and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two trailing-slash spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
@@ -11607,9 +11607,9 @@ paths:
       parameters:
         - schema:
             type: string
-            description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
+            description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not. Returns the rows whose `agent_url` authorizes it under adagents.json agent URL matching: rows for the same canonical URL, plus rows whose `agent_url` is origin-only (`https://agent.example.com`) for the same canonical origin, which authorize every path at that origin."
           required: true
-          description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
+          description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not. Returns the rows whose `agent_url` authorizes it under adagents.json agent URL matching: rows for the same canonical URL, plus rows whose `agent_url` is origin-only (`https://agent.example.com`) for the same canonical origin, which authorize every path at that origin."
           name: agent_url
           in: query
         - schema:

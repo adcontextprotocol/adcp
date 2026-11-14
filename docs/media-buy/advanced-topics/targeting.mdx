@@ -1264,16 +1264,16 @@ create-time substitute for any result above.
 - **Example**: `["lapsed_subscribers", "high_value_prospects"]`
 - **Use cases**: Retargeting known users, loyalty campaigns targeting existing members, CRM-based inclusion on closed platforms (LinkedIn, Meta, TikTok, Google Ads)
 - **Not for lookalike/expansion**: To find new users *similar to* an audience, describe the intent in your campaign brief ("reach people like our existing customers") — the seller handles expansion strategy
-- **Prerequisite**: Audiences must be registered and `ready` via `sync_audiences` before use
-- **Note**: Seller must declare support in `get_adcp_capabilities`
+- **Prerequisite**: Audiences must be on the account and `ready` before use: pushed through `sync_audiences`, or, on a [seller without inline member push](/docs/media-buy/task-reference/sync_audiences#sellers-without-inline-member-push), listed by a discovery-only `sync_audiences` call
+- **Note**: Seller declares support with `media_buy.audience_targeting` in `get_adcp_capabilities`. That declaration does not by itself mean the seller accepts pushed members; `audience_targeting.supported_activation_methods` says whether it does
 
 ### audience_exclude
 - **Description**: Suppress delivery to users who are members of these first-party CRM audiences. Matched users are excluded regardless of other targeting.
 - **Format**: Array of `audience_id` strings from [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences)
 - **Example**: `["existing_customers", "recent_purchasers"]`
 - **Use cases**: Customer suppression in acquisition campaigns, excluding recent converters, suppressing opted-out users
-- **Prerequisite**: Audiences must be registered and `ready` via `sync_audiences` before use
-- **Note**: Seller must declare support in `get_adcp_capabilities`
+- **Prerequisite**: Audiences must be on the account and `ready` before use: pushed through `sync_audiences`, or, on a [seller without inline member push](/docs/media-buy/task-reference/sync_audiences#sellers-without-inline-member-push), listed by a discovery-only `sync_audiences` call
+- **Note**: Seller declares support with `media_buy.audience_targeting` in `get_adcp_capabilities`, as for `audience_include`
 
 ### signal_targeting_groups
 - **Description**: Basic Boolean grouping for seller-offered data signals. Use this for both simple include-only signal targeting and grouped include/exclude expressions such as `(A OR B) AND NOT (C OR D)`.
