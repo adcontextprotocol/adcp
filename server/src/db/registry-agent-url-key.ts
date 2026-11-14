@@ -105,9 +105,10 @@ export function legacyRegistryAgentUrlKey(raw: string): string | null {
  *
  * AUTHORIZATION MATCHING MUST NOT USE THIS FUNCTION. Whether an
  * `adagents.json` entry authorizes a given agent URL is decided by
- * `canonicalTargetUri` with the trailing slash significant (#7829,
- * `server/src/validator.ts`). Those paths take the URL as registered, via
- * `declaredAgentUrl`, never the key.
+ * `agentUrlAuthorizedBy`: an origin-only entry matches by canonical origin,
+ * an entry with a path by canonical URL with a non-root trailing slash
+ * significant (#7829, #8943, `server/src/validator.ts`). Those paths take the
+ * URL as registered, via `declaredAgentUrl`, never the key.
  *
  * Classification of every store and path this key touches:
  *
@@ -119,10 +120,12 @@ export function legacyRegistryAgentUrlKey(raw: string): string | null {
  *     agent_contexts, discovered_agents, member_profiles.agents[].url.
  *     Every one of these answers "which agent is this row about".
  *
- *   AUTHORIZATION — spec-exact, never folds. `AgentValidator.validate` and
+ *   AUTHORIZATION — spec rule, never folds. `AgentValidator.validate` and
  *     its callers (`find_agents_for_property` in mcp-tools.ts,
  *     properties.ts), which compare against a publisher's live
- *     adagents.json. They take `declaredAgentUrl(agent)`.
+ *     adagents.json, and the directory reads that answer the same question
+ *     from the index. All of them decide with `agentUrlAuthorizedBy` and take
+ *     `declaredAgentUrl(agent)`.
  *
  *   RAW-MATCHED — untouched. agent_publisher_authorizations and
  *     agent_property_authorizations, whose readers compare `agent_url`
@@ -132,8 +135,9 @@ export function legacyRegistryAgentUrlKey(raw: string): string | null {
  * way: it is an identity-keyed projection of manifests. Its key folds, and
  * its raw `agent_url` is preserved unchanged and exposed on both the
  * `/registry/authorizations` snapshot and the `authorization.*` change feed,
- * so a consumer that needs the spec-exact answer has the bytes to compute
- * it. The registry's own reads of it are identity reads.
+ * so a consumer that needs the authorization answer has the bytes to compute
+ * it. The registry's own authorization reads of it look up by
+ * `authorizationLookupKeys` and filter with `agentUrlAuthorizedBy`.
  *
  * Returns `null` — never a best-effort string — for anything that is not an
  * absolute http(s) URL, carries userinfo, or contains a wildcard, backslash,
@@ -224,48 +228,195 @@ export function registryAgentUrlLookupKey(raw: string): string {
 }
 
 /**
- * The spec-exact identity of an agent URL: AdCP URL canonicalization with
- * NOTHING folded that the spec keeps — a trailing slash is significant.
- * Returns null for a URL the algorithm rejects, which then matches nothing.
+ * The spec-exact canonical form of an agent URL: AdCP URL canonicalization
+ * with NOTHING folded that the spec keeps — a non-root trailing slash, path
+ * case and the query are significant. Returns null for a URL the algorithm
+ * rejects (a raw non-ASCII host, more than one trailing host dot, anything
+ * unparseable), which then matches nothing.
  *
- * This is the comparison `AgentValidator` makes against a publisher's
- * `adagents.json` (#7829), and `validator.ts` calls straight through to it so
- * the two can never drift. The registry's directory reads use it to filter
- * the rows an identity-key lookup returned, so the directory can never
- * report an authorization the validator would deny.
+ * The canonical form always carries a path: an empty path becomes `/`, so
+ * `https://agent.example` and `https://agent.example/` both canonicalize to
+ * `https://agent.example/`.
+ *
+ * Two points where this goes beyond the SDK's `canonicalTargetUri`:
+ *
+ *   - A single trailing root-label dot on a DNS host is removed
+ *     (`https://agent.example./mcp` → `https://agent.example/mcp`) and more
+ *     than one is rejected, per docs/reference/url-canonicalization step 2.
+ *     The SDK's 3.2 profile keeps the dot; `registryAgentUrlKey` already
+ *     drops it (WHATWG host parsing), so without this the validator and the
+ *     registry key would disagree about a dotted host.
+ *   - USERINFO IS REJECTED, not stripped, deliberately. Spec step 3 strips
+ *     `user:pass@` for comparison, but an `authorized_agents[].url` or an
+ *     agent URL carrying credentials is malformed input: the registry refuses
+ *     to key one (see `registryAgentUrlKey`), the SDK's
+ *     `canonicalizeAgentUrl` returns null for one, and `canonicalTargetUri`
+ *     throws on one. Rejecting keeps all three in agreement and fails closed —
+ *     such an entry authorizes nothing, and such an agent URL is "Invalid
+ *     agent URL" to the validator — instead of letting a credential-bearing
+ *     URL silently match the credential-free agent.
+ *
+ * This is the canonicalizer under `agentUrlAuthorizedBy`, the one rule both
+ * `AgentValidator` and the registry's directory reads apply to decide whether
+ * an `adagents.json` entry authorizes an agent URL (#7829, #8943).
  *
  * Contrast `registryAgentUrlKey`, which folds the trailing slash so one agent
  * has one row. Key for the index, this for the answer.
  */
 export function specExactAgentUrl(raw: string): string | null {
+  let canonical: string;
   try {
-    return canonicalTargetUri(raw);
+    canonical = canonicalTargetUri(raw);
   } catch {
     return null;
   }
+  return stripRootDot(canonical);
 }
 
 /**
- * Whether `rowAgentUrl` — a raw, publisher- or member-declared URL stored
- * next to an identity key — is spec-exactly the same agent as `callerUrl`.
- *
- * The `'*'` wildcard is an exact-match sentinel, not a URL: it is the same
- * agent as `'*'` and nothing else. An identity-key lookup never returns
- * wildcard rows for a non-wildcard caller anyway, since their key is `'*'`.
+ * Remove one trailing root-label dot from the DNS host of a canonical URL,
+ * or return null when the host ends in more than one dot (an empty label,
+ * which the spec rejects). IPv6 literals are left alone; the root-dot rule
+ * does not apply to them.
  */
-export function isSpecExactAgentMatch(rowAgentUrl: string, callerUrl: string): boolean {
-  const left = rowAgentUrl.trim();
-  const right = callerUrl.trim();
-  if (left === REGISTRY_AGENT_URL_WILDCARD || right === REGISTRY_AGENT_URL_WILDCARD) {
-    return left === right;
-  }
-  const canonicalLeft = specExactAgentUrl(left);
-  return canonicalLeft !== null && canonicalLeft === specExactAgentUrl(right);
+function stripRootDot(canonical: string): string | null {
+  const authorityStart = canonical.indexOf('://');
+  if (authorityStart < 0) return canonical;
+  const hostStart = authorityStart + 3;
+  const pathStart = canonical.indexOf('/', hostStart);
+  const authorityEnd = pathStart < 0 ? canonical.length : pathStart;
+  const authority = canonical.slice(hostStart, authorityEnd);
+  if (authority.startsWith('[')) return canonical;
+  const portAt = authority.lastIndexOf(':');
+  const host = portAt < 0 ? authority : authority.slice(0, portAt);
+  if (!host.endsWith('.')) return canonical;
+  if (host.endsWith('..') || host === '.') return null;
+  const port = portAt < 0 ? '' : authority.slice(portAt);
+  return `${canonical.slice(0, hostStart)}${host.slice(0, -1)}${port}${canonical.slice(authorityEnd)}`;
 }
 
 /**
- * The URL to hand to anything that decides AUTHORIZATION — the spec-exact
- * comparison in `AgentValidator`, where a trailing slash is significant
+ * The canonical origin of an already-canonical URL: `scheme://authority`,
+ * with no path, query or fragment (docs/reference/url-canonicalization,
+ * "Canonical origin"). A canonical URL always has a path starting with `/`
+ * and an authority that cannot contain `/`, so the origin is everything
+ * before the first `/` after `://`.
+ */
+function originOfCanonical(canonical: string): string | null {
+  const schemeEnd = canonical.indexOf('://');
+  if (schemeEnd < 0) return null;
+  const pathStart = canonical.indexOf('/', schemeEnd + 3);
+  return pathStart < 0 ? canonical : canonical.slice(0, pathStart);
+}
+
+/**
+ * The canonical origin of `raw` — scheme, host and port after AdCP
+ * canonicalization (lowercase scheme and host, default port dropped, one
+ * trailing root dot removed) — or null when `raw` cannot be canonicalized.
+ * `HTTPS://Agent.Example.:443/mcp` → `https://agent.example`. A URL with
+ * userinfo has no canonical origin here: see `specExactAgentUrl`.
+ */
+export function canonicalAgentOrigin(raw: string): string | null {
+  const canonical = specExactAgentUrl(raw.trim());
+  return canonical === null ? null : originOfCanonical(canonical);
+}
+
+/**
+ * Whether `raw` is ORIGIN-ONLY as docs/reference/url-canonicalization defines
+ * it: its canonical form has the root path `/` and no query.
+ * `https://agent.example` and `https://agent.example/` are origin-only;
+ * `https://agent.example/mcp`, `https://agent.example/?t=1` and
+ * `https://agent.example/?` (an empty query is still a query) are not.
+ */
+export function isOriginOnlyAgentUrl(raw: string): boolean {
+  const canonical = specExactAgentUrl(raw.trim());
+  if (canonical === null) return false;
+  const origin = originOfCanonical(canonical);
+  return origin !== null && canonical === `${origin}/`;
+}
+
+/**
+ * Whether the `adagents.json` `authorized_agents[].url` entry `entryUrl`
+ * authorizes the agent at `agentUrl` — THE authorization-matching rule, shared
+ * by `AgentValidator` (against a publisher's live manifest) and every registry
+ * directory read (against the indexed projection of it), so the two can never
+ * disagree (#7830, #8943). Follows DR-0023 and
+ * docs/governance/property/adagents#agent-url-matching:
+ *
+ *   - Both sides are canonicalized with AdCP URL canonicalization first, so
+ *     scheme and host case, a default port (`:443` / `:80`), dot segments,
+ *     percent-encoding of unreserved characters and the fragment never
+ *     matter. A URL that cannot be canonicalized matches nothing.
+ *   - An ORIGIN-ONLY entry (`https://agent.example` or `https://agent.example/`)
+ *     authorizes every agent URL with the same canonical origin — same
+ *     scheme, host and port — whatever its path or query:
+ *     `https://agent.example/mcp`, `https://agent.example/a2a` and the origin
+ *     itself.
+ *   - An entry WITH A PATH (or a query) matches only the agent URL with the
+ *     same canonical URL. Path case, a non-root trailing slash (`/mcp` vs
+ *     `/mcp/`) and the query all stay significant, so path-mounted tenants on
+ *     a shared host stay distinct.
+ *
+ * Matching is directional: an origin-only AGENT URL is not authorized by an
+ * entry with a path.
+ *
+ * The registry's `'*'` wildcard is an exact-match sentinel, not a URL: it is
+ * the same agent as `'*'` and nothing else.
+ *
+ * Not used by the supply-path verifier, which keeps exact canonical-URL
+ * matching under supply-path semantics version 1 until a 4.0 semantics
+ * version adopts this rule (see `services/supply-path-input.ts`).
+ */
+export function agentUrlAuthorizedBy(entryUrl: string, agentUrl: string): boolean {
+  const entry = entryUrl.trim();
+  const agent = agentUrl.trim();
+  if (entry === REGISTRY_AGENT_URL_WILDCARD || agent === REGISTRY_AGENT_URL_WILDCARD) {
+    return entry === agent;
+  }
+  const canonicalEntry = specExactAgentUrl(entry);
+  const canonicalAgent = specExactAgentUrl(agent);
+  if (canonicalEntry === null || canonicalAgent === null) return false;
+  if (canonicalEntry === canonicalAgent) return true;
+  const entryOrigin = originOfCanonical(canonicalEntry);
+  return entryOrigin !== null
+    && canonicalEntry === `${entryOrigin}/`
+    && originOfCanonical(canonicalAgent) === entryOrigin;
+}
+
+/**
+ * The registry identity keys under which a row that AUTHORIZES `agentUrl`
+ * can be stored: the agent's own lookup key, the key of its canonical form,
+ * and the key of its canonical origin, which is where an origin-only entry
+ * for that origin lives (`https://agent.example/` keys as
+ * `https://agent.example`). Deduplicated; the agent's own key is always
+ * first.
+ *
+ * An authorization read looks rows up by these keys — the index work — and
+ * then keeps only the raw `agent_url` values `agentUrlAuthorizedBy` accepts,
+ * which decides the answer. The keys over-select on purpose (they fold a
+ * trailing slash and include every row at the origin key); the filter is
+ * what makes the read agree with the validator.
+ */
+export function authorizationLookupKeys(agentUrl: string): string[] {
+  const keys = [registryAgentUrlLookupKey(agentUrl)];
+  const add = (candidate: string | null) => {
+    if (candidate === null) return;
+    const key = registryAgentUrlKey(candidate);
+    if (key !== null && !keys.includes(key)) keys.push(key);
+  };
+  // The key of the agent's CANONICAL form. Usually the same as the first, but
+  // a spelling the registry refuses to key raw yet the canonicalizer accepts
+  // — `https:agent.example/mcp`, a backslash, a space in the path — would
+  // otherwise only be looked up under its raw spelling and miss the row the
+  // validator matches. This keeps the two in agreement for such input.
+  add(specExactAgentUrl(agentUrl.trim()));
+  add(canonicalAgentOrigin(agentUrl));
+  return keys;
+}
+
+/**
+ * The URL to hand to anything that decides AUTHORIZATION — the spec rule in
+ * `agentUrlAuthorizedBy`, where a non-root trailing slash is significant
  * (#7829). Never the registry key: the key folds the trailing slash for
  * identity, so matching a publisher's `adagents.json` against it would
  * authorize `/mcp` for an entry that says `/mcp/` and vice versa.
@@ -314,7 +465,8 @@ export function declaredAgentUrl(agent: { url: string; declared_url?: string }):
  *
  * AUTHORIZATION MATCHING MUST NOT USE THIS. Like `registryAgentUrlKey` itself
  * it folds `/mcp` and `/mcp/` together; whether an `adagents.json` entry
- * authorizes a URL stays spec-exact (#7829) via `declaredAgentUrl`.
+ * authorizes a URL is `agentUrlAuthorizedBy` (#7829, #8943), given
+ * `declaredAgentUrl`.
  */
 export function registryAgentUrlKeySpellings(raw: string): string[] {
   const trimmed = raw.trim();

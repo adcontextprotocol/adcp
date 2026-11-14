@@ -1,6 +1,6 @@
 import dns from "node:dns/promises";
 import net from "node:net";
-import { specExactAgentUrl } from "./db/registry-agent-url-key.js";
+import { agentUrlAuthorizedBy, specExactAgentUrl } from "./db/registry-agent-url-key.js";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import type {
   AdAgentsJson,
@@ -254,7 +254,11 @@ export class AgentValidator {
     topLevelPlacements: PlacementDefinition[],
     placementTagDefinitions: Record<string, PlacementTagDefinition>
   ): boolean {
-    if (typeof agent.url !== "string" || this.normalizeUrl(agent.url) !== normalizedAgentUrl) {
+    // An origin-only entry authorizes the agent at that origin, whatever its
+    // path; an entry with a path matches that canonical URL only (DR-0023,
+    // #8943). The rule lives in `agentUrlAuthorizedBy` so the registry's
+    // directory reads apply exactly the same one (#7830).
+    if (typeof agent.url !== "string" || !agentUrlAuthorizedBy(agent.url, normalizedAgentUrl)) {
       return false;
     }
 
