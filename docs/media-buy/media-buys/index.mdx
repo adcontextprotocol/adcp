@@ -121,7 +121,8 @@ when that task completes. See [Task lifecycle](/docs/building/by-layer/L3/task-l
 Compact purchase calls do not carry creative bodies. Use
 [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to create or
 update library assets, then use `assignment_operations` to assign, unassign, or
-replace package creatives.
+replace package creatives. Send only the operations the seller lists in
+[`creative.assignment_operations`](/docs/creative/task-reference/sync_creatives#which-operations-a-seller-accepts).
 
 ```json
 {

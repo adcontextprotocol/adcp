@@ -843,7 +843,7 @@ describe('relationship-scoped indicators', () => {
     assert.equal(validateGetMediaBuys(payload), false);
   });
 
-  it('returns structured warnings only on completed media-buy success arms', () => {
+  it('returns structured warnings only on completed media-buy success arms and aligned submitted arms', () => {
     const warning = {
       code: 'inventory_shortfall_forecast',
       message: 'Forecast delivery is below the requested goal.',
@@ -968,11 +968,15 @@ describe('relationship-scoped indicators', () => {
     assertValid(validateCreateResponse, submitted);
     assertValid(validateUpdateResponse, submitted);
     assertValid(validateSyncResponse, submitted);
-    assert.equal(validateCreateResponse({ ...submitted, warnings: [warning] }), false);
-    assert.equal(validateUpdateResponse({ ...submitted, warnings: [warning] }), false);
-    assert.equal(validateCommitmentResponse({ ...submitted, warnings: [warning] }), false);
-    assert.equal(validateControlResponse({ ...submitted, warnings: [warning] }), false);
-    assert.equal(validateSyncResponse({ ...submitted, warnings: [warning] }), false);
+    // #8856 (DR-0036 correction): the published *-async-response-submitted.json
+    // files accept warnings on the submitted envelope, so the aligned inline
+    // submitted branches accept them too. Warnings stay excluded from the
+    // error arms above and from sync_creatives' success arm.
+    assertValid(validateCreateResponse, { ...submitted, warnings: [warning] });
+    assertValid(validateUpdateResponse, { ...submitted, warnings: [warning] });
+    assertValid(validateCommitmentResponse, { ...submitted, warnings: [warning] });
+    assertValid(validateControlResponse, { ...submitted, warnings: [warning] });
+    assertValid(validateSyncResponse, { ...submitted, warnings: [warning] });
   });
 
   it('defines account-level invalidation webhooks for indicators and assignments', () => {
