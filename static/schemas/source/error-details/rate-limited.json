@@ -19,7 +19,23 @@
     },
     "scope": {
       "type": "string",
-      "enum": ["account", "tool", "global"],
+      "x-deprecated-enum-values": ["global"],
+      "x-deprecated-enum-values-doc": "Deprecated in 3.3 and removed in 4.0 (#8791): `global` is a Python keyword, so generated SDKs must rename it. Use `agent`. Receivers accept both values through 3.x. Send the replacement only to a counterparty on AdCP 3.3 or later, because a 3.2 validator rejects it.",
+      "enum": ["account", "tool", "global", "agent"],
+      "enumDescriptions": {
+        "account": "The limit applies to the calling account.",
+        "tool": "The limit applies to the tool that was called.",
+        "global": "**Deprecated in 3.3**, removed in 4.0: use `agent`. The limit applies across the whole agent.",
+        "agent": "The limit applies across the whole agent, every account and tool. Replaces the deprecated `global`; a receiver on AdCP 3.2 or earlier rejects it."
+      },
+      "enumMetadata": {
+        "global": {
+          "deprecated": true,
+          "x-deprecated-in": "3.3.0",
+          "x-removed-in": "4.0.0",
+          "x-superseded-by": "agent"
+        }
+      },
       "description": "What the limit applies to"
     }
   },

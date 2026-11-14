@@ -100,7 +100,7 @@ An artifact represents content context where ad placements occur - identified by
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `verdict` | Yes | Overall `pass` or `fail` decision |
+| `verdict` | Yes | Overall `passed` or `fail` decision. `pass` is the deprecated spelling of `passed`: deprecated in 3.3 and removed in 4.0 ([#8791](https://github.com/adcontextprotocol/adcp/issues/8791)). Receivers accept both through 3.x; a 3.2 receiver rejects `passed`. |
 | `explanation` | No | Detailed natural language explanation of the decision |
 | `features` | No | Per-feature breakdown with explanations |
 | `confidence` | No | Model confidence in the verdict (0-1), when available |

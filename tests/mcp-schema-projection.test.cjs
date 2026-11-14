@@ -230,6 +230,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // controller through reporting-write-destination.json and
 // reporting-delivery-method.json; after the #8501 withdrawals the controller
 // measures 1_330_813 bytes, within the bound.
+// Reserved-word enum replacements (#8791) add a replacement value and its
+// deprecation metadata to enums in the controller closure; merged with the
+// above they stay within 1_388_000.
 const PARITY_COMPILE_LIMIT = 1_388_000;
 
 function readJson(filename) {

@@ -758,10 +758,20 @@
         "headline": { "type": ["string", "null"] },
         "tracks": {
           "type": "object",
-          "description": "Map of compliance track id to track status.",
+          "description": "Map of compliance track id to track status. `passed` replaces `pass`, which is deprecated in 3.3 and removed in 4.0; consumers treat the two as the same status.",
           "additionalProperties": {
             "type": "string",
-            "enum": ["pass", "fail", "partial", "skip", "silent", "warning", "unknown", "skipped"]
+            "x-deprecated-enum-values": ["pass"],
+            "x-deprecated-enum-values-doc": "Deprecated in 3.3 and removed in 4.0 (#8791): `pass` is a Python keyword, so generated SDKs must rename it. Use `passed`. Receivers accept both values through 3.x. Send the replacement only to a counterparty on AdCP 3.3 or later, because a 3.2 validator rejects it.",
+            "enum": ["pass", "fail", "partial", "skip", "silent", "warning", "unknown", "skipped", "passed"],
+            "enumMetadata": {
+              "pass": {
+                "deprecated": true,
+                "x-deprecated-in": "3.3.0",
+                "x-removed-in": "4.0.0",
+                "x-superseded-by": "passed"
+              }
+            }
           }
         },
         "storyboards_passing": { "type": "integer", "minimum": 0 },

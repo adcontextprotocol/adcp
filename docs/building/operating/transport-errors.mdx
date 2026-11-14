@@ -432,7 +432,7 @@ The `details` field is an open object. To prevent interoperability divergence, s
 | `limit` | number | Maximum requests allowed in the window |
 | `remaining` | number | Requests remaining in the current window |
 | `window_seconds` | number | Duration of the rate-limit window |
-| `scope` | string | What the limit applies to: `account`, `tool`, or `global` |
+| `scope` | string | What the limit applies to: `account`, `tool`, or `agent` (the whole agent). `global` is the deprecated spelling of `agent`: deprecated in 3.3 and removed in 4.0 ([#8791](https://github.com/adcontextprotocol/adcp/issues/8791)). Receivers accept both through 3.x; a 3.2 receiver rejects `agent`. |
 
 ### `BUDGET_TOO_LOW`
 

@@ -167,9 +167,20 @@
         "match_keys": {
           "type": "array",
           "minItems": 1,
+          "description": "Identifiers the onboarder matched on. `full_name` replaces `name`, which is deprecated in 3.3 and removed in 4.0; receivers treat the two as the same key.",
           "items": {
             "type": "string",
-            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+            "x-deprecated-enum-values": ["name"],
+            "x-deprecated-enum-values-doc": "Deprecated in 3.3 and removed in 4.0 (#8791): `name` collides with the enum member protocol in Python and Java (`Enum.name`). Use `full_name`. Receivers accept both values through 3.x. Send the replacement only to a counterparty on AdCP 3.3 or later, because a 3.2 validator rejects it.",
+            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone", "full_name"],
+            "enumMetadata": {
+              "name": {
+                "deprecated": true,
+                "x-deprecated-in": "3.3.0",
+                "x-removed-in": "4.0.0",
+                "x-superseded-by": "full_name"
+              }
+            }
           }
         },
         "pre_onboarding_audience_expansion": {
