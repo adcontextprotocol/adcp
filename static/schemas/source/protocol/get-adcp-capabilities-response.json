@@ -2490,11 +2490,11 @@
         },
         "audience_targeting": {
           "type": "object",
-          "description": "Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including sync_audiences and audience_include/audience_exclude in targeting overlays.",
+          "description": "Audience targeting capabilities. Presence of this object indicates the seller supports audience_include and audience_exclude in targeting overlays, and discovery-only sync_audiences (called without audiences), which lists the audiences on the account and the audience_id values those overlays reference. A seller that declares this object MUST answer discovery-only sync_audiences. Presence alone does not promise inline member push: the sync_audiences pattern in supported_activation_methods declares it, and when supported_activation_methods is absent inline member push is supported, as in 3.2. A seller whose supported_activation_methods omits the sync_audiences pattern MUST reject, with UNSUPPORTED_FEATURE, an audiences entry that carries add or remove member deltas or that would create a new audience without a source reference. supported_identifier_types and minimum_audience_size are required only when the seller accepts inline member push.",
           "properties": {
             "supported_identifier_types": {
               "type": "array",
-              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. Required when the seller accepts inline member push, that is when supported_activation_methods is absent or includes the sync_audiences pattern.",
               "items": {
                 "type": "string",
                 "enum": ["hashed_email", "hashed_phone"]
@@ -2517,13 +2517,13 @@
             },
             "minimum_audience_size": {
               "type": "integer",
-              "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical).",
+              "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical). Required when the seller accepts inline member push, that is when supported_activation_methods is absent or includes the sync_audiences pattern. A seller without inline member push MAY still declare it.",
               "minimum": 1
             },
             "supported_activation_methods": {
               "type": "array",
               "x-status": "experimental",
-              "description": "Union of audience_activation.methods across the seller's products. Fast-fail discovery: a buyer reads this once and skips the catalog walk when nothing overlaps its pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: the union MAY omit consumer_identities and destination_ref until bilateral account setup establishes them, and MUST NOT expose another account's coordinates. Absence of this field with media_buy.audience_activation listed in experimental_features means walk the catalog; only a present, non-overlapping union is a fast-fail signal. Experimental (x-status: experimental): sellers implementing audience activation declarations MUST list media_buy.audience_activation in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
+              "description": "Union of audience_activation.methods across the seller's products. Fast-fail discovery: a buyer reads this once and skips the catalog walk when nothing overlaps its pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: the union MAY omit consumer_identities and destination_ref until bilateral account setup establishes them, and MUST NOT expose another account's coordinates. Absence of this field with media_buy.audience_activation listed in experimental_features means walk the catalog; only a present, non-overlapping union is a fast-fail signal. When present, the field also declares inline member push: the seller accepts add and remove member deltas on sync_audiences only when the union includes the sync_audiences pattern. Experimental (x-status: experimental): sellers implementing audience activation declarations MUST list media_buy.audience_activation in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
               "items": {
                 "$ref": "/schemas/core/audience-activation-method.json"
               },
@@ -2546,7 +2546,27 @@
               "additionalProperties": true
             }
           },
-          "required": ["supported_identifier_types", "minimum_audience_size"],
+          "if": {
+            "description": "The seller accepts inline member push: supported_activation_methods is absent, as in 3.2, or includes the sync_audiences pattern.",
+            "anyOf": [
+              { "not": { "required": ["supported_activation_methods"] } },
+              {
+                "properties": {
+                  "supported_activation_methods": {
+                    "contains": {
+                      "type": "object",
+                      "properties": { "pattern": { "const": "sync_audiences" } },
+                      "required": ["pattern"]
+                    }
+                  }
+                },
+                "required": ["supported_activation_methods"]
+              }
+            ]
+          },
+          "then": {
+            "required": ["supported_identifier_types", "minimum_audience_size"]
+          },
           "additionalProperties": true
         },
         "supported_optimization_metrics": {
