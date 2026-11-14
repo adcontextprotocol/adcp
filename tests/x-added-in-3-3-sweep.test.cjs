@@ -77,6 +77,7 @@ const PROPERTIES_3_3 = [
   ['core/delivery-metrics.json', ['properties', 'print_metrics']],
   ['core/reporting-webhook.json', ['properties', 'operation_id']],
   ['governance/sync-plans-request.json', ['properties', 'plans', 'items', 'properties', 'budget', 'properties', 'periods']],
+  ['governance/sync-plans-request.json', ['properties', 'plans', 'items', 'properties', 'human_override']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'governance', 'properties', 'supports_budget_periods']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'operation_sources']],
   ['formats/canonical/video_hosted.json', ['properties', 'loudness']],

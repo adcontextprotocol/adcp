@@ -816,7 +816,7 @@ export const GOVERNANCE_TOOLS = [
                   required: ['policy'],
                 },
               },
-              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Governance enforcement mode. Defaults to enforce.' },
+              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Training-agent test control, not an AdCP sync_plans field: sets the governance mode this sandbox applies to the plan. Production governance agents configure mode out of band. Defaults to enforce.' },
               approved_sellers: { type: ['array', 'null'], description: 'Seller allowlist. null = unrestricted, [] = deny all, [...urls] = only listed sellers.' },
               delegations: {
                 type: 'array',
@@ -1747,7 +1747,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const denyBeforeEvaluation = (
     finding: GovernanceFinding,
     explanation: string,
-    extra: Partial<Pick<GovernanceCheckState, 'planOwnerAgentUrl' | 'tool' | 'governanceContext'>> = {},
+    extra: Partial<Pick<GovernanceCheckState, 'planOwnerAgentUrl' | 'tool'>> = {},
   ) => {
     const checkId = `chk_${randomUUID().slice(0, 8)}`;
     const check: GovernanceCheckState = {
@@ -1923,12 +1923,17 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     };
   }
 
+  // One response for a plan that does not exist and for a plan the caller
+  // cannot access (error-code.json PLAN_NOT_FOUND). Nothing is stored and no
+  // check_id is issued.
   if (!plan) {
-    return denyBeforeEvaluation(
-      { categoryId: 'plan_lookup', severity: 'critical', explanation: `Plan not found: ${planId}` },
-      `Plan not found: ${planId}. Call sync_plans first.`,
-      { governanceContext },
-    );
+    return {
+      errors: [{
+        code: 'PLAN_NOT_FOUND',
+        message: 'No plan with this plan_id exists or is accessible to the caller. Call sync_plans first.',
+        field: 'plan_id',
+      }],
+    };
   }
 
   const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
@@ -2640,7 +2645,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     findings.push({
       categoryId: 'human_review_override',
       severity: 'info',
-      explanation: `plan.mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
+      explanation: `governance mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
     });
   }
 

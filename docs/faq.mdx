@@ -194,7 +194,7 @@ The full crosswalk is in [Why adagents.json instead of ads.txt](/docs/governance
 <Accordion title="Can an AI agent autonomously buy credit, insurance, housing, or employment ads?">
 These verticals fall under GDPR Art 22, EU AI Act Annex III, and US FHA / ECOA / EEOC. The policy-category mechanism already ships with `fair_housing`, `fair_lending`, and `fair_employment` entries in the registry.
 
-AdCP 3.0 GA will require campaigns declaring a regulated policy category to run with human review — `authority_level: agent_full` will not be accepted — with an Annex III category taxonomy and a data-subject contestation path added at the same time. Tracked in [#2310](https://github.com/adcontextprotocol/adcp/issues/2310). Until that ships, enforcement depends on the governance agent implementation, not a schema invariant. See the [governance overview](/docs/governance/overview) for the full model.
+Since AdCP 3.0 the `sync_plans` schema rejects `human_review_required: false` on a plan that declares `fair_housing`, `fair_lending`, `fair_employment` or `pharmaceutical_advertising` in `policy_categories`, or `eu_ai_act_annex_iii` in `policy_ids` ([#2310](https://github.com/adcontextprotocol/adcp/issues/2310)). When such a plan omits the flag, the governance agent sets it. Other regulated categories depend on the governance agent implementation, not a schema invariant. See the [governance overview](/docs/governance/overview) for the full model.
 </Accordion>
 
 <Accordion title="Who governs AdCP?">

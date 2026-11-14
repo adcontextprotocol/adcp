@@ -237,7 +237,7 @@ Every decision, every approval, every outcome — structured, timestamped, attri
 
 ## Crawl, walk, run
 
-Jordan didn't start with full enforcement. She configured the governance agent to start in audit mode — it evaluated every check fully but always returned `approved`, attaching findings for her to review. After two weeks she reviewed the logs, tuned policies to reduce false positives, and moved to advisory. In advisory mode, the governance agent returned real `denied` statuses but Jordan's team treated them as non-blocking. When she trusted the system, she switched to enforce.
+Jordan didn't start with full enforcement. She configured the governance agent to start in audit mode — it evaluated every check fully but always returned `approved`, attaching findings for her to review. After two weeks she reviewed the logs, tuned policies to reduce false positives, and moved to advisory. In advisory mode, the governance agent still returned `approved`, now with prominent findings and recommended corrections that Jordan's team reviewed after the fact. When she trusted the system, she switched to enforce.
 
 The callers (orchestrator, sellers) never changed their code. They always acted on the status they received. The mode was entirely the governance agent's internal configuration.
 
@@ -245,13 +245,15 @@ The callers (orchestrator, sellers) never changed their code. They always acted 
 
 <img src="/images/concepts/budget-commitment-phases.png" alt="Three-step diagram showing proposed (dotted outline, hypothetical check), execute (solid tag, budget reserved), and committed (ledger records actual spend)" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
+In the diagram, "reserved" means the authorized amount. Checks do not place a hold on budget.
+
 Budget tracking has three phases:
 
 1. **Proposed**: `check_governance` evaluates whether the amount fits within the plan. No money reserved — this is a hypothetical check.
-2. **Execute**: The seller runs the campaign. The governance agent tracks the authorized amount as reserved, but actual spend may differ.
+2. **Execute**: The seller runs the campaign. Nothing is held between the check and the outcome: the plan's committed total does not change until the outcome is reported, and actual spend may differ from the authorized amount.
 3. **Committed**: `report_plan_outcome` settles the authorization. The ledger uses governance-owned approved state; a seller-side purchase execution check can narrow the amount before commit, while a buyer report alone cannot restore headroom.
 
-A \$25,000 intent that the seller prepares at \$24,850 frees the \$150 only when that prepared amount passes the seller-side purchase execution check. A buyer-reported lower number alone is audit evidence, not authority to release budget.
+A \$25,000 intent that the seller prepares at \$24,850 commits \$24,850 rather than \$25,000 only when that prepared amount passes the seller-side purchase execution check. A buyer-reported lower number alone is audit evidence, not authority to release budget.
 
 </Accordion>
 

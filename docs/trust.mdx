@@ -21,7 +21,7 @@ This page maps the seven trust surfaces for CISOs, compliance reviewers, and pro
 
 **What AdCP provides.** A three-party structure in which the agent that spends money is never the agent that approves the spend. The orchestrator proposes plans via [`sync_plans`](/docs/governance/campaign/specification). An independently operated governance agent validates each plan against deployer-configured policies via [`check_governance`](/docs/governance/campaign/specification) before the orchestrator proceeds. Every governance decision produces a [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) entry — immutable, timestamped, and reproducible.
 
-**What AdCP does not provide.** `check_governance` is a seam, not an enforcer. A seller that has not configured a governance agent, or a misconfigured one, will not call `check_governance` at all — the protocol does not prevent a non-conformant seller from transacting. Regulated verticals (credit, insurance, employment, housing) get schema-level enforcement for the three categories named in AdCP 3.0 (`fair_housing`, `fair_lending`, `fair_employment`), but every other regulated category — political, pharmaceutical, gambling, financial promotions — relies on the governance-agent implementation. See the [Known Limitations — Governance](/docs/reference/known-limitations#governance) section.
+**What AdCP does not provide.** `check_governance` is a seam, not an enforcer. A seller that has not configured a governance agent, or a misconfigured one, will not call `check_governance` at all — the protocol does not prevent a non-conformant seller from transacting. Regulated verticals (credit, insurance, employment, housing) get schema-level enforcement for four policy categories (`fair_housing`, `fair_lending`, `fair_employment`, `pharmaceutical_advertising`) and the `eu_ai_act_annex_iii` policy, but every other regulated category — political, gambling, financial promotions — relies on the governance-agent implementation. See the [Known Limitations — Governance](/docs/reference/known-limitations#governance) section.
 
 → [Governance overview](/docs/governance/overview) · [Embedded human judgment](/docs/governance/embedded-human-judgment) · [Policy registry](/docs/governance/policy-registry) · [Annex III & Art 22 obligations](/docs/governance/annex-iii-obligations)
 
@@ -111,12 +111,12 @@ These are the wire-level hooks deployers implement. They are seams, not guarante
 
 | Control | Wire hook | AdCP role |
 |---|---|---|
-| Human oversight gate | `plan.human_review_required: true` + `check_governance` returning `APPROVED` | Provides the gate; deployer configures the threshold |
+| Human oversight gate | `plan.human_review_required: true` + `check_governance` returning `approved` | Provides the gate; deployer configures the threshold |
 | Audit trail | [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) | Immutable, timestamped; deployer is responsible for retention |
 | Contestation contact point | `brand.data_subject_contestation` | Discoverable endpoint; deployer operates the process |
 | Request signing | RFC 9421 `Signature` / `Signature-Input` headers | Normative in 3.1; allowed in 3.0 |
 | Governance attestation | JWS-signed `governance_context` on `create_media_buy` | Verifiable by seller independently |
-| Regulated-category block | Schema-level rejection of `human_review_required: false` on `fair_housing`, `fair_lending`, `fair_employment` | Three categories only; others require governance-agent implementation |
+| Regulated-category block | Schema-level rejection of `human_review_required: false` on a plan whose `policy_categories` contain `fair_housing`, `fair_lending`, `fair_employment` or `pharmaceutical_advertising`, or whose `policy_ids` contain `eu_ai_act_annex_iii` | Four categories and one policy only; others require governance-agent implementation |
 | Brand identity declaration | `brand.json` `house`, `brands[]`, `authorized_operators[]`, house-level `trademarks[]` | Discoverable; deployer / ecosystem resolves against public registries |
 | Mutual-assertion trust state | `brand.json` `house_domain` ↔ `brand_refs[]` (RFC #3533) | `relationship_trust` signal; deployer policy decides what's required |
 | Agent identity | `brand.json` `agents[].jwks_uri` (RFC 9421 profile, deprecated in 3.3), or the agent origin's key directory plus a trust.json listing (Web Bot Auth profile, experimental in 3.3); `adagents.json` `signing_keys` | Verifiable signing keys; key-transparency layer is 4.0 |

@@ -738,7 +738,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| [`PLAN_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-plan-not-found) | correctable | No plan with this ID. The buyer may not have synced the plan yet. |
+| [`PLAN_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-plan-not-found) | correctable | No plan with this ID, or the plan is not accessible to the caller. The two cases are indistinguishable in the response. The buyer may not have synced the plan yet. |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | The request mixes intent and execution fields, omits a shape-dependent field such as `target_agent` or `execution_commitment`, changes a consultation binding, or carries an invalid amount/currency. Correct the named field and retry; send exactly one check shape. |
 | [`CAMPAIGN_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-campaign-suspended) | transient | Campaign governance is suspended pending human review. Wait for the escalation to resolve; contact the plan operator if it persists. |
 | [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) | correctable | Authenticated identity is missing or does not match the declared `caller`. Retry only with the correct authenticated identity. A failed `delegations` or `approved_sellers` evaluation for an authenticated caller is a `denied` verdict with a finding, not this error. |

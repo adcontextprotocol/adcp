@@ -7,7 +7,7 @@ import {
   handleSyncPlans,
 } from '../../src/training-agent/governance-handlers.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
-import { clearSessions, getSession, runWithSessionContext } from '../../src/training-agent/state.js';
+import { clearSessions, getSession, runWithSessionContext, sessionKeyFromArgs } from '../../src/training-agent/state.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const DELEGATE = 'https://delegated.example';
@@ -211,12 +211,16 @@ describe('check_governance authenticated caller binding', () => {
         include_entries: true,
       }, OWNER_CTX) as Record<string, any>;
 
-      expect(existing.errors).toBeUndefined();
-      expect(existing.verdict).toBe('denied');
-      const comparable = (response: Record<string, any>, planId: string) =>
-        JSON.parse(JSON.stringify({ ...response, check_id: undefined }).split(planId).join('PLAN'));
-      expect(comparable(existing, PLAN.plan_id)).toEqual(comparable(unknown, 'plan-that-does-not-exist'));
+      // error-code.json PLAN_NOT_FOUND: one response for both cases, no verdict and no check_id.
+      expect(existing).toEqual({
+        errors: [{ code: 'PLAN_NOT_FOUND', message: expect.any(String), field: 'plan_id' }],
+      });
+      expect(JSON.stringify(existing)).toBe(JSON.stringify(unknown));
       expect(audit.plans[0].summary.checks_performed).toBe(0);
+      // Neither the owner's session nor the request's own session holds a check.
+      for (const key of ['open:caller-binding.example', sessionKeyFromArgs({}, 'open')]) {
+        expect((await getSession(key)).governanceChecks.size).toBe(0);
+      }
     });
   });
 

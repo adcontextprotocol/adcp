@@ -312,7 +312,7 @@ The trade-off:
 | `advisory` | Full velocity | Findings surface but don't block | Rolling out a new policy; observing behavior before tightening |
 | `audit` | Full velocity | Findings logged silently | Backstop telemetry; never the only governance posture |
 
-The agent's mode can change during a plan's lifetime. A different `mode` on two audit entries reflects a change to the governance agent's configuration, not a plan revision — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; today it appears on the per-`check_governance` response but not consistently on `get_plan_audit_logs` responses ([#3156](https://github.com/adcontextprotocol/adcp/issues/3156)).
+The agent's mode can change during a plan's lifetime. A different `mode` on two audit entries reflects a change to the governance agent's configuration, not a plan revision — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; it appears on the per-`check_governance` response and, for check entries, as `entries[].mode` on `get_plan_audit_logs` responses.
 
 ## What the protocol guarantees
 
