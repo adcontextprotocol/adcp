@@ -153,6 +153,7 @@ const PROPERTIES_3_3 = [
   ['core/product-identity.json', ['properties', 'match_keys']],
   ['trusted-match/provider-registration.json', ['properties', 'match_keys']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'supported_match_keys']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'creative', 'properties', 'assignment_operations']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the
@@ -189,6 +190,7 @@ test('by_spot lifecycle fields carry x-added-in 3.3.0', () => {
 
 test('added enum values are noted in the enum description', () => {
   assert.match(load('enums/demographic-system.json').description, /`nmo` and `videoamp`.*3\.3/);
+  assert.match(load('enums/distribution-identifier-type.json').description, /`instagram_account_id`.*`x_handle` values were added in AdCP 3\.3/);
   const video = load('formats/canonical/video_hosted.json').properties;
   assert.match(video.video_codecs.description, /`mpeg2`, `avc_intra`, and `xavc`.*3\.3/);
   assert.match(video.containers.description, /`mxf`.*3\.3/);
