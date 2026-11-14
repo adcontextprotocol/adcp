@@ -332,7 +332,15 @@ test("compact direct-buy lifecycle threads versioned offers through control read
   const readback = byTask("get_media_buys");
   const phasesById = new Map(storyboard.phases.map((phase) => [phase.id, phase]));
 
-  assert.equal(storyboard.version, "1.0.1");
+  assert.equal(storyboard.version, "1.1.0");
+  // 3.3 (adcp#8933): a compact seller with a creative library lists assign.
+  const declared = phasesById.get("assignment_operations_declared");
+  assert.deepEqual(declared.depends_on, []);
+  assert.deepEqual(declared.requires_capability, { path: "creative.has_creative_library", equals: true });
+  assert.equal(
+    validation(declared.steps[0], "field_contains", "creative.assignment_operations[*]")?.value,
+    "assign"
+  );
   assert.deepEqual(storyboard.requires_capability, {
     path: "compliance_testing.scenarios",
     contains: "compact_direct_buy_lifecycle_probe",

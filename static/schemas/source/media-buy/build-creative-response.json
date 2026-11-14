@@ -163,7 +163,10 @@
       "required": [
         "creative_manifest"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "$ref": "/schemas/core/task-submitted.json"
+      }
     },
     {
       "title": "BuildCreativeMultiSuccess",
@@ -308,7 +311,10 @@
       "required": [
         "creative_manifests"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "$ref": "/schemas/core/task-submitted.json"
+      }
     },
     {
       "title": "BuildCreativeVariantSuccess",
@@ -547,7 +553,10 @@
           }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "$ref": "/schemas/core/task-submitted.json"
+      }
     },
     {
       "title": "BuildCreativeEstimate",
@@ -613,7 +622,10 @@
         "mode",
         "estimate"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "$ref": "/schemas/core/task-submitted.json"
+      }
     },
     {
       "title": "BuildCreativeError",
@@ -694,31 +706,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "creative_manifest"
-            ]
-          },
-          {
-            "required": [
-              "creative_manifests"
-            ]
-          },
-          {
-            "required": [
-              "creatives"
-            ]
-          },
-          {
-            "required": [
-              "estimate"
-            ]
-          }
-        ]
-      }
+      "additionalProperties": true
     }
   ],
   "properties": {}

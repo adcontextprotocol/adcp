@@ -1,5 +1,5 @@
 id: sales_broadcast_tv
-version: "1.1.0"
+version: "1.2.0"
 title: "Broadcast linear TV seller agent"
 protocol: media-buy
 category: sales_broadcast_tv
@@ -306,6 +306,10 @@ phases:
             path: "specialisms[*]"
             value: "sales-broadcast-tv"
             description: "Agent declares sales-broadcast-tv specialism"
+          - check: field_contains
+            path: "creative.assignment_operations[*]"
+            value: "assign"
+            description: "Agent lists assign in creative.assignment_operations (3.3), so the creative_sync phase may send its assign operations"
 
           - check: field_present
             path: "context"
