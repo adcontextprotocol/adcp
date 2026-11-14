@@ -3294,9 +3294,29 @@
           "description": "When true, this agent accepts buyer-assigned revision_id on sync_creatives, enforces immutable revision content, echoes accepted revision identity, returns it from list_creatives, and attributes delivered executions to it. Revision support does not imply revision history, rollback, or staged activation.",
           "default": false
         },
+        "assignment_operations": {
+          "type": "array",
+          "description": "The sync_creatives assignment_operations this agent accepts. The list is exact: the agent accepts every listed operation and rejects any other with UNSUPPORTED_FEATURE, applying nothing, since the request is atomic. Buyers MUST NOT send an operation that is not listed. Absent from a response served at 3.3 or later: the agent accepts none, and buyers MUST NOT send assignment_operations. A response served at an earlier release cannot carry this field, so there its absence declares nothing. An agent that declares live_updates MUST list replace, the swap its CREATIVE_LIVE_UPDATE_UNSUPPORTED recovery relies on. A seller that exposes buy_products or accept_proposal (lists either in media_buy.lifecycle_tools) and declares has_creative_library: true MUST list assign in a response served at 3.3 or later, because the compact lifecycle assigns creatives only through assignment_operations. Listing merge requires has_creative_library: true and stable_creative_ids: true. supports_assignment_merge: true requires merge in this list; a seller that lists merge SHOULD also set that flag, and where they disagree, this list governs.",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "compact_lifecycle_assign": {
+                "when": "response served at 3.3 or later; media_buy.lifecycle_tools contains buy_products or accept_proposal; creative.has_creative_library is true",
+                "requires": "creative.assignment_operations contains assign"
+              }
+            },
+            "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+          },
+          "items": {
+            "type": "string",
+            "enum": ["assign", "unassign", "replace", "merge"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "x-added-in": "3.3.0"
+        },
         "supports_assignment_merge": {
           "type": "boolean",
-          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. When false or absent, the agent rejects merge with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. Kept for compatibility: assignment_operations is the authoritative declaration. When this flag is true, assignment_operations MUST list merge, and an agent that lists merge SHOULD set this flag. Buyers MUST NOT send merge unless assignment_operations lists it; an agent that does not list it rejects merge with UNSUPPORTED_FEATURE.",
           "default": false,
           "x-added-in": "3.3.0"
         },
@@ -3304,7 +3324,7 @@
           "type": "object",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Which kinds of change this agent applies in place to a live creative through sync_creatives under the same creative_id, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. This declaration is a floor: every listed kind is accepted on every live creative in the listed serving mode or a less disruptive one (uninterrupted < staged < paused_for_review). An unlisted kind may still be accepted for some creatives; a sync_creatives dry_run returns the exact outcome of one change. A declaring agent MUST refuse a change it does not apply in place with CREATIVE_LIVE_UPDATE_UNSUPPORTED (not INVALID_STATE), and MUST always accept changes to name and tags. Requires has_creative_library: true. Omitted: the agent makes no claim about live creatives.",
+          "description": "Which kinds of change this agent applies in place to a live creative through sync_creatives under the same creative_id, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. This declaration is a floor: every listed kind is accepted on every live creative in the listed serving mode or a less disruptive one (uninterrupted < staged < paused_for_review). An unlisted kind may still be accepted for some creatives; a sync_creatives dry_run returns the exact outcome of one change. A declaring agent MUST refuse a change it does not apply in place with CREATIVE_LIVE_UPDATE_UNSUPPORTED (not INVALID_STATE), and MUST always accept changes to name and tags. Requires has_creative_library: true and an assignment_operations list that includes replace. Omitted: the agent makes no claim about live creatives.",
           "allOf": [
             { "$ref": "/schemas/core/live-update-policy.json" }
           ],
@@ -3644,6 +3664,46 @@
               "has_creative_library": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "required": ["live_updates"]
+          },
+          "then": {
+            "properties": {
+              "assignment_operations": { "contains": { "const": "replace" }, "x-added-in": "3.3.0" }
+            },
+            "required": ["assignment_operations"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "assignment_operations": { "contains": { "const": "merge" } }
+            },
+            "required": ["assignment_operations"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true },
+              "stable_creative_ids": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library", "stable_creative_ids"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_merge": { "const": true }
+            },
+            "required": ["supports_assignment_merge"]
+          },
+          "then": {
+            "properties": {
+              "assignment_operations": { "contains": { "const": "merge" }, "x-added-in": "3.3.0" }
+            },
+            "required": ["assignment_operations"]
           }
         },
         {
