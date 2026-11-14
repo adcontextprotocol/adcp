@@ -1376,7 +1376,7 @@
         },
         "execution-readiness-status": {
           "$ref": "/schemas/enums/execution-readiness-status.json",
-          "description": "Experimental: whether an account can satisfy a product's execution requirement (ready, setup_required, selection_required, input_required, unknown)."
+          "description": "Experimental: whether an account can satisfy a product's execution requirement (ready, setup_required, selection_required, input-required, unknown)."
         },
         "pricing-structure": {
           "$ref": "/schemas/enums/pricing-structure.json",
@@ -1448,7 +1448,7 @@
         },
         "creative-change-kind": {
           "$ref": "/schemas/enums/creative-change-kind.json",
-          "description": "Kind of change a sync_creatives item makes to a creative (click_through, trackers, asset_content, format)"
+          "description": "Kind of change a sync_creatives item makes to a creative (clickthrough, trackers, asset_content, format)"
         },
         "live-update-serving-mode": {
           "$ref": "/schemas/enums/live-update-serving-mode.json",
@@ -1608,7 +1608,7 @@
         },
         "delivery-projection-end-state": {
           "$ref": "/schemas/enums/delivery-projection-end-state.json",
-          "description": "Projected end-of-flight state of a package (on_pace, complete, underdelivery, early_exhaustion)"
+          "description": "Projected end-of-flight state of a package (on_pace, complete, under_delivery, early_exhaustion)"
         },
         "delivery-projection-basis": {
           "$ref": "/schemas/enums/delivery-projection-basis.json",

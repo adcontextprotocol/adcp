@@ -24,7 +24,7 @@ async function compile(relativePath) {
 const policy = {
   in_place: [
     { change: 'trackers', serving: 'uninterrupted' },
-    { change: 'click_through', serving: 'uninterrupted' },
+    { change: 'clickthrough', serving: 'uninterrupted' },
     { change: 'asset_content', serving: 'staged', on_rejection: 'keeps_prior' }
   ]
 };

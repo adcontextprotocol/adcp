@@ -9,13 +9,13 @@
   "enum": [
     "on_pace",
     "complete",
-    "underdelivery",
+    "under_delivery",
     "early_exhaustion"
   ],
   "enumDescriptions": {
     "on_pace": "Projected to reach the binding constraint (goal or budget) at flight end, within the seller's tolerance.",
     "complete": "Projected to reach the binding constraint before flight end, with the undelivered share of the flight below the seller's materiality threshold. A benign early finish.",
-    "underdelivery": "Projected to fall short of the binding constraint at flight end by more than the seller's tolerance.",
+    "under_delivery": "Projected to fall short of the binding constraint at flight end by more than the seller's tolerance.",
     "early_exhaustion": "Projected to reach the binding constraint before flight end, with the undelivered share of the flight at or above the seller's materiality threshold."
   }
 }

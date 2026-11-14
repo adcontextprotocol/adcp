@@ -14,7 +14,7 @@ dissent: none
 
 A seller MAY report a forward-looking `projection` on top-level `by_package[]` rows of `get_media_buy_delivery`. A projection is an advisory forecast, not a delivery record. It carries no contractual meaning on its own, and any commercial use of it is governed by the parties' terms. Reported actuals remain the delivery record. The surface is experimental under `media_buy.delivery_projection`.
 
-- `projected_end_state` is `on_pace`, `complete`, `underdelivery`, or `early_exhaustion`, judged against the package's binding constraint (whichever of goal or budget it would reach first) using the seller's own tolerance and materiality thresholds.
+- `projected_end_state` is `on_pace`, `complete`, `under_delivery`, or `early_exhaustion`, judged against the package's binding constraint (whichever of goal or budget it would reach first) using the seller's own tolerance and materiality thresholds. *Amended: the record was written with `underdelivery`, the spelling of the 3.3 betas; the value took the `offer_reason` spelling `under_delivery` before GA (#8901).*
 - `basis` names the method class (`trailing_daily_avg`, `trailing_hourly_avg`, `platform_model`, `seller_defined`), not the window length or model. It is distinct from the commitment tier in `forecast_method`.
 - `is_final` on the enclosing row describes the actuals, not the projection.
 

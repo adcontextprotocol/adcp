@@ -103,7 +103,7 @@ describe('live creative updates', () => {
   it('classifies change kinds by the assets that changed', () => {
     const before = { assets: creative().assets as any };
     expect(classifyCreativeChange(before, { assets: creative({ tracker: 'https://m.example/i2' }).assets as any }, false)).toEqual(['trackers']);
-    expect(classifyCreativeChange(before, { assets: creative({ click: 'https://x.example' }).assets as any }, false)).toEqual(['click_through']);
+    expect(classifyCreativeChange(before, { assets: creative({ click: 'https://x.example' }).assets as any }, false)).toEqual(['clickthrough']);
     expect(classifyCreativeChange(before, { assets: creative({ image: 'https://x.example/v2.png' }).assets as any }, false)).toEqual(['asset_content']);
     expect(classifyCreativeChange(before, { assets: creative().assets as any }, true)).toEqual(['format']);
     expect(decideLiveUpdate(['trackers', 'asset_content'])).toEqual({ outcome: 'apply', mode: 'staged' });
