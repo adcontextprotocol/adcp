@@ -28,7 +28,7 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Identifier for this plan. A `plan_id` names at most one plan within a governance agent: the authenticated buyer principal that first syncs it owns the plan, and a `sync_plans` naming it from any other principal is rejected with `PERMISSION_DENIED` and never creates a second plan under the same ID.",
+            "description": "Identifier for this plan, unique per owner principal. Two principals may use the same `plan_id`; neither can read, change or detect the other's plan.",
             "x-entity": "governance_plan"
           },
           "brand": {

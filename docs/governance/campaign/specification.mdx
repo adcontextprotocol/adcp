@@ -882,6 +882,8 @@ This means:
 - A governance agent in advisory mode returns `approved` with prominent findings and recommended corrections, with the same exception for plans with `human_review_required: true`
 - A governance agent in enforce mode returns `denied` and expects the caller to stop
 
+Mode governs how findings about the governed action are enforced. It does not relax who may call: a buyer-side caller that is neither the plan owner nor a current delegate, and an execution caller that is not the audience preserved from the approved intent, are denied in every mode.
+
 Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent MAY include mode information in its audit logs or `get_plan_audit_logs` response for post-hoc analysis, but callers MUST NOT branch behavior based on mode — they act on the status they receive.
 
 See the [safety model](/docs/governance/campaign/safety-model) for the crawl-walk-run adoption path.
