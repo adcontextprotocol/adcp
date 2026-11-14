@@ -70,7 +70,20 @@
           "$ref": "/schemas/enums/dooh-motion-type.json",
           "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
         },
-        "location": { "$ref": "#/definitions/ProductDoohLocation", "x-added-in": "3.3.0" }
+        "location": { "$ref": "#/definitions/ProductDoohLocation", "x-added-in": "3.3.0" },
+        "impression_basis": {
+          "$ref": "/schemas/enums/impression-estimation-basis.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). Methodology tier the seller plans to estimate this placement's audience on, so a buyer can compare and filter products before buying. A product mixing screens on different tiers declares it per placement. Delivery reports the realised tiers, which can include the seller's model on a sensor-equipped screen while its sensor is not reporting. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
+        },
+        "audience_multiplier": {
+          "type": "number",
+          "minimum": 0,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). Planning audience per play for this placement: the `impressions / plays` the seller's forecasts use. Optional on `currency_measured` placements whose currency terms prohibit disclosing it."
+        }
       },
       "x-adcp-validation": {
         "verifier_constraints": {

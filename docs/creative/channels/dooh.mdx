@@ -256,6 +256,62 @@ Proof-of-play reporting uses `plays` for the raw playout count and `impressions`
 }
 ```
 
+## Impression basis (experimental)
+
+A DOOH `impressions` figure is `plays × audience multiplier`, and the multiplier can come from a measurement currency, the seller's own model, or a sensor counting the audience at each play. Sellers that declare `media_buy.dooh_impression_basis` in `experimental_features` say which, with the tiers of `enums/impression-estimation-basis.json`:
+
+- **Discovery.** `dooh_placement_attributes.impression_basis` is the tier the seller plans to use for a placement, and `audience_multiplier` the audience per play its forecasts apply. A product mixing sensor-equipped screens and screens without a sensor declares each placement's tier. Discovery declares no fallback tier: the fallback a sensor-equipped placement expects shows in its forecast, and the realised one in delivery.
+- **Forecast.** A single-tier point carries `impression_basis` and its planning `audience_multiplier`, so `metrics.impressions.mid ≈ metrics.plays.mid × audience_multiplier`. A point covering plays expected on different tiers carries an `impression_basis_breakdown` instead, each entry with its planning multiplier. That breakdown SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting.
+- **Delivery.** `dooh_metrics.impression_basis` is the tier of every play in the row. A row whose plays were estimated on different tiers reports `impression_basis_breakdown` instead. That includes a sensor-equipped screen that falls back to the seller's model while its sensor is not reporting. `basis_metric` points to the `vendor_metric_values[]` row the sensor audience comes from, whose `measurable_plays` is the sensor's coverage.
+
+`hybrid` is a seller model calibrated by the seller's own sensors, never a published currency figure and never a mix of plays on different tiers, which the breakdown reports.
+
+### Rows mixing tiers
+
+When a delivery row's plays were estimated on different tiers, the seller MUST:
+
+1. Omit the row's `impression_basis`. Never substitute `hybrid` or the majority tier.
+2. Report one `impression_basis_breakdown` entry per tier present: at least two entries, with distinct tiers, whose `plays` and `impressions` sum exactly to the row's.
+3. Report the fallback plays of a sensor-equipped screen, estimated while its sensor was not reporting, as `seller_modeled`.
+4. Make each tier entry of a parent row (the totals, a package) equal the sum of its child rows' entries for that tier, a child with a single tier counting as one entry.
+5. Omit the tier on a `venue_breakdown[]` row that mixes tiers.
+
+A row never carries both `impression_basis` and a breakdown, and SHOULD omit its own `audience_multiplier`, each entry carrying its own. A forecast point covering several tiers follows the same rules.
+
+### Reading the basis
+
+- **Tiers are different units.** A sensor counts the people in its zone, a currency usually publishes a visibility-adjusted "likely to see" figure, and a seller model is traffic-based. There is no exchange rate between them: compare impressions within a tier, and plays and spend across tiers.
+- **Billing is unchanged.** A CPM bills the row's total `impressions`, all tiers together.
+- **A blended multiplier misleads.** A multiplier over plays on several tiers mixes those units, which is why a row with a breakdown omits it.
+- **A filter on `impression_basis` misses mixed rows.** A row with a breakdown has no row-level tier: read the breakdown.
+
+A placement row whose sensor-equipped screens fell back to the seller's model for part of the flight:
+
+```json
+{
+  "placement_id": "concourse_screens",
+  "impressions": 510333,
+  "spend": 4082.66,
+  "plays": 27805,
+  "dooh_metrics": {
+    "screens_used": 85,
+    "impression_basis_breakdown": [
+      { "impression_basis": "sensor_measured", "plays": 21340, "impressions": 397808, "audience_multiplier": 18.64 },
+      { "impression_basis": "seller_modeled", "plays": 6465, "impressions": 112525, "audience_multiplier": 17.41 }
+    ],
+    "basis_metric": { "vendor": { "domain": "metro-media.example" }, "metric_id": "people_counted" }
+  },
+  "vendor_metric_values": [{
+    "vendor": { "domain": "metro-media.example" },
+    "metric_id": "people_counted",
+    "value": 397808,
+    "unit": "persons",
+    "measurable_plays": 21340,
+    "vendor_relationship": "first_party"
+  }]
+}
+```
+
 ## Structured location for planning and mapping
 
 Coordinates and street address are location metadata, not placement identity: a missing, imprecise, or later-corrected `location` MUST NOT change `placement_id` or `identifiers[]`. Two disclosure shapes cover the concrete and aggregate cases from [#5538](https://github.com/adcontextprotocol/adcp/issues/5538):

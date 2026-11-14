@@ -44,6 +44,9 @@ const WHOLE_FILE_3_3 = [
   'enums/reporting-dimension.json',
   'core/match-key.json',
   'enums/match-key-use.json',
+  // DOOH impression basis (media_buy.dooh_impression_basis, RFC #7253).
+  'enums/impression-estimation-basis.json',
+  'core/impression-basis-breakdown-entry.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -75,6 +78,20 @@ const PROPERTIES_3_3 = [
   ['core/canonical-product.json', ['properties', 'dooh_inventory_summary']],
   ['core/product.json', ['properties', 'dooh_inventory_summary']],
   ['core/delivery-metrics.json', ['properties', 'print_metrics']],
+  // DOOH impression basis (media_buy.dooh_impression_basis, RFC #7253).
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'impression_basis']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'audience_multiplier']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'basis_metric']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'impression_basis_breakdown']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'venue_breakdown', 'items', 'properties', 'impression_basis']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'venue_breakdown', 'items', 'properties', 'audience_multiplier']],
+  ['core/forecast-point.json', ['properties', 'impression_basis']],
+  ['core/forecast-point.json', ['properties', 'audience_multiplier']],
+  ['core/forecast-point.json', ['properties', 'impression_basis_breakdown']],
+  ['core/placement.json', ['definitions', 'ProductDoohPlacementAttributes', 'properties', 'impression_basis']],
+  ['core/placement.json', ['definitions', 'ProductDoohPlacementAttributes', 'properties', 'audience_multiplier']],
+  ['core/canonical-placement.json', ['definitions', 'CanonicalDoohPlacementAttributes', 'properties', 'impression_basis']],
+  ['core/canonical-placement.json', ['definitions', 'CanonicalDoohPlacementAttributes', 'properties', 'audience_multiplier']],
   ['core/reporting-webhook.json', ['properties', 'operation_id']],
   ['governance/sync-plans-request.json', ['properties', 'plans', 'items', 'properties', 'budget', 'properties', 'periods']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'governance', 'properties', 'supports_budget_periods']],

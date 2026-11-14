@@ -70,7 +70,20 @@
           "$ref": "/schemas/enums/dooh-motion-type.json",
           "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
         },
-        "location": { "$ref": "#/definitions/CanonicalDoohLocation", "x-added-in": "3.3.0" }
+        "location": { "$ref": "#/definitions/CanonicalDoohLocation", "x-added-in": "3.3.0" },
+        "impression_basis": {
+          "$ref": "/schemas/enums/impression-estimation-basis.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). Methodology tier the seller plans to estimate this placement's audience on. Delivery reports the realised tiers."
+        },
+        "audience_multiplier": {
+          "type": "number",
+          "minimum": 0,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). Planning audience per play for this placement: the `impressions / plays` the seller's forecasts use."
+        }
       },
       "x-adcp-validation": {
         "verifier_constraints": {
