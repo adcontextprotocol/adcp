@@ -34,8 +34,8 @@ type Structured = Record<string, any>;
 
 describe('hosted 3.3 preview selection', () => {
   it('serves the published preview by default, in every runtime', () => {
-    expect(PREVIEW).toBe('3.3-beta.5');
-    expect(TRAINING_AGENT_HOSTED_PREVIEW.bundle).toBe('3.3.0-beta.5');
+    expect(PREVIEW).toBe('3.3-beta.6');
+    expect(TRAINING_AGENT_HOSTED_PREVIEW.bundle).toBe('3.3.0-beta.6');
     expect(TRAINING_AGENT_PREVIEW_ADCP_VERSION).toBe(PREVIEW);
     for (const NODE_ENV of ['production', 'development', 'test', undefined]) {
       expect(trainingAgentPreviewVersion({ NODE_ENV })).toBe(PREVIEW);
@@ -53,10 +53,10 @@ describe('hosted 3.3 preview selection', () => {
   });
 
   it('yields to a trusted storyboard candidate', () => {
-    const candidate = { NODE_ENV: 'test', ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1', ADCP_TRAINING_CANDIDATE_VERSION: '3.3-beta.6' };
-    expect(trainingAgentPreviewVersion(candidate)).toBe('3.3-beta.6');
+    const candidate = { NODE_ENV: 'test', ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1', ADCP_TRAINING_CANDIDATE_VERSION: '3.3-beta.7' };
+    expect(trainingAgentPreviewVersion(candidate)).toBe('3.3-beta.7');
     // The kill switch governs only the hosted preview.
-    expect(trainingAgentPreviewVersion({ ...candidate, [TRAINING_AGENT_PREVIEW_KILL_SWITCH]: '1' })).toBe('3.3-beta.6');
+    expect(trainingAgentPreviewVersion({ ...candidate, [TRAINING_AGENT_PREVIEW_KILL_SWITCH]: '1' })).toBe('3.3-beta.7');
     // Candidate mode never applies outside the test runtime.
     expect(trainingAgentPreviewVersion({ ...candidate, NODE_ENV: 'production' })).toBe(PREVIEW);
   });
@@ -75,7 +75,7 @@ describe('hosted 3.3 preview selection', () => {
       expect(resolveServedAdcpVersion({ adcp_version })).toEqual({ ok: true, servedVersion: '3.2' });
     }
     // Other prereleases of the line are matched exactly, so they are refused.
-    for (const adcp_version of ['3.3-beta.4', '3.3-beta.6', '3.3-rc.1']) {
+    for (const adcp_version of ['3.3-beta.5', '3.3-beta.7', '3.3-rc.1']) {
       expect(resolveServedAdcpVersion({ adcp_version }).ok).toBe(false);
     }
     expect(resolveServedAdcpVersion({}).ok && resolveServedAdcpVersion({}).servedVersion).toBe('3.0');
@@ -90,7 +90,7 @@ describe('hosted 3.3 preview selection', () => {
     expect(requestPinsPreview(call({ adcp_version: PREVIEW }))).toBe(true);
     expect(requestPinsPreview({ method: 'tools/list', params: { _meta: { adcp_version: PREVIEW } } })).toBe(true);
     expect(requestPinsPreview({ method: 'tools/list', params: { adcp_version: PREVIEW } })).toBe(true);
-    for (const args of [{}, { adcp_major_version: 3 }, { adcp_version: '3.2' }, { adcp_version: '3.3' }, { adcp_version: '3.3-beta.4' }, { adcp_version: '3.3.0-beta.5' }]) {
+    for (const args of [{}, { adcp_major_version: 3 }, { adcp_version: '3.2' }, { adcp_version: '3.3' }, { adcp_version: '3.3-beta.5' }, { adcp_version: '3.3.0-beta.6' }]) {
       expect(requestPinsPreview(call(args)), JSON.stringify(args)).toBe(false);
     }
     expect(requestPinsPreview({ method: 'tools/list', params: {} })).toBe(false);
@@ -163,11 +163,11 @@ describe('hosted 3.3 preview negotiation over MCP', () => {
       expect(result.adcp.supported_versions).toContain('3.2');
       expect(result.adcp.supported_versions).not.toContain('3.3-beta.1');
       // The previous preview is no longer served once the preview moves.
-      expect(result.adcp.supported_versions).not.toContain('3.3-beta.4');
+      expect(result.adcp.supported_versions).not.toContain('3.3-beta.5');
     }
     // A 3.3 prerelease the agent does not list never selects the preview:
     // neither the previous preview nor a later beta.
-    for (const adcp_version of ['3.3-beta.4', '3.3-beta.6']) {
+    for (const adcp_version of ['3.3-beta.5', '3.3-beta.7']) {
       const result = await call(route, 'get_adcp_capabilities', { adcp_version });
       expect(result.adcp_version, `${route} ${adcp_version}: ${JSON.stringify(result).slice(0, 300)}`).not.toBe(PREVIEW);
       expect(result.adcp_version).not.toBe(adcp_version);

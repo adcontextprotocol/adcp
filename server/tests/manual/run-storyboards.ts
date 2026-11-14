@@ -191,6 +191,15 @@ const wireAdcpVersion = isThreeZeroCompatRun
   : isCurrentSourceRun
     ? TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
+// @adcp/sdk 17.0.0-beta.23 and later send capability discovery unpinned when
+// the wire pin is a prerelease, so a candidate run would profile the agent's
+// stable 3.2 surface and capability-gate every 3.3 storyboard out. The
+// candidate is exactly what this process advertises, so keep discovery pinned
+// to it with an explicit envelope (adcp-client#3715); stable wire pins keep
+// the SDK default.
+const wireVersionEnvelope = wireAdcpVersion !== undefined && /-(?:beta|rc)\.\d+$/.test(wireAdcpVersion)
+  ? 'auto' as const
+  : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -715,6 +724,7 @@ async function selectStoryboardsForTenant(
     allow_http: true,
     ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
     ...(wireAdcpVersion && { wireAdcpVersion }),
+    ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
   }));
   // A Version Packages PR creates the next schema bundle before any published
   // SDK can embed it. Register that candidate root around capability discovery
@@ -1109,6 +1119,7 @@ async function main() {
           const result = await inServedLineScope(() => runStoryboard(targetUrl, storyboard, {
             ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
             ...(wireAdcpVersion && { wireAdcpVersion }),
+            ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
             ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
             auth,
             allow_http: true,
@@ -1173,6 +1184,7 @@ async function main() {
         const result = await inServedLineScope(() => runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           ...(wireAdcpVersion && { wireAdcpVersion }),
+          ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
           ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
           auth,
           allow_http: true,
