@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/installment-change-set.json",
+  "title": "Installment Change Set",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Installment-level actions for one refine_proposals request (media_buy.installment_refinement). A tuple cannot be an object key, so this is a list rather than a map like core/product-change-map.json. Entries MUST be unique by (product_id, installment_ref); a seller that receives a repeated or contradictory pair rejects the request at task level with INVALID_REQUEST. Buyers SHOULD order entries by the JCS bytes of (product_id, installment_ref) so a rebuilt retry hashes to the same idempotency payload, and sellers MUST NOT make the result depend on order. For each product P the entries name, the selected set is P's installments with every omit removed and every include added. A returned draft satisfies P's entries when it purchases exactly one product whose installments equal the selected set: P itself, or a product the seller offers for that selection in place of P.",
+  "type": "array",
+  "items": {
+    "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.7/core/installment-change.json"
+  },
+  "minItems": 1,
+  "maxItems": 500,
+  "uniqueItems": true,
+  "x-adcp-validation": {
+    "unique_by": [
+      "product_id",
+      "installment_ref"
+    ],
+    "ordered_by": "jcs_bytes_of_entry",
+    "verifier_constraints": {
+      "duplicate_entries": "reject_at_task_level_with_invalid_request"
+    }
+  }
+}
