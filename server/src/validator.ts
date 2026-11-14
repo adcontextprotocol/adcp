@@ -2,6 +2,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import { agentUrlAuthorizedBy, specExactAgentUrl } from "./db/registry-agent-url-key.js";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
+import { combinedSigningKeys, intersectSigningKeyPins } from "./services/matched-signing-keys.js";
 import type {
   AdAgentsJson,
   AuthorizationResult,
@@ -140,17 +141,25 @@ export class AgentValidator {
         };
       }
 
-      const matchedAuthorization = data.authorized_agents.find((agent) =>
-        this.matchesAuthorization(
-          agent,
-          normalizedDomain,
-          normalizedAgentUrl,
-          scope,
-          data.properties || [],
-          data.placements || [],
-          data.placement_tags || {}
-        )
-      );
+      // Every entry that authorizes the agent for this scope. Under 3.3 more
+      // than one can (an origin-only entry and the agent's full URL, say), and
+      // each one authorizes it (#9011). The descriptive fields below come from
+      // the first in document order; `signing_keys` combines across all of
+      // them (#9016).
+      const authorizingEntries = (entryScope: NormalizedScope) =>
+        data.authorized_agents!.filter((agent) =>
+          this.matchesAuthorization(
+            agent,
+            normalizedDomain,
+            normalizedAgentUrl,
+            entryScope,
+            data.properties || [],
+            data.placements || [],
+            data.placement_tags || {}
+          )
+        );
+      const matchedAuthorizations = authorizingEntries(scope);
+      const matchedAuthorization = matchedAuthorizations[0];
 
       return {
         authorized: !!matchedAuthorization,
@@ -170,7 +179,17 @@ export class AgentValidator {
               placement_tags: matchedAuthorization.placement_tags,
               effective_from: matchedAuthorization.effective_from,
               effective_until: matchedAuthorization.effective_until,
-              signing_keys: matchedAuthorization.signing_keys,
+              // Pinned only if every entry that authorizes this scope pins;
+              // then the union of their keys, per property, intersected
+              // across properties. Absent means no restriction (#9016,
+              // services/matched-signing-keys.ts).
+              signing_keys: this.scopeSigningKeys(
+                matchedAuthorizations,
+                authorizingEntries,
+                normalizedDomain,
+                scope,
+                data.properties || []
+              ),
             }
           : undefined,
       };
@@ -245,6 +264,42 @@ export class AgentValidator {
     };
   }
 
+  /**
+   * The publisher's signing-key pin for this request (#9016). Only entries
+   * that authorize the request count. A request that names one property (or
+   * resolves to at most one) combines those entries: pinned only if every one
+   * pins, then the union. A request covering several top-level properties,
+   * by tag or by domain, gets one pin per property, computed from the entries
+   * that authorize that property, and a key must satisfy each, so an
+   * unpinned entry for one property never unpins another.
+   */
+  private scopeSigningKeys(
+    matched: AuthorizedAgentEntry[],
+    authorizingEntries: (scope: NormalizedScope) => AuthorizedAgentEntry[],
+    normalizedDomain: string,
+    scope: NormalizedScope,
+    topLevelProperties: PropertyDefinition[]
+  ): AuthorizedAgentEntry["signing_keys"] {
+    if (scope.property_id) {
+      return combinedSigningKeys(matched);
+    }
+    const propertyIds = [
+      ...new Set(
+        this.resolveScopedTopLevelProperties(normalizedDomain, scope, topLevelProperties)
+          .flatMap((property) => (property.property_id ? [property.property_id] : []))
+      ),
+    ];
+    if (propertyIds.length < 2) {
+      return combinedSigningKeys(matched);
+    }
+    const perProperty = propertyIds
+      .map((propertyId) => authorizingEntries({ ...scope, property_id: propertyId, property_tags: undefined }))
+      // A property no entry authorizes is outside what this result authorizes.
+      .filter((entries) => entries.length > 0)
+      .map((entries) => combinedSigningKeys(entries));
+    return perProperty.length > 0 ? intersectSigningKeyPins(perProperty) : combinedSigningKeys(matched);
+  }
+
   private matchesAuthorization(
     agent: AuthorizedAgentEntry,
     normalizedDomain: string,
@@ -258,6 +313,11 @@ export class AgentValidator {
     // path; an entry with a path matches that canonical URL only (DR-0023,
     // #8943). The rule lives in `agentUrlAuthorizedBy` so the registry's
     // directory reads apply exactly the same one (#7830).
+    // A malformed entry (null, a string) authorizes nothing and must not stop
+    // the other entries from being evaluated.
+    if (!agent || typeof agent !== "object") {
+      return false;
+    }
     if (typeof agent.url !== "string" || !agentUrlAuthorizedBy(agent.url, normalizedAgentUrl)) {
       return false;
     }

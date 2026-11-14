@@ -2015,7 +2015,12 @@ const AgentPublishersEntrySchema = z.object({
   property_ids: z.array(z.string()).optional().openapi({
     description: "Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.",
   }),
-  signing_keys_pinned: z.boolean(),
+  signing_keys_pinned: z.boolean().openapi({
+    description:
+      "Scope-agnostic summary: true only when every in-window authorized_agents entry " +
+      "that matches the agent carries signing_keys. Verifiers compute the pin per " +
+      "message scope, so a pin can apply where this reads false.",
+  }),
   status: z.enum(["authorized", "revoked"]),
   last_verified_at: z.string().datetime(),
 });
@@ -3479,7 +3484,11 @@ const AuthorizationRowSchema = z.object({
       "Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source " +
       "adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. " +
       "Null when the publisher declared no keys; consumers fall back to the " +
-      "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).",
+      "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx). " +
+      "This is one entry's pin. Rows from the same publisher combine per message " +
+      "scope: among the rows that authorize that scope, the publisher pins the agent " +
+      "only if every one carries keys, and the pin is the union of their keys " +
+      "(docs/governance/property/adagents.mdx#agent-url-matching).",
   }),
   collections: z
     .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())

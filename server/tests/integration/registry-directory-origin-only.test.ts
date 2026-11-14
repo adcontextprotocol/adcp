@@ -24,7 +24,9 @@ import { AgentValidator } from '../../src/validator.js';
 import { FederatedIndexService } from '../../src/federated-index.js';
 import {
   AUTHORIZED_CASES,
+  SIGNING_KEY_CASES,
   UNAUTHORIZED_CASES,
+  signingKeyCaseEntries,
 } from '../fixtures/authorized-agent-url-matching.js';
 
 const PUB_SUFFIX = '.origin-only.example';
@@ -189,34 +191,85 @@ describe('directory reads apply origin-only matching (#8943)', () => {
   });
 
   it('signing_keys_pinned counts only entries that authorize the agent', async () => {
-    // KEYS_PUB lists the bare origin WITHOUT keys and `/mcp/` WITH keys. An
-    // agent at `/mcp` is authorized by the origin entry only; the `/mcp/`
-    // entry shares its registry key but does not authorize it, so its keys
-    // must not be reported. An agent at `/mcp/` is authorized by both.
+    // KEYS_PUB lists `/mcp/` WITH keys and the bare origin WITH keys, and
+    // `/mcp` WITHOUT keys. An agent at `/mcp/` is authorized by the origin
+    // and `/mcp/` entries, both pinned. The unpinned `/mcp` entry shares the
+    // `/mcp/` registry key but does not authorize `/mcp/`, so it must not
+    // unpin it. An agent at `/mcp` is authorized by the origin and the
+    // unpinned `/mcp` entry, so it is unpinned (#9016).
     const KEYS_PUB = `keys${PUB_SUFFIX}`;
     const slashed = 'https://agent.origin-only.example/mcp/';
+    const key = { kty: 'OKP', crv: 'Ed25519', x: 'AAAA', kid: 'k1' };
     await pool.query(
       `INSERT INTO publishers (domain, source_type, adagents_json)
        VALUES ($1, 'adagents_json', $2::jsonb)`,
       [KEYS_PUB, JSON.stringify({
         authorized_agents: [
-          { url: ORIGIN_ENTRY },
-          { url: slashed, signing_keys: [{ kty: 'OKP', crv: 'Ed25519', x: 'AAAA', kid: 'k1' }] },
+          { url: ORIGIN_ENTRY, signing_keys: [key] },
+          { url: slashed, signing_keys: [key] },
+          { url: DEEP_AGENT },
         ],
       })],
     );
-    for (const url of [ORIGIN_ENTRY, slashed]) {
-      await pool.query(
-        `INSERT INTO catalog_agent_authorizations
-           (agent_url, agent_url_canonical, publisher_domain, evidence)
-         VALUES ($1, $2, $3, 'adagents_json')`,
-        [url, registryAgentUrlKey(url)!, KEYS_PUB],
-      );
-    }
+    // The catalog keeps one row per registry key, so `/mcp` and `/mcp/`
+    // cannot both be stored; the origin row is what lists KEYS_PUB for every
+    // agent here. The pin is read from the manifest, entry by entry.
+    await pool.query(
+      `INSERT INTO catalog_agent_authorizations
+         (agent_url, agent_url_canonical, publisher_domain, evidence)
+       VALUES ($1, $2, $3, 'adagents_json')`,
+      [ORIGIN_ENTRY, registryAgentUrlKey(ORIGIN_ENTRY)!, KEYS_PUB],
+    );
     const pinnedFor = async (agent: string) => (await db.getPublishersForAgentDetail(agent, { limit: 10 }))
       .find(r => r.publisher_domain === KEYS_PUB)?.signing_keys_pinned;
-    expect(await pinnedFor(DEEP_AGENT)).toBe(false);
     expect(await pinnedFor(slashed)).toBe(true);
+    expect(await pinnedFor(DEEP_AGENT)).toBe(false);
+    // The a2a path is authorized by the pinned origin entry alone.
+    expect(await pinnedFor('https://agent.origin-only.example/a2a')).toBe(true);
+  });
+
+  it('signing_keys_pinned and the validator agree on every signing-key fixture (#9016)', async () => {
+    // One publisher per case, listing that case's entries. The directory
+    // reports pinned exactly when the validator returns a key restriction.
+    await clearFixtures();
+    const keysPub = (i: number) => `sk${i}${PUB_SUFFIX}`;
+    for (const [i, { entries }] of SIGNING_KEY_CASES.entries()) {
+      await pool.query(
+        `INSERT INTO publishers (domain, source_type, adagents_json)
+         VALUES ($1, 'adagents_json', $2::jsonb)`,
+        [keysPub(i), JSON.stringify({ authorized_agents: signingKeyCaseEntries(entries) })],
+      );
+      // One catalog row per registry key (`/mcp` and `/mcp/` share one; the
+      // fixtures list the authorizing spelling first, so that row is kept).
+      for (const { url } of entries) {
+        await pool.query(
+          `INSERT INTO catalog_agent_authorizations
+             (agent_url, agent_url_canonical, publisher_domain, evidence)
+           VALUES ($1, $2, $3, 'adagents_json')
+           ON CONFLICT DO NOTHING`,
+          [url, registryAgentUrlKey(url)!, keysPub(i)],
+        );
+      }
+    }
+
+    vi.spyOn(dns, 'lookup').mockResolvedValue(
+      [{ address: '93.184.216.34', family: 4 }] as unknown as Awaited<ReturnType<typeof dns.lookup>>);
+    try {
+      for (const [i, { why, agent, entries, expectedKids }] of SIGNING_KEY_CASES.entries()) {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+          JSON.stringify({ authorized_agents: signingKeyCaseEntries(entries) }),
+          { status: 200, headers: { 'content-type': 'application/json' } })));
+        const validated = await new AgentValidator().validate(keysPub(i), agent);
+        const validatorKids = validated.matched_authorization?.signing_keys?.map(k => k.kid) ?? null;
+        const registryPinned = (await db.getPublishersForAgentDetail(agent, { limit: 100 }))
+          .find(r => r.publisher_domain === keysPub(i))?.signing_keys_pinned;
+        expect({ why, validatorKids, registryPinned })
+          .toEqual({ why, validatorKids: expectedKids, registryPinned: expectedKids !== null });
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
   });
 
   it('a spelling the registry cannot key raw still finds what the validator matches', async () => {
