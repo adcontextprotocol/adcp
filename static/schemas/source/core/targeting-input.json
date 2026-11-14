@@ -29,6 +29,12 @@
         { "type": "null" }
       ]
     },
+    "geo_value_labels": {
+      "anyOf": [
+        { "$ref": "/schemas/core/targeting.json#/properties/geo_value_labels" },
+        { "type": "null" }
+      ]
+    },
     "geo_metros": {
       "title": "Targeting Geo Metros",
       "type": ["array", "null"],

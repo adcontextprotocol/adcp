@@ -28,7 +28,7 @@ import {
   type ComplianceTargetSelection,
   type ComplianceResult,
 } from '../services/compliance-testing.js';
-import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
+import { ComplianceDatabase, type HeartbeatSkipReason, type LifecycleStage } from '../../db/compliance-db.js';
 import {
   ComplianceRefreshRequestsDatabase,
   COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT,
@@ -119,15 +119,12 @@ export function assertComplianceHeartbeatOperationalProgress(result: HeartbeatRe
   );
 }
 
-interface HeartbeatSkipReasons {
-  execution_fence_busy: number;
-  execution_fence_lost: number;
-  target_unconfirmed: number;
-  target_superseded: number;
-  audit_only: number;
-  pre_target_error: number;
-  agent_error: number;
-}
+/**
+ * Per-batch skip counts, keyed by the same reasons each attempt records on the
+ * agent. A worker death is only ever observed by the next run's orphan
+ * reconciliation, so it is not a per-batch count.
+ */
+type HeartbeatSkipReasons = Record<Exclude<HeartbeatSkipReason, 'worker_died'>, number>;
 
 type PendingShadowAssessment = Parameters<typeof recordVerificationProfileShadowAssessment>[0];
 
@@ -273,7 +270,8 @@ export async function runComplianceHeartbeatJob(
 
   // Mark selected agents in progress before concurrent processing. The lock
   // covers the worst-case number of waves, including target discovery, so an
-  // overlapping worker cannot select agents awaiting a local suite slot.
+  // overlapping worker cannot select agents awaiting a local suite slot. It
+  // lives in compliance_lock_until, never in the cadence (#7693).
   const selectedUrls = agentsDue.map(a => a.agent_url);
   // Each agent has two bounded capability pre-discoveries: target selection,
   // then hosted auth defaults inside comply(). Account for both explicitly so
@@ -395,7 +393,9 @@ export async function runComplianceHeartbeatJob(
           { agentUrl: agent.agent_url, seededSupportedVersions },
           'Compliance heartbeat skipped because no trustworthy target could be selected',
         );
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(
+          agent.agent_url, 'target_unconfirmed', { exponentialBackoff: true },
+        );
         result.skipped++;
         skipReasons.target_unconfirmed++;
         return;
@@ -413,7 +413,9 @@ export async function runComplianceHeartbeatJob(
           },
           'Compliance heartbeat skipped because the completed run superseded its selected target',
         );
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(
+          agent.agent_url, 'target_superseded', { exponentialBackoff: true },
+        );
         result.skipped++;
         skipReasons.target_superseded++;
         return;
@@ -449,7 +451,9 @@ export async function runComplianceHeartbeatJob(
       assertExecutionFence();
 
       if (!isAuthoritativeComplianceRun(dbInput)) {
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(
+          agent.agent_url, 'audit_only', { exponentialBackoff: true },
+        );
         result.skipped++;
         skipReasons.audit_only++;
         logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
@@ -586,7 +590,7 @@ export async function runComplianceHeartbeatJob(
           { agentUrl: agent.agent_url },
           'Compliance heartbeat stopped after losing the shared execution fence',
         );
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, 'execution_fence_lost');
         result.skipped++;
         skipReasons.execution_fence_lost++;
         return;
@@ -595,15 +599,15 @@ export async function runComplianceHeartbeatJob(
       // Errors before a compatible target is selected are infrastructure or
       // discovery failures, not evidence that the agent failed compliance.
       // Never let the catch path turn the platform default into a canonical
-      // public verdict. Best-effort lock release preserves a concurrent owner
-      // refresh via the compare-and-set predicate in the database method.
+      // public verdict. Best-effort deferral still lets an owner requeue placed
+      // after this suite started win (see the database method).
       if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
         logger.warn(
           { agentUrl: agent.agent_url, err: error },
           'Compliance heartbeat skipped after target selection remained inconclusive',
         );
         try {
-          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, 'pre_target_error');
         } catch (deferError) {
           logger.error(
             { agentUrl: agent.agent_url, deferError },
@@ -713,7 +717,9 @@ export async function runComplianceHeartbeatJob(
           await notifyHeartbeatTimeout(agent.agent_url, timeoutRun.id);
         }
 
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(
+          agent.agent_url, 'agent_error', { exponentialBackoff: true },
+        );
       } catch (recordError) {
         // Fence loss during failure recording must be handled here directly:
         // we are already inside catch (error), so re-throwing would escape the
@@ -725,11 +731,13 @@ export async function runComplianceHeartbeatJob(
             { agentUrl: agent.agent_url },
             'Compliance heartbeat stopped after losing the shared execution fence (during failure recording)',
           );
-          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, 'execution_fence_lost');
           result.skipped++;
           skipReasons.execution_fence_lost++;
           return;
         }
+        // Nothing recorded the outcome, so the claim's lock stays until it
+        // expires rather than re-running this agent on the next tick.
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
 

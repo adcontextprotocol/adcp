@@ -300,17 +300,20 @@ checks:
     applies_to: [sellers]
     detection: "A proposal for a product that declares installments cannot name the exact installments a purchase buys, or accept a refine_proposals installment_changes list."
     fix: >-
-      Nothing in 3.3. A purchase buys the product as offered, and the
-      installments a product includes are readable on the product. Selecting
-      installments inside purchases[] and refining them with
-      installment_changes wait for 4.0, where commercial_terms gets a declared
-      extension point that the buyer must understand (adcp#8501).
+      A purchase buys the product as offered, and the installments a product
+      includes are readable on the product. In 3.3 a buyer chooses installments
+      with installment_changes on refine_proposals
+      (media_buy.installment_refinement, adcp#8967), and the seller answers
+      with a product whose installments are the chosen set. Naming the bought
+      installments inside purchases[] waits for 4.0, where commercial_terms
+      gets a declared extension point that the buyer must understand
+      (adcp#8501).
     observed_by:
       none:
         reason: >-
-          Selection is a buyer-sent and seller-authored term on
-          commercial_terms, which is closed in 3.x. 3.3 has no wire form for
-          it, so a 3.x run cannot observe it.
+          The signed selection is a buyer-sent and seller-authored term on
+          commercial_terms, which is held closed until 4.0. 3.3 has no wire
+          form for it, so a 3.x run cannot observe it.
   - id: canonical_counting_mechanisms_required_in_4_0
     issue: 6878
     change: new_requirement

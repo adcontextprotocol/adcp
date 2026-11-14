@@ -393,6 +393,32 @@
       }
     },
     {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "proposal_refinement": {
+                "properties": {
+                  "supported_dimensions": { "contains": { "const": "installment_changes" } }
+                },
+                "required": ["supported_dimensions"]
+              }
+            },
+            "required": ["proposal_refinement"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.installment_refinement" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
       "description": "Listing media_buy.collection_catalog (list_collections and collection card webhooks) requires media_buy.collection_cards, because the response carries card fields.",
       "if": {
         "properties": {
@@ -1775,6 +1801,16 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "supported_delivery_types": {
+          "x-added-in": "3.3.0",
+          "type": "array",
+          "description": "Delivery types this seller sells across its product portfolio: guaranteed (reserved inventory) and/or non_guaranteed. Buyers can use this for pre-flight filtering before querying individual products. Like every capability declaration, it is a commitment: the products this seller returns carry a delivery_type listed here. When absent, the seller has not declared its delivery types, and buyers treat them as unknown rather than as an empty set. Values come from the product delivery_type enum (guaranteed, non_guaranteed); this is unrelated to the display_tag format parameter of the same name, which lists creative serving modes such as inline_markup.",
+          "items": {
+            "$ref": "/schemas/enums/delivery-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "buying_modes": {
           "type": "array",
           "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
@@ -1814,10 +1850,10 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; installment_changes (experimental, media_buy.installment_refinement) covers installment_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },
@@ -2454,11 +2490,11 @@
         },
         "audience_targeting": {
           "type": "object",
-          "description": "Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including sync_audiences and audience_include/audience_exclude in targeting overlays.",
+          "description": "Audience targeting capabilities. Presence of this object indicates the seller supports audience_include and audience_exclude in targeting overlays, and discovery-only sync_audiences (called without audiences), which lists the audiences on the account and the audience_id values those overlays reference. A seller that declares this object MUST answer discovery-only sync_audiences. Presence alone does not promise inline member push: the sync_audiences pattern in supported_activation_methods declares it, and when supported_activation_methods is absent inline member push is supported, as in 3.2. A seller whose supported_activation_methods omits the sync_audiences pattern MUST reject, with UNSUPPORTED_FEATURE, an audiences entry that carries add or remove member deltas or that would create a new audience without a source reference. supported_identifier_types and minimum_audience_size are required only when the seller accepts inline member push.",
           "properties": {
             "supported_identifier_types": {
               "type": "array",
-              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. Required when the seller accepts inline member push, that is when supported_activation_methods is absent or includes the sync_audiences pattern.",
               "items": {
                 "type": "string",
                 "enum": ["hashed_email", "hashed_phone"]
@@ -2481,13 +2517,13 @@
             },
             "minimum_audience_size": {
               "type": "integer",
-              "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical).",
+              "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical). Required when the seller accepts inline member push, that is when supported_activation_methods is absent or includes the sync_audiences pattern. A seller without inline member push MAY still declare it.",
               "minimum": 1
             },
             "supported_activation_methods": {
               "type": "array",
               "x-status": "experimental",
-              "description": "Union of audience_activation.methods across the seller's products. Fast-fail discovery: a buyer reads this once and skips the catalog walk when nothing overlaps its pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: the union MAY omit consumer_identities and destination_ref until bilateral account setup establishes them, and MUST NOT expose another account's coordinates. Absence of this field with media_buy.audience_activation listed in experimental_features means walk the catalog; only a present, non-overlapping union is a fast-fail signal. Experimental (x-status: experimental): sellers implementing audience activation declarations MUST list media_buy.audience_activation in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
+              "description": "Union of audience_activation.methods across the seller's products. Fast-fail discovery: a buyer reads this once and skips the catalog walk when nothing overlaps its pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: the union MAY omit consumer_identities and destination_ref until bilateral account setup establishes them, and MUST NOT expose another account's coordinates. Absence of this field with media_buy.audience_activation listed in experimental_features means walk the catalog; only a present, non-overlapping union is a fast-fail signal. When present, the field also declares inline member push: the seller accepts add and remove member deltas on sync_audiences only when the union includes the sync_audiences pattern. Experimental (x-status: experimental): sellers implementing audience activation declarations MUST list media_buy.audience_activation in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
               "items": {
                 "$ref": "/schemas/core/audience-activation-method.json"
               },
@@ -2510,7 +2546,27 @@
               "additionalProperties": true
             }
           },
-          "required": ["supported_identifier_types", "minimum_audience_size"],
+          "if": {
+            "description": "The seller accepts inline member push: supported_activation_methods is absent, as in 3.2, or includes the sync_audiences pattern.",
+            "anyOf": [
+              { "not": { "required": ["supported_activation_methods"] } },
+              {
+                "properties": {
+                  "supported_activation_methods": {
+                    "contains": {
+                      "type": "object",
+                      "properties": { "pattern": { "const": "sync_audiences" } },
+                      "required": ["pattern"]
+                    }
+                  }
+                },
+                "required": ["supported_activation_methods"]
+              }
+            ]
+          },
+          "then": {
+            "required": ["supported_identifier_types", "minimum_audience_size"]
+          },
           "additionalProperties": true
         },
         "supported_optimization_metrics": {
@@ -3005,7 +3061,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 365,
-          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
+          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (owner_principal, seller_agent), where owner_principal is the authenticated buyer principal that synchronized the plan, and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
         },
         "supports_budget_periods": {
           "x-added-in": "3.3.0",
@@ -3258,9 +3314,29 @@
           "description": "When true, this agent accepts buyer-assigned revision_id on sync_creatives, enforces immutable revision content, echoes accepted revision identity, returns it from list_creatives, and attributes delivered executions to it. Revision support does not imply revision history, rollback, or staged activation.",
           "default": false
         },
+        "assignment_operations": {
+          "type": "array",
+          "description": "The sync_creatives assignment_operations this agent accepts. The list is exact: the agent accepts every listed operation and rejects any other with UNSUPPORTED_FEATURE, applying nothing, since the request is atomic. Buyers MUST NOT send an operation that is not listed. Absent from a response served at 3.3 or later: the agent accepts none, and buyers MUST NOT send assignment_operations. A response served at an earlier release cannot carry this field, so there its absence declares nothing. An agent that declares live_updates MUST list replace, the swap its CREATIVE_LIVE_UPDATE_UNSUPPORTED recovery relies on. A seller that exposes buy_products or accept_proposal (lists either in media_buy.lifecycle_tools) and declares has_creative_library: true MUST list assign in a response served at 3.3 or later, because the compact lifecycle assigns creatives only through assignment_operations. Listing merge requires has_creative_library: true and stable_creative_ids: true. supports_assignment_merge: true requires merge in this list; a seller that lists merge SHOULD also set that flag, and where they disagree, this list governs.",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "compact_lifecycle_assign": {
+                "when": "response served at 3.3 or later; media_buy.lifecycle_tools contains buy_products or accept_proposal; creative.has_creative_library is true",
+                "requires": "creative.assignment_operations contains assign"
+              }
+            },
+            "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+          },
+          "items": {
+            "type": "string",
+            "enum": ["assign", "unassign", "replace", "merge"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "x-added-in": "3.3.0"
+        },
         "supports_assignment_merge": {
           "type": "boolean",
-          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. When false or absent, the agent rejects merge with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. Kept for compatibility: assignment_operations is the authoritative declaration. When this flag is true, assignment_operations MUST list merge, and an agent that lists merge SHOULD set this flag. Buyers MUST NOT send merge unless assignment_operations lists it; an agent that does not list it rejects merge with UNSUPPORTED_FEATURE.",
           "default": false,
           "x-added-in": "3.3.0"
         },
@@ -3268,7 +3344,7 @@
           "type": "object",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Which kinds of change this agent applies in place to a live creative through sync_creatives under the same creative_id, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. This declaration is a floor: every listed kind is accepted on every live creative in the listed serving mode or a less disruptive one (uninterrupted < staged < paused_for_review). An unlisted kind may still be accepted for some creatives; a sync_creatives dry_run returns the exact outcome of one change. A declaring agent MUST refuse a change it does not apply in place with CREATIVE_LIVE_UPDATE_UNSUPPORTED (not INVALID_STATE), and MUST always accept changes to name and tags. Requires has_creative_library: true. Omitted: the agent makes no claim about live creatives.",
+          "description": "Which kinds of change this agent applies in place to a live creative through sync_creatives under the same creative_id, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. This declaration is a floor: every listed kind is accepted on every live creative in the listed serving mode or a less disruptive one (uninterrupted < staged < paused_for_review). An unlisted kind may still be accepted for some creatives; a sync_creatives dry_run returns the exact outcome of one change. A declaring agent MUST refuse a change it does not apply in place with CREATIVE_LIVE_UPDATE_UNSUPPORTED (not INVALID_STATE), and MUST always accept changes to name and tags. Requires has_creative_library: true and an assignment_operations list that includes replace. Omitted: the agent makes no claim about live creatives.",
           "allOf": [
             { "$ref": "/schemas/core/live-update-policy.json" }
           ],
@@ -3608,6 +3684,46 @@
               "has_creative_library": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "required": ["live_updates"]
+          },
+          "then": {
+            "properties": {
+              "assignment_operations": { "contains": { "const": "replace" }, "x-added-in": "3.3.0" }
+            },
+            "required": ["assignment_operations"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "assignment_operations": { "contains": { "const": "merge" } }
+            },
+            "required": ["assignment_operations"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true },
+              "stable_creative_ids": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library", "stable_creative_ids"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_merge": { "const": true }
+            },
+            "required": ["supports_assignment_merge"]
+          },
+          "then": {
+            "properties": {
+              "assignment_operations": { "contains": { "const": "merge" }, "x-added-in": "3.3.0" }
+            },
+            "required": ["assignment_operations"]
           }
         },
         {

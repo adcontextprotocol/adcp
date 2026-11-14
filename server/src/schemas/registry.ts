@@ -908,8 +908,11 @@ const BadgeGradingEvidenceSchema = z.object({
   relevant_bundle_ids: z.array(z.string()),
   failing_bundle_count: z.number().int().nonnegative(),
   incomplete_bundle_count: z.number().int().nonnegative(),
+  incomplete_bundle_ids: z.array(z.string()).optional().openapi({
+    description: "Relevant bundles, as kind:id, that keep Strict Spec partial because their evidence is incomplete: an untested or partially covered storyboard, including runner and test-kit gaps.",
+  }),
   not_applicable_universal_bundle_ids: z.array(z.string()).optional().openapi({
-    description: "Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.",
+    description: "Universal bundles left partial only because the agent does not offer the surface: it advertises none of the tools for a surface it does not declare, or it does not advertise request signing for signed_requests. They do not count as incomplete.",
   }),
   relevant_failure_count: z.number().int().nonnegative(),
   missing_universal_bundle: z.boolean(),

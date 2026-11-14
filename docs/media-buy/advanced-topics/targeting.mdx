@@ -880,6 +880,8 @@ Use geo fields **only** for:
 
 **Note**: Inclusion and exclusion can be combined. Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
+**Labels.** Codes are the targeting. A targeting object MAY carry display names beside them so a person reading a package, a proposal, or an audit log does not have to look codes up: `geo_value_labels` for ISO country and subdivision codes (`{ "DE": "Germany", "US-CA": "California" }`), and `value_labels` on each `geo_metros`, `geo_metros_exclude`, and `geo_places` entry. Every label key MUST appear in the values it labels. Labels are not a targeting dimension: sellers MUST NOT resolve or apply targeting from them, MUST NOT reject a request because they are present, and MAY omit, keep, or supply their own labels in readback. In create and update input, `geo_value_labels` follows the same three states as a dimension, so `null` clears labels the seller kept. Targeting equality and exact readback compare codes only. A name with no code, such as `"California"` in `geo_regions`, is still invalid. Buyers SHOULD NOT send `geo_value_labels` to a seller on a version before 3.3, which may treat an unknown key as an unsupported dimension.
+
 ### Age Restrictions (Compliance)
 Use for **legal compliance** requirements:
 - **Alcohol advertising**: Require verified 21+ in the US
@@ -1113,6 +1115,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Description**: Restrict delivery to specific countries
 - **Format**: ISO 3166-1 alpha-2 country codes
 - **Examples**: `["US", "CA"]`, `["GB", "FR", "DE"]`
+- **Labels**: optional, in `geo_value_labels` (e.g., `{ "GB": "United Kingdom" }`)
 - **Use cases**: Regulatory compliance, country-specific campaigns
 
 ### geo_countries_exclude
@@ -1147,6 +1150,7 @@ disclosed, compliant targeting modification.
 - **Description**: Restrict delivery to canonical ISO 3166-2 subdivisions, including states, provinces, regions, departments, and overseas subdivisions
 - **Format**: ISO 3166-2 subdivision codes
 - **Examples**: `["US-CA", "CA-QC"]`, `["FR-49", "FR-2A", "FR-971", "FR-ARA"]`
+- **Labels**: optional, in `geo_value_labels` (e.g., `{ "US-CA": "California" }`)
 - **Use cases**: State-level compliance, regional testing
 
 ### geo_regions_exclude
@@ -1165,16 +1169,16 @@ At create or update, unsupported dimensions, countries, or values outside Produc
 
 ### geo_metros
 - **Description**: Restrict delivery to specific metro areas
-- **Format**: Array of objects, each with a `system` and `values`
+- **Format**: Array of objects, each with a `system` and `values`; optional `value_labels`
 - **Systems**: `nielsen_dma` (US), `uk_itl1` / `uk_itl2` (UK), `eurostat_nuts2` (EU), `custom`
-- **Example**: `[{ "system": "nielsen_dma", "values": ["501", "803"] }]`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["501", "803"], "value_labels": { "501": "New York", "803": "Los Angeles" } }]`
 - **Use cases**: Local campaigns, metro-level RCT testing
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
 ### geo_metros_exclude
 - **Description**: Exclude specific metro areas from delivery
-- **Format**: Array of objects, each with a `system` and `values`
-- **Example**: `[{ "system": "nielsen_dma", "values": ["602"] }]`
+- **Format**: Array of objects, each with a `system` and `values`; optional `value_labels`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["602"], "value_labels": { "602": "Chicago" } }]`
 - **Use cases**: RCT holdout markets, competitive exclusion zones, markets where product is unavailable
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
@@ -1260,16 +1264,16 @@ create-time substitute for any result above.
 - **Example**: `["lapsed_subscribers", "high_value_prospects"]`
 - **Use cases**: Retargeting known users, loyalty campaigns targeting existing members, CRM-based inclusion on closed platforms (LinkedIn, Meta, TikTok, Google Ads)
 - **Not for lookalike/expansion**: To find new users *similar to* an audience, describe the intent in your campaign brief ("reach people like our existing customers") — the seller handles expansion strategy
-- **Prerequisite**: Audiences must be registered and `ready` via `sync_audiences` before use
-- **Note**: Seller must declare support in `get_adcp_capabilities`
+- **Prerequisite**: Audiences must be on the account and `ready` before use: pushed through `sync_audiences`, or, on a [seller without inline member push](/docs/media-buy/task-reference/sync_audiences#sellers-without-inline-member-push), listed by a discovery-only `sync_audiences` call
+- **Note**: Seller declares support with `media_buy.audience_targeting` in `get_adcp_capabilities`. That declaration does not by itself mean the seller accepts pushed members; `audience_targeting.supported_activation_methods` says whether it does
 
 ### audience_exclude
 - **Description**: Suppress delivery to users who are members of these first-party CRM audiences. Matched users are excluded regardless of other targeting.
 - **Format**: Array of `audience_id` strings from [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences)
 - **Example**: `["existing_customers", "recent_purchasers"]`
 - **Use cases**: Customer suppression in acquisition campaigns, excluding recent converters, suppressing opted-out users
-- **Prerequisite**: Audiences must be registered and `ready` via `sync_audiences` before use
-- **Note**: Seller must declare support in `get_adcp_capabilities`
+- **Prerequisite**: Audiences must be on the account and `ready` before use: pushed through `sync_audiences`, or, on a [seller without inline member push](/docs/media-buy/task-reference/sync_audiences#sellers-without-inline-member-push), listed by a discovery-only `sync_audiences` call
+- **Note**: Seller declares support with `media_buy.audience_targeting` in `get_adcp_capabilities`, as for `audience_include`
 
 ### signal_targeting_groups
 - **Description**: Basic Boolean grouping for seller-offered data signals. Use this for both simple include-only signal targeting and grouped include/exclude expressions such as `(A OR B) AND NOT (C OR D)`.

@@ -114,6 +114,12 @@ const ENUM_VALUE_ALLOWLIST = [
   { value: 'amazon_music_id',  pathContains: 'enums/distribution-identifier-type.json' },
   { value: 'amazon_title_id',  pathContains: 'enums/distribution-identifier-type.json' },
   { value: 'roku_channel_id',  pathContains: 'enums/distribution-identifier-type.json' },
+  // Social platform account and Page identifiers are each platform's own ID
+  // namespace for a creator's channel, as roku_channel_id is for Roku (#8992).
+  { value: 'instagram_account_id', pathContains: 'enums/distribution-identifier-type.json' },
+  { value: 'instagram_handle',     pathContains: 'enums/distribution-identifier-type.json' },
+  { value: 'facebook_page_id',     pathContains: 'enums/distribution-identifier-type.json' },
+  { value: 'facebook_page_handle', pathContains: 'enums/distribution-identifier-type.json' },
 
   // enums/feed-format.json — widely-adopted open interchange formats.
   { value: 'google_merchant_center', pathContains: 'enums/feed-format.json' },

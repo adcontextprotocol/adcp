@@ -177,7 +177,7 @@ Nothing here is graded. 3.3 has no wire form for any of it after beta.1, so a ru
 
 **What it was:** experimental `media_buy.installment_selection`: `purchases[].installments[]` named the exact slots a purchase buys, and `refine_proposals` gained `installment_changes` with `unsatisfied_installment_changes` to drop or swap one ([#8246](https://github.com/adcontextprotocol/adcp/pull/8246), merged 2026-10-24 and published in `3.3.0-beta.1`). It is removed after beta.1.
 
-**What stays in 3.3:** `installments[]` on the canonical product (`core/canonical-installment.json`), the `installments` entry in `list_products` `fields`, and installment hold readback (`holds[]`). A purchase buys the product as offered, which is the product's complete installment set when it declares one.
+**What stays in 3.3:** `installments[]` on the canonical product (`core/canonical-installment.json`), the `installments` entry in `list_products` `fields`, and installment hold readback (`holds[]`). A purchase buys the product as offered, which is the product's complete installment set when it declares one. A buyer chooses installments during negotiation with `installment_changes` on `refine_proposals`, under the separate experimental feature id `media_buy.installment_refinement` ([#8967](https://github.com/adcontextprotocol/adcp/issues/8967)): the seller answers with a product whose `installments[]` is the chosen set, and the digest binds that product's `product_id`. 4.0 binds the slots themselves, and products derived for one selection can retire then.
 
 **Design to keep:**
 
