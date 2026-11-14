@@ -82,7 +82,7 @@
         },
         "signing_keys_pinned": {
           "type": "boolean",
-          "description": "Whether the publisher's adagents.json pins `signing_keys[]` for this agent: true only when every `authorized_agents[]` entry that matches the agent carries `signing_keys`. One matching entry without them leaves the agent unpinned, and the accepted keys are the union of the matching entries' pins (docs/governance/property/adagents.mdx#agent-url-matching). When true, the agent's sell-side signatures about this publisher's inventory (such as webhooks) are accepted only with a key that is in both the pin and the agent's own JWKS. Operators should treat true as a signal that their published JWKS and the publisher's pin must stay in step."
+          "description": "Whether the publisher's adagents.json pins `signing_keys[]` for this agent: true only when every in-window `authorized_agents[]` entry that matches the agent carries `signing_keys`. One matching entry without them leaves the agent unpinned. This is a scope-agnostic summary: verifiers compute the pin per message from the entries that match the agent and authorize the message's scope, so a pin can apply where this reads false (docs/governance/property/adagents.mdx#agent-url-matching). When true, the agent's sell-side signatures about this publisher's inventory (such as webhooks) are accepted only with a key that is in both the pin and the agent's own JWKS. Operators should treat true as a signal that their published JWKS and the publisher's pin must stay in step."
         },
         "status": {
           "type": "string",

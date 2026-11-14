@@ -87,6 +87,8 @@ export interface SigningKeyEntry {
   url: string;
   /** `kid`s of the keys this entry pins; omitted for no `signing_keys`. */
   kids?: string[];
+  /** An `effective_until` for the entry; a past one means it authorizes nothing. */
+  effectiveUntil?: string;
 }
 
 export interface SigningKeyMatchCase {
@@ -169,6 +171,19 @@ export const SIGNING_KEY_CASES: readonly SigningKeyMatchCase[] = [
     entries: [{ url: SK_ORIGIN, kids: ['k1'] }, { url: SK_AGENT }],
     expectedKids: ['k1'],
   },
+  // An entry outside its effective window authorizes nothing.
+  {
+    why: 'an expired unpinned origin entry does not unpin /mcp',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, effectiveUntil: '2020-01-01T00:00:00Z' }, { url: SK_AGENT, kids: ['k1'] }],
+    expectedKids: ['k1'],
+  },
+  {
+    why: 'an expired pinned entry adds no key and does not keep a pin',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: ['k9'], effectiveUntil: '2020-01-01T00:00:00Z' }, { url: SK_AGENT }],
+    expectedKids: null,
+  },
   // The 3.2 path: one exact match reads exactly as before.
   {
     why: 'one exact entry, pinned: its own keys',
@@ -191,9 +206,10 @@ export function fixtureSigningKey(kid: string): { kid: string; kty: 'OKP'; crv: 
 
 /** The `authorized_agents[]` entries a signing-key case lists. */
 export function signingKeyCaseEntries(entries: readonly SigningKeyEntry[]): Array<Record<string, unknown>> {
-  return entries.map(({ url, kids }) => ({
+  return entries.map(({ url, kids, effectiveUntil }) => ({
     url,
     authorized_for: 'Direct',
     ...(kids ? { signing_keys: kids.map(fixtureSigningKey) } : {}),
+    ...(effectiveUntil ? { effective_until: effectiveUntil } : {}),
   }));
 }

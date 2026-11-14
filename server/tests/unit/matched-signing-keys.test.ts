@@ -14,6 +14,7 @@ import {
   combinedSigningKeys,
   entryPinsSigningKeys,
   everyMatchingEntryPins,
+  intersectSigningKeyPins,
 } from '../../src/services/matched-signing-keys.js';
 import { AgentValidator } from '../../src/validator.js';
 import {
@@ -57,11 +58,49 @@ describe('combinedSigningKeys', () => {
 
   it.each(SIGNING_KEY_CASES)('$why', ({ agent, entries, expectedKids }) => {
     const matching = signingKeyCaseEntries(entries)
-      .filter(entry => agentUrlAuthorizedBy(entry.url as string, agent)) as Array<{
+      .filter(entry => agentUrlAuthorizedBy(entry.url as string, agent))
+      .filter(entry => !entry.effective_until || Date.parse(entry.effective_until as string) > Date.now()) as Array<{
         signing_keys?: Array<{ kid: string }>;
       }>;
     expect(kidsOf(combinedSigningKeys(matching))).toEqual(expectedKids);
     expect(everyMatchingEntryPins(matching)).toBe(expectedKids !== null);
+  });
+});
+
+describe('intersectSigningKeyPins (a message about several properties)', () => {
+  const k1 = fixtureSigningKey('k1');
+  const k2 = fixtureSigningKey('k2');
+  const k1Revoked = { ...k1, revoked_at: '2026-11-01T00:00:00Z' };
+
+  it('is no restriction only when no property is pinned', () => {
+    expect(intersectSigningKeyPins([undefined, undefined])).toBeUndefined();
+    expect(intersectSigningKeyPins([])).toBeUndefined();
+  });
+
+  it('applies a pinned property even when another property is unpinned', () => {
+    expect(intersectSigningKeyPins([undefined, [k1]])).toEqual([k1]);
+  });
+
+  it('keeps only keys every pinned property allows; none shared accepts no key', () => {
+    expect(intersectSigningKeyPins([[k1, k2], [k2]])).toEqual([k2]);
+    expect(intersectSigningKeyPins([[k1], [k2]])).toEqual([]);
+  });
+
+  it('matches a key across properties by its public material and keeps the revoked copy, in either order', () => {
+    expect(intersectSigningKeyPins([[k1], [k1Revoked]])).toEqual([k1, k1Revoked]);
+    expect(intersectSigningKeyPins([[k1Revoked], [k1]])).toEqual([k1Revoked, k1]);
+  });
+});
+
+describe('combinedSigningKeys keeps the revoked copy in either entry order', () => {
+  it('both orders carry the revoked_at', () => {
+    const k1 = fixtureSigningKey('k1');
+    const revoked = { ...k1, revoked_at: '2026-11-01T00:00:00Z' };
+    for (const pins of [[[k1], [revoked]], [[revoked], [k1]]]) {
+      const combined = combinedSigningKeys(pins.map(signing_keys => ({ signing_keys })));
+      expect(combined).toContainEqual(revoked);
+      expect(combined).toHaveLength(2);
+    }
   });
 });
 
@@ -111,6 +150,84 @@ describe('AgentValidator matched_authorization.signing_keys', () => {
     expect(kidsOf(us.matched_authorization?.signing_keys)).toEqual(['k1']);
     const gb = await validator.validate('example.com', 'https://signer.example.com/mcp', { country: 'GB' });
     expect(gb.matched_authorization?.signing_keys).toBeUndefined();
+  });
+
+  it('lets an expired unpinned entry neither pin nor unpin', async () => {
+    serve({
+      authorized_agents: [
+        { url: 'https://signer.example.com', authorized_for: 'Old', effective_until: '2020-01-01T00:00:00Z' },
+        { url: 'https://signer.example.com/mcp', authorized_for: 'All', signing_keys: [fixtureSigningKey('k1')] },
+      ],
+    });
+    const result = await validator.validate('example.com', 'https://signer.example.com/mcp');
+    expect(kidsOf(result.matched_authorization?.signing_keys)).toEqual(['k1']);
+  });
+
+  it('still authorizes when another entry is null or not an object', async () => {
+    serve({
+      authorized_agents: [
+        { url: 'https://signer.example.com/mcp', authorized_for: 'All', signing_keys: [fixtureSigningKey('k1')] },
+        null,
+        'https://signer.example.com',
+      ],
+    });
+    const result = await validator.validate('example.com', 'https://signer.example.com/mcp');
+    expect(result.authorized).toBe(true);
+    expect(kidsOf(result.matched_authorization?.signing_keys)).toEqual(['k1']);
+  });
+
+  describe('a request covering several properties gets one pin per property', () => {
+    const properties = [
+      { property_id: 'site_x', property_type: 'website', name: 'X', identifiers: [{ type: 'domain', value: 'x.example.com' }], tags: ['news'] },
+      { property_id: 'site_y', property_type: 'website', name: 'Y', identifiers: [{ type: 'domain', value: 'y.example.com' }], tags: ['news'] },
+    ];
+
+    it('an unpinned entry for one property does not unpin the other', async () => {
+      // The origin entry (unpinned) covers X only; /mcp pins k1 on X and Y.
+      // X is unpinned, Y is pinned to k1, so the request must use k1.
+      serve({
+        properties,
+        authorized_agents: [
+          { url: 'https://signer.example.com', authorized_for: 'X', authorization_type: 'property_ids', property_ids: ['site_x'] },
+          {
+            url: 'https://signer.example.com/mcp',
+            authorized_for: 'X and Y',
+            authorization_type: 'property_ids',
+            property_ids: ['site_x', 'site_y'],
+            signing_keys: [fixtureSigningKey('k1')],
+          },
+        ],
+      });
+      const both = await validator.validate('example.com', 'https://signer.example.com/mcp', { property_tags: ['news'] });
+      expect(kidsOf(both.matched_authorization?.signing_keys)).toEqual(['k1']);
+      const onlyX = await validator.validate('example.com', 'https://signer.example.com/mcp', { property_id: 'site_x' });
+      expect(onlyX.matched_authorization?.signing_keys).toBeUndefined();
+    });
+
+    it('the key must satisfy each property, so pins intersect', async () => {
+      serve({
+        properties,
+        authorized_agents: [
+          {
+            url: 'https://signer.example.com',
+            authorized_for: 'X',
+            authorization_type: 'property_ids',
+            property_ids: ['site_x'],
+            signing_keys: [fixtureSigningKey('k1')],
+          },
+          {
+            url: 'https://signer.example.com/mcp',
+            authorized_for: 'X and Y',
+            authorization_type: 'property_ids',
+            property_ids: ['site_x', 'site_y'],
+            signing_keys: [fixtureSigningKey('k2')],
+          },
+        ],
+      });
+      const both = await validator.validate('example.com', 'https://signer.example.com/mcp', { property_tags: ['news'] });
+      // X allows k1 or k2; Y allows k2.
+      expect(kidsOf(both.matched_authorization?.signing_keys)).toEqual(['k2']);
+    });
   });
 
   it('keeps the first matching entry for the descriptive fields', async () => {

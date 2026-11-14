@@ -1,30 +1,29 @@
 /**
  * How a `signing_keys` pin combines when more than one
- * `authorized_agents[]` entry in one publisher's `adagents.json` matches the
- * same agent (#9016, docs/governance/property/adagents#agent-url-matching).
+ * `authorized_agents[]` entry in one publisher's `adagents.json` authorizes
+ * the same agent for the same message (#9016,
+ * docs/governance/property/adagents#agent-url-matching).
  *
  * Under AdCP 3.3 an origin-only entry and an entry with the agent's full URL
  * can both match one agent, and each one authorizes it (the scope union,
- * #9011). The pin follows the same reasoning:
+ * #9011). The pin follows the same reasoning, over the entries that BOTH match
+ * the agent's URL AND authorize the message's scope (the entry resolves, is
+ * inside its effective window, matches the country, covers the property). An
+ * entry that authorizes nothing for this message neither pins nor unpins it.
  *
- *   - PINNED ONLY IF EVERY MATCHING ENTRY PINS. One matching entry with no
- *     `signing_keys` (absent or empty) already authorizes the agent with any
- *     key, so the agent is unpinned for that publisher.
- *   - THE ALLOWED KEYS ARE THE UNION. When every matching entry pins, the
- *     agent may sign with a key any of them pins.
+ *   - PINNED ONLY IF EVERY SUCH ENTRY PINS. One of them with no
+ *     `signing_keys` (absent or empty) already authorizes the message with
+ *     any key, so the publisher does not pin the agent for it.
+ *   - THE ALLOWED KEYS ARE THE UNION of their pins.
+ *   - PER PROPERTY. A message about several of the publisher's properties
+ *     gets one pin per property, and the key must satisfy each
+ *     (`intersectSigningKeyPins`), as it must satisfy each publisher's.
+ *   - REVOCATION. A `revoked_at` on any copy of a key applies; the earliest
+ *     wins whatever the entry order. Copies that differ only in `revoked_at`
+ *     are therefore all kept, never collapsed into the unrevoked one.
  *
- * A narrower entry never adds a restriction another matching entry does not
- * impose. With a single matching entry this is that entry's own pin, so the
- * 3.2 exact-match path reads the same as before.
- *
- * Which entries "match" is the caller's call and is the set it authorizes
- * with: `AgentValidator` passes the entries that authorize the agent for the
- * requested scope; the registry directory, which has no scope, passes every
- * entry whose URL authorizes the agent (`agentUrlAuthorizedBy`).
- *
- * This is the combination WITHIN one publisher's file. A signature about
- * several publishers' inventory must still match every applicable
- * publisher's pin (docs/building/by-layer/L1/security#agent-resolution).
+ * With a single authorizing entry this is that entry's own pin, so the 3.2
+ * exact-match path reads the same as before.
  */
 
 /** Whether `entry` pins at least one signing key. An empty array does not. */
@@ -33,22 +32,20 @@ export function entryPinsSigningKeys(entry: { signing_keys?: unknown }): boolean
 }
 
 /**
- * Whether the agent is pinned for the publisher, given the entries that
- * match it: true only when at least one entry matches and every one pins.
+ * Whether the publisher pins the agent, given the entries that authorize it
+ * for the message: true only when at least one does and every one pins.
  */
 export function everyMatchingEntryPins(entries: ReadonlyArray<{ signing_keys?: unknown }>): boolean {
   return entries.length > 0 && entries.every(entryPinsSigningKeys);
 }
 
 /**
- * The keys the agent may sign with for this publisher, given the entries that
- * match it: the union of their pins, or `undefined` (no restriction) when no
- * entry matches or any matching entry is unpinned.
+ * The keys the agent may sign with, given the entries that authorize it for
+ * the message (one property): the union of their pins, or `undefined` (no
+ * restriction) when none authorizes it or any of them is unpinned.
  *
- * Keys are deduplicated by value only when they are identical, member order
- * aside. Two spellings of one public key that differ in any member, such as a
- * `revoked_at` on one of them, are both kept, so a revocation on one entry is
- * never dropped in favour of an unrevoked copy on another.
+ * Identical keys (member order aside) appear once; copies that differ in any
+ * member, such as `revoked_at`, are all kept so a revocation is never lost.
  */
 export function combinedSigningKeys<K>(
   entries: ReadonlyArray<{ signing_keys?: readonly K[] | null }>,
@@ -65,6 +62,31 @@ export function combinedSigningKeys<K>(
     }
   }
   return keys;
+}
+
+/**
+ * The keys a message about several properties may be signed with, given one
+ * pin per property (`undefined` = that property is unpinned): a key must be
+ * allowed by every pinned property. `undefined` when no property is pinned;
+ * `[]` (accept no key) when the pinned properties share no key.
+ *
+ * Keys are matched by their public material, ignoring `revoked_at`, and every
+ * copy of a surviving key is kept, so the earliest revocation still applies.
+ */
+export function intersectSigningKeyPins<K>(pins: ReadonlyArray<readonly K[] | undefined>): K[] | undefined {
+  const pinned = pins.filter((pin): pin is readonly K[] => pin !== undefined);
+  if (pinned.length === 0) return undefined;
+  const identitiesIn = (pin: readonly K[]) => new Set(pin.map(keyIdentity));
+  const shared = pinned.map(identitiesIn).reduce((acc, ids) => new Set([...acc].filter(id => ids.has(id))));
+  return combinedSigningKeys(pinned.map(pin => ({ signing_keys: pin.filter(key => shared.has(keyIdentity(key))) })))
+    ?? [];
+}
+
+/** A key's identity for intersection: every member except `revoked_at`. */
+function keyIdentity(key: unknown): string {
+  if (!key || typeof key !== 'object' || Array.isArray(key)) return stableJson(key);
+  const { revoked_at: _revokedAt, ...rest } = key as Record<string, unknown>;
+  return stableJson(rest);
 }
 
 function stableJson(value: unknown): string {
