@@ -152,6 +152,7 @@ const PROPERTIES_3_3 = [
   ['core/product-identity.json', ['properties', 'match_keys']],
   ['trusted-match/provider-registration.json', ['properties', 'match_keys']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'supported_match_keys']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'creative', 'properties', 'assignment_operations']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

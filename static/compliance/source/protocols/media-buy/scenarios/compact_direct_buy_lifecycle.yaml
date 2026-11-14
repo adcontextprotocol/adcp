@@ -1,5 +1,5 @@
 id: media_buy_seller/compact_direct_buy_lifecycle
-version: "1.0.1"
+version: "1.1.0"
 title: "Seller completes the compact direct-buy lifecycle"
 category: media_buy_seller
 summary: "Verifies published-offer discovery, direct purchase, revision-checked operational control, and authoritative readback through AdCP 3.2 compact tools."
@@ -383,3 +383,38 @@ phases:
             path: "media_buys[0].accepted_proposal.terms_digest"
             context_key: "direct_accepted_terms_digest"
             description: "The embedded accepted snapshot preserves its terms digest"
+
+  - id: assignment_operations_declared
+    title: "A compact seller with a creative library lists assign"
+    depends_on: []
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
+    narrative: |
+      buy_products accepts no creatives, so a compact buy gets its creatives
+      only through sync_creatives assignment_operations. A seller that exposes
+      buy_products and has a creative library MUST list assign in
+      creative.assignment_operations at 3.3 or later
+      (docs/media-buy/specification#starting-with-assigned-creatives-under-review);
+      otherwise a buyer may not send the assignment the buy needs.
+    steps:
+      - id: get_capabilities_assignment_operations
+        title: "Read the declared assignment operations"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities whose creative.assignment_operations lists assign.
+        sample_request:
+          context:
+            correlation_id: "compact_direct_buy_lifecycle--assignment_operations"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_contains
+            path: "creative.assignment_operations[*]"
+            value: "assign"
+            description: "A compact seller with a creative library lists assign in creative.assignment_operations"
