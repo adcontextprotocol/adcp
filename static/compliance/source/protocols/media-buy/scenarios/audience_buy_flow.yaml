@@ -15,6 +15,12 @@ requires:
 # (e.g., a DSP that accepts buyer-uploaded CRM lists but doesn't expose
 # discovery/deletion semantics). Requires runner support for the `present:`
 # matcher (adcp-client >= 7.6.0).
+#
+# Since 3.3, audience_targeting alone does not promise inline member push
+# (adcp#8996). The audience_binding, create_buy_with_audience and
+# delivery_check phases carry their own gate on inline push. A seller without
+# it still runs setup and the unbound-audience rejection, which apply to
+# every audience_targeting seller.
 requires_capability:
   path: media_buy.audience_targeting
   present: true
@@ -60,6 +66,13 @@ narrative: |
      asserted here — it isn't a first-class field in
      get-media-buy-delivery-response.json today. A follow-up scenario gated
      on a sub-capability bit will land per-audience attribution.
+
+  Inline member push is optional from 3.3: a seller that declares
+  audience_targeting with supported_activation_methods lacking the
+  sync_audiences pattern rejects member deltas and binds audiences through
+  discovery or a source reference instead. For such a seller, the push,
+  the positive buy and the delivery check grade not_applicable, and only
+  behavior 3 (the unbound-id rejection) is asserted.
 
   Audience suppression via audience_exclude follows the same binding
   contract (rejected if the audience_id wasn't registered) but is not
@@ -170,6 +183,19 @@ phases:
 
   - id: audience_binding
     title: "Register the CRM audience"
+    # Member push: runs only when the seller accepts inline member pushes,
+    # that is when supported_activation_methods is absent (the 3.2 meaning)
+    # or lists the sync_audiences pattern (adcp#8996). A seller that declares
+    # audience_targeting without inline push grades this phase, and the
+    # phases that use the pushed audience, not_applicable. Requires runner
+    # support for any_of and object-subset contains (adcp-client#3711).
+    requires_capability:
+      any_of:
+        - path: media_buy.audience_targeting.supported_activation_methods
+          present: false
+        - path: media_buy.audience_targeting.supported_activation_methods
+          contains:
+            pattern: sync_audiences
     narrative: |
       The audience-targeted buy cannot be created without a registered
       audience_id. This phase exercises the binding — sync_audiences returns
@@ -229,6 +255,15 @@ phases:
 
   - id: create_buy_with_audience
     title: "Create a buy whose targeting binds to the registered audience"
+    # Uses the audience pushed in audience_binding, so it carries the same
+    # inline-push gate.
+    requires_capability:
+      any_of:
+        - path: media_buy.audience_targeting.supported_activation_methods
+          present: false
+        - path: media_buy.audience_targeting.supported_activation_methods
+          contains:
+            pattern: sync_audiences
     narrative: |
       The buyer creates a media buy whose package targeting_overlay carries
       audience_include referencing the registered audience_id. The seller
@@ -325,6 +360,15 @@ phases:
 
   - id: delivery_check
     title: "Delivery reporting for the audience-targeted buy"
+    # Reports on the buy created in create_buy_with_audience, so it carries
+    # the same inline-push gate.
+    requires_capability:
+      any_of:
+        - path: media_buy.audience_targeting.supported_activation_methods
+          present: false
+        - path: media_buy.audience_targeting.supported_activation_methods
+          contains:
+            pattern: sync_audiences
     narrative: |
       The discriminating assertion of the audience buy mode is the binding
       contract proven above. Delivery reporting here verifies the

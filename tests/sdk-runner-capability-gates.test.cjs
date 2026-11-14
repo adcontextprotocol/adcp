@@ -451,6 +451,77 @@ test('runStoryboard skips a not_contains-gated phase when the array contains the
   assert.match(result.phases[0].steps[0].error, /must not contain "operator"/);
 });
 
+test('audience_buy_flow runs the member push only for sellers that accept inline pushes', async () => {
+  // adcp#8998: from 3.3 a seller can declare audience_targeting without
+  // inline member push (adcp#8996). Its push, positive buy and delivery
+  // phases grade not_applicable; setup and the unbound-audience rejection
+  // still run. Needs any_of and object-subset contains (adcp-client#3711).
+  const source = loadMediaBuyStoryboard('audience_buy_flow');
+  const storyboard = {
+    ...source,
+    prerequisites: undefined,
+    fixtures: undefined,
+    phases: source.phases.map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({ ...step, validations: [] })),
+    })),
+  };
+  const tools = ['get_adcp_capabilities', 'sync_accounts', ...storyboard.required_tools];
+  const gated = ['audience_binding', 'create_buy_with_audience', 'delivery_check'];
+  const run = async methods => {
+    const calls = [];
+    const result = await runStoryboard('https://seller.example/mcp', storyboard, {
+      protocol: 'mcp',
+      _profile: {
+        name: 'Audience seller',
+        tools,
+        raw_capabilities: {
+          media_buy: {
+            audience_targeting: {
+              supported_identifier_types: ['hashed_email'],
+              ...(methods === undefined ? {} : { supported_activation_methods: methods }),
+            },
+          },
+        },
+      },
+      agentTools: tools,
+      _client: {
+        async executeTask(name) {
+          calls.push(name);
+          return {
+            success: true,
+            data: {
+              accounts: [{ account_id: 'acct-1', status: 'active' }],
+              products: [],
+              audiences: [{ audience_id: 'acmeoutdoor-loyal-customers', action: 'created' }],
+              media_buy_id: 'mb-1',
+              success: true,
+            },
+          };
+        },
+      },
+    });
+    const skippedPhases = result.phases
+      .filter(phase => phase.steps.every(step => step.skipped && step.skip?.reason === 'not_applicable'))
+      .map(phase => phase.phase_id);
+    return { calls, skippedPhases };
+  };
+
+  const noPush = await run([
+    { pattern: 'tmp_identity_match', buyer_agent: { agent_url: 'https://buyer.example/a2a' } },
+    { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
+  ]);
+  assert.deepEqual(noPush.skippedPhases, gated);
+  assert.ok(!noPush.calls.includes('sync_audiences'), 'no member push is sent to a no-push seller');
+  assert.ok(noPush.calls.includes('create_media_buy'), 'the unbound-audience rejection still runs');
+
+  for (const methods of [undefined, [{ pattern: 'sync_audiences' }, { pattern: 'dataset_query', vendor: { domain: 'd.example' } }]]) {
+    const push = await run(methods);
+    assert.deepEqual(push.skippedPhases, [], JSON.stringify(methods));
+    assert.ok(push.calls.includes('sync_audiences'));
+  }
+});
+
 test('runStoryboard structurally matches object-valued governance task gates', async () => {
   const storyboardPath = path.join(
     __dirname,
@@ -1410,8 +1481,8 @@ test('measurement acceptance is split from the universal rejection scenario', as
 });
 
 test('storyboard capability gates use the schema shape the runner evaluates', () => {
-  // requires_capability is a single predicate; compound AND gates belong in
-  // requires_all_capabilities. A malformed gate (e.g. `requires_capability:
+  // requires_capability is a single predicate or an any_of group; compound
+  // AND gates belong in requires_all_capabilities. A malformed gate (e.g. `requires_capability:
   // { all: [...] }`) crashes the runner before any step executes.
   const sourceRoot = path.join(__dirname, '..', 'static', 'compliance', 'source');
   const matchers = ['equals', 'contains', 'not_contains', 'present'];
@@ -1419,6 +1490,18 @@ test('storyboard capability gates use the schema shape the runner evaluates', ()
   const checkPredicate = (predicate, where) => {
     if (!predicate || typeof predicate !== 'object' || Array.isArray(predicate)) {
       problems.push(`${where}: predicate must be an object`);
+      return;
+    }
+    // OR-composition (adcp-client#3711): an any_of group of two or more
+    // predicates, with no sibling keys.
+    if ('any_of' in predicate) {
+      const siblings = Object.keys(predicate).filter(key => key !== 'any_of');
+      if (siblings.length > 0) problems.push(`${where}: any_of cannot be combined with ${siblings.join(', ')}`);
+      if (!Array.isArray(predicate.any_of) || predicate.any_of.length < 2) {
+        problems.push(`${where}: any_of must list at least two predicates`);
+        return;
+      }
+      predicate.any_of.forEach((entry, index) => checkPredicate(entry, `${where}.any_of[${index}]`));
       return;
     }
     if (typeof predicate.path !== 'string' || predicate.path.length === 0) {
