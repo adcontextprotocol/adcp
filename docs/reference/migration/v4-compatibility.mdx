@@ -269,6 +269,7 @@ A check is added once its 4.0 change is decided. These changes are still proposa
 - `duration_ms` required on hosted video assets ([#5668](https://github.com/adcontextprotocol/adcp/issues/5668))
 - the `account_id` from `sync_accounts` as the only account reference after provisioning ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850))
 - nested `status` renamed to `media_buy_status` ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905))
+- at least one `by_package` row on each `get_media_buy_delivery` media buy (`minItems: 1`) ([#8973](https://github.com/adcontextprotocol/adcp/issues/8973))
 - `get_adcp_capabilities` served without credentials, a SHOULD in 3.3 that becomes a MUST in 4.0 ([Authentication](/docs/building/by-layer/L2/authentication)); decided, with no check yet
 
 The schemas also mark 48 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, boolean `demographics` in product support, and the format-level build and pricing surface that `list_transformers` replaces.
