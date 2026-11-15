@@ -67,15 +67,24 @@ function marketKey(tenantId: string, principal: string | undefined): string {
 }
 
 /**
- * Open the caller's market on a tenant, caught up to the caller's sandbox
- * clock. A market whose seed changed is discarded and started fresh.
+ * Whether a stored market still belongs to the caller's timeline. One whose
+ * seed changed, or that has run days the clock has not reached (the clock was
+ * unpinned by a `reset_state` on any tenant, and reads the wall clock again),
+ * is discarded and started fresh.
  */
+function isCurrent(stored: MarketDocument | undefined, seed: SeasonSeed, nowMs: number): stored is MarketDocument {
+  if (!stored || stored.seed_id !== seed.seed_id) return false;
+  return stored.sim.processed_through_day <= new InventorySimulation(seed, stored.sim).today(nowMs);
+}
+
+/** Open the caller's market on a tenant, caught up to the caller's sandbox
+ * clock. */
 export async function openMarket(tenantId: string, seed: SeasonSeed, principal: string | undefined): Promise<OpenMarket> {
   const sandbox = await loadSandbox(principal);
   const nowMs = sandboxNowMs(sandbox.doc);
   const key = marketKey(tenantId, principal);
   const stored = sandbox.session.principalConfigurations.get(key) as MarketDocument | undefined;
-  const doc: MarketDocument = stored && stored.seed_id === seed.seed_id
+  const doc: MarketDocument = isCurrent(stored, seed, nowMs)
     ? structuredClone(stored)
     : { seed_id: seed.seed_id, sim: InventorySimulation.create(seed, nowMs).state, media_buys: [], next_id: 1 };
   const sim = new InventorySimulation(seed, doc.sim);
@@ -102,7 +111,7 @@ export async function advanceMarket(tenantId: string, seed: SeasonSeed, principa
   const sandbox = await loadSandbox(principal);
   const key = marketKey(tenantId, principal);
   const stored = sandbox.session.principalConfigurations.get(key) as MarketDocument | undefined;
-  if (!stored || stored.seed_id !== seed.seed_id) return 0;
+  if (!isCurrent(stored, seed, sandboxNowMs(sandbox.doc))) return 0;
   const doc = structuredClone(stored);
   const ran = new InventorySimulation(seed, doc.sim).advanceTo(sandboxNowMs(sandbox.doc));
   if (ran.length > 0) sandbox.session.principalConfigurations.set(key, doc);
