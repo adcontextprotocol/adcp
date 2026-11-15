@@ -103,6 +103,7 @@ const TENANT_PROTOCOLS: Readonly<Record<string, readonly string[]>> = {
   brand: ['brand'],
   si: ['sponsored_intelligence'],
   'inventory-adserver': ['media_buy'],
+  'inventory-content': ['media_buy'],
 };
 
 const OPERATOR_UNIT_BRIDGE_TENANTS = new Set([

@@ -13,8 +13,11 @@ import { formatOptionsForTrainingFormats } from '../product-factory.js';
 import {
   DAY_MS,
   EngineError,
+  audienceCurve,
   toAdcpForecast,
   type BookingTargeting,
+  type ForecastResult,
+  type Installment,
   type InventorySimulation,
   type SeasonSeed,
   type SeedProduct,
@@ -32,6 +35,9 @@ interface InventoryMeta {
 }
 
 const DEFAULT_FORECAST_DAYS = 30;
+/** How long past its curve a sponsorship keeps serving, so an installment
+ * postponed by up to two weeks still delivers its audience. */
+const POSTPONEMENT_ALLOWANCE_DAYS = 14;
 
 /** Engine channels on the AdCP channel enum. */
 const ADCP_CHANNEL: Record<string, string> = {
@@ -157,22 +163,61 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     return { region_ids: regionIds };
   }
 
+  /** Installments a collection product sells that are scheduled within the
+   * flight: what a sponsorship package over that flight buys. */
+  private installmentsIn(product: SeedProduct, sim: InventorySimulation, startMs: number, endMs: number): Installment[] {
+    const first = sim.traffic.calendar.dayOf(startMs);
+    const last = Math.ceil((endMs - sim.traffic.calendar.startMs) / DAY_MS);
+    return sim.traffic.productInstallments(product.product_id)
+      .filter(installment => installment.scheduled_day >= first && installment.scheduled_day < last);
+  }
+
+  /** When the audience of the last of these installments has built up. */
+  private audienceEndMs(installments: Installment[], sim: InventorySimulation): number {
+    const ends = installments.map(installment => {
+      const channel = sim.traffic.collections.get(installment.collection_id)!.channel;
+      return installment.scheduled_day + audienceCurve(channel).length + POSTPONEMENT_ALLOWANCE_DAYS;
+    });
+    return sim.traffic.calendar.startMs + Math.max(...ends) * DAY_MS;
+  }
+
+  private wireInstallments(product: SeedProduct, installments: Installment[], sim: InventorySimulation, nowMs: number) {
+    const known = new Map(sim.installmentStatuses(nowMs, product.product_id).map(status => [status.installment_id, status]));
+    return installments.map(installment => {
+      const collection = sim.traffic.collections.get(installment.collection_id)!;
+      const status = known.get(installment.installment_id)!;
+      const domain = this.profile.seed.properties.find(property => property.property_id === collection.property_id)!.domain;
+      return {
+        installment_id: installment.installment_id,
+        collection_ref: { publisher_domain: domain, collection_id: collection.collection_id },
+        name: `${collection.name} #${installment.sequence}`,
+        installment_number: String(installment.sequence),
+        scheduled_at: `${status.rescheduled_date ?? installment.scheduled_date}T00:00:00Z`,
+        status: status.state,
+      };
+    });
+  }
+
   private wireProduct(product: SeedProduct, sim: InventorySimulation, nowMs: number, flight: { startMs: number; endMs: number }, targeting: BookingTargeting, budget?: number) {
     const seed = this.profile.seed;
+    const installments = product.collection_ids ? this.installmentsIn(product, sim, flight.startMs, flight.endMs) : undefined;
     const placements = product.placement_ids.map(id => seed.placements.find(placement => placement.placement_id === id)!);
     const propertyIds = new Set(product.property_ids ?? placements.flatMap(placement => placement.property_ids));
     const properties = seed.properties.filter(property => propertyIds.has(property.property_id));
     const lag = Math.max(...placements.map(placement => placement.reporting_lag_days));
     const guaranteed = product.delivery_type === 'guaranteed';
     const floor = Math.min(...placements.map(placement => placement.floor_cpm));
-    const forecast = sim.forecast({
-      product_id: product.product_id,
-      targeting,
-      flight_start_ms: flight.startMs,
-      flight_end_ms: flight.endMs,
-      ...(budget !== undefined && { budget }),
-      ...(!guaranteed && { bid_cpm: floor }),
-    }, nowMs);
+    const forecast: ForecastResult = installments?.length === 0
+      ? { ...sim.forecast({ product_id: product.product_id, flight_start_ms: flight.startMs, flight_end_ms: flight.endMs }, nowMs), available: 0, impressions: 0, low: 0, high: 0, spend: 0, clicks: 0, viewable_impressions: 0, completed_views: 0, conversions: 0 }
+      : sim.forecast({
+        product_id: product.product_id,
+        targeting: installments ? { ...targeting, installment_ids: installments.map(installment => installment.installment_id) } : targeting,
+        flight_start_ms: flight.startMs,
+        // A sponsorship's audience keeps arriving after the flight.
+        flight_end_ms: installments ? Math.max(flight.endMs, this.audienceEndMs(installments, sim)) : flight.endMs,
+        ...(budget !== undefined && { budget }),
+        ...(!guaranteed && { bid_cpm: floor }),
+      }, nowMs);
     const agentUrl = getAgentUrl();
     return {
       product_id: product.product_id,
@@ -206,6 +251,14 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         date_range_support: 'date_range' as const,
       },
       overlay_support: { geo_countries: true },
+      ...(installments && {
+        collections: (product.collection_ids ?? []).map(id => {
+          const collection = sim.traffic.collections.get(id)!;
+          const domain = seed.properties.find(property => property.property_id === collection.property_id)!.domain;
+          return { publisher_domain: domain, collection_ids: [id] };
+        }),
+        installments: this.wireInstallments(product, installments, sim, nowMs),
+      }),
     };
   }
 
@@ -288,6 +341,15 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         const targeting = this.targetingFrom(pkg.targeting_overlay, `${field}.targeting_overlay`);
         const bid = typeof pkg.bid_price === 'number' ? pkg.bid_price : undefined;
         const impressions = typeof pkg.impressions === 'number' ? pkg.impressions : undefined;
+        let bookingEndMs = endMs;
+        if (product.collection_ids) {
+          // A sponsorship buys every installment scheduled in its flight, and
+          // serves until their audience has built up.
+          const installments = this.installmentsIn(product, market.sim, startMs, endMs);
+          if (installments.length === 0) throw invalid(`No ${product.name} installments are scheduled in this flight`, `${field}.start_time`);
+          targeting.installment_ids = installments.map(installment => installment.installment_id);
+          bookingEndMs = Math.max(endMs, this.audienceEndMs(installments, market.sim));
+        }
         const packageId = market.nextId('pkg');
         try {
           market.sim.book({
@@ -295,7 +357,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             product_id: product.product_id,
             targeting,
             flight_start_ms: startMs,
-            flight_end_ms: endMs,
+            flight_end_ms: bookingEndMs,
             budget,
             ...(impressions !== undefined && { impression_goal: impressions }),
             ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
@@ -311,6 +373,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           budget,
           ...(booking.impression_goal !== undefined && { impressions: booking.impression_goal }),
           ...(booking.kind === 'auction' && { bid_price: booking.cpm }),
+          ...(targeting.installment_ids && { installment_ids: targeting.installment_ids }),
           ...(targeting.region_ids && { countries: [...new Set((pkg.targeting_overlay as { geo_countries: string[] }).geo_countries.map(c => c.toUpperCase()))] }),
           start_time: new Date(startMs).toISOString(),
           end_time: new Date(endMs).toISOString(),

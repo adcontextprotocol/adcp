@@ -284,4 +284,66 @@ describe('inventory tenants', () => {
       expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN)).media_buys).toHaveLength(0);
     });
   });
+
+  describe('/inventory-content', () => {
+    const tenant = 'inventory-content';
+    const CONTENT_TOKEN = 'demo-inventory-content-v1';
+    const clock = (params: Record<string, unknown>) =>
+      call(tenant, 'comply_test_controller', { scenario: 'sandbox_clock', account: ACCOUNT, params }, CONTENT_TOKEN);
+    const products = (startDate: string, endDate: string) => call(tenant, 'get_products', {
+      buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: { start_date: startDate, end_date: endDate },
+    }, CONTENT_TOKEN);
+    const episode = (result: Structured, id: string) => result.products
+      .find((product: Structured) => product.product_id === 'morning_brief_midroll')
+      .installments.find((installment: Structured) => installment.installment_id === id);
+
+    it('sells episode sponsorships, cancels a seeded episode, and delivers listens as they build', async () => {
+      await clock({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
+      const offer = await products('2027-01-01', '2027-01-31');
+      expectCanonical('get_products', offer);
+      const podcast = offer.products.find((product: Structured) => product.product_id === 'morning_brief_midroll');
+      expect(podcast.channels).toEqual(['podcast']);
+      expect(podcast.collections).toEqual([{ publisher_domain: 'morning-brief.example', collection_ids: ['morning_brief'] }]);
+      expect(podcast.installments.map((installment: Structured) => installment.installment_id))
+        .toEqual(['morning_brief_010', 'morning_brief_011', 'morning_brief_012', 'morning_brief_013']);
+      expect(episode(offer, 'morning_brief_012').status).toBe('scheduled');
+      const forecastMid = podcast.forecast.points[0].metrics.impressions.mid as number;
+      expect(forecastMid).toBeGreaterThan(150_000);
+
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-content-podcast-00001', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-01-01T00:00:00Z', end_time: '2027-02-01T00:00:00Z',
+        packages: [{ product_id: 'morning_brief_midroll', pricing_option_id: 'morning_brief_midroll_cpm', budget: 5000 }],
+      }, CONTENT_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      const soldOut = await products('2027-01-01', '2027-01-31');
+      expect(soldOut.products.find((product: Structured) => product.product_id === 'morning_brief_midroll')
+        .forecast.points[0].metrics.impressions.mid).toBe(0);
+
+      await clock({ operation: 'advance_time', to: '2027-01-19T06:00:00Z' });
+      const after = await products('2027-01-01', '2027-01-31');
+      expect(episode(after, 'morning_brief_012').status).toBe('cancelled');
+      expect(episode(after, 'morning_brief_011').status).toBe('published');
+
+      // Listens for the last January episode build over 30 days.
+      await clock({ operation: 'advance_time', to: '2027-03-15T00:00:00Z' });
+      const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [buy.media_buy_id] }, CONTENT_TOKEN);
+      expectCanonical('get_media_buy_delivery', delivery);
+      const delivered = delivery.media_buy_deliveries[0].totals.impressions as number;
+      // Three of the four forecast episodes ran.
+      expect(delivered / forecastMid).toBeGreaterThan(0.6);
+      expect(delivered / forecastMid).toBeLessThan(0.9);
+      const daily = (delivery.media_buy_deliveries[0].daily_breakdown as Structured[]).filter(row => row.impressions > 0);
+      expect(daily[0].date).toBe('2027-01-04');
+      expect(daily.at(-1)!.date > '2027-02-15').toBe(true);
+    });
+
+    it('reports a postponed installment at its new date', async () => {
+      const offer = await products('2027-01-15', '2027-01-20');
+      const video = offer.products.find((product: Structured) => product.product_id === 'maker_studio_integration');
+      const moved = video.installments.find((installment: Structured) => installment.installment_id === 'maker_studio_006');
+      expect(moved.status).toBe('published');
+      expect(moved.scheduled_at).toBe('2027-01-23T00:00:00Z');
+    });
+  });
 });
