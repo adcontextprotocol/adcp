@@ -34,7 +34,7 @@ export const TRAINING_LIVE_UPDATE_MAX_PROPAGATION_SECONDS = 0;
 /**
  * The 3.3 betas spelled `clickthrough` as `click_through` (#8901). A caller
  * pinned to a release whose `enums/creative-change-kind.json` has only the
- * beta spelling, such as the `3.3-beta.5` preview, gets that spelling.
+ * beta spelling, such as the `3.3-beta.6` preview, gets that spelling.
  */
 const BETA_CHANGE_KIND_SPELLING: Partial<Record<CreativeChangeKind, string>> = { clickthrough: 'click_through' };
 
