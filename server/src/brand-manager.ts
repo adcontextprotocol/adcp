@@ -1237,7 +1237,9 @@ export class BrandManager {
               canonical_id: brand.parent_brand
                 ? `${brand.parent_brand}#${brand.id}`
                 : brand.id,
-              canonical_domain: brand.id,
+              // The brand owns the requested domain, so that domain is its
+              // canonical domain. The id stays in canonical_id (#9034).
+              canonical_domain: normalizedDomain,
               brand_name: primaryName || brand.id,
               names: brand.names,
               keller_type: brand.keller_type,
@@ -1288,7 +1290,9 @@ export class BrandManager {
               });
               const result: ResolvedBrand = {
                 canonical_id: masterBrand.id,
-                canonical_domain: masterBrand.id,
+                // The master brand answers for the house, so its canonical
+                // domain is the house domain (#9034).
+                canonical_domain: portfolioData.house.domain.toLowerCase(),
                 brand_name: primaryName || masterBrand.id,
                 names: masterBrand.names,
                 keller_type: masterBrand.keller_type,
@@ -1375,11 +1379,10 @@ export class BrandManager {
       return resolved;
     }
 
-    // If the resolved brand already matches the requested brand_id, return it
-    if (
-      resolved &&
-      (resolved.canonical_id === ref.brand_id || resolved.canonical_domain === ref.brand_id)
-    ) {
+    // If the resolved brand already matches the requested brand_id, return it.
+    // canonical_id is `id` or `parent#id`, so compare its final segment.
+    // canonical_domain is a domain, never an id, so it is not compared (#9034).
+    if (resolved && resolved.canonical_id.split('#').at(-1) === ref.brand_id) {
       return resolved;
     }
 
@@ -1396,7 +1399,7 @@ export class BrandManager {
         const primaryName = this.getPrimaryName(brand.names);
         return {
           canonical_id: brand.parent_brand ? `${brand.parent_brand}#${brand.id}` : brand.id,
-          canonical_domain: brand.id,
+          canonical_domain: this.portfolioBrandDomain(portfolio, brand, ref.domain),
           brand_name: primaryName || brand.id,
           names: brand.names,
           keller_type: brand.keller_type,
@@ -1668,6 +1671,11 @@ export class BrandManager {
       cached?.relationship_trust !== 'mutual' ||
       fresh.relationship_trust !== 'unverifiable' ||
       cached.canonical_id !== fresh.canonical_id ||
+      // House Portfolio results once carried the brand id here (#9034). They
+      // never reach this comparison: they are `inline`, not `mutual`, and
+      // `fresh` is a Brand Canonical Document result whose canonical_domain
+      // was always a domain. The cache is also in memory, so a deploy clears
+      // any entry written before the fix. No refresh loop can follow.
       cached.canonical_domain !== fresh.canonical_domain ||
       !cached.house_domain ||
       cached.house_domain.toLowerCase() !== fresh.claimed_house_domain?.toLowerCase() ||
@@ -1892,6 +1900,40 @@ export class BrandManager {
       }
     }
     return null;
+  }
+
+  /**
+   * The canonical domain for a brand picked out of a portfolio by `brand_id`.
+   * Most specific first: the requested domain when the brand owns it, then the
+   * brand's own website (the one marked `primary`, else the first owned one),
+   * then the house domain. A lookup of that website that reaches this
+   * portfolio finds the brand by property and returns the same domain, so
+   * the two lookups agree. Always a domain, never the brand id (#9034).
+   */
+  private portfolioBrandDomain(
+    portfolio: HousePortfolioVariant,
+    brand: BrandDefinition,
+    requestedDomain: string
+  ): string {
+    const requested = this.normalizeLookupDomain(requestedDomain);
+    if (requested && (brand.id === requested || this.documentOwnsWebsite(brand, requested))) {
+      return requested;
+    }
+    const ownedWebsites: BrandProperty[] = (brand.properties ?? []).filter(
+      (property: BrandProperty) =>
+        property.type === 'website' &&
+        typeof property.identifier === 'string' &&
+        this.isOwnedProperty(property)
+    );
+    const preferred = [
+      ...ownedWebsites.filter((property: BrandProperty) => property.primary === true),
+      ...ownedWebsites,
+    ];
+    for (const property of preferred) {
+      const domain = this.normalizeLookupDomain(property.identifier);
+      if (domain) return domain;
+    }
+    return portfolio.house.domain.toLowerCase();
   }
 
   /**
