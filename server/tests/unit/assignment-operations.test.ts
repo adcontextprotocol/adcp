@@ -508,8 +508,8 @@ describe('assignment tracker slots', () => {
 
   it('refuses installment-scoped assignments, since it does not list media_buy.installment_creative_assignment', async () => {
     const server = createTrainingAgentServer(CTX);
-    const { mediaBuyId, packageId } = await buyWithPackage(server);
-    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1'), creative('hero_v2')] });
+    const { mediaBuyId, packageId, formatOptionId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1', formatOptionId), creative('hero_v2', formatOptionId)] });
     await call(server, 'sync_creatives', {
       account: ACCOUNT,
       assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId }],
