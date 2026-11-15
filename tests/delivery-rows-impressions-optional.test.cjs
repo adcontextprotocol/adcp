@@ -4,14 +4,13 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)), "utf8")
-  );
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)));
 }
 
 async function compile(schema) {
@@ -58,7 +57,7 @@ const ROW_SCHEMAS = [
   schema: () => readSchema(`/schemas/core/${name}.json`),
 }));
 
-// Inline rows in get-media-buy-delivery-response.json.
+// Inline rows in get-media-buy-delivery-completed.json.
 const BY_PACKAGE = (r) =>
   r.properties.media_buy_deliveries.items.properties.by_package.items;
 const byPackageProps = (r) =>
@@ -127,7 +126,7 @@ describe("delivery rows may omit impressions (#8089)", () => {
   const rowValidators = new Map();
 
   before(async () => {
-    response = readSchema("/schemas/media-buy/get-media-buy-delivery-response.json");
+    response = readSchema("/schemas/media-buy/get-media-buy-delivery-completed.json");
     for (const row of INLINE_ROWS) {
       inlineValidators.set(row.name, await compile(row.pick(response)));
     }

@@ -4,12 +4,13 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
 function readSchema(uri) {
   assert.ok(uri.startsWith('/schemas/'), `Unexpected schema URI: ${uri}`);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -30,7 +31,7 @@ const packageRow = (by_package) => by_package.items.allOf.find((part) => part.pr
 
 function deliveryRowSchema() {
   return packageRow(
-    readSchema('/schemas/media-buy/get-media-buy-delivery-response.json').properties.media_buy_deliveries.items.properties
+    readSchema('/schemas/media-buy/get-media-buy-delivery-completed.json').properties.media_buy_deliveries.items.properties
       .by_package
   );
 }
@@ -40,7 +41,7 @@ test('projection is an optional ref on top-level by_package rows only', () => {
   assert.equal(row.properties.projection.$ref, '/schemas/core/delivery-projection.json');
   assert.ok(!(row.required || []).includes('projection'));
   const windows = packageRow(
-    readSchema('/schemas/media-buy/get-media-buy-delivery-response.json').properties.media_buy_deliveries.items.properties
+    readSchema('/schemas/media-buy/get-media-buy-delivery-completed.json').properties.media_buy_deliveries.items.properties
       .windows.items.properties.by_package
   );
   assert.equal(windows.properties.projection, undefined);
@@ -96,7 +97,7 @@ test('projection validates and rejects malformed values', async () => {
 });
 
 test('a delivery response with and without projection both validate', async () => {
-  const validate = await compile('/schemas/media-buy/get-media-buy-delivery-response.json');
+  const validate = await compile('/schemas/media-buy/get-media-buy-delivery-completed.json');
   const pkg = { package_id: 'pkg_ctv_prime', impressions: 400000, spend: 3200.0, pacing_index: 0.85, pricing_model: 'cpm', rate: 8.0, currency: 'USD' };
   const response = (by_package) => ({
     reporting_period: { start: '2026-09-01T00:00:00Z', end: '2026-10-01T00:00:00Z' },

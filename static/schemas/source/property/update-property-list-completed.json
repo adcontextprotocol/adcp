@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/update-property-list-completed.json",
+  "title": "Update Property List - Completed",
+  "description": "Response payload for update_property_list task",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "list": {
+      "$ref": "/schemas/property/property-list.json",
+      "description": "The updated property list"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "list"
+  ],
+  "additionalProperties": true
+}

@@ -9,7 +9,7 @@ import {
   undeclaredMembers,
 } from '../../src/training-agent/served-release-fields.js';
 
-const CAPABILITIES = 'protocol/get-adcp-capabilities-response.json';
+const CAPABILITIES = 'protocol/get-adcp-capabilities-completed.json';
 
 describe('served-release field gate (#8487)', () => {
   beforeAll(() => ensureCreative33SchemaBundle());

@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -13,7 +14,7 @@ function schemaPathFromId(schemaId) {
 
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return JSON.parse(fs.readFileSync(schemaPathFromId(uri), 'utf8'));
+  return readSchemaFile(schemaPathFromId(uri));
 }
 
 async function compile(schemaId) {
@@ -25,7 +26,7 @@ async function compile(schemaId) {
     loadSchema: loadExternalSchema
   });
   addFormats(ajv);
-  return ajv.compileAsync(JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8')));
+  return ajv.compileAsync(readSchemaFile(schemaPathFromId(schemaId)));
 }
 
 test('creative preview capabilities declare per-route implementation origin without self-granting authority', async () => {
@@ -159,7 +160,7 @@ test('community format entries accept only pinned reference renderers', async ()
   };
 
   assert.equal(validate(adagents), true, JSON.stringify(validate.errors, null, 2));
-  const rendererSchema = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/core/reference-renderer.json'), 'utf8'));
+  const rendererSchema = readSchemaFile(schemaPathFromId('/schemas/core/reference-renderer.json'));
   assert.equal(
     rendererSchema['x-adcp-validation'].verifier_constraints.export,
     'exists_in_pinned_package_and_passes_contract_fixtures_for_enclosing_format_input_contract'
@@ -283,7 +284,7 @@ test('publisher placements can delegate preview authority by format route', asyn
 
   assert.equal(validate(placement), true, JSON.stringify(validate.errors, null, 2));
 
-  const providerSchema = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/core/preview-provider.json'), 'utf8'));
+  const providerSchema = readSchemaFile(schemaPathFromId('/schemas/core/preview-provider.json'));
   assert.deepEqual(providerSchema.properties.routes['x-adcp-validation'].unique_item_properties, ['format_option_id']);
 
   placement.preview_provider.routes.push({

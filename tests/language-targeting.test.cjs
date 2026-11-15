@@ -3,12 +3,13 @@ const path = require('node:path');
 const Ajv = require('ajv');
 const { before, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(schema) {
@@ -21,7 +22,7 @@ describe('BCP 47 language targeting', () => {
   let validateCapability;
 
   before(async () => {
-    const capabilityResponse = readSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+    const capabilityResponse = readSchema('/schemas/protocol/get-adcp-capabilities-completed.json');
     const languageCapability = capabilityResponse
       .properties.media_buy.properties.execution.properties.targeting.properties.language;
 

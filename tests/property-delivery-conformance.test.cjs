@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SOURCE = path.join(__dirname, "..", "static");
 const SCHEMA_ROOT = path.join(SOURCE, "schemas", "source");
@@ -11,7 +12,7 @@ const SCENARIO_DIR = path.join(SOURCE, "compliance", "source", "protocols", "med
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice(9)), "utf8"));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice(9)));
 }
 
 async function compile(schema) {

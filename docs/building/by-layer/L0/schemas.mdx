@@ -123,6 +123,42 @@ The `refs/(heads|tags)/.*` wildcard is intentional — releases sign during the 
 
 Older releases that predate signing, and versions republished out of band (bypassing the signing workflow), remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
 
+## Task response schemas
+
+A task response is the protocol envelope (`core/protocol-envelope.json`) plus
+one body. The envelope owns the envelope fields, `status` included, and a task
+declares one body per envelope status. The file name carries the status:
+
+| Body | Status |
+|------|--------|
+| `<task>-completed.json` | `completed` |
+| `<task>-async-response-submitted.json`, `-working.json`, `-input-required.json` | `submitted`, `working`, `input-required` |
+| `<task>-rejected.json` | `rejected`, a structured business rejection |
+| `<task>-failed.json` | `failed` |
+
+Bodies declare no envelope field, never test `status`, and stay open. A
+submitted body composes `core/task-submitted.json`, which requires
+`task_id`.
+
+The schema build generates each task's response,
+`<protocol>/<task>-response.json`: a `oneOf` discriminated by `status`,
+with one branch per status that has a body or that the task's response
+admitted before the bodies were split (`scripts/task-response-statuses.json`).
+The response composes the protocol envelope at its root, as every task
+response did. Each branch requires `status` and pins it to its own value, so
+the branches are disjoint, and it also requires what its status's own body
+requires at its root (a failed response carries the failed body's
+`errors`). A status the earlier response admitted only through a branch
+that named it composes its own body. A status it admitted under its general
+rules, its open root or a branch that left `status` open, keeps those rules:
+its branch also composes the body that now holds that content, the completed
+body for success content and the failed body for an error branch's. A status
+with no branch is not a valid response of that task.
+`<task>-response.json` is the task's response for every outcome:
+`index.json`, the release manifest's `response_schema` and the MCP
+projection's `outputSchema` name it, so validate a task response against it.
+`<task>-completed.json` alone validates only a completed response.
+
 ## Compliance storyboards
 
 Storyboards live alongside schemas at `/compliance/{version}/`. They define the test scenarios AAO runs to verify an agent's capability claims.
@@ -212,7 +248,8 @@ https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-pro
 ```
 
 The projection manifest maps every AdCP tool to downloadable `inputSchema` and
-`outputSchema` files. Servers can select and embed these schemas when building
+`outputSchema` files. A tool's `outputSchema` is its task response (see [Task
+response schemas](#task-response-schemas)). Servers can select and embed these schemas when building
 their `tools/list` response; publishing the artifacts does not automatically
 change a server's MCP registration. MCP disables automatic network
 dereferencing by default, so each projected schema is a compact, self-contained

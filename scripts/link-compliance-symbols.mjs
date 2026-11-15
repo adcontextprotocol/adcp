@@ -141,7 +141,7 @@ function collectErrorAuthorities(repoRoot) {
   const enumSources = [
     {
       family: 'controller',
-      file: `${SCHEMA_SOURCE}/compliance/comply-test-controller-response.json`,
+      file: `${SCHEMA_SOURCE}/compliance/comply-test-controller-completed.json`,
       path: ['oneOf', 7, 'properties', 'error', 'enum'],
       target: '/docs/building/by-layer/L3/comply-test-controller#error-codes',
     },

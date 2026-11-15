@@ -65,7 +65,7 @@ const SEED_KINDS = {
   },
   creatives: {
     scenario: 'seed_creative',
-    schema: '/schemas/creative/list-creatives-response.json#/properties/creatives/items',
+    schema: '/schemas/creative/list-creatives-completed.json#/properties/creatives/items',
     ids: ['creative_id'],
   },
   media_buys: {

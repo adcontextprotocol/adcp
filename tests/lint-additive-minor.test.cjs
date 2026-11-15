@@ -29,6 +29,7 @@ const {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
+  loadComparedTrees,
   readBaselineAtRef,
 } = require('../scripts/lint-additive-minor.cjs');
 const { fixtureEnv, gitFixture } = require('./helpers/git-object-fixture.cjs');
@@ -137,15 +138,6 @@ function writeTree(directory, files) {
     fs.mkdirSync(path.join(directory, path.dirname(relativePath)), { recursive: true });
     fs.writeFileSync(path.join(directory, relativePath), JSON.stringify(schema));
   }
-}
-
-/** Every JSON file under `directory`, as [relative path, text]. */
-function walk(directory, root = directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) return walk(full, root);
-    return entry.name.endsWith('.json') ? [[path.relative(root, full).split(path.sep).join('/'), fs.readFileSync(full, 'utf8')]] : [];
-  });
 }
 
 /** Applies one change to a copy of the fixture and returns every finding. */
@@ -450,6 +442,130 @@ test('fails when a correction names a location that does not exist', () => {
   assert.deepEqual(result.errors, ['correction core/closed.json#/properties/missing does not exist in source']);
 });
 
+// A task whose response the build generates (scripts/task-responses.cjs). The
+// base release published widget/frob-response.json by hand with the failed
+// branch first and closed; the source declares only the status bodies, and
+// the generated union orders its branches by the task-status enum, so its
+// `/oneOf/0` is the completed branch.
+const FROB_ENVELOPE = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  $id: '/schemas/core/protocol-envelope.json',
+  type: 'object',
+  properties: { status: { $ref: '/schemas/enums/task-status.json' }, context: { type: 'object' } },
+  required: ['status'],
+};
+const FROB_STATUS = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  $id: '/schemas/enums/task-status.json',
+  type: 'string',
+  enum: ['submitted', 'working', 'input-required', 'completed', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
+};
+
+function frobBase() {
+  return {
+    'core/protocol-envelope.json': FROB_ENVELOPE,
+    'enums/task-status.json': FROB_STATUS,
+    'widget/frob-response.json': {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/widget/frob-response.json',
+      type: 'object',
+      allOf: [{ $ref: '/schemas/core/protocol-envelope.json' }],
+      oneOf: [
+        {
+          title: 'Frob Error',
+          type: 'object',
+          properties: { status: { type: 'string', const: 'failed' }, errors: { type: 'array' } },
+          required: ['status', 'errors'],
+          additionalProperties: false,
+        },
+        {
+          title: 'Frob Done',
+          type: 'object',
+          properties: { status: { type: 'string', const: 'completed' }, frob_id: { type: 'string' } },
+          required: ['status', 'frob_id'],
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * The source: the status bodies the build generates widget/frob-response.json
+ * from. `failed` overrides the failed body's errors declaration and closure,
+ * and `extra` adds properties to it; `completed` adds properties to the
+ * completed body.
+ */
+function frobSource({ errors = { type: 'array' }, closed = false, extra = {}, completed = {} } = {}) {
+  const body = (name, properties, required, more = {}) => ({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: `/schemas/widget/${name}`,
+    type: 'object',
+    allOf: [{ $ref: '/schemas/core/protocol-envelope.json' }],
+    properties,
+    required,
+    ...more,
+  });
+  return {
+    'core/protocol-envelope.json': FROB_ENVELOPE,
+    'enums/task-status.json': FROB_STATUS,
+    'widget/frob-completed.json': body('frob-completed.json', { frob_id: { type: 'string' }, ...completed }, ['frob_id']),
+    'widget/frob-failed.json': body('frob-failed.json', { errors, ...extra }, ['errors'], closed ? { additionalProperties: false } : {}),
+  };
+}
+
+function lintFrob(source, correctionsValue) {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'additive-minor-'));
+  try {
+    writeTree(sourceDir, source);
+    return lintAdditiveMinor({
+      repoRoot: fixtureRoot(),
+      sourceDir,
+      baseTree: tree('3.2.7', frobBase()),
+      baseVersion: '3.2.7',
+      candidateVersion: '3.3.0-beta.0',
+      baselineValue: { base: '3.2.7', entries: [] },
+      correctionsValue,
+    });
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
+}
+
+/** A bound correction at the base's failed branch: errors gains minItems 1. */
+const FROB_FAILED_ERRORS = correction({ file: 'widget/frob-response.json', pointer: '/oneOf/0/properties/errors', bound: 'minItems', value: 1 });
+
+test('a generated task response pairs each base branch with its status body', () => {
+  // The base's /oneOf/0 is the closed failed branch. The generated union's
+  // /oneOf/0 is the open completed branch, so only a comparison that pairs
+  // the base branch with the failed body sees that body's closure.
+  const closed = lintFrob(frobSource({ closed: true, extra: { detail: { type: 'string' } } }), corrections());
+  assert.deepEqual(closed.findings.map((f) => [f.file, f.pointer, f.kind, f.detail]),
+    [['widget/frob-response.json', '/oneOf/0', 'property-added-to-closed', 'property detail added']]);
+  const opened = lintFrob(frobSource({ extra: { detail: { type: 'string' } } }), corrections());
+  assert.equal(opened.ok, true, opened.errors.join('\n'));
+  assert.deepEqual(opened.findings, []);
+  assert.deepEqual(opened.notices.map((n) => [n.file, n.pointer, n.detail]),
+    [['widget/frob-response.json', '/oneOf/0', 'additionalProperties false → absent']]);
+});
+
+test('a correction in a generated task response names the base branch the lint pairs with a status body', () => {
+  const tightened = frobSource({ errors: { type: 'array', minItems: 1 } });
+  const without = lintFrob(tightened, corrections());
+  assert.deepEqual(without.findings.map((f) => [f.file, f.pointer, f.kind, f.detail]),
+    [['widget/frob-response.json', '/oneOf/0/properties/errors', 'bound-tightened', 'minItems 1 added']]);
+  const result = lintFrob(tightened, corrections(FROB_FAILED_ERRORS));
+  assert.equal(result.ok, true, result.errors.join('\n'));
+  assert.deepEqual(result.findings, []);
+});
+
+test('fails when a correction in a generated task response is not carried by the paired status body', () => {
+  // The completed body carries the bound and the failed body does not: a
+  // check that read the generated union's /oneOf/0 (completed) would pass.
+  const result = lintFrob(frobSource({ completed: { errors: { type: 'array', minItems: 1 } } }), corrections(FROB_FAILED_ERRORS));
+  assert.deepEqual(result.errors,
+    ['correction widget/frob-response.json#/oneOf/0/properties/errors does not carry minItems: 1 in source']);
+});
+
 test('every correction needs a stable release', () => {
   const result = analyzePair(applyBound, { correctionsValue: corrections(correction({ release: '3.3.0-beta.0' })) });
   assert.deepEqual(result.errors, ['corrections[0].release must be a stable release']);
@@ -520,11 +636,16 @@ test('fails when the corrections list names no existing decision record', () => 
 test('the repository corrections list is valid', () => {
   const value = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lint-additive-minor-corrections.json'), 'utf8'));
   assert.equal(value.decision, 'DR-0036');
-  const sourceTree = buildTree('source', new Map(walk(path.join(__dirname, '..', 'static', 'schemas', 'source'))));
+  // A correction names a location in the trees the CI check compares: the
+  // default base release and the source tree as the release publishes it,
+  // generated task responses included. Version 9.9.9 puts every correction
+  // in effect.
+  const { base, baseTree, candTree } = loadComparedTrees();
+  assert.ok(base, 'the source major line has a stable release to compare against');
   const result = analyze({
-    base: null,
-    baseTree: sourceTree,
-    candTree: sourceTree,
+    base,
+    baseTree,
+    candTree,
     candidateVersion: '9.9.9',
     correctionsValue: value,
   });

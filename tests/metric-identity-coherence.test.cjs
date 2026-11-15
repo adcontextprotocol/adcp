@@ -4,14 +4,13 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)), "utf8")
-  );
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)));
 }
 
 async function compile(schema) {
@@ -307,7 +306,7 @@ describe("metric identity coherence", () => {
       readSchema("/schemas/core/delivery-metric-aggregate.json")
     );
     const response = readSchema(
-      "/schemas/media-buy/get-media-buy-delivery-response.json"
+      "/schemas/media-buy/get-media-buy-delivery-completed.json"
     );
     const example =
       response.properties.aggregated_totals.properties.metric_aggregates.examples[0];

@@ -37,7 +37,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SOURCE = path.join(__dirname, '..', 'static', 'schemas', 'source');
-const ROOT_FILE = 'protocol/get-adcp-capabilities-response.json';
+const ROOT_FILE = 'protocol/get-adcp-capabilities-completed.json';
 /** Receiver backstop (deployment guidance), not a design target or a protocol limit. */
 const MAX_CAPABILITIES_BYTES = 65_536;
 

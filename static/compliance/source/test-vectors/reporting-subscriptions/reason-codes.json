@@ -141,7 +141,7 @@
       "definition": "The buy is confirmed and the period ends after confirmed_at, but every package resolving the offering was added after confirmed_at, and the period ends at or before the added_at of each of them (get_media_buys packages[].added_at). The period containing a package's added_at ends after it and is owed in full. A buy whose packages were all part of it at confirmation never takes this reason.",
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
-        "static/schemas/source/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/added_at"
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at"
       ]
     },
     {

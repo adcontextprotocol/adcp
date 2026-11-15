@@ -100,7 +100,7 @@ test('sync request accepts scoped revision identity and publishes fail-closed co
 });
 
 test('sync response echoes accepted revisions and forbids them on failed or deleted items', async () => {
-  const validate = await compile('creative/sync-creatives-response.json');
+  const validate = await compile('creative/sync-creatives-completed.json');
   const accepted = {
     status: 'completed',
     creatives: [{ creative_id: 'hero', revision_id: revisionId, action: 'created' }]
@@ -115,7 +115,7 @@ test('sync response echoes accepted revisions and forbids them on failed or dele
     assert.equal(validate(invalid), false, `${action} unexpectedly retained revision_id`);
   }
 
-  const item = schema('creative/sync-creatives-response.json').oneOf[0].properties.creatives.items;
+  const item = schema('creative/sync-creatives-completed.json').oneOf[0].properties.creatives.items;
   const echo = item.allOf.at(-1)['x-adcp-validation'].verifier_constraints.revision_echo;
   assert.equal(echo.required_capability, 'creative.supports_revisions');
   assert.equal(echo.must_equal_request, true);
@@ -124,7 +124,7 @@ test('sync response echoes accepted revisions and forbids them on failed or dele
 });
 
 test('revision capability requires a creative library', async () => {
-  const validate = await compile('protocol/get-adcp-capabilities-response.json');
+  const validate = await compile('protocol/get-adcp-capabilities-completed.json');
   const base = {
     status: 'completed',
     adcp: {
@@ -149,7 +149,7 @@ test('revision identity reads back through library, webhook, and delivery schema
   assert.ok(registry.enum.includes('creative_revision'));
   assert.ok(registry.enum.includes('served_variant'));
 
-  const listSchema = schema('creative/list-creatives-response.json');
+  const listSchema = schema('creative/list-creatives-completed.json');
   assert.equal(
     listSchema.properties.creatives.items.properties.revision_id.$ref,
     '/schemas/core/creative-revision-id.json'
@@ -177,7 +177,7 @@ test('revision identity reads back through library, webhook, and delivery schema
     .verifier_constraints.revision_attribution;
   assert.equal(attribution.row_metrics_revision_homogeneous, true);
   assert.equal(attribution.current_list_revision_not_required, true);
-  const rows = schema('creative/get-creative-delivery-response.json').properties.creatives.items
+  const rows = schema('creative/get-creative-delivery-completed.json').properties.creatives.items
     .properties.variants['x-adcp-validation'].verifier_constraints.revision_homogeneous_rows;
   assert.deepEqual(rows.row_key, ['variant_id']);
   assert.equal(rows.row_key_unique, true);

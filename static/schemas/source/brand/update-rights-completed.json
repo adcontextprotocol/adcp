@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/update-rights-completed.json",
+  "title": "Update Rights - Completed",
+  "description": "Result of a rights update request. Returns updated terms and re-issued credentials on success, or errors if the update cannot be applied.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "oneOf": [
+    {
+      "title": "UpdateRightsSuccess",
+      "properties": {
+        "rights_id": {
+          "type": "string",
+          "description": "Rights grant identifier",
+          "x-entity": "rights_grant"
+        },
+        "terms": {
+          "$ref": "/schemas/brand/rights-terms.json",
+          "description": "Updated contractual terms (same shape as acquire_rights acquired response)"
+        },
+        "generation_credentials": {
+          "type": "array",
+          "description": "Re-issued credentials reflecting updated terms (new expiration dates, adjusted caps)",
+          "items": {
+            "$ref": "/schemas/core/generation-credential.json"
+          }
+        },
+        "rights_constraint": {
+          "allOf": [
+            { "$ref": "/schemas/core/rights-constraint.json" },
+            { "required": ["rights_holder", "grant_status", "content_digest", "attestation_refs"] }
+          ],
+          "description": "Updated rights constraint for re-embedding in creative manifests"
+        },
+        "paused": {
+          "type": "boolean",
+          "description": "Whether the grant is currently paused. Included when the update changes pause state."
+        },
+        "implementation_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When changes take effect (null if pending approval from rights holder)"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "rights_id",
+        "terms",
+        "generation_credentials",
+        "rights_constraint"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    { "$ref": "/schemas/brand/update-rights-failed.json" }
+  ]
+}

@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { generatedSchemaDocuments, readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -25,8 +26,7 @@ async function loadExternalSchema(uri) {
   if (uri.startsWith('/schemas/')) {
     const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
     try {
-      const content = fs.readFileSync(schemaPath, 'utf8');
-      return JSON.parse(content);
+      return readSchemaFile(schemaPath);
     } catch (error) {
       throw new Error(`Failed to load referenced schema ${uri}: ${error.message}`);
     }
@@ -370,6 +370,12 @@ async function runTests() {
 
   // Load all schemas first
   await loadSchemas(SCHEMA_BASE_DIR);
+  // The schema build generates each task's response from its status bodies.
+  for (const schema of generatedSchemaDocuments(SCHEMA_BASE_DIR).values()) {
+    const schemaAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(schemaAjv);
+    schemas[schema.$id] = await schemaAjv.compileAsync(structuredClone(schema));
+  }
 
   // Core data model tests
   test('Product example validates against schema', () => {

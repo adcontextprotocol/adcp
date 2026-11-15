@@ -4,12 +4,13 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
 async function loadSchema(uri) {
   assert.ok(uri.startsWith('/schemas/'), `Unexpected schema URI: ${uri}`);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -37,7 +38,7 @@ function capabilities(features) {
 }
 
 test('catalog ingestion requires catalog_management on seller responses and preserves legacy declarations', async () => {
-  const validate = await compile('/schemas/protocol/get-adcp-capabilities-response.json');
+  const validate = await compile('/schemas/protocol/get-adcp-capabilities-completed.json');
   for (const features of [{}, { catalog_management: true }, { catalog_management: false }]) {
     assert.equal(validate(capabilities(features)), true, JSON.stringify(validate.errors));
   }
@@ -111,7 +112,7 @@ test('buyer feature filters retain independent boolean capability requests', asy
 });
 
 test('existing catalog response entries can report approved and pending items without changing legacy results', async () => {
-  const validate = await compile('/schemas/media-buy/sync-catalogs-response.json');
+  const validate = await compile('/schemas/media-buy/sync-catalogs-completed.json');
   const catalog = { catalog_id: 'product-feed', action: 'updated', item_count: 2 };
   assert.equal(validate({ status: 'completed', catalogs: [catalog] }), true);
   const result = {
@@ -127,7 +128,7 @@ test('existing catalog response entries can report approved and pending items wi
 
 test('buyers can read current review outcomes without supplying catalogs or restarting ingestion', async () => {
   const validateRequest = await compile('/schemas/media-buy/sync-catalogs-request.json');
-  const validateResponse = await compile('/schemas/media-buy/sync-catalogs-response.json');
+  const validateResponse = await compile('/schemas/media-buy/sync-catalogs-completed.json');
   const request = {
     idempotency_key: 'f6ca32d4-4567-49ab-8901-234567890abc',
     account: { account_id: 'acct_acmecorp' },
@@ -148,7 +149,7 @@ test('buyers can read current review outcomes without supplying catalogs or rest
       }],
     }), true, JSON.stringify(validateResponse.errors));
   }
-  const schema = await loadSchema('/schemas/media-buy/sync-catalogs-response.json');
+  const schema = await loadSchema('/schemas/media-buy/sync-catalogs-completed.json');
   const itemId = schema.oneOf[0].properties.catalogs.items.properties.item_issues.items.properties.item_id;
   assert.equal(itemId['x-entity'], 'catalog_item');
 });

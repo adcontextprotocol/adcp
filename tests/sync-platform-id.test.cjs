@@ -4,19 +4,20 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
 function readSchema(uri) {
   assert.ok(uri.startsWith('/schemas/'), `Unexpected schema URI: ${uri}`);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 for (const [task, collection, identity] of [
   ['sync-event-sources', 'event_sources', 'event_source_id'],
   ['sync-audiences', 'audiences', 'audience_id'],
 ]) {
-  const schema = readSchema(`/schemas/media-buy/${task}-response.json`);
+  const schema = readSchema(`/schemas/media-buy/${task}-completed.json`);
   const item = schema.oneOf[0].properties[collection].items;
 
   test(`${task} preserves legacy, canonical, dual-field, and unidentified results`, async () => {

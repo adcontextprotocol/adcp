@@ -4,12 +4,13 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -57,7 +58,7 @@ describe('portable demographic targeting', () => {
   });
 
   it('requires the experimental feature declaration only for affirmative gender support', async () => {
-    const validate = await compile('/schemas/protocol/get-adcp-capabilities-response.json');
+    const validate = await compile('/schemas/protocol/get-adcp-capabilities-completed.json');
     const capability = {
       status: 'completed',
       adcp: { major_versions: [3], idempotency: { supported: true, replay_ttl_seconds: 86400 } },
@@ -505,9 +506,9 @@ describe('portable demographic targeting', () => {
   it('locks the request, product, capability-rollup, and package-readback schema paths', () => {
     const targeting = readSchema('/schemas/core/targeting.json');
     const product = readSchema('/schemas/core/product.json');
-    const capabilities = readSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+    const capabilities = readSchema('/schemas/protocol/get-adcp-capabilities-completed.json');
     const packageSchema = readSchema('/schemas/core/package.json');
-    const getMediaBuys = readSchema('/schemas/media-buy/get-media-buys-response.json');
+    const getMediaBuys = readSchema('/schemas/media-buy/get-media-buys-completed.json');
 
     assert.equal(targeting.properties.demographics.$ref, '/schemas/core/demographic-targeting-intent.json');
     assert.equal(product.properties.demographic_targeting.$ref, '/schemas/core/demographic-targeting-capability.json');

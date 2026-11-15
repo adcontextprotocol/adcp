@@ -20,12 +20,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const yaml = require('js-yaml');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
-const readSchema = (relative) => JSON.parse(fs.readFileSync(path.join(SCHEMAS, relative), 'utf8'));
+// Task responses are generated from their status bodies (scripts/task-responses.cjs).
+const readSchema = (relative) => readSchemaFile(path.join(SCHEMAS, relative));
 const exists = (relative) => fs.existsSync(path.join(SCHEMAS, relative));
 const registryChecks = () => {
   const registry = yaml.load(fs.readFileSync(path.join(ROOT, 'static/compliance/source/universal/v4-compatibility.yaml'), 'utf8'));
@@ -74,11 +76,17 @@ test('refine[].package is rejected by name on every scope', async () => {
 });
 
 test('get_products response and rejection no longer declare the withdrawn fields', () => {
-  const response = readSchema('media-buy/get-products-response.json');
-  assert.equal(response.properties.collections, undefined);
-  assert.equal(response.properties.execution_readiness, undefined);
-  assert.equal(response.dependencies?.collections, undefined);
-  assert.equal(response.dependencies?.execution_readiness, undefined);
+  // get_products declares its response as status bodies; the build
+  // generates get-products-response.json from them.
+  for (const body of ['completed', 'failed', 'rejected']) {
+    const schema = readSchema(`media-buy/get-products-${body}.json`);
+    assert.equal(schema.properties.collections, undefined, body);
+    assert.equal(schema.properties.execution_readiness, undefined, body);
+    assert.equal(schema.dependencies?.collections, undefined, body);
+    assert.equal(schema.dependencies?.execution_readiness, undefined, body);
+  }
+  assert.equal(readSchema('media-buy/get-products-shared-properties.json').definitions.execution_readiness, undefined);
+  const response = readSchema('media-buy/get-products-completed.json');
 
   for (const arm of response.properties.refinement_applied.items.oneOf) {
     for (const field of ['result_product_id', 'resolved_start_time', 'resolved_end_time']) {
@@ -86,8 +94,6 @@ test('get_products response and rejection no longer declare the withdrawn fields
     }
   }
 
-  const rejected = readSchema('media-buy/get-products-rejected.json');
-  assert.equal(rejected.properties.collections, undefined);
 });
 
 test('the withdrawn files are deleted', () => {
@@ -113,7 +119,7 @@ test('list_products carries the execution readiness flag and map as experimental
   assert.equal(flag['x-status'], 'experimental');
   assert.equal(flag.type, 'boolean');
 
-  const response = readSchema('media-buy/list-products-response.json');
+  const response = readSchema('media-buy/list-products-completed.json');
   const map = response.properties.execution_readiness;
   assert.ok(map, 'list_products returns execution_readiness');
   assert.equal(map['x-status'], 'experimental');
@@ -122,7 +128,7 @@ test('list_products carries the execution readiness flag and map as experimental
 
 test('collections stay on list_products, request_proposals and refine_proposals', () => {
   for (const file of ['list-products', 'request-proposals', 'refine-proposals']) {
-    assert.ok(readSchema(`media-buy/${file}-response.json`).properties.collections, `${file} response keeps collections`);
+    assert.ok(readSchema(`media-buy/${file}-completed.json`).properties.collections, `${file} response keeps collections`);
     assert.ok(readSchema(`media-buy/${file}-request.json`).properties.include_collections, `${file} request keeps include_collections`);
   }
 });

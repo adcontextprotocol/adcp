@@ -18,8 +18,11 @@ function load(relativePath) {
   );
 }
 
+// A response schema is the completed body: its properties are the success
+// properties. A body with several success schemas names them in oneOf.
 function successProperties(relativePath, title) {
   const schema = load(relativePath);
+  if (!schema.oneOf) return schema.properties;
   return schema.oneOf.find((branch) => branch.title === title).properties;
 }
 
@@ -52,7 +55,7 @@ const surfaces = [
   {
     label: "create success",
     field: successProperties(
-      "media-buy/create-media-buy-response.json",
+      "media-buy/create-media-buy-completed.json",
       "CreateMediaBuySuccess"
     ).name,
     obligation: /MUST echo it unchanged/,
@@ -60,7 +63,7 @@ const surfaces = [
   {
     label: "update success",
     field: successProperties(
-      "media-buy/update-media-buy-response.json",
+      "media-buy/update-media-buy-completed.json",
       "UpdateMediaBuySuccess"
     ).name,
     obligation: /MUST return the stored value/,
@@ -68,14 +71,14 @@ const surfaces = [
   {
     label: "compact commitment success",
     field: successProperties(
-      "media-buy/media-buy-commitment-response.json",
+      "media-buy/media-buy-commitment-completed.json",
       "Committed Media Buy"
     ).name,
     obligation: /MUST echo a buyer-supplied request name unchanged/,
   },
   {
     label: "get_media_buys item",
-    field: load("media-buy/get-media-buys-response.json").properties.media_buys
+    field: load("media-buy/get-media-buys-completed.json").properties.media_buys
       .items.properties.name,
     obligation: /MUST include name/,
   },
@@ -131,7 +134,7 @@ describe("media-buy name contract", () => {
     const buyProductsName = load("media-buy/buy-products-request.json").properties.name;
     const acceptProposalName = load("media-buy/accept-proposal-request.json").properties.name;
     const commitmentName = successProperties(
-      "media-buy/media-buy-commitment-response.json",
+      "media-buy/media-buy-commitment-completed.json",
       "Committed Media Buy"
     ).name;
 

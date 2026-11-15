@@ -9,18 +9,20 @@
  * audience_targeting with neither field.
  */
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const path = require('node:path');
 const { describe, it, before } = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const CAPABILITIES_URI = '/schemas/protocol/get-adcp-capabilities-response.json';
+// The completed body the build composes into get-adcp-capabilities-response.json.
+const CAPABILITIES_BODY_URI = '/schemas/protocol/get-adcp-capabilities-completed.json';
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 function newAjv() {
@@ -52,7 +54,7 @@ describe('audience_targeting member-push requirements', () => {
 
   before(async () => {
     const response = readSchema(CAPABILITIES_URI);
-    const audienceTargeting = response.properties.media_buy.properties.audience_targeting;
+    const audienceTargeting = readSchema(CAPABILITIES_BODY_URI).properties.media_buy.properties.audience_targeting;
     validateAudienceTargeting = await newAjv().compileAsync(audienceTargeting);
     validateCapabilities = await newAjv().compileAsync(response);
   });
@@ -136,8 +138,7 @@ describe('audience_targeting member-push requirements', () => {
   });
 
   it('states the discovery and push rules in the schema descriptions', () => {
-    const response = readSchema(CAPABILITIES_URI);
-    const audienceTargeting = response.properties.media_buy.properties.audience_targeting;
+    const audienceTargeting = readSchema(CAPABILITIES_BODY_URI).properties.media_buy.properties.audience_targeting;
     assert.match(audienceTargeting.description, /MUST answer discovery-only sync_audiences/);
     assert.match(audienceTargeting.description, /does not promise inline member push/);
     assert.match(audienceTargeting.description, /UNSUPPORTED_FEATURE/);

@@ -163,7 +163,7 @@ test('metadata: the new surfaces are experimental and added in 3.3.0', () => {
     'proposal-refinement.properties.installment_changes':
       readSchema('media-buy/proposal-refinement.json').properties.installment_changes,
     'result row unsatisfied_installment_changes':
-      readSchema('media-buy/refine-proposals-response.json').properties.results.items.properties.unsatisfied_installment_changes,
+      readSchema('media-buy/refine-proposals-completed.json').properties.results.items.properties.unsatisfied_installment_changes,
   };
   for (const [name, schema] of Object.entries(surfaces)) {
     assert.equal(schema['x-status'], 'experimental', `${name} x-status`);

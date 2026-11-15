@@ -50,7 +50,7 @@ test('the withdrawn schemas, enum values and error code are gone', () => {
   // installment_changes and unsatisfied_installment_changes returned as the
   // experimental media_buy.installment_refinement surface (adcp#8967); see
   // tests/installment-refinement.test.cjs. Only the signed field stays withdrawn.
-  const row = readSchema('media-buy/refine-proposals-response.json').properties.results.items.properties;
+  const row = readSchema('media-buy/refine-proposals-completed.json').properties.results.items.properties;
   assert.equal(row.drifted_pins, undefined);
 
 });

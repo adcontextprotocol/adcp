@@ -101,7 +101,7 @@ test('pending-action kinds are extensible', () => {
 });
 
 test('request_account response wraps the request and keeps failures separate', () => {
-  const v = validate('/schemas/account/request-account-response.json');
+  const v = validate('/schemas/account/request-account-completed.json');
   assert.ok(v({ status: 'completed', request: { ...base, state: 'in_review', pending_action: sellerReview } }), JSON.stringify(v.errors));
   assert.equal(v({ status: 'completed' }), false, 'completed without request');
 });
@@ -116,7 +116,7 @@ test('request_account input stays a plain root object for MCP', () => {
 });
 
 test('a sync_accounts pending row may carry request_id instead of account_id', () => {
-  const v = validate('/schemas/account/sync-accounts-response.json');
+  const v = validate('/schemas/account/sync-accounts-completed.json');
   const row = {
     brand: { domain: 'renault.fr' },
     operator: 'wppmedia.fr',
@@ -136,7 +136,7 @@ test('a sync_accounts pending row may carry request_id instead of account_id', (
 });
 
 test('account.requests capability requires the experimental feature id', () => {
-  const v = validate('/schemas/protocol/get-adcp-capabilities-response.json');
+  const v = validate('/schemas/protocol/get-adcp-capabilities-completed.json');
   const caps = {
     adcp: { major_versions: [3] },
     supported_protocols: ['media_buy'],
@@ -153,7 +153,7 @@ test('account.requests capability requires the experimental feature id', () => {
   const errorsFor = doc => (v(doc) ? [] : v.errors).filter(e => /experimental_features/.test(`${e.instancePath} ${e.params && e.params.missingProperty}`));
   assert.ok(errorsFor(caps).length > 0, 'missing account.requests feature id is rejected');
   assert.deepEqual(errorsFor({ ...caps, experimental_features: ['account.requests'] }), [], 'listing the feature id satisfies the conditional');
-  const unsupported = read('protocol/get-adcp-capabilities-response.json').properties.account.properties.requests;
+  const unsupported = read('protocol/get-adcp-capabilities-completed.json').properties.account.properties.requests;
   assert.equal(unsupported['x-status'], 'experimental');
 });
 
@@ -206,7 +206,7 @@ test('request_account deduplication is guidance, and terms are not account ident
 });
 
 test('list_accounts guidance keeps the account_scope SHOULD and no preference order', () => {
-  const description = read('account/list-accounts-response.json').properties.accounts.description;
+  const description = read('account/list-accounts-completed.json').properties.accounts.description;
   assert.match(description, /SHOULD return account_scope/);
   assert.match(description, /no preference order/);
 });
@@ -256,7 +256,7 @@ test('a separate account on a change is opt-in; otherwise the seller rejects wit
   const codes = read('enums/error-code.json');
   assert.ok(codes.enum.includes('ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT'));
   assert.equal(codes.enumMetadata.ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT.recovery, 'correctable');
-  const rowDescription = read('account/sync-accounts-response.json').oneOf[0].properties.accounts.items.properties.request_id.description;
+  const rowDescription = read('account/sync-accounts-completed.json').oneOf[0].properties.accounts.items.properties.request_id.description;
   assert.match(rowDescription, /never resolves as created/);
   const vReq = validate('/schemas/account/request-account-request.json');
   const change = { adcp_version: '3.3', idempotency_key: '7b0c8a4e-1f2d-4e6a-9c3b-5d8e2f1a6b70', account_id: 'acc_nova_europe', brand: { domain: 'nova-athletics.example', countries: ['NL'] }, allow_separate_account: true };
@@ -274,11 +274,11 @@ test('a separate account on a change is opt-in; otherwise the seller rejects wit
 });
 
 test('a sync_accounts settings-update row under review carries the request_id', () => {
-  const res = read('account/sync-accounts-response.json');
+  const res = read('account/sync-accounts-completed.json');
   const rowSchema = res.oneOf[0].properties.accounts.items;
   assert.match(rowSchema.properties.request_id.description, /On a settings-update row whose change the seller is reviewing/);
   assert.match(rowSchema.properties.request_id.description, /MUST include it/);
-  const v = validate('/schemas/account/sync-accounts-response.json');
+  const v = validate('/schemas/account/sync-accounts-completed.json');
   const row = {
     account: { account_id: 'acc_nova_pinnacle' },
     action: 'unchanged',
@@ -293,8 +293,8 @@ test('a sync_accounts settings-update row under review carries the request_id', 
 test('list_accounts returns the caller\'s requests; get_account_requests is gone', () => {
   const req = read('account/list-accounts-request.json');
   assert.ok(req.properties.include_requests && req.properties.request_ids && req.properties.requests_pagination);
-  assert.ok(read('account/list-accounts-response.json').properties.account_requests_pagination, 'requests page independently of accounts');
-  const v = validate('/schemas/account/list-accounts-response.json');
+  assert.ok(read('account/list-accounts-completed.json').properties.account_requests_pagination, 'requests page independently of accounts');
+  const v = validate('/schemas/account/list-accounts-completed.json');
   const request = { request_id: 'areq_1', state: 'in_review', requested: { brand: { domain: 'nova.example' }, operator: 'pinnacle.example' }, pending_action: { waiting_on: 'seller', kind: 'review', message: 'Reviewing.' }, created_at: '2026-10-28T09:00:00Z', updated_at: '2026-10-28T09:00:00Z' };
   assert.ok(v({ status: 'completed', accounts: [], account_requests: [request] }), JSON.stringify(v.errors));
   assert.equal(fs.existsSync(path.join(SCHEMAS, 'account/get-account-requests-request.json')), false);
@@ -314,7 +314,7 @@ test('request_account change mode is authorized, reachability-first, and continu
   assert.match(req.description, /answers an unreachable account exactly as an unknown one, before any other validation/);
   assert.match(req.description, /SCOPE_INSUFFICIENT, READ_ONLY_SCOPE, or FIELD_NOT_PERMITTED/);
   assert.match(req.description, /re-checks revision when it resolves/);
-  const caps = read('protocol/get-adcp-capabilities-response.json').properties.account.properties.requests.oneOf[0].properties;
+  const caps = read('protocol/get-adcp-capabilities-completed.json').properties.account.properties.requests.oneOf[0].properties;
   assert.ok(caps.changeable_attributes, 'sellers declare which attributes they change');
 });
 
@@ -329,8 +329,8 @@ test('matched and created resolutions carry the target account and its money ter
     assert.equal(v({ ...base, state: 'resolved', account_id: 'acc_nova_pinnacle', resolution }), false, `${resolution} without account`);
   }
   for (const example of record.examples) assert.ok(v(example.data), example.description);
-  const response = validate('/schemas/account/request-account-response.json');
-  for (const example of read('account/request-account-response.json').examples) assert.ok(response(example.data), example.description);
+  const response = validate('/schemas/account/request-account-completed.json');
+  for (const example of read('account/request-account-completed.json').examples) assert.ok(response(example.data), example.description);
 });
 
 test('money changes carry effective_at; a separate account lists what did not carry over', () => {
@@ -354,7 +354,7 @@ test('money changes carry effective_at; a separate account lists what did not ca
 });
 
 test('timezone is changeable only where changeable_attributes lists it', () => {
-  const caps = read('protocol/get-adcp-capabilities-response.json').properties.account.properties.requests.oneOf[0].properties.changeable_attributes;
+  const caps = read('protocol/get-adcp-capabilities-completed.json').properties.account.properties.requests.oneOf[0].properties.changeable_attributes;
   assert.ok(caps.items.enum.includes('timezone'));
   assert.match(caps.description, /a seller that changes an account's timezone through request_account MUST list timezone/);
   assert.match(read('account/request-account-request.json').description, /currency and timezone change only on sellers that list them in account\.requests\.changeable_attributes/);

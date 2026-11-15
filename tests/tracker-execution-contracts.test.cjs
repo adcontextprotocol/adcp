@@ -540,7 +540,7 @@ test('contract-bearing products require stable option identity and authority pro
   const { format_option_id: ignored, ...idless } = declaration;
   assert.equal(validateDeclaration(idless), false, 'seller execution authority must be addressable');
 
-  const capabilities = ajv.getSchema('/schemas/protocol/get-adcp-capabilities-response.json').schema;
+  const capabilities = ajv.getSchema('/schemas/protocol/get-adcp-capabilities-completed.json').schema;
   const supportedFormatSchema = capabilities.properties.creative.properties.supported_formats.items;
   const validateSupportedFormat = ajv.compile(supportedFormatSchema);
   assert.equal(validateSupportedFormat({

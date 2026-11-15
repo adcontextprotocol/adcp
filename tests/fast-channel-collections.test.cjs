@@ -5,6 +5,7 @@ const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 ensureBuiltSchemas();
 
@@ -194,7 +195,7 @@ test('collection cards carry images, sample content and a typed talent brand lin
 });
 
 test('new collection card fields are experimental and added in 3.3.0', () => {
-  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const read = (file) => readSchemaFile(path.join(SCHEMA_BASE_DIR, file));
   const collection = read('core/collection.json').properties;
   const talent = read('core/talent.json').properties;
   for (const field of [collection.images, collection.sample_content, talent.brand_ref]) {
@@ -265,9 +266,9 @@ const draftProposal = {
   terms_digest: `sha256:${'A'.repeat(43)}`,
 };
 const responseCases = [
-  ['/schemas/media-buy/list-products-response.json', { status: 'completed', outcome: 'listed', products: [canonicalProduct], feed_version: 'feed-v1', cache_scope: 'public' }],
-  ['/schemas/media-buy/request-proposals-response.json', { status: 'completed', outcome: 'proposed', proposals: [draftProposal], products: [canonicalProduct] }],
-  ['/schemas/media-buy/refine-proposals-response.json', {
+  ['/schemas/media-buy/list-products-completed.json', { status: 'completed', outcome: 'listed', products: [canonicalProduct], feed_version: 'feed-v1', cache_scope: 'public' }],
+  ['/schemas/media-buy/request-proposals-completed.json', { status: 'completed', outcome: 'proposed', proposals: [draftProposal], products: [canonicalProduct] }],
+  ['/schemas/media-buy/refine-proposals-completed.json', {
     status: 'completed',
     results: [{ source_proposal_id: 'proposal-1', outcome: 'unable', reason_code: 'commercially_declined', reason: 'Declined.' }],
     products: [canonicalProduct],
@@ -288,11 +289,11 @@ for (const [schemaId, base] of responseCases) {
 }
 
 test('collections are forbidden on rejected and unchanged outcomes', async () => {
-  const proposals = await compile('/schemas/media-buy/request-proposals-response.json');
+  const proposals = await compile('/schemas/media-buy/request-proposals-completed.json');
   const rejected = { status: 'completed', outcome: 'rejected', reason: 'No available offer satisfies the campaign constraints.' };
   assert.equal(proposals(rejected), true, JSON.stringify(proposals.errors, null, 2));
   assert.equal(proposals({ ...rejected, collections: [responseCollection] }), false);
-  const listed = await compile('/schemas/media-buy/list-products-response.json');
+  const listed = await compile('/schemas/media-buy/list-products-completed.json');
   const unchanged = { status: 'completed', outcome: 'unchanged', feed_version: 'feed-v1', cache_scope: 'public' };
   assert.equal(listed(unchanged), true, JSON.stringify(listed.errors, null, 2));
   assert.equal(listed({ ...unchanged, collections: [responseCollection] }), false);
@@ -310,7 +311,7 @@ test('collection url is a uri', async () => {
 });
 
 test('get_brand_identity links a person to their collections', async () => {
-  const response = await compile('/schemas/brand/get-brand-identity-response.json');
+  const response = await compile('/schemas/brand/get-brand-identity-completed.json');
   const identity = {
     status: 'completed',
     brand_id: 'jordan_vega',
@@ -334,14 +335,14 @@ test('get_brand_identity links a person to their collections', async () => {
 });
 
 test('response collection fields are experimental and added in 3.3.0', () => {
-  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const read = (file) => readSchemaFile(path.join(SCHEMA_BASE_DIR, file));
   const fields = [
     read('core/collection.json').properties.url,
     read('core/response-collection.json'),
-    read('media-buy/list-products-response.json').properties.collections,
-    read('media-buy/request-proposals-response.json').properties.collections,
-    read('media-buy/refine-proposals-response.json').properties.collections,
-    read('brand/get-brand-identity-response.json').oneOf[0].properties.collections,
+    read('media-buy/list-products-completed.json').properties.collections,
+    read('media-buy/request-proposals-completed.json').properties.collections,
+    read('media-buy/refine-proposals-completed.json').properties.collections,
+    read('brand/get-brand-identity-completed.json').oneOf[0].properties.collections,
     read('brand.json').definitions.brand.properties.collections.items.properties.publisher_domain,
   ];
   for (const field of fields) {
@@ -349,7 +350,7 @@ test('response collection fields are experimental and added in 3.3.0', () => {
     assert.equal(field['x-added-in'], '3.3.0');
   }
   for (const file of ['list-products', 'request-proposals', 'refine-proposals']) {
-    const schema = read(`media-buy/${file}-response.json`);
+    const schema = read(`media-buy/${file}-completed.json`);
     assert.equal(schema.properties.collections.items.$ref, '/schemas/core/response-collection.json');
     assert.deepEqual(schema.dependencies.collections, ['products']);
   }
@@ -380,7 +381,7 @@ for (const [schemaId, base, unknownFieldPhrasing] of requestCases) {
     assert.equal(validate(base), true, JSON.stringify(validate.errors, null, 2));
     assert.equal(validate({ ...base, include_collections: true }), true, JSON.stringify(validate.errors, null, 2));
     assert.equal(validate({ ...base, include_collections: 'yes' }), false, 'include_collections is a boolean');
-    const schema = JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8'));
+    const schema = readSchemaFile(schemaPathFromId(schemaId));
     const flag = schema.properties.include_collections;
     assert.equal(flag.type, 'boolean');
     assert.equal(flag.default, false);
@@ -393,9 +394,9 @@ for (const [schemaId, base, unknownFieldPhrasing] of requestCases) {
 }
 
 test('response collections descriptions carry the opt-in and the closed freshness list', () => {
-  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const read = (file) => readSchemaFile(path.join(SCHEMA_BASE_DIR, file));
   for (const file of ['list-products', 'request-proposals', 'refine-proposals']) {
-    const desc = read(`media-buy/${file}-response.json`).properties.collections.description;
+    const desc = read(`media-buy/${file}-completed.json`).properties.collections.description;
     assert.match(desc, /unless the request set include_collections to true/, file);
     assert.match(desc, /only on images, sample_content, url, description, season, cadence and distribution\[\]\.followers/, file);
     assert.match(desc, /appears more than once, that collection is unresolvable/, file);
@@ -415,7 +416,7 @@ test('collection url must be https', async () => {
 });
 
 test('get_brand_identity collection links require publisher_domain and collection_id', async () => {
-  const response = await compile('/schemas/brand/get-brand-identity-response.json');
+  const response = await compile('/schemas/brand/get-brand-identity-completed.json');
   const link = { publisher_domain: 'acmestreaming.example.com', collection_id: 'pinnacle_challenge', name: 'The Pinnacle Challenge' };
   const identity = {
     status: 'completed',
@@ -429,21 +430,21 @@ test('get_brand_identity collection links require publisher_domain and collectio
     const { [key]: _omitted, ...rest } = link;
     assert.equal(response({ ...identity, collections: [rest] }), false, `${key} is required`);
   }
-  const schema = JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'brand/get-brand-identity-response.json'), 'utf8'));
+  const schema = readSchemaFile(path.join(SCHEMA_BASE_DIR, 'brand/get-brand-identity-completed.json'));
   const items = schema.oneOf[0].properties.collections.items;
   assert.equal(items.properties.collection_id['x-entity'], 'collection');
   assert.match(items.properties.seller_agent_url.description, /not authorization evidence/);
   // brand.json stays lenient: only name is required on its links.
-  const brand = JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'brand.json'), 'utf8'));
+  const brand = readSchemaFile(path.join(SCHEMA_BASE_DIR, 'brand.json'));
   const brandLinks = brand.definitions.brand.properties.collections.items;
   assert.deepEqual(brandLinks.required, ['name']);
   assert.match(brandLinks.properties.seller_agent_url.description, /not authorization evidence/);
 });
 
 test('brand-side collection links use their own experimental feature id', () => {
-  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const read = (file) => readSchemaFile(path.join(SCHEMA_BASE_DIR, file));
   const brandSide = [
-    read('brand/get-brand-identity-response.json').oneOf[0].properties.collections.description,
+    read('brand/get-brand-identity-completed.json').oneOf[0].properties.collections.description,
     read('brand/get-brand-identity-request.json').properties.fields.description,
     read('brand.json').definitions.brand.properties.collections.items.properties.publisher_domain.description,
   ];
@@ -461,14 +462,16 @@ test('brand-side collection links use their own experimental feature id', () => 
 });
 
 test('get_products no longer declares include_collections or collections (adcp#8501)', async () => {
-  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const read = (file) => readSchemaFile(path.join(SCHEMA_BASE_DIR, file));
   const request = read('media-buy/get-products-request.json');
-  const response = read('media-buy/get-products-response.json');
+  const response = read('media-buy/get-products-completed.json');
   assert.equal(request.properties.include_collections, undefined);
-  assert.equal(response.properties.collections, undefined);
-  assert.equal(response.dependencies?.collections, undefined);
-  const rejected = read('media-buy/get-products-rejected.json');
-  assert.equal(rejected.properties.collections, undefined);
+  // No get_products status body declares collections.
+  for (const body of ['completed', 'rejected', 'failed']) {
+    const schema = read(`media-buy/get-products-${body}.json`);
+    assert.equal(schema.properties.collections, undefined, body);
+    assert.equal(schema.dependencies?.collections, undefined, body);
+  }
   const tuple = /include_collections/;
   assert.doesNotMatch(request.properties.if_wholesale_feed_version.description, tuple);
   assert.doesNotMatch(response.properties.wholesale_feed_version.description, tuple);
@@ -482,9 +485,9 @@ test('get_products no longer declares include_collections or collections (adcp#8
 });
 
 test('include_collections is part of the feed version scope on list_products', () => {
-  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const read = (file) => readSchemaFile(path.join(SCHEMA_BASE_DIR, file));
   assert.match(read('media-buy/list-products-request.json').properties.if_feed_version.description, /include_collections is part of the selection/);
-  assert.match(read('media-buy/list-products-response.json').properties.feed_version.description, /including include_collections/);
+  assert.match(read('media-buy/list-products-completed.json').properties.feed_version.description, /including include_collections/);
   const doc = fs.readFileSync(path.join(__dirname, '../docs/media-buy/task-reference/get_products.mdx'), 'utf8');
   assert.doesNotMatch(doc, /include_collections/, 'get_products reference no longer documents include_collections');
   const guide = fs.readFileSync(path.join(__dirname, '../docs/media-buy/product-discovery/collections-and-installments.mdx'), 'utf8');

@@ -2,8 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/accept-proposal-async-response-submitted.json",
   "title": "Accept Proposal - Submitted",
-  "description": "Bounded submitted task envelope for accept_proposal.",
+  "description": "Bounded submitted task envelope for accept_proposal, the shared commitment submitted body.",
   "allOf": [
-    { "$ref": "/schemas/core/compact-task-submitted.json" }
+    { "$ref": "/schemas/media-buy/media-buy-commitment-async-response-submitted.json" }
   ]
 }

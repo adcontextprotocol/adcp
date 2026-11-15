@@ -175,7 +175,7 @@ test('VAST assets stay singular while format and seller acceptance are plural en
   assert.equal(format({ vast_versions: ['4.4'] }), false);
 
   const capabilities = JSON.parse(fs.readFileSync(
-    path.join(SCHEMAS, 'protocol/get-adcp-capabilities-response.json'),
+    path.join(SCHEMAS, 'protocol/get-adcp-capabilities-completed.json'),
     'utf8'
   ));
   const vastSchema = capabilities.properties.media_buy.properties.execution.properties.creative_specs.properties.vast_versions;
@@ -851,7 +851,7 @@ test('creative representation resolution vectors retain the complete revision an
     `highest-compatible VAST strategy accepts audio_vast destinations: ${JSON.stringify(validateBuild.errors)}`);
 
   derivedManifest.representation_selection = selection;
-  const validateBuildResponse = ajv.getSchema('/schemas/media-buy/build-creative-response.json');
+  const validateBuildResponse = ajv.getSchema('/schemas/media-buy/build-creative-completed.json');
   assert.equal(validateBuildResponse({ status: 'completed', creative_manifest: derivedManifest }), true,
     JSON.stringify(validateBuildResponse.errors));
   const responseRules = validateBuildResponse.schema['x-adcp-validation']
@@ -1073,7 +1073,7 @@ test('macro processing vectors preserve bytes and match exact owner/context/enco
 
 test('validation and sync response schemas expose per-token macro results', () => {
   const validateInputResultSchema = ajv.getSchema('/schemas/creative/validate-input-result.json').schema;
-  const syncResponse = ajv.getSchema('/schemas/creative/sync-creatives-response.json').schema;
+  const syncResponse = ajv.getSchema('/schemas/creative/sync-creatives-completed.json').schema;
   assert.equal(validateInputResultSchema.properties.macro_resolution_results.items.$ref, '/schemas/core/macro-resolution-result.json');
   const syncItem = syncResponse.oneOf[0].properties.creatives.items;
   assert.equal(syncItem.properties.macro_resolution_results.items.$ref, '/schemas/core/macro-resolution-result.json');

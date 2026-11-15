@@ -24,7 +24,7 @@ const CAPABILITY_DECLARATION_MIGRATION = readFileSync(
   'utf8',
 );
 const CAPABILITIES_SCHEMA = JSON.parse(readFileSync(
-  resolve(__dirname, '../../../static/schemas/source/protocol/get-adcp-capabilities-response.json'),
+  resolve(__dirname, '../../../static/schemas/source/protocol/get-adcp-capabilities-completed.json'),
   'utf8',
 )) as JsonSchema;
 

@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-audiences-failed.json",
+  "title": "SyncAudiencesError",
+  "description": "Body of a failed sync_audiences response: operation-level errors, and none of the success fields. The completed body also admits this body.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "description": "Operation-level errors that prevented processing any audiences (e.g., authentication failure, account not found, invalid request format)",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "errors"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "audiences"
+        ]
+      },
+      {
+        "required": [
+          "sandbox"
+        ]
+      },
+      {
+        "required": [
+          "task_id"
+        ]
+      }
+    ]
+  }
+}

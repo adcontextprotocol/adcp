@@ -28,14 +28,14 @@ async function compileCreativeCapabilities() {
     loadSchema: async uri => schema(uri.replace(/^\/schemas\//, '').split('#', 1)[0])
   });
   addFormats(ajv);
-  const creative = schema('protocol/get-adcp-capabilities-response.json').properties.creative;
+  const creative = schema('protocol/get-adcp-capabilities-completed.json').properties.creative;
   return ajv.compileAsync({ $id: '/schemas/test/creative-capabilities.json', ...creative });
 }
 
 const livePolicy = { in_place: [{ change: 'trackers', serving: 'uninterrupted' }] };
 
 test('creative.assignment_operations is a 3.3 list of the protocol operations', async () => {
-  const field = schema('protocol/get-adcp-capabilities-response.json').properties.creative.properties.assignment_operations;
+  const field = schema('protocol/get-adcp-capabilities-completed.json').properties.creative.properties.assignment_operations;
   assert.equal(field['x-added-in'], '3.3.0');
   assert.deepEqual(field.items.enum, ['assign', 'unassign', 'replace', 'merge']);
   assert.match(field.description, /accepts none/, 'absence means no operations');
@@ -70,7 +70,7 @@ test('listing merge needs the same library guarantees as supports_assignment_mer
     true,
     JSON.stringify(validate.errors)
   );
-  const flag = schema('protocol/get-adcp-capabilities-response.json').properties.creative.properties.supports_assignment_merge;
+  const flag = schema('protocol/get-adcp-capabilities-completed.json').properties.creative.properties.supports_assignment_merge;
   assert.match(flag.description, /assignment_operations is the authoritative declaration/);
   const library = { has_creative_library: true, stable_creative_ids: true };
   assert.equal(validate({ ...library, supports_assignment_merge: true }), false, 'the merge flag needs merge in the list');
@@ -84,7 +84,7 @@ test('listing merge needs the same library guarantees as supports_assignment_mer
 });
 
 test('compact sellers with a library list assign (verifier constraint)', () => {
-  const field = schema('protocol/get-adcp-capabilities-response.json').properties.creative.properties.assignment_operations;
+  const field = schema('protocol/get-adcp-capabilities-completed.json').properties.creative.properties.assignment_operations;
   assert.match(field.description, /buy_products or accept_proposal/);
   const rule = field['x-adcp-validation'].verifier_constraints.compact_lifecycle_assign;
   assert.match(rule.when, /served at 3\.3 or later/);

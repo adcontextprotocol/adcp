@@ -45,7 +45,7 @@ function validationMessage(validate) {
 
 test('2.5, 3.0, and 3.1 preserve products-only brief discovery through an explicit legacy purchase continuation', async () => {
   const [validateCompact, validateContinuationInput] = await Promise.all([
-    compileSchema(loadSchemaUri('/schemas/media-buy/request-proposals-response.json')),
+    compileSchema(loadSchemaUri('/schemas/media-buy/request-proposals-completed.json')),
     compileSchema(loadSchemaUri('/schemas/media-buy/legacy-purchase-continuation-input.json')),
   ]);
   assert.equal(
@@ -218,7 +218,7 @@ test('2.5, 3.0, and 3.1 preserve products-only brief discovery through an explic
 
 test('listed_purchase uses only seller-issued account fences and ordinary buy_products', async () => {
   const [validateCompact, validateBuyProducts] = await Promise.all([
-    compileSchema(loadSchemaUri('/schemas/media-buy/request-proposals-response.json')),
+    compileSchema(loadSchemaUri('/schemas/media-buy/request-proposals-completed.json')),
     compileSchema(loadSchemaUri('/schemas/media-buy/buy-products-request.json')),
   ]);
 
@@ -248,7 +248,7 @@ test('listed_purchase uses only seller-issued account fences and ordinary buy_pr
 test('a 3.2 seller keeps products-only legacy discovery executable through its legacy create facade', async () => {
   const [validateDiscoveryRequest, validateDiscoveryResponse, validateCreateRequest] = await Promise.all([
     compileSchema(loadSchemaUri('/schemas/media-buy/get-products-request.json')),
-    compileSchema(loadSchemaUri('/schemas/media-buy/get-products-response.json')),
+    compileSchema(loadSchemaUri('/schemas/media-buy/get-products-completed.json')),
     compileSchema(loadSchemaUri('/schemas/media-buy/create-media-buy-request.json')),
   ]);
 

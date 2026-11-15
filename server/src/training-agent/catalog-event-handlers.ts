@@ -742,7 +742,7 @@ export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
 export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
   return omitFieldsAddedAfterRelease(
     await syncEventSources(args, ctx),
-    'media-buy/sync-event-sources-response.json',
+    'media-buy/sync-event-sources-completed.json',
     ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
   );
 }

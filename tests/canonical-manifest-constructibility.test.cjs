@@ -120,7 +120,7 @@ test('all supported slot names validate asset shapes, including arrays and nonca
     ajv.getSchema('/schemas/core/creative-assets.json'),
     assets => validateManifest({ format_kind: 'html5', assets }),
     assets => ajv.getSchema('/schemas/core/creative-asset.json')({ creative_id: 'acme-banner', name: 'Acme', format_kind: 'html5', assets }),
-    assets => ajv.getSchema('/schemas/creative/list-creatives-response.json')({
+    assets => ajv.getSchema('/schemas/creative/list-creatives-completed.json')({
       status: 'completed',
       query_summary: { total_matching: 1, returned: 1 },
       pagination: { has_more: false },

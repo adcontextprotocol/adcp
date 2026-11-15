@@ -133,7 +133,7 @@ test('provenance audit discovery, sync, and observation queries use the same see
 });
 
 test('provenance opt-in is an optional boolean, distinct from a creative library', () => {
-  const schema = JSON.parse(fs.readFileSync(path.join(root, 'static/schemas/source/protocol/get-adcp-capabilities-response.json'), 'utf8'));
+  const schema = JSON.parse(fs.readFileSync(path.join(root, 'static/schemas/source/protocol/get-adcp-capabilities-completed.json'), 'utf8'));
   const creative = schema.properties.creative;
   assert.ok(!creative.required?.includes('supports_provenance'));
   assert.equal(creative.properties.supports_provenance.default, false);

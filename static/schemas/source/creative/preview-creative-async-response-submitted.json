@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/preview-creative-async-response-submitted.json",
+  "title": "Preview Creative - Submitted",
+  "description": "Async task envelope returned only when the preview_creative request set allow_async to true and rendering cannot complete inline. The buyer polls get_task_status with task_id; the completed preview response is the task result.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-submitted.json" }
+  ],
+  "properties": {
+    "response_type": {
+      "type": "string",
+      "const": "submitted",
+      "description": "Preview-response discriminator of the submitted body."
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["response_type"],
+  "additionalProperties": true
+}

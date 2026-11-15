@@ -4,12 +4,13 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice(9)), "utf8"));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice(9)));
 }
 
 function hasConsistentInventoryIdentity(row) {
@@ -46,7 +47,7 @@ describe("canonical inventory delivery reporting", () => {
   let validatePlacementPropertyRow;
 
   before(async () => {
-    const response = readSchema("/schemas/media-buy/get-media-buy-delivery-response.json");
+    const response = readSchema("/schemas/media-buy/get-media-buy-delivery-completed.json");
     const extension = response.properties.media_buy_deliveries.items.properties.by_package.items.allOf
       .find(schema => schema.properties);
     [
@@ -322,7 +323,7 @@ describe("canonical inventory delivery reporting", () => {
   });
 
   it("discloses suppression separately for every property-grain breakdown", () => {
-    const response = readSchema("/schemas/media-buy/get-media-buy-delivery-response.json");
+    const response = readSchema("/schemas/media-buy/get-media-buy-delivery-completed.json");
     const properties = response.properties.media_buy_deliveries.items.properties.by_package.items.allOf
       .find(schema => schema.properties).properties;
     for (const dimension of ["property", "collection_property", "installment_property", "placement_property"]) {

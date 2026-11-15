@@ -14,12 +14,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_DIR = path.join(ROOT, 'static/schemas/source');
-const readSchema = relativePath => JSON.parse(fs.readFileSync(path.join(SCHEMA_DIR, relativePath), 'utf8'));
+// Task responses are generated from their status bodies (scripts/task-responses.cjs).
+const readSchema = relativePath => readSchemaFile(path.join(SCHEMA_DIR, relativePath));
 const ajv = new Ajv({
   allErrors: true, strict: false, discriminator: true,
   loadSchema: async uri => readSchema(uri.replace('/schemas/', ''))
@@ -68,9 +70,9 @@ const nodes = () => {
     fields: [
       ['assign', variant('assign').properties.installment_refs],
       ['replace', variant('replace').properties.installment_refs],
-      ['get_media_buys', readSchema('media-buy/get-media-buys-response.json').properties.media_buys.items
+      ['get_media_buys', readSchema('media-buy/get-media-buys-completed.json').properties.media_buys.items
         .properties.packages.items.properties.creative_approvals.items.properties.installment_refs],
-      ['list_creatives', readSchema('creative/list-creatives-response.json').properties.creatives.items
+      ['list_creatives', readSchema('creative/list-creatives-completed.json').properties.creatives.items
         .properties.assignments.properties.assigned_packages.items.properties.installment_refs]
     ]
   };

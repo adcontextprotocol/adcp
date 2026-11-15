@@ -1231,6 +1231,10 @@ function projectTenantCapabilities(
         ? structured.account
         : {};
       structured.account = {
+        // Declared, not left to the schema default: a reader of the task
+        // response finds that default in the completed body, not at the
+        // response root.
+        require_operator_auth: false,
         ...account,
         supported_account_currency_modes: ['fixed', 'per_media_buy'],
         // Accounts are shared across tenants (v6-account-helpers.ts). These
@@ -1345,6 +1349,9 @@ function projectTenantCapabilities(
       }
       const salesProjection = salesCapabilityProjection();
       structured.media_buy = {
+        // The default surface, declared rather than left to the schema
+        // default (see require_operator_auth above).
+        propagation_surfaces: ['snapshot'],
         ...mediaBuy,
         ...salesProjection,
         // Package caps: independent counter per package within these
@@ -1545,7 +1552,7 @@ function projectTenantCapabilities(
     // or SDK derivation contributed them.
     parsed.result!.structuredContent = omitFieldsAddedAfterRelease(
       structured,
-      'protocol/get-adcp-capabilities-response.json',
+      'protocol/get-adcp-capabilities-completed.json',
       storyboardCompat?.version === '3.0' ? '3.0' : servedVersion,
     );
     const firstText = parsed.result?.content?.[0];

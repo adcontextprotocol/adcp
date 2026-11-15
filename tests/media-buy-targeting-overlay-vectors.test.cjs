@@ -23,6 +23,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const VECTORS_PATH = path.join(
   __dirname,
@@ -42,7 +43,7 @@ async function loadExternalSchema(uri) {
   if (schemaPath !== SCHEMA_BASE_DIR && !schemaPath.startsWith(SCHEMA_BASE_DIR + path.sep)) {
     throw new Error(`Schema ref escapes base directory: ${uri}`);
   }
-  return JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  return readSchemaFile(schemaPath);
 }
 
 function resolvePath(obj, dottedPath) {
@@ -61,12 +62,16 @@ const data = JSON.parse(fs.readFileSync(VECTORS_PATH, 'utf8'));
 describe('PackageStatus targeting_overlay echo vectors', () => {
   let validate;
   let rootSchema;
+  let completedSchema;
 
   before(async () => {
     const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
     addFormats(ajv);
     rootSchema = await loadExternalSchema(data.schema);
     validate = await ajv.compileAsync(rootSchema);
+    // The task response is generated from the status bodies; PackageStatus is
+    // declared in the completed body.
+    completedSchema = await loadExternalSchema('/schemas/media-buy/get-media-buys-completed.json');
   });
 
   it('has a valid file structure', () => {
@@ -90,7 +95,7 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
     // validation alone does not catch regeneration that drops this declaration. This
     // assertion is the actual wire-level contract for downstream SDK codegen.
     const packageStatusSchema =
-      rootSchema.properties.media_buys.items.properties.packages.items;
+      completedSchema.properties.media_buys.items.properties.packages.items;
     assert.equal(packageStatusSchema.title, 'PackageStatus');
     assert.ok(
       packageStatusSchema.properties && packageStatusSchema.properties.targeting_overlay,

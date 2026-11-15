@@ -422,14 +422,14 @@ test('a failed currency capture skips the updates instead of sending a raw token
 });
 
 test('the committed currency is read from the only field the schemas require', () => {
-  const getMediaBuys = readJson('static/schemas/source/media-buy/get-media-buys-response.json');
+  const getMediaBuys = readJson('static/schemas/source/media-buy/get-media-buys-completed.json');
   const mediaBuy = getMediaBuys.properties.media_buys.items;
   assert.ok(
     mediaBuy.required.includes('currency'),
     'get_media_buys is the authoritative read: media_buys[].currency is required'
   );
 
-  const createSuccess = readJson('static/schemas/source/media-buy/create-media-buy-response.json').oneOf.find(
+  const createSuccess = readJson('static/schemas/source/media-buy/create-media-buy-completed.json').oneOf.find(
     branch => branch.title === 'CreateMediaBuySuccess'
   );
   assert.equal(
@@ -438,7 +438,7 @@ test('the committed currency is read from the only field the schemas require', (
     'create_media_buy MAY omit currency, so capturing it there would fail a conformant seller'
   );
 
-  const updateSuccess = readJson('static/schemas/source/media-buy/update-media-buy-response.json').oneOf.find(
+  const updateSuccess = readJson('static/schemas/source/media-buy/update-media-buy-completed.json').oneOf.find(
     branch => branch.title === 'UpdateMediaBuySuccess'
   );
   assert.equal(

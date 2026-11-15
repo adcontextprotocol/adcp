@@ -64,7 +64,7 @@ test('lineage is off create_media_buy and stays on the live tasks and readback',
   for (const file of ['media-buy/buy-products-request.json', 'media-buy/accept-proposal-request.json', 'core/media-buy.json']) {
     for (const field of ['predecessor_media_buy_id', 'lineage_reason']) present(file, (s) => s, field);
   }
-  const item = readSchema('media-buy/get-media-buys-response.json').properties.media_buys.items;
+  const item = readSchema('media-buy/get-media-buys-completed.json').properties.media_buys.items;
   for (const field of ['predecessor_media_buy_id', 'lineage_reason']) assert.ok(item.properties[field], field);
   assert.ok(readSchema('media-buy/get-media-buys-request.json').properties.predecessor_media_buy_id, 'get_media_buys filter');
 });
@@ -91,11 +91,11 @@ test('start_requires_all_creatives_approved is off create/update packages and st
     'media-buy/package-forecast-input.json',
     CREATE,
     UPDATE,
-    'media-buy/create-media-buy-response.json',
-    'media-buy/update-media-buy-response.json',
+    'media-buy/create-media-buy-completed.json',
+    'media-buy/update-media-buy-completed.json',
   ], field);
   present('media-buy/package-control.json', (s) => s, field);
-  const readback = readSchema('media-buy/get-media-buys-response.json').properties.media_buys.items.properties.packages.items;
+  const readback = readSchema('media-buy/get-media-buys-completed.json').properties.media_buys.items.properties.packages.items;
   assert.ok(readback.properties[field], 'get_media_buys package readback');
   assert.ok(readSchema('core/media-buy-features.json').properties.creative_start_policy, 'creative_start_policy feature');
   assert.ok(readSchema('core/media-buy-available-action-id.json').enumMetadata.update_creative_start_policy);
@@ -139,8 +139,8 @@ test('assignment trackers and landing page are off the create/update assignment 
   const assign = readSchema('creative/sync-creatives-request.json').properties.assignment_operations.items.oneOf
     .find((variant) => variant.properties.operation.const === 'assign');
   assert.ok(assign.properties.trackers && assign.properties.landing_page_url, 'sync_creatives assign operation');
-  const listed = readSchema('creative/list-creatives-response.json').properties.creatives.items.properties.assignments.properties.assigned_packages.items;
-  const bought = readSchema('media-buy/get-media-buys-response.json').properties.media_buys.items.properties.packages.items.properties.creative_approvals.items;
+  const listed = readSchema('creative/list-creatives-completed.json').properties.creatives.items.properties.assignments.properties.assigned_packages.items;
+  const bought = readSchema('media-buy/get-media-buys-completed.json').properties.media_buys.items.properties.packages.items.properties.creative_approvals.items;
   for (const [name, readback] of [['list_creatives', listed], ['get_media_buys', bought]]) {
     assert.ok(readback.properties.trackers && readback.properties.landing_page_url, `${name} readback`);
   }

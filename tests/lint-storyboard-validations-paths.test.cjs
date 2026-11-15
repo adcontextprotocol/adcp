@@ -326,7 +326,7 @@ test('pure extension points only loosen when there are no defined properties', (
   // etc.) AND additionalProperties: true. That's mixed — strict rule applies
   // because the schema declares specific fields, and `additionalProperties:
   // true` is forward-compat extension, not an open container.
-  const schema = loadSchema('sponsored-intelligence/si-get-offering-response.json');
+  const schema = loadSchema('sponsored-intelligence/si-get-offering-completed.json');
   assert.ok(schema, 'fixture loads');
   // `offering.offering_id` resolves through a defined property
   assert.equal(pathResolves(schema, parsePath('offering.offering_id')), true);
@@ -336,7 +336,7 @@ test('pure extension points only loosen when there are no defined properties', (
 });
 
 test('schema-valued additionalProperties resolves typed dynamic map keys', () => {
-  const schema = loadSchema('protocol/get-adcp-capabilities-response.json');
+  const schema = loadSchema('protocol/get-adcp-capabilities-completed.json');
   assert.equal(
     pathResolves(
       schema,
@@ -354,7 +354,7 @@ test('schema-valued additionalProperties resolves typed dynamic map keys', () =>
 });
 
 test('pathResolves descends through error.json $ref for errors[0].code', () => {
-  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  const schema = loadSchema('media-buy/create-media-buy-completed.json');
   assert.equal(pathResolves(schema, parsePath('errors[0].code')), true);
   assert.equal(pathResolves(schema, parsePath('errors[0].field')), true);
 });
@@ -366,7 +366,7 @@ test('envelope-aware resolution: replayed and adcp_error resolve via protocol-en
   // protocol-level concerns," so they don't appear on per-task response
   // schemas. The lint falls back to the envelope when a top-level segment
   // isn't found in the payload schema.
-  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  const schema = loadSchema('media-buy/create-media-buy-completed.json');
   assert.equal(
     pathResolvesAgainstResponseOrEnvelope(schema, parsePath('replayed')),
     true,
@@ -589,7 +589,7 @@ test('isEnvelopeProperty identifies envelope fields', () => {
 test('envelope fallback only fires when first segment is an envelope property', () => {
   // A typo on a non-envelope-shaped path should still fail — the envelope
   // fallback is keyed on the first segment matching an envelope property.
-  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  const schema = loadSchema('media-buy/create-media-buy-completed.json');
   assert.equal(
     pathResolvesAgainstResponseOrEnvelope(schema, parsePath('definitely_not_real')),
     false,
@@ -674,7 +674,7 @@ test('allowlist entries still reproduce unresolved path drift without the allowl
 });
 
 test('expected_arm restricts path resolution to the matching oneOf arm', () => {
-  const schema = loadSchema('brand/acquire-rights-response.json');
+  const schema = loadSchema('brand/acquire-rights-completed.json');
   const acquired = findArmByDiscriminator(schema, 'acquired');
   assert.ok(acquired, 'acquired arm found');
   // `terms` is on the Acquired arm only
@@ -689,7 +689,7 @@ test('expected_arm restricts path resolution to the matching oneOf arm', () => {
 });
 
 test('findErrorArm finds the errors[]-required branch with no const discriminator', () => {
-  const schema = loadSchema('brand/acquire-rights-response.json');
+  const schema = loadSchema('brand/acquire-rights-completed.json');
   const errorArm = findErrorArm(schema);
   assert.ok(errorArm, 'error arm found');
   // Error arm has `errors` required and no const status
@@ -810,7 +810,7 @@ test('unknown_expected_arm fires when no oneOf branch matches', () => {
 });
 
 test('resolveExpectedArmSchema returns full schema when no annotation present', () => {
-  const schema = loadSchema('brand/acquire-rights-response.json');
+  const schema = loadSchema('brand/acquire-rights-completed.json');
   const result = resolveExpectedArmSchema(schema, null, false);
   assert.equal(result.schema, schema);
   assert.equal(result.error, undefined);

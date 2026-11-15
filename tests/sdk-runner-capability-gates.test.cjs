@@ -1387,7 +1387,7 @@ test('measurement acceptance is split from the universal rejection scenario', as
         'schemas',
         'source',
         'protocol',
-        'get-adcp-capabilities-response.json'
+        'get-adcp-capabilities-completed.json'
       ),
       'utf8'
     )

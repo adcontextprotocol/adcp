@@ -57,6 +57,7 @@ type PendingReportingRevision = Omit<ReportingRevision, 'revision_content_sha256
 export function validateReliableReportingResponse(
   value: unknown,
 ): TrainingGetReportingStatusResponse {
+  // A completed read or a failed lookup: the task response covers both.
   const validation = validateSourceSchema('media-buy/get-reporting-status-response.json', value);
   if (!validation.valid) {
     throw new Error(`Invalid Reliable Reporting response: ${JSON.stringify(validation.errors)}`);

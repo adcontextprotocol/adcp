@@ -102,7 +102,7 @@ describe('sync_creatives assignment_operations', () => {
 
   it('withholds the list from a 3.2 caller, where the field does not exist', () => {
     const caps = { creative: { has_creative_library: true, assignment_operations: ['assign', 'unassign', 'replace'] } };
-    const schemaFile = 'protocol/get-adcp-capabilities-response.json';
+    const schemaFile = 'protocol/get-adcp-capabilities-completed.json';
     expect(fieldsAddedAfterRelease(caps, schemaFile, '3.2')).toEqual(['/creative/assignment_operations']);
     expect(fieldsAddedAfterRelease(caps, schemaFile, '3.3-beta.0')).toEqual([]);
   });

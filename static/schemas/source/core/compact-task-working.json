@@ -13,7 +13,6 @@
     "current_step": { "type": "string", "maxLength": 500 },
     "total_steps": { "type": "integer", "minimum": 1 },
     "step_number": { "type": "integer", "minimum": 1 },
-    "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "additionalProperties": true

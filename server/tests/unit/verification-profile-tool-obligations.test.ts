@@ -123,7 +123,7 @@ function requestSchemaAttribution(): Map<string, Set<string>> {
 }
 
 function supportedProtocols(): string[] {
-  const schema = JSON.parse(readFileSync(join(schemaRoot, 'protocol', 'get-adcp-capabilities-response.json'), 'utf8'));
+  const schema = JSON.parse(readFileSync(join(schemaRoot, 'protocol', 'get-adcp-capabilities-completed.json'), 'utf8'));
   return schema.properties.supported_protocols.items.enum;
 }
 

@@ -105,7 +105,7 @@ test('release-precision version grammar stays aligned across inlined negotiation
     readJson('trusted-match/context-match-request.json').properties.adcp_version.pattern,
     readJson('trusted-match/identity-match-request.json').properties.adcp_version.pattern,
     readJson('error-details/version-unsupported.json').properties.supported_versions.items.pattern,
-    readJson('protocol/get-adcp-capabilities-response.json').properties.adcp.properties.supported_versions.items.pattern,
+    readJson('protocol/get-adcp-capabilities-completed.json').properties.adcp.properties.supported_versions.items.pattern,
   ];
   assert.deepEqual(inlinedPatterns, Array(inlinedPatterns.length).fill(canonicalPattern));
 

@@ -49,8 +49,8 @@ test('live update policy allows on_rejection only on staged entries', async () =
 });
 
 test('capability requires a creative library and validates its policy', async () => {
-  const validate = await compile('protocol/get-adcp-capabilities-response.json');
-  const base = schema('protocol/get-adcp-capabilities-response.json');
+  const validate = await compile('protocol/get-adcp-capabilities-completed.json');
+  const base = schema('protocol/get-adcp-capabilities-completed.json');
   const creative = base.properties.creative;
   assert.equal(creative.properties.live_updates['x-status'], 'experimental');
   const libraryRule = creative.allOf.find(rule => JSON.stringify(rule.if) === JSON.stringify({ required: ['live_updates'] }));
@@ -78,7 +78,7 @@ test('staged update requires a rejection reason exactly when rejected', async ()
 });
 
 test('sync response and list_creatives carry staged_update beside the serving status', async () => {
-  const syncResponse = await compile('creative/sync-creatives-response.json');
+  const syncResponse = await compile('creative/sync-creatives-completed.json');
   const response = {
     status: 'completed',
     creatives: [{
@@ -90,8 +90,8 @@ test('sync response and list_creatives carry staged_update beside the serving st
   };
   assert.equal(syncResponse(response), true, JSON.stringify(syncResponse.errors));
 
-  const listResponse = await compile('creative/list-creatives-response.json');
-  const list = schema('creative/list-creatives-response.json');
+  const listResponse = await compile('creative/list-creatives-completed.json');
+  const list = schema('creative/list-creatives-completed.json');
   const row = list.properties.creatives.items.properties;
   assert.equal(row.live_updates, undefined, 'the per-creative live_updates readback is dropped; dry_run answers for one change');
   const fields = schema('creative/list-creatives-request.json').properties.fields.items.enum;

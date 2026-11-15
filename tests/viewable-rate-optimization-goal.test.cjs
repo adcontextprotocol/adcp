@@ -3,14 +3,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
 async function loadSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8')
-  );
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -89,7 +88,7 @@ test('seller optimization capabilities can declare viewable_rate and supported s
     '/schemas/enums/viewability-standard.json'
   );
 
-  const capabilities = await loadSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+  const capabilities = await loadSchema('/schemas/protocol/get-adcp-capabilities-completed.json');
   const rollup = JSON.stringify(capabilities).match(/"supported_optimization_metrics":\{[^}]*"enum":\[([^\]]*)\]/);
   assert.ok(rollup, 'supported_optimization_metrics enum not found');
   assert.match(rollup[1], /"viewable_rate"/);

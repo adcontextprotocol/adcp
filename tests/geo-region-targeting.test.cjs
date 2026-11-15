@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.join(__dirname, "..");
 const SCHEMA_ROOT = path.join(ROOT, "static", "schemas", "source");
@@ -12,9 +13,7 @@ async function loadSchema(uri) {
   if (!uri.startsWith("/schemas/")) {
     throw new Error(`Unexpected schema URI: ${uri}`);
   }
-  return JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)), "utf8")
-  );
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)));
 }
 
 async function compile(uri) {
@@ -229,8 +228,8 @@ test("region include and exclude identities are disjoint", async () => {
 
 test("seller capabilities retain boolean compatibility and add precise region directions", async () => {
   const [validate, capabilitiesSchema, supportSchema] = await Promise.all([
-    compile("/schemas/protocol/get-adcp-capabilities-response.json"),
-    loadSchema("/schemas/protocol/get-adcp-capabilities-response.json"),
+    compile("/schemas/protocol/get-adcp-capabilities-completed.json"),
+    loadSchema("/schemas/protocol/get-adcp-capabilities-completed.json"),
     loadSchema("/schemas/core/geo-region-support.json"),
   ]);
   const base = {

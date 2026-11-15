@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/provide-performance-feedback-failed.json",
+  "title": "ProvidePerformanceFeedbackError",
+  "description": "Body of a failed provide_performance_feedback response: operation-level errors, and none of the success fields. The completed body also admits this body.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "description": "Array of errors explaining why feedback was rejected (e.g., invalid measurement period, missing campaign data)",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["errors"],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": ["success"]
+      },
+      {
+        "required": ["sandbox"]
+      }
+    ]
+  }
+}

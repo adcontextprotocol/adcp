@@ -162,7 +162,7 @@
       "rationale": "Existing rights-channel language values predate the canonical primitive."
     },
     {
-      "path": "protocol/get-adcp-capabilities-response.json#/properties/creative/properties/localization/properties/locale_matching",
+      "path": "protocol/get-adcp-capabilities-completed.json#/properties/creative/properties/localization/properties/locale_matching",
       "disposition": "not-a-language-tag",
       "rationale": "Capability enum naming a supported matching algorithm, not a language tag."
     },

@@ -380,7 +380,7 @@ test('resolveEntityAtPath: walks oneOf variants', () => {
   // variant the real response matched.
   const schema = JSON.parse(
     fs.readFileSync(
-      path.resolve(__dirname, '..', 'static', 'schemas', 'source', 'brand', 'acquire-rights-response.json'),
+      path.resolve(__dirname, '..', 'static', 'schemas', 'source', 'brand', 'acquire-rights-completed.json'),
       'utf8',
     ),
   );

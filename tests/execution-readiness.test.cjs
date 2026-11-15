@@ -4,12 +4,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.resolve(__dirname, "..");
 const SOURCE = path.join(ROOT, "static", "schemas", "source");
 
 function readJson(relativePath) {
-  return JSON.parse(fs.readFileSync(path.join(SOURCE, relativePath), "utf8"));
+  return readSchemaFile(path.join(SOURCE, relativePath));
 }
 
 async function loadSchema(uri) {
@@ -428,7 +429,8 @@ test("the readiness map rides on a public-scope list_products response", async (
     "the map never rides on an unchanged outcome (it needs products)",
   );
 
-  const schema = readJson("media-buy/list-products-response.json");
+  // The generated list_products response composes this completed body.
+  const schema = readJson("media-buy/list-products-completed.json");
   assert.ok(
     !schema.required?.includes("execution_readiness"),
     "the map is optional",
@@ -442,9 +444,16 @@ test("the readiness map rides on a public-scope list_products response", async (
 
 test("get_products no longer declares the readiness request flag or response map", () => {
   const request = readJson("media-buy/get-products-request.json");
-  const response = readJson("media-buy/get-products-response.json");
   assert.equal(request.properties.include_execution_readiness, undefined);
-  assert.equal(response.properties.execution_readiness, undefined);
+  // No get_products status body declares the map, nor the shared declarations they refer to.
+  for (const body of ["completed", "rejected", "failed"]) {
+    const response = readJson(`media-buy/get-products-${body}.json`);
+    assert.equal(response.properties.execution_readiness, undefined, body);
+  }
+  assert.equal(
+    readJson("media-buy/get-products-shared-properties.json").definitions.execution_readiness,
+    undefined,
+  );
 });
 
 test("the list_products request flag is optional, boolean, and experimental", async () => {
