@@ -338,7 +338,21 @@ describe('inventory tenants', () => {
       expect(daily.at(-1)!.date > '2027-02-15').toBe(true);
     });
 
+    it('discards the caller\'s markets on both inventory tenants on reset_state', async () => {
+      await call('inventory-adserver', 'create_media_buy', {
+        idempotency_key: 'inventory-content-cross-reset01', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-03-20T00:00:00Z', end_time: '2027-04-20T00:00:00Z',
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 50_000 }],
+      }, CONTENT_TOKEN);
+      expect((await call('inventory-adserver', 'get_media_buys', { account: ACCOUNT }, CONTENT_TOKEN)).media_buys).toHaveLength(1);
+      const reset = await call(tenant, 'comply_test_controller', { scenario: 'reset_state', account: ACCOUNT }, CONTENT_TOKEN);
+      expect(reset.success, JSON.stringify(reset).slice(0, 500)).toBe(true);
+      expect((await call('inventory-adserver', 'get_media_buys', { account: ACCOUNT }, CONTENT_TOKEN)).media_buys).toHaveLength(0);
+      expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CONTENT_TOKEN)).media_buys).toHaveLength(0);
+    });
+
     it('reports a postponed installment at its new date', async () => {
+      await clock({ operation: 'advance_time', to: '2027-01-24T00:00:00Z' });
       const offer = await products('2027-01-15', '2027-01-20');
       const video = offer.products.find((product: Structured) => product.product_id === 'maker_studio_integration');
       const moved = video.installments.find((installment: Structured) => installment.installment_id === 'maker_studio_006');
