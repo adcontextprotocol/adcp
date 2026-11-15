@@ -2848,10 +2848,19 @@ const FORMAT_ID_PARAMETERS = ['width', 'height', 'duration_ms', 'pixel_ratio'] a
 // that carries a different value for a requested parameter is a different
 // variant; a declaration without that parameter is the template, which
 // accepts it (specs/legacy-compact-lifecycle-compatibility.md, `filters.format_ids`).
+// `pixel_ratio` is the exception: a sized format ID that omits it is the 1x
+// variant, not a template (`core/format-id.json`).
+function formatIdParameter(formatId: FormatID, parameter: typeof FORMAT_ID_PARAMETERS[number]): unknown {
+  const value = (formatId as unknown as Record<string, unknown>)[parameter];
+  if (parameter === 'pixel_ratio' && value === undefined
+      && formatId.width !== undefined && formatId.height !== undefined) return 1;
+  return value;
+}
+
 function formatIdParametersMatch(actual: FormatID, wanted: FormatID): boolean {
   return FORMAT_ID_PARAMETERS.every(parameter => {
-    const requested = (wanted as unknown as Record<string, unknown>)[parameter];
-    const declared = (actual as unknown as Record<string, unknown>)[parameter];
+    const requested = formatIdParameter(wanted, parameter);
+    const declared = formatIdParameter(actual, parameter);
     return requested === undefined || declared === undefined || declared === requested;
   });
 }

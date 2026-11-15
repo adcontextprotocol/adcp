@@ -67,6 +67,18 @@ describe('retained get_products facade obligations on the training agent', () =>
     expect(ids(products).sort()).toEqual(['format_ids_b_parameters', 'format_ids_z_matching']);
   });
 
+  it.each([[1, ['format_ids_z_matching']], [2, []]])(
+    'treats a sized declaration without pixel_ratio as the 1x variant (request pixel_ratio %s)',
+    async (pixelRatio, expected) => {
+      const products = await gradedResponse('format_ids', '3.1', {
+        filters: { format_ids: [{
+          agent_url: 'https://creative.acmeoutdoor.example', id: 'display_image', width: 300, height: 250, pixel_ratio: pixelRatio,
+        }] },
+      });
+      expect(ids(products)).toEqual(expected);
+    },
+  );
+
   it.each(['3.0', '3.1', '3.2-rc.7'])('keeps preferred_delivery_types non-excluding at %s', async version => {
     expect(ids(await gradedResponse('preferred_delivery_types', version))).toContain('preferred_delivery_non_guaranteed');
   });
