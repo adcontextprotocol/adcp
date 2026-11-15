@@ -824,7 +824,7 @@ async function tryHandleInventoryComplyScenario(
         const params = rawArgs.params && typeof rawArgs.params === 'object' && !Array.isArray(rawArgs.params)
           ? rawArgs.params as Record<string, unknown>
           : {};
-        const body = await handleInventorySandboxClock(params, principal);
+        const body = await handleInventorySandboxClock(tenantId, params, principal);
         await flushDirtySessions();
         return body;
       });

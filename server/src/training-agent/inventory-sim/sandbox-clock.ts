@@ -8,13 +8,16 @@
  *
  * It moves the caller's one sandbox clock (`simulated_now` in
  * `account-sandbox.ts`), the same clock `reporting_subscription_probe`
- * `advance_time` moves. It only moves forward, `reset_state` unpins it, and
- * advancing runs every inventory market's day steps for each day crossed.
+ * `advance_time` moves. It only moves forward and `reset_state` unpins it.
+ * Advancing runs the day steps for each day crossed in the market of the
+ * tenant it is called on; the caller's other markets run the same days on
+ * their next read, with the same results. Writing only that tenant's market
+ * keeps the write under the router's lock for that tenant.
  */
 import { loadSandbox, sandboxNowIso, sandboxNowMs } from '../account-sandbox.js';
 import { runSandboxClockAdvanceHooks } from '../subscription-probe.js';
 import type { TrainingContext } from '../types.js';
-import type { SeasonSeed } from './engine/index.js';
+import { DAY_MS, type SeasonSeed } from './engine/index.js';
 import { advanceMarket } from './market-store.js';
 
 export const SANDBOX_CLOCK_SCENARIO = 'sandbox_clock';
@@ -42,7 +45,7 @@ function failure(error: string, detail: string): Json {
 export async function handleSandboxClock(
   params: Json,
   ctx: TrainingContext,
-  markets: ReadonlyArray<{ tenantId: string; seed: SeasonSeed }>,
+  market: { tenantId: string; seed: SeasonSeed },
 ): Promise<Json> {
   const operation = params.operation;
   const sandbox = await loadSandbox(ctx.principal);
@@ -75,12 +78,12 @@ export async function handleSandboxClock(
   if (target - nowMs > MAX_ADVANCE_MS) return failure('INVALID_PARAMS', 'advance_time moves the clock at most ten years at a time');
   sandbox.doc.simulated_now = new Date(target).toISOString();
   sandbox.save();
-  let daysRun = 0;
-  for (const market of markets) daysRun = Math.max(daysRun, await advanceMarket(market.tenantId, market.seed, ctx.principal));
+  await advanceMarket(market.tenantId, market.seed, ctx.principal);
+  const daysCrossed = Math.floor(target / DAY_MS) - Math.floor(nowMs / DAY_MS);
   await runSandboxClockAdvanceHooks(ctx, target);
   return {
     success: true,
-    simulated: { simulated_now: sandbox.doc.simulated_now, previous_simulated_now: new Date(nowMs).toISOString(), days_run: daysRun },
+    simulated: { simulated_now: sandbox.doc.simulated_now, previous_simulated_now: new Date(nowMs).toISOString(), days_crossed: daysCrossed },
     message: `Sandbox clock advanced to ${sandbox.doc.simulated_now}`,
   };
 }

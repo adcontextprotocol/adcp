@@ -10,8 +10,9 @@ import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'inventory-tenants-test-public-token';
 
-import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { flushDirtySessions, runWithSessionContext, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { setSandboxWallClockForTesting } from '../../src/training-agent/account-sandbox.js';
+import { resetReportingSubscriptionProbe } from '../../src/training-agent/subscription-probe.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Where an unpinned sandbox clock starts, so the seeds' scripted 2027
@@ -219,7 +220,7 @@ describe('inventory tenants', () => {
       const advanced = await controller({ operation: 'advance_time', by: 'P31D' });
       expect(advanced.success).toBe(true);
       expect(advanced.simulated.simulated_now).toBe('2027-01-31T12:00:00.000Z');
-      expect(advanced.simulated.days_run).toBe(31);
+      expect(advanced.simulated.days_crossed).toBe(31);
 
       const delivery = await call(tenant, 'get_media_buy_delivery', {
         account: ACCOUNT, media_buy_ids: [guaranteed.media_buy_id, auction.media_buy_id],
@@ -261,6 +262,26 @@ describe('inventory tenants', () => {
       expect(after.simulated.pinned).toBe(false);
       const buys = await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN);
       expect(buys.media_buys).toHaveLength(0);
+    });
+
+    it('starts a market fresh when another tenant unpins the shared clock', async () => {
+      await controller({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
+      await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-clock-fresh-market-001', account: ACCOUNT, brand: BRAND, ...flight,
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 50_000 }],
+      }, CLOCK_TOKEN);
+      await controller({ operation: 'advance_time', by: 'P5D' });
+      expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN)).media_buys).toHaveLength(1);
+
+      // The reset /sales reset_state runs unpins the same clock; this market
+      // had run days the wall clock has not reached, so it belongs to a
+      // discarded timeline.
+      await runWithSessionContext(async () => {
+        await resetReportingSubscriptionProbe({ mode: 'open', principal: `static:demo:${CLOCK_TOKEN}` });
+        await flushDirtySessions();
+      });
+      expect((await controller({ operation: 'get' })).simulated.pinned).toBe(false);
+      expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN)).media_buys).toHaveLength(0);
     });
   });
 });
