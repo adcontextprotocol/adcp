@@ -73,6 +73,7 @@ import {
   subscriptionOfferings,
 } from '../reporting-subscriptions.js';
 import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
+import { TRAINING_ASSIGNMENT_OPERATIONS } from '../assignment-operations.js';
 import { applyHoldCapabilities } from '../holds/capabilities.js';
 import { FORCE_HOLD_UNAVAILABLE, supportsHolds33 } from '../holds/service.js';
 import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
@@ -1451,6 +1452,9 @@ function projectTenantCapabilities(
         // shapes omit these 3.3 flags below.
         supports_provenance: true,
         supports_registry_policy_enforcement: true,
+        // sync_creatives assignment_operations the seller accepts (3.3). The
+        // list is exact; merge is refused. live_updates below requires replace.
+        assignment_operations: [...TRAINING_ASSIGNMENT_OPERATIONS],
         supported_formats: supportedFormats,
         preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',

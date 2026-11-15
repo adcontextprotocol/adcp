@@ -22,7 +22,8 @@ const { mapStoryboardResultsToTrackResult } = require(join(
 )) as { mapStoryboardResultsToTrackResult: (track: string, results: StoryboardResult[], profile: unknown) => TrackResult };
 
 // #8534: hosted heartbeat on the 3.1.29 bundle for a media-buy 3.1 seller. The
-// SDK grades declined capability gates not applicable only from 3.2.
+// SDK grades declined capability gates not applicable from 3.2 and, since
+// 17.0.0-beta.27 (adcp-client#3699), from 3.1.24 as well.
 const ISSUE_RELEASE = '3.1.29';
 const SDK_CAPABILITY_ROLLUP_RELEASE = '3.2.10';
 const RELEASE_LINES: Readonly<Record<string, string>> = { [ISSUE_RELEASE]: '3.1', [SDK_CAPABILITY_ROLLUP_RELEASE]: '3.2' };
@@ -278,17 +279,15 @@ function gateStep(run: ComplianceResult, storyboardId: string) {
 const [SIGNING_BUNDLE_ID, SIGNING_STORYBOARD] = SIGNING_BUNDLE;
 
 describe('Strict Spec for an agent that does not advertise request signing (#8534)', { timeout: CATALOG_LOAD_TIMEOUT_MS }, () => {
-  it('sets aside signed_requests on the issue run and keeps every other gap incomplete', () => {
+  it('sets aside signed_requests on the issue run and leaves only the runner gaps incomplete', () => {
     const fixture = fixtures.get(ISSUE_RELEASE)!;
     // The SDK grades the unmet signer partial on every release.
     expect(fixture.sdkStatus.get(SIGNING_STORYBOARD)).toBe('partial');
-    // Deliberate tripwire: declined 3.1 capability gates stay partial until the
-    // SDK applies its rollup from 3.1.24 (adcontextprotocol/adcp-client#3699).
-    // On that SDK bump
-    // this fails, and the wholesale and protocol bundles leave the incomplete
-    // list below.
-    expect(fixture.sdkStatus.get(DECLINED_CAPABILITY_BUNDLES[0][1])).toBe('partial');
-    expect(fixture.protocolStatus).toBe('partial');
+    // Declined 3.1.24+ capability gates grade not applicable since the SDK
+    // applies its rollup there (adcontextprotocol/adcp-client#3699), so the
+    // wholesale and protocol bundles no longer count as incomplete.
+    expect(fixture.sdkStatus.get(DECLINED_CAPABILITY_BUNDLES[0][1])).toBe('not_applicable');
+    expect(fixture.protocolStatus).toBe('passing');
 
     const assessment = strictSpec(issueRun());
     expect(assessment.status).toBe('partial');
@@ -298,21 +297,19 @@ describe('Strict Spec for an agent that does not advertise request signing (#853
       SIGNING_BUNDLE_ID,
     ]);
     expect(assessment.evidence.incomplete_bundle_ids).toEqual([
-      ...DECLINED_CAPABILITY_BUNDLES.map(([bundleId]) => `universal:${bundleId}`),
       'universal:webhook-emission',
       'universal:webhook-receiver-envelope',
       'universal:idempotency',
-      'protocol:media-buy',
     ]);
   });
 
-  it('reaches Strict on a release the SDK grades declined capabilities on, once runner gaps close', () => {
-    const fixture = fixtures.get(SDK_CAPABILITY_ROLLUP_RELEASE)!;
+  it.each([ISSUE_RELEASE, SDK_CAPABILITY_ROLLUP_RELEASE])('reaches Strict on %s once runner gaps close', release => {
+    const fixture = fixtures.get(release)!;
     expect(fixture.sdkStatus.get(SIGNING_STORYBOARD)).toBe('partial');
     expect(fixture.sdkStatus.get(DECLINED_CAPABILITY_BUNDLES[0][1])).toBe('not_applicable');
     expect(fixture.protocolStatus).toBe('passing');
 
-    const profiles = assessments(issueRun({ release: SDK_CAPABILITY_ROLLUP_RELEASE, runnerGapsClosed: true }));
+    const profiles = assessments(issueRun({ release, runnerGapsClosed: true }));
     expect(profiles.find(assessment => assessment.grading_profile === 'legacy')?.status).toBe('passing');
     const assessment = profiles.find(assessment => assessment.grading_profile === 'spec')!;
     expect(assessment.status).toBe('passing');
