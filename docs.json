@@ -822,6 +822,7 @@
                   "dist/docs/3.3.0-beta.6/reference/migration/attribution",
                   "dist/docs/3.3.0-beta.6/reference/migration/media-buy-status",
                   "dist/docs/3.3.0-beta.6/reference/migration/targeting-aware-discovery",
+                  "dist/docs/3.3.0-beta.6/reference/migration/trusted-match-context-cache",
                   "dist/docs/3.3.0-beta.6/reference/migration/asset-access",
                   "dist/docs/3.3.0-beta.6/reference/migration/cross-role-governance-enforcement"
                 ]
