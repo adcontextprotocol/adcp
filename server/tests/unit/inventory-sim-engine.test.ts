@@ -59,7 +59,7 @@ function scarceSeed(overrides: Partial<SeasonSeed> = {}): SeasonSeed {
       name: 'Banner',
       channel: 'display',
       property_ids: ['site'],
-      format_ids: ['display_300x250'],
+      formats: ['display_300x250'],
       base_daily_impressions: 10_000,
       floor_cpm: 2,
       rates: { viewability: 0.7, click_rate: 0.001, completion_rate: 0, conversion_rate: 0.02 },
