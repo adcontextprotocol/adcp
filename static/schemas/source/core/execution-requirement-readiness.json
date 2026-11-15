@@ -11,7 +11,7 @@
     },
     "readiness_status": {
       "$ref": "/schemas/enums/execution-readiness-status.json",
-      "description": "Readiness of this requirement. For `downstream_connection`, derived from `connection_state.status`: `connected` and `not_required` are `ready`; `missing`, `pending`, `expired`, `revoked` are `setup_required`; `unknown` is `unknown`. `selection_required` and `input_required` apply only to `event_source` and `catalog`."
+      "description": "Readiness of this requirement. For `downstream_connection`, derived from `connection_state.status`: `connected` and `not_required` are `ready`; `missing`, `pending`, `expired`, `revoked` are `setup_required`; `unknown` is `unknown`. `selection_required` and `input-required` apply only to `event_source` and `catalog`."
     },
     "binding_field": {
       "type": "string",

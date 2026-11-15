@@ -4637,6 +4637,8 @@ components:
                 items:
                   $ref: "#/components/schemas/StoryboardSkippedStep"
                 description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers.
+              verdict_explanation:
+                $ref: "#/components/schemas/StoryboardVerdictExplanation"
               last_tested_at:
                 type:
                   - string
@@ -4661,6 +4663,7 @@ components:
               - first_failure_message
               - first_failure_validations
               - skipped_steps
+              - verdict_explanation
               - last_tested_at
               - last_passed_at
           description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
@@ -4861,6 +4864,86 @@ components:
         - blocked_by_step_id
         - blocked_by_step_title
         - blocked_by_reason
+    StoryboardVerdictExplanation:
+      type:
+        - object
+        - "null"
+      properties:
+        reason:
+          type: string
+          description: "Runner verdict_reason: step_failed, assertion_failed, controller_prerequisite_unmet, required_phase_not_executed, no_executed_steps, fixture_error, coverage_unverified, runner_error, or unexplained. runner_error is not an agent failure."
+        detail:
+          type:
+            - string
+            - "null"
+          description: One-line redacted runner explanation. May echo agent-supplied values.
+        contributing:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryboardVerdictContributor"
+          description: Up to 10 steps, assertions, phases or requirements behind the verdict.
+      required:
+        - reason
+        - detail
+        - contributing
+      description: Why the storyboard failed when no counted step did (adcp#8576). Populated only for owners and operators; null for other callers and for passing or step-level verdicts.
+    StoryboardVerdictContributor:
+      type: object
+      properties:
+        kind:
+          type:
+            - string
+            - "null"
+          description: step, assertion, phase or requirement.
+        id:
+          type:
+            - string
+            - "null"
+          description: Step id, assertion id, phase id, or requirement name.
+        reason:
+          type:
+            - string
+            - "null"
+          description: The verdict reason this row supports.
+        status:
+          type:
+            - string
+            - "null"
+          description: failed, skipped, or not_passed.
+        phase_id:
+          type:
+            - string
+            - "null"
+        pass_index:
+          type:
+            - integer
+            - "null"
+          description: 1-based pass index in multi-pass runs.
+        skip_reason:
+          type:
+            - string
+            - "null"
+          description: Runner skip reason, when the step was skipped.
+        requirement:
+          type:
+            - string
+            - "null"
+          description: Unmet requirement named by the skip, e.g. controller.
+        message:
+          type:
+            - string
+            - "null"
+          description: Redacted runner text. May echo agent-supplied values.
+      required:
+        - kind
+        - id
+        - reason
+        - status
+        - phase_id
+        - pass_index
+        - skip_reason
+        - requirement
+        - message
     PublicComplianceNotice:
       type: object
       properties:
@@ -5714,6 +5797,8 @@ components:
           items:
             $ref: "#/components/schemas/StoryboardSkippedStep"
           description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers.
+        verdict_explanation:
+          $ref: "#/components/schemas/StoryboardVerdictExplanation"
         last_tested_at:
           type:
             - string
@@ -5737,6 +5822,7 @@ components:
         - first_failed_step_task
         - first_failure_message
         - skipped_steps
+        - verdict_explanation
         - last_tested_at
         - last_passed_at
     ComplianceRun:
@@ -15519,6 +15605,8 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/StoryboardSkippedStep"
+                      verdict_explanation:
+                        $ref: "#/components/schemas/StoryboardVerdictExplanation"
                     required:
                       - storyboard_id
                       - status
@@ -15532,6 +15620,7 @@ paths:
                       - first_failure_message
                       - first_failure_validations
                       - skipped_steps
+                      - verdict_explanation
                     description: Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status.
                   phases: {}
                   summary: {}

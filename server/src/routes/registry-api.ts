@@ -153,6 +153,7 @@ import {
   AgentVerificationSchema,
   StoryboardStatusSchema,
   StoryboardSkippedStepSchema,
+  StoryboardVerdictExplanationSchema,
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
   ComplianceRunSchema,
@@ -754,6 +755,7 @@ type StoryboardStatusLike = {
   first_failure_message?: string | null;
   first_failure_validations_jsonb?: unknown;
   skipped_steps?: unknown;
+  verdict_explanation?: unknown;
   run_org_id?: string | null;
   last_tested_at?: Date | string | null;
   last_passed_at?: Date | string | null;
@@ -784,6 +786,41 @@ function normalizeSkippedSteps(value: unknown): Array<Record<(typeof SKIPPED_STE
     ])) as Record<(typeof SKIPPED_STEP_FIELDS)[number], string | null>);
 }
 
+const VERDICT_CONTRIBUTOR_STRING_FIELDS = [
+  "kind", "id", "reason", "status", "phase_id", "skip_reason", "requirement", "message",
+] as const;
+
+type SerializedVerdictContributor =
+  Record<(typeof VERDICT_CONTRIBUTOR_STRING_FIELDS)[number], string | null> & { pass_index: number | null };
+
+/**
+ * Re-shape the stored storyboard-level verdict explanation (adcp#8576) into
+ * the documented response shape, dropping anything unexpected in the JSONB.
+ */
+function normalizeVerdictExplanation(value: unknown): {
+  reason: string;
+  detail: string | null;
+  contributing: SerializedVerdictContributor[];
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.reason !== "string" || record.reason.length === 0) return null;
+  const rows = Array.isArray(record.contributing) ? record.contributing : [];
+  return {
+    reason: record.reason,
+    detail: typeof record.detail === "string" ? record.detail : null,
+    contributing: rows
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === "object" && !Array.isArray(row))
+      .map((row) => ({
+        ...Object.fromEntries(VERDICT_CONTRIBUTOR_STRING_FIELDS.map((field) => [
+          field,
+          typeof row[field] === "string" ? row[field] as string : null,
+        ])),
+        pass_index: typeof row.pass_index === "number" && Number.isInteger(row.pass_index) ? row.pass_index : null,
+      }) as SerializedVerdictContributor),
+  };
+}
+
 function serializeStoryboardRunStatus(
   s: StoryboardStatusLike,
   options: { includeDiagnostics?: boolean } = {},
@@ -804,6 +841,9 @@ function serializeStoryboardRunStatus(
       ? normalizeValidationList(s.first_failure_validations_jsonb)
       : [],
     skipped_steps: includeDiagnostics ? normalizeSkippedSteps(s.skipped_steps) : [],
+    // Owner/operator only, like every other diagnostic field: the public
+    // compliance surface says details are available to the owner or operator.
+    verdict_explanation: includeDiagnostics ? normalizeVerdictExplanation(s.verdict_explanation) : null,
   };
 }
 
@@ -5312,6 +5352,7 @@ const StoryboardRunStatusResponseSchema = z.object({
   first_failure_message: z.string().nullable(),
   first_failure_validations: z.array(z.any()),
   skipped_steps: z.array(StoryboardSkippedStepSchema),
+  verdict_explanation: StoryboardVerdictExplanationSchema.nullable(),
 });
 
 const StoryboardRunDiagnosticResponseSchema = z.object({
