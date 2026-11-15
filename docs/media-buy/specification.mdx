@@ -452,7 +452,7 @@ Statuses, per requirement and rolled up per product:
 | `ready` | The account has exactly one suitable resource (for a connection, the one the seller would use is connected) | None beyond binding (below) |
 | `setup_required` | The account has none, or the connection is `missing`, `pending`, `expired`, or `revoked` | Create or restore it, for example with `sync_event_sources`, `sync_catalogs`, or `connection_state.authorization_url` |
 | `selection_required` | The account has several suitable resources | Choose one from `candidates[]` and bind it |
-| `input_required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
+| `input-required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
 | `unknown` | The seller could not read the account's resources | Depends on `unknown_reason`: `permission_denied` needs a human to fix the seller's grant on the account, `platform_unavailable` is worth retrying, `not_evaluated` means refetch fewer products. Meanwhile the purchase task decides |
 
 Rules:
@@ -464,7 +464,7 @@ Rules:
   `execution_requirements` get an entry. A missing entry means not evaluated,
   not ready.
 - **Rollup.** A product's `readiness_status` is the first of `setup_required`,
-  `input_required`, `selection_required`, `unknown` that any requirement
+  `input-required`, `selection_required`, `unknown` that any requirement
   reports, else `ready`: the most blocking state the seller could establish.
   Buyers needing more MUST read `requirements[]`.
 - **Could not check is not lacking.** `unknown` carries `unknown_reason`
@@ -494,7 +494,7 @@ Rules:
   `missing`, `expired`, or `revoked` connection SHOULD include
   `authorization_url` or `authorization_instructions`; `pending` MAY omit both. This
   slice does not list several identities or let the buyer choose among them.
-  `selection_required` and `input_required` never apply to connections.
+  `selection_required` and `input-required` never apply to connections.
 - **Account-scoped and advisory.** The map appears only when the request set
   `include_execution_readiness: true` and carried an `account` the caller is
   authorized for; otherwise the seller omits it (an `account` that does not

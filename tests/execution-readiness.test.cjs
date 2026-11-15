@@ -76,7 +76,7 @@ const SETUP_EVENT_SOURCE = {
 };
 const INPUT_CATALOG = {
   requirement: CATALOG,
-  readiness_status: "input_required",
+  readiness_status: "input-required",
   issues: [
     {
       severity: "info",
@@ -112,7 +112,7 @@ const connection = (status, extra = {}) => ({
 // The documented rollup: the first blocking state any requirement reports.
 const ROLLUP_ORDER = [
   "setup_required",
-  "input_required",
+  "input-required",
   "selection_required",
   "unknown",
 ];
@@ -129,7 +129,7 @@ test("status enum is the five-value readiness vocabulary", () => {
     "ready",
     "setup_required",
     "selection_required",
-    "input_required",
+    "input-required",
     "unknown",
   ]);
   assert.deepEqual(Object.keys(schema.enumDescriptions), schema.enum);
@@ -300,8 +300,8 @@ test("downstream_connection readiness derives from connection_state and has no c
       "no identity candidates in this slice",
     ],
     [
-      { ...connected, readiness_status: "input_required" },
-      "input_required applies to bound kinds only",
+      { ...connected, readiness_status: "input-required" },
+      "input-required applies to bound kinds only",
     ],
     [
       { ...connected, resolved: { resource_id: "pg_1" } },
@@ -337,7 +337,7 @@ test("product rollup is the first blocking state and is derivable", async () => 
     [[READY_EVENT_SOURCE, SELECTION_EVENT_SOURCE], "selection_required"],
     [[SELECTION_EVENT_SOURCE, UNKNOWN_CATALOG], "selection_required"],
     [[READY_EVENT_SOURCE, UNKNOWN_CATALOG], "unknown"],
-    [[SELECTION_EVENT_SOURCE, INPUT_CATALOG], "input_required"],
+    [[SELECTION_EVENT_SOURCE, INPUT_CATALOG], "input-required"],
     [[INPUT_CATALOG, SETUP_EVENT_SOURCE, UNKNOWN_CATALOG], "setup_required"],
   ];
   for (const [requirements, expected] of cases) {
