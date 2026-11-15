@@ -10,9 +10,14 @@ import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'inventory-tenants-test-public-token';
 
-import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { flushDirtySessions, runWithSessionContext, stopSessionCleanup } from '../../src/training-agent/state.js';
+import { setSandboxWallClockForTesting } from '../../src/training-agent/account-sandbox.js';
+import { resetReportingSubscriptionProbe } from '../../src/training-agent/subscription-probe.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Where an unpinned sandbox clock starts, so the seeds' scripted 2027
+ * events stay ahead of it whenever the suite runs. */
+const WALL_CLOCK = '2026-11-20T09:00:00Z';
 const TOKEN = 'demo-inventory-tenants-v1';
 const ACCOUNT = { brand: { domain: 'inventory-buyer.example' }, operator: 'inventory-buyer.example', sandbox: true };
 const BRAND = { domain: 'inventory-buyer.example' };
@@ -55,9 +60,12 @@ describe('inventory tenants', () => {
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;
+    const offset = Date.parse(WALL_CLOCK) - Date.now();
+    setSandboxWallClockForTesting(() => Date.now() + offset);
   }, 90_000);
 
   afterAll(async () => {
+    setSandboxWallClockForTesting();
     stopSessionCleanup();
     if (!server) return;
     server.closeAllConnections();
@@ -66,7 +74,7 @@ describe('inventory tenants', () => {
 
   describe('/inventory-adserver', () => {
     const tenant = 'inventory-adserver';
-    const start = new Date(Math.floor(Date.now() / DAY_MS) * DAY_MS + 2 * DAY_MS);
+    const start = new Date(Date.parse(WALL_CLOCK.slice(0, 10)) + 2 * DAY_MS);
     const end = new Date(start.getTime() + 30 * DAY_MS);
     const day = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -167,4 +175,113 @@ describe('inventory tenants', () => {
     });
   });
 
+  describe('sandbox_clock on the inventory tenants', () => {
+    const tenant = 'inventory-adserver';
+    const CLOCK_TOKEN = 'demo-inventory-clock-v1';
+    const controller = (params: Record<string, unknown>, scenario = 'sandbox_clock') =>
+      call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, CLOCK_TOKEN);
+    const flight = { start_time: '2027-01-01T00:00:00Z', end_time: '2027-01-31T00:00:00Z' };
+
+    it('is listed and discoverable', async () => {
+      const listed = await call(tenant, 'comply_test_controller', { scenario: 'list_scenarios', account: ACCOUNT }, CLOCK_TOKEN);
+      expect(listed.scenarios).toEqual(expect.arrayContaining(['sandbox_clock', 'reset_state']));
+      const capabilities = await call(tenant, 'get_adcp_capabilities', {}, CLOCK_TOKEN);
+      expect(capabilities.compliance_testing.scenarios).toEqual(expect.arrayContaining(['sandbox_clock', 'reset_state']));
+    });
+
+    it('delivers a month of buys over simulated time', async () => {
+      const initial = await controller({ operation: 'get' });
+      expect(initial.success).toBe(true);
+      expect(initial.simulated.simulated_now.slice(0, 10)).toBe(WALL_CLOCK.slice(0, 10));
+      expect(initial.simulated.pinned).toBe(false);
+
+      const pinned = await controller({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
+      expect(pinned.simulated.simulated_now).toBe('2026-12-31T12:00:00.000Z');
+
+      const guaranteed = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-clock-guaranteed-00001', account: ACCOUNT, brand: BRAND, ...flight,
+        packages: [{ product_id: 'sports_hero_guaranteed', pricing_option_id: 'sports_hero_guaranteed_cpm', budget: 3000, impressions: 180_000 }],
+      }, CLOCK_TOKEN);
+      expectCanonical('create_media_buy', guaranteed);
+      const forecast = await call(tenant, 'get_products', {
+        buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND,
+        filters: { start_date: '2027-01-01', end_date: '2027-01-30', delivery_type: 'non_guaranteed' },
+      }, CLOCK_TOKEN);
+      const forecastMid = forecast.products.find((product: Structured) => product.product_id === 'preroll_auction')
+        .forecast.points[0].metrics.impressions.mid as number;
+      // A budget no day can spend: the bid takes every pre-roll impression
+      // that arrives, so its delivery is the actual traffic.
+      const auction = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-clock-auction-0000001', account: ACCOUNT, brand: BRAND, ...flight,
+        packages: [{ product_id: 'preroll_auction', pricing_option_id: 'preroll_auction_cpm', budget: 1_000_000, bid_price: 10 }],
+      }, CLOCK_TOKEN);
+      expectCanonical('create_media_buy', auction);
+
+      const advanced = await controller({ operation: 'advance_time', by: 'P31D' });
+      expect(advanced.success).toBe(true);
+      expect(advanced.simulated.simulated_now).toBe('2027-01-31T12:00:00.000Z');
+      expect(advanced.simulated.days_crossed).toBe(31);
+
+      const delivery = await call(tenant, 'get_media_buy_delivery', {
+        account: ACCOUNT, media_buy_ids: [guaranteed.media_buy_id, auction.media_buy_id],
+      }, CLOCK_TOKEN);
+      expectCanonical('get_media_buy_delivery', delivery);
+      const [g, a] = delivery.media_buy_deliveries;
+      expect(g.status).toBe('completed');
+
+      // The hero unit loses three quarters of its traffic 2027-01-08..12 and
+      // the guarantee falls behind, then catches up on the days after.
+      const daily = new Map<string, number>(g.daily_breakdown.map((row: Structured) => [row.date, row.impressions]));
+      expect(daily.get('2027-01-09')!).toBeLessThan(daily.get('2027-01-06')! / 2);
+      const average = (from: number, to: number) => {
+        let total = 0;
+        for (let d = from; d <= to; d++) total += daily.get(`2027-01-${String(d).padStart(2, '0')}`)!;
+        return total / (to - from + 1);
+      };
+      expect(average(13, 30)).toBeGreaterThan(average(1, 7) * 1.1);
+      expect(g.totals.impressions).toBeGreaterThan(180_000 * 0.97);
+      expect(g.totals.impressions).toBeLessThanOrEqual(180_000);
+
+      // Actual traffic differs from the forecast, within the seeded error.
+      expect(a.totals.impressions).not.toBe(forecastMid);
+      expect(Math.abs(a.totals.impressions / forecastMid - 1)).toBeGreaterThan(0.001);
+      expect(Math.abs(a.totals.impressions / forecastMid - 1)).toBeLessThan(0.15);
+      expect(a.totals.spend).toBeCloseTo((a.totals.impressions * 10) / 1000, 0);
+    });
+
+    it('only moves forward, and reset_state unpins it', async () => {
+      const backwards = await controller({ operation: 'advance_time', to: '2027-01-01T00:00:00Z' });
+      expect(backwards.success).toBe(false);
+      expect(backwards.error).toBe('INVALID_TRANSITION');
+      const badDuration = await controller({ operation: 'advance_time', by: 'P1M' });
+      expect(badDuration.error).toBe('INVALID_PARAMS');
+
+      const reset = await call(tenant, 'comply_test_controller', { scenario: 'reset_state', account: ACCOUNT }, CLOCK_TOKEN);
+      expect(reset.success, JSON.stringify(reset).slice(0, 500)).toBe(true);
+      const after = await controller({ operation: 'get' });
+      expect(after.simulated.pinned).toBe(false);
+      const buys = await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN);
+      expect(buys.media_buys).toHaveLength(0);
+    });
+
+    it('starts a market fresh when another tenant unpins the shared clock', async () => {
+      await controller({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
+      await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-clock-fresh-market-001', account: ACCOUNT, brand: BRAND, ...flight,
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 50_000 }],
+      }, CLOCK_TOKEN);
+      await controller({ operation: 'advance_time', by: 'P5D' });
+      expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN)).media_buys).toHaveLength(1);
+
+      // The reset /sales reset_state runs unpins the same clock; this market
+      // had run days the wall clock has not reached, so it belongs to a
+      // discarded timeline.
+      await runWithSessionContext(async () => {
+        await resetReportingSubscriptionProbe({ mode: 'open', principal: `static:demo:${CLOCK_TOKEN}` });
+        await flushDirtySessions();
+      });
+      expect((await controller({ operation: 'get' })).simulated.pinned).toBe(false);
+      expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN)).media_buys).toHaveLength(0);
+    });
+  });
 });

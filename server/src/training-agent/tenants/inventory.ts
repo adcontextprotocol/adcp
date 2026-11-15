@@ -7,6 +7,11 @@
  * - `/inventory-adserver` — display, video and a homepage takeover, sold
  *   guaranteed and in a first-price auction.
  *
+ * Their `comply_test_controller` serves `sandbox_clock` (get and advance the
+ * caller's sandbox clock; the router intercepts it, as the SDK's controller
+ * config has no slot for it) and `reset_state` (unpin the clock and discard
+ * the caller's markets on every inventory tenant).
+ *
  * They speak the media-buy protocol as it is; no new tasks. They are not in
  * the host's brand.json or adagents.json tenant listings.
  */
@@ -14,6 +19,9 @@
 import type { TenantConfig } from '@adcp/sdk/server';
 import { ADSERVER_SEASON } from '../inventory-sim/engine/index.js';
 import { InventoryPlatform, type InventoryTenantProfile } from '../inventory-sim/platform.js';
+import { resetMarket } from '../inventory-sim/market-store.js';
+import { SANDBOX_CLOCK_SCENARIO, handleSandboxClock } from '../inventory-sim/sandbox-clock.js';
+import { resetReportingSubscriptionProbe } from '../subscription-probe.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { listAccountsTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
@@ -32,6 +40,25 @@ const LABELS: Readonly<Record<string, string>> = {
 
 export function isInventoryTenant(tenantId: string): boolean {
   return INVENTORY_TENANT_IDS.includes(tenantId);
+}
+
+/** Controller scenarios an inventory tenant lists. */
+export const INVENTORY_COMPLY_SCENARIOS: readonly string[] = ['reset_state', SANDBOX_CLOCK_SCENARIO];
+
+/** `sandbox_clock` for a caller, called on one inventory tenant. */
+export function handleInventorySandboxClock(tenantId: string, params: Record<string, unknown>, principal: string | undefined) {
+  return handleSandboxClock(
+    params,
+    { mode: 'open', principal: principal ?? 'anonymous' },
+    INVENTORY_TENANT_PROFILES[tenantId],
+  );
+}
+
+/** `reset_state`: unpin the caller's clock, which every tenant shares, and
+ * discard the caller's market on every inventory tenant with it. */
+async function resetInventoryCaller(principal: string | undefined): Promise<void> {
+  await resetReportingSubscriptionProbe({ mode: 'open', principal: principal ?? 'anonymous' });
+  for (const id of INVENTORY_TENANT_IDS) await resetMarket(id, principal);
 }
 
 export function buildInventoryTenantConfig(
@@ -53,6 +80,11 @@ export function buildInventoryTenantConfig(
       serverOptions: {
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
+        },
+        complyTest: {
+          resetState: async ctx => {
+            await resetInventoryCaller((ctx.authInfo as { clientId?: string } | undefined)?.clientId);
+          },
         },
       },
     },

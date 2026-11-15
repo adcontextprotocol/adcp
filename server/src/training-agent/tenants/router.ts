@@ -80,6 +80,8 @@ import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
 import { projectCollectionCapabilities } from '../collections/capabilities.js';
 import { supportsCollections33 } from '../collections/card-catalog.js';
 import { SEED_COLLECTION_SCENARIO } from '../collections/seed-collection.js';
+import { INVENTORY_COMPLY_SCENARIOS, handleInventorySandboxClock, isInventoryTenant } from './inventory.js';
+import { SANDBOX_CLOCK_SCENARIO } from '../inventory-sim/sandbox-clock.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -657,6 +659,9 @@ function tenantMcpHandler(
         else delete controllerArgs.ext;
       }
 
+      if (await tryHandleInventoryComplyScenario(req, res, resolved.tenantId, principal, routeVersions)) {
+        return;
+      }
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat, routeVersions)) {
         return;
       }
@@ -776,6 +781,65 @@ async function tryRefuseByAccountGrant(
     jsonrpc: '2.0',
     id: req.body.id ?? null,
     result: adcpError(code, rest, args.context),
+  });
+  return true;
+}
+
+/**
+ * Inventory tenants (#9025): `sandbox_clock`, and a `list_scenarios` that
+ * names it, answered here because the SDK's controller config has no slot
+ * for a scenario of our own. `reset_state` goes through the SDK.
+ */
+async function tryHandleInventoryComplyScenario(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  principal: string | undefined,
+  routeVersions: readonly string[],
+): Promise<boolean> {
+  if (!isInventoryTenant(tenantId)) return false;
+  if (req.body?.method !== 'tools/call' || req.body?.params?.name !== 'comply_test_controller') return false;
+  const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  if (rawArgs.scenario !== SANDBOX_CLOCK_SCENARIO && rawArgs.scenario !== 'list_scenarios') return false;
+  const { context, ...handlerArgs } = rawArgs;
+  const versionResolution = resolveServedAdcpVersion(handlerArgs, routeVersions);
+  if (!versionResolution.ok) {
+    res.json({
+      jsonrpc: '2.0',
+      id: req.body.id ?? null,
+      result: adcpError('VERSION_UNSUPPORTED', {
+        message: versionResolution.message,
+        details: versionResolution.details,
+        field: versionResolution.field,
+      }, context),
+    });
+    return true;
+  }
+  const account = rawArgs.account as { sandbox?: unknown } | undefined;
+  const result = rawArgs.scenario === 'list_scenarios'
+    ? { success: true, scenarios: [...INVENTORY_COMPLY_SCENARIOS] }
+    : account && typeof account === 'object' && account.sandbox === false
+      ? { success: false, error: 'FORBIDDEN', error_detail: 'sandbox_clock is sandbox only' }
+      : await runWithSessionContext(async () => {
+        const params = rawArgs.params && typeof rawArgs.params === 'object' && !Array.isArray(rawArgs.params)
+          ? rawArgs.params as Record<string, unknown>
+          : {};
+        const body = await handleInventorySandboxClock(tenantId, params, principal);
+        await flushDirtySessions();
+        return body;
+      });
+  res.json({
+    jsonrpc: '2.0',
+    id: req.body.id ?? null,
+    result: {
+      content: [{ type: 'text', text: `Compliance scenario ${String(rawArgs.scenario)} completed.` }],
+      structuredContent: {
+        status: 'completed',
+        adcp_version: versionResolution.servedVersion,
+        ...result,
+        ...(context !== undefined && { context }),
+      },
+    },
   });
   return true;
 }
@@ -1517,6 +1581,12 @@ function projectTenantCapabilities(
       };
       // Experimental 3.3 holds: hold_policy, extend_hold, ranking, installment holds.
       applyHoldCapabilities(structured, servedVersion, proposalNegotiationProfile, storyboardCompat);
+    }
+    if (isInventoryTenant(tenantId)) {
+      structured.compliance_testing = {
+        ...(structured.compliance_testing && typeof structured.compliance_testing === 'object' ? structured.compliance_testing : {}),
+        scenarios: [...INVENTORY_COMPLY_SCENARIOS],
+      };
     }
     // Every tenant: a release whose capabilities schema closes the scenario
     // enum (3.0) never sees scenarios added after it, whichever projection

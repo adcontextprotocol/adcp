@@ -103,6 +103,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       channels: channels as never,
       pricingModels: ['cpm'] as const,
       supportedBillings: ['agent', 'operator'] as const,
+      // The router lists the scenarios (tenants/inventory.ts).
+      compliance_testing: {},
       config: { strict: false },
     };
   }
