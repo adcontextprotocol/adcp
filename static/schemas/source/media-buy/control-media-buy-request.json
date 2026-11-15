@@ -58,7 +58,7 @@
         "currency": { "$ref": "/schemas/core/currency-code.json" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "daily_budget_cap": {
       "type": ["number", "null"],

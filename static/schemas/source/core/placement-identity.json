@@ -21,7 +21,7 @@
         }
       },
       "required": ["kind", "publisher_domain", "placement_id"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Seller inline placement identity",
@@ -41,7 +41,7 @@
         }
       },
       "required": ["kind", "seller_agent", "placement_id"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

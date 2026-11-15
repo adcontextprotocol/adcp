@@ -15,5 +15,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["evidence_id", "snapshot_id", "version", "content_digest", "decision_use"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

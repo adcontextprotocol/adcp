@@ -31,7 +31,7 @@
         }
       },
       "required": ["selection_type", "publisher_domain", "tags"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -57,7 +57,7 @@
         }
       },
       "required": ["selection_type", "publisher_domain", "property_ids"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -79,7 +79,7 @@
         }
       },
       "required": ["selection_type", "identifiers"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

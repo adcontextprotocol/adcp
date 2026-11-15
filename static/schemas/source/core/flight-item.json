@@ -23,7 +23,7 @@
         }
       },
       "required": ["airport_code"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "destination": {
       "type": "object",
@@ -39,7 +39,7 @@
         }
       },
       "required": ["airport_code"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "airline": {
       "type": "string",

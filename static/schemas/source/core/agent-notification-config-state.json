@@ -44,6 +44,7 @@
       "description": "Echoed from the desired configuration when set."
     },
     "authentication": {
+      "description": "Rejects `credentials`: credentials are write-only and never read back.",
       "type": "object",
       "deprecated": true,
       "properties": {
@@ -59,7 +60,8 @@
       "required": [
         "schemes"
       ],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "required": ["credentials"] }
     },
     "active": {
       "type": "boolean",
@@ -74,5 +76,5 @@
     "url",
     "event_types"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

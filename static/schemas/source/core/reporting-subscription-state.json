@@ -34,7 +34,7 @@
         "accepted_at",
         "superseded_at"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ReportingSubscriptionAccountExceptions": {
       "title": "Reporting Subscription Account Exceptions",
@@ -57,7 +57,7 @@
         "account_id",
         "reasons"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ReportingSubscriptionUnauthorizedAccount": {
       "title": "Reporting Subscription Unauthorized Account",
@@ -97,7 +97,7 @@
         "unauthorized_at",
         "withheld_period_count"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "properties": {
@@ -138,7 +138,7 @@
           "reactivated_at": { "type": "string", "format": "date-time", "description": "When active true was applied again. Absent for the current interval while the subscription is inactive." }
         },
         "required": ["deactivated_at"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "destination_ref": {
@@ -176,7 +176,7 @@
           "destination_ref": { "$ref": "/schemas/core/reporting-destination-ref.json", "x-entity": "reporting_destination" }
         },
         "required": ["destination_id", "destination_ref"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "accounts_unauthorized": {
@@ -203,5 +203,5 @@
       "else": { "not": { "required": ["deactivated_at"] } }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -106,7 +106,7 @@
         "content_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "SHA-256 of RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows}, where reporting_rows is the complete ordered sequence concatenated across every cursor page; identical to reporting_revision.revision_content_sha256." }
       },
       "required": ["reporting_revision_id", "row_count", "control_totals", "content_sha256"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "reporting_revision": { "$ref": "/schemas/core/reporting-revision.json", "description": "Full immutable revision metadata, identical to the get_reporting_status revision record." },
     "reporting_rows": { "type": "array", "items": { "type": "object" }, "description": "One page of authoritative logical rows for an exact reporting_revision_id read. Validate every row against the revision's digest-pinned schema; concatenate pages in cursor order before verifying the binding digest." },
@@ -355,7 +355,7 @@
           },
           "by_package": {
             "type": "array",
-            "description": "Metrics broken down by package",
+            "description": "Metrics broken down by package. Every media buy has at least one package, so sellers SHOULD return at least one row, one per package in the media buy. A seller that cannot report a buy SHOULD omit its delivery row and return an error rather than return an empty array. AdCP 4.0 is expected to require at least one row (adcp#8973).",
             "items": {
               "allOf": [
                 {

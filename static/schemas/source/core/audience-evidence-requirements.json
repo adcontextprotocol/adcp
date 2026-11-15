@@ -107,5 +107,5 @@
       "then": { "required": ["accepted_attestation_issuers"] }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

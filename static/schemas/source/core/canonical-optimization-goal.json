@@ -24,7 +24,7 @@
           },
           "required": ["window"],
           "anyOf": [{ "required": ["min"] }, { "required": ["max"] }],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "view_duration_seconds": { "type": "number", "exclusiveMinimum": 0 },
         "target": {
@@ -34,7 +34,7 @@
             "value": { "type": "number", "exclusiveMinimum": 0 }
           },
           "required": ["kind", "value"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "priority": { "type": "integer", "minimum": 1 }
       },
@@ -52,7 +52,7 @@
           "else": { "not": { "anyOf": [{ "required": ["standard"] }, { "required": ["vendor"] }] } }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -70,7 +70,7 @@
               "value_factor": { "type": "number", "default": 1 }
             },
             "required": ["event_source_id", "event_type"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1
         },
@@ -80,13 +80,13 @@
             "kind": { "type": "string", "const": "maximize_value" }
           },
           "required": ["kind"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "attribution_window": { "$ref": "/schemas/core/attribution-window.json" },
         "priority": { "type": "integer", "minimum": 1 }
       },
       "required": ["kind", "event_sources"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -101,12 +101,12 @@
             "value": { "type": "number", "exclusiveMinimum": 0 }
           },
           "required": ["kind", "value"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "priority": { "type": "integer", "minimum": 1 }
       },
       "required": ["kind", "vendor", "metric_id"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

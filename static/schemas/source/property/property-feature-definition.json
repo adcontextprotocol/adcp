@@ -35,7 +35,7 @@
         }
       },
       "required": ["min", "max"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "allowed_values": {
       "type": "array",
@@ -63,7 +63,7 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "methodology_url": {
       "type": "string",
@@ -79,5 +79,5 @@
     }
   },
   "required": ["feature_id", "name", "type", "methodology_url"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

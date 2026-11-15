@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/audience-evidence-relationship.json",
   "title": "Audience Evidence Relationship",
-  "description": "What an audience-evidence estimate says. The vocabulary of buyer targets.",
+  "description": "What an audience-evidence estimate says.",
   "type": "string",
   "enum": ["composition", "index", "reach_estimate"],
   "enumDescriptions": {

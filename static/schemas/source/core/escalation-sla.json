@@ -12,12 +12,9 @@
     "response_max"
   ],
   "properties": {
-    "clock": {
-      "type": "string",
-      "const": "elapsed"
-    },
     "response_max": {
-      "$ref": "/schemas/core/day-time-duration.json"
+      "$ref": "/schemas/core/day-time-duration.json",
+      "description": "Maximum elapsed time from seller receipt of the report to human acknowledgement, including weekends and non-working periods."
     },
     "completion_max": false
   },

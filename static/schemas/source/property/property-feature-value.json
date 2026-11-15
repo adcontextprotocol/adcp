@@ -45,5 +45,5 @@
     }
   },
   "required": ["value"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

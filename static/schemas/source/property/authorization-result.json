@@ -33,9 +33,9 @@
         }
       },
       "required": ["code", "message"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "required": ["status"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

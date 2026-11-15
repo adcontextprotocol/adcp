@@ -1,5 +1,5 @@
 id: media_buy_seller/product_coverage_filters
-version: "1.0.0"
+version: "1.0.1"
 title: "Product coverage is preserved across discovery surfaces"
 category: media_buy_seller
 summary: "Checks legacy and compact coverage predicates against independent negative controls without configuring delivery targeting."
@@ -90,6 +90,9 @@ fixtures:
 phases:
   - id: legacy_coverage
     title: "Preserve coverage on retained get_products"
+    requires_capability:
+      path: media_buy.buying_modes
+      contains: wholesale
     steps:
       - id: legacy_country_and_metro
         title: "Apply both coverage predicates before pagination"
@@ -133,6 +136,7 @@ phases:
             description: "Metro coverage does not require selectable metro targeting"
   - id: compact_coverage
     title: "Apply identical predicates through offer_filters"
+    depends_on: []
     steps:
       - id: compact_country_and_metro
         title: "Return the same offer through list_products"

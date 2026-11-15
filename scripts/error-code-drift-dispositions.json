@@ -6,6 +6,11 @@
       "target_version": "3.3",
       "note": "request_account and sync_accounts settings updates return this when the seller would accept the change only as a separate account and the caller did not allow one. New 3.3 account wire code \u2014 held for 3.3."
     },
+    "UNRECOGNIZED_TERMS": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.3",
+      "note": "A seller rejects a request carrying commercial terms it would be bound by, such as buy_products purchases, when it cannot interpret every member. New 3.3 media-buy wire code \u2014 held for 3.3."
+    },
     "CREATIVE_LIVE_UPDATE_UNSUPPORTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.3",

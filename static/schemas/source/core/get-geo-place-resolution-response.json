@@ -58,7 +58,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "definitions": {
     "numeric_place_value": {
       "title": "Numeric Place Value",

@@ -32,7 +32,7 @@
       "token"
     ]
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Preferred response shape",

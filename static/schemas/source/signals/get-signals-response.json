@@ -74,7 +74,7 @@
               "min",
               "max"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "signal_type": {
             "$ref": "/schemas/enums/signal-catalog-type.json",
@@ -186,7 +186,7 @@
           "scope",
           "description"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "wholesale_feed_version": {

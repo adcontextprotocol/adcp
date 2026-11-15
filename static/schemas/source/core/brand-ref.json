@@ -42,7 +42,7 @@
         { "required": ["url"] },
         { "required": ["email"] }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "brand_kit_override": {
       "type": "object",
@@ -77,7 +77,7 @@
     }
   },
   "required": ["domain"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "domain": "nova-brands.com",

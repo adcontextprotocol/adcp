@@ -14,7 +14,7 @@
         "height": { "type": "integer", "description": "Screen height in pixels.", "minimum": 1 }
       },
       "required": ["width", "height"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "PublisherDoohAddress": {
       "title": "Publisher DOOH Address",
@@ -27,7 +27,7 @@
         "postal_code": { "type": "string", "description": "Postal or ZIP code." },
         "country": { "$ref": "/schemas/core/country-code.json", "description": "ISO 3166-1 alpha-2 country code." }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "PublisherDoohLocation": {
       "title": "Publisher DOOH Location",
@@ -44,7 +44,7 @@
         },
         "address": { "$ref": "#/definitions/PublisherDoohAddress" }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "PublisherDoohPlacementAttributes": {
       "title": "Publisher DOOH Placement Attributes",

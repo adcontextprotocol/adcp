@@ -23,7 +23,7 @@
         }
       },
       "required": ["type", "brand"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AttestationAgentSubject",
@@ -34,7 +34,7 @@
           "const": "agent"
         },
         "agent_url": {
-          "$ref": "/schemas/core/canonical-https-url.json",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Canonical HTTPS endpoint of the agent the claim concerns."
         },
         "ext": {
@@ -42,7 +42,7 @@
         }
       },
       "required": ["type", "agent_url"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AttestationResourceSubject",
@@ -77,7 +77,7 @@
         }
       },
       "required": ["type", "resource_type", "namespace", "id"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "examples": [

@@ -1,5 +1,5 @@
 id: media_buy_seller/provenance_audit_observation
-version: "1.0.1"
+version: "1.1.0"
 title: "Seller accepts a provenance carve-out claim surfaced as an audit observation"
 category: media_buy_seller
 summary: "Buyer submits AI-assisted creatives with human_oversight directed/edited and disclosure.required false. Seller invokes an on-list verifier, records OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED audit observations, and accepts the creatives rather than treating the observations as rejections."
@@ -33,6 +33,10 @@ narrative: |
   verifier calls, and a sandbox-only controller query for the recorded
   observation; public seller responses do not have to expose the seller's
   internal audit log.
+
+  The audit queries read state that sync_creatives creates, so they declare
+  sync_creatives. A seller without sync_creatives skips the sync and both
+  queries, and its verifier discovery is still graded.
 
 agent:
   interaction_model: stateful_push
@@ -309,10 +313,23 @@ phases:
                 match: equals
                 value: false
 
+  # Each audit read consumes the state the sync creates, so it declares
+  # sync_creatives (adcp-client#3524 honors that ahead of the cascade). Each
+  # also sits alone in its phase: a runner without that precedence applies the
+  # sole-stateful exemption to a missing_tool skip and then grades the next
+  # read on its own requires_tool, instead of cascading prerequisite_failed.
+  - id: observe_directed_audit
+    title: "Read the directed carve-out audit observation"
+    depends_on: [accept_carveout_claim]
+    narrative: |
+      The sandbox controller exposes the audit observation the seller recorded
+      while accepting the directed creative.
+
+    steps:
       - id: query_directed_audit_observation
         title: "Assert directed carve-out audit observation"
         task: comply_test_controller
-        requires_tool: comply_test_controller
+        requires_tool: sync_creatives
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
         doc_ref: "/building/implementation/comply-test-controller"
@@ -354,10 +371,18 @@ phases:
             value: false
             description: "Observation records the disclosure.required false claim"
 
+  - id: observe_edited_audit
+    title: "Read the edited carve-out audit observation"
+    depends_on: [accept_carveout_claim]
+    narrative: |
+      The sandbox controller exposes the audit observation the seller recorded
+      while accepting the edited creative.
+
+    steps:
       - id: query_edited_audit_observation
         title: "Assert edited carve-out audit observation"
         task: comply_test_controller
-        requires_tool: comply_test_controller
+        requires_tool: sync_creatives
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
         doc_ref: "/building/implementation/comply-test-controller"

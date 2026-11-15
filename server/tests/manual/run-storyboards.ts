@@ -43,6 +43,7 @@ import {
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
+import { prereleaseDiscoveryEnvelope } from '../../src/compliance/prerelease-discovery-envelope.js';
 import { formatFailureDetailSnippet, formatFailedValidationSummary, formatStepFailureDetail, storyboardStepStatus, type StoryboardStepForSummary } from './storyboard-report-format.js';
 import { registerStoryboardCandidateSchemaRoot } from './storyboard-candidate-schema-root.js';
 
@@ -191,6 +192,10 @@ const wireAdcpVersion = isThreeZeroCompatRun
   : isCurrentSourceRun
     ? TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
+// A candidate run pins a prerelease the agent advertises exactly; keep
+// capability discovery pinned to it (adcp-client#3715). Stable wire pins keep
+// the SDK default. The hosted grader applies the same rule.
+const wireVersionEnvelope = prereleaseDiscoveryEnvelope(wireAdcpVersion);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -339,10 +344,6 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
     'governance_delivery_monitor/check_governance_drift',
     'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
-  ],
-  [
-    'media_buy_seller/canonical_formats/create_media_buy_with_equivalent_direct_legacy_emission',
-    'Since @adcp/sdk 17.0.0-beta.2 (adcp-client#3454) the runner grades the direct route of this dual-emission request on its own and calls its omitted max_file_size_kb under-specified, before the seller answers. The spec requires a selector to declare only fixed size and duration. Remove when adcontextprotocol/adcp-client#3470 is resolved.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
@@ -719,6 +720,7 @@ async function selectStoryboardsForTenant(
     allow_http: true,
     ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
     ...(wireAdcpVersion && { wireAdcpVersion }),
+    ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
   }));
   // A Version Packages PR creates the next schema bundle before any published
   // SDK can embed it. Register that candidate root around capability discovery
@@ -1113,6 +1115,7 @@ async function main() {
           const result = await inServedLineScope(() => runStoryboard(targetUrl, storyboard, {
             ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
             ...(wireAdcpVersion && { wireAdcpVersion }),
+            ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
             ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
             auth,
             allow_http: true,
@@ -1177,6 +1180,7 @@ async function main() {
         const result = await inServedLineScope(() => runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           ...(wireAdcpVersion && { wireAdcpVersion }),
+          ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
           ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
           auth,
           allow_http: true,

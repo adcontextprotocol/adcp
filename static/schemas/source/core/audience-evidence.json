@@ -47,7 +47,7 @@
         "description": { "type": "string" }
       },
       "required": ["system", "population_id", "version"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "evidence_type": {
       "$ref": "/schemas/enums/audience-evidence-type.json",
@@ -134,5 +134,5 @@
       "then": { "properties": { "unit": { "const": "count" }, "value": { "type": "integer" } } }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

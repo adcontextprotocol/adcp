@@ -68,7 +68,7 @@
         }
       },
       "required": ["accepted"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "required": ["opportunity_id"],

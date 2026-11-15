@@ -27,5 +27,5 @@
       "then": { "required": ["detail"] }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

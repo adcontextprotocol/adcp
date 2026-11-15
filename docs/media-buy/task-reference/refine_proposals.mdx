@@ -60,6 +60,7 @@ Typed fields are deliberately small and mechanically verifiable:
 | `constraints.impressions` | Hard volume floor. Satisfied only when every purchase carries `impressions` and their sum is at least `min`. |
 | `constraints.flight` | Flight-window bounds. `start_no_later_than` requires a concrete `commercial_terms.start_time` at or before the bound (`asap` is unverifiable and unsatisfied); `end_no_earlier_than` requires `end_time` at or after it. |
 | `product_changes` | Map keyed by product ID. `include` requires a product in `commercial_terms.purchases`; `omit` requires it to be absent. Keying makes contradictory actions unrepresentable. |
+| `installment_changes` | Experimental (`media_buy.installment_refinement`). A list of `{ product_id, installment_ref, action }` entries, unique by `(product_id, installment_ref)`, asking for specific installments of a product. See [Choose installments](#choose-installments-experimental). |
 | `alternatives.count` | Number of drafts with distinct commercial terms requested, from 2 through the protocol maximum of 10 and no higher than a seller's advertised `max_alternatives`. Returned alternatives have distinct `commercial_terms` and therefore unique `terms_digest` values; diversity strategy remains free text. |
 | `criteria` | Structured discovery criteria to replace on the source proposal. Omitted criteria fields remain inherited; concrete targeting and offer filters belong here. |
 | `remove_media_buy_frequency_cap` | Set to `true` to produce a revised draft without the inherited root frequency cap. Mutually exclusive with `criteria.media_buy_frequency_cap`. |
@@ -89,7 +90,7 @@ The response contains one ordered `results[]` entry per requested source proposa
 | Code | Meaning |
 |---|---|
 | `commercially_declined` | The seller understood terms requested through the free-text `ask` but declined to offer them. |
-| `constraint_unsatisfiable` | A typed constraint or product change was not satisfied — whether the seller cannot or will not meet it. |
+| `constraint_unsatisfiable` | A typed constraint, product change, or installment change was not satisfied — whether the seller cannot or will not meet it. |
 | `unsupported_dimension` | The seller cannot parse or validate a requested typed dimension. |
 | `uninterpreted` | Some or all of the free-text `ask` could not be interpreted. |
 | `alternatives_unavailable` | Fewer distinct drafts were produced than requested. |
@@ -101,7 +102,7 @@ Typed failures always use `constraint_unsatisfiable`, regardless of whether the 
 
 A draft that violates a hard constraint MUST NOT be returned as `revised`. For `constraints.total_budget`, satisfaction requires a present `commercial_terms.total_budget`, the requested currency, and an amount inside every supplied bound. An absent total, currency mismatch, or out-of-range amount is unsatisfied: the seller returns `partial`, or `unable` when it cannot produce an honest draft, with `reason_code: "constraint_unsatisfiable"` and `unsatisfied_constraints: ["total_budget"]`. The other `constraints` keys behave identically under their satisfaction rules in the request schema.
 
-Every draft on a `partial` result MUST satisfy every typed constraint whose key is absent from `unsatisfied_constraints`, and every product action absent from `unsatisfied_product_changes`, whatever the `reason_code`. This is the invariant that lets a buyer trust typed compliance without parsing prose. Constraint failures are identified through `unsatisfied_constraints` (echoing request `constraints` keys), `unsatisfied_product_changes` (a subset of the requested product-action map), or any combination of them.
+Every draft on a `partial` result MUST satisfy every typed constraint whose key is absent from `unsatisfied_constraints`, every product action absent from `unsatisfied_product_changes`, and every installment entry absent from `unsatisfied_installment_changes`, whatever the `reason_code`. This is the invariant that lets a buyer trust typed compliance without parsing prose. Constraint failures are identified through `unsatisfied_constraints` (echoing request `constraints` keys), `unsatisfied_product_changes` (a subset of the requested product-action map), or any combination of them.
 
 A `partial` response to the request above looks like:
 
@@ -157,6 +158,79 @@ The deprecated [`get_products`](/docs/media-buy/task-reference/get_products) `bu
 Initial proposal discovery is different: `request_proposals.criteria.offer_filters.budget_range` MAY map to `get_products.filters.budget_range` with exact amounts, exact currency, inclusive bounds, no currency conversion, and no proposal-level guarantee. Compact revision criteria use whole-field replacement, while legacy filters are absolute. Legacy finalize is compatible only when the adapter can guarantee unchanged complete commercial terms. See [Legacy budget compatibility](/docs/media-buy/product-discovery/proposal-negotiation#legacy-budget-compatibility-normative) for the complete normative mapping, typed rejection shape, and lifecycle rules.
 
 The surfaces otherwise share `ask` and product `include`/`omit` verbs, but not response envelopes. Adapters must not invent support for per-proposal constraints or alternatives that the legacy envelope cannot represent faithfully. The legacy `more_like_this` verb has no typed compact equivalent and maps only lossily into `ask`.
+
+## Choose installments (experimental)
+
+Experimental (`media_buy.installment_refinement`, [#8967](https://github.com/adcontextprotocol/adcp/issues/8967)). A buyer can ask for specific installments of a product that declares them: these two creator posts, not that one. Send `installment_changes` only to a seller that lists `media_buy.installment_refinement` in `experimental_features` and `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`. A seller that doesn't support the dimension rejects it at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), like any omitted dimension.
+
+Nothing new goes into `commercial_terms`. The seller answers with a draft that buys a product whose `installments[]` is exactly the chosen set, often one it derives for the selection. Buying that product buys its complete installment set, so `terms_digest` binds the choice through the `product_id`.
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441007",
+  "refinements": [
+    {
+      "proposal_id": "proposal_creators_q4",
+      "action": "revise",
+      "installment_changes": [
+        {
+          "product_id": "creator_juniper_vale",
+          "installment_ref": {
+            "collection_ref": { "publisher_domain": "availnet.example", "collection_id": "juniper_vale" },
+            "installment_id": "2026-12-10"
+          },
+          "action": "omit"
+        }
+      ]
+    }
+  ]
+}
+```
+
+If `creator_juniper_vale` declared the December 3 and December 10 posts, the selected set is the December 3 post alone. The returned draft buys a product that declares only that post, for example `creator_juniper_vale__2026-12-03`, and the response's `products` carries it.
+
+- **Selected set.** For each product named, the selected set is that product's `installments[]` with every `omit` removed and every `include` added. An `omit` names an installment the product declares. An `include` names an installment of a collection the product's `collections` name.
+- **Satisfying draft.** Every returned draft buys exactly one product whose `installments[]` equals the selected set, in place of the named product unless they are the same. A `product_changes` `include` of a named product is satisfied by that purchase. An entry that names a product `product_changes` omits is contradictory.
+- **Fixed sets.** A seller MUST NOT change the installments of a product it has offered. A different set is a different `product_id`.
+- **Buyer check.** Before finalizing, the buyer compares each selected set with the returned product's `installments[]` and rejects a mismatch.
+- **Shortfalls.** An entry the seller can't satisfy in every draft comes back in `unsatisfied_installment_changes`, repeating the request entry and adding a `reason`. The result is `partial` or `unable` with `reason_code: "constraint_unsatisfiable"`. Every draft on a `partial` result satisfies every entry the list leaves out.
+
+```json
+{
+  "source_proposal_id": "proposal_creators_q4",
+  "outcome": "partial",
+  "reason_code": "constraint_unsatisfiable",
+  "reason": "The December 17 post is already sold.",
+  "unsatisfied_installment_changes": [
+    {
+      "product_id": "creator_juniper_vale",
+      "installment_ref": {
+        "collection_ref": { "publisher_domain": "availnet.example", "collection_id": "juniper_vale" },
+        "installment_id": "2026-12-17"
+      },
+      "action": "include",
+      "reason": "Sold to another buyer."
+    }
+  ],
+  "proposals": [
+    { "proposal_id": "proposal_creators_q4_r2", "parent_proposal_id": "proposal_creators_q4", "proposal_status": "draft", "...": "..." }
+  ]
+}
+```
+
+Checks run in this order, so an unauthorized caller never causes reference resolution:
+
+| # | Condition | Result |
+|---|---|---|
+| 1 | The seller declares `supported_dimensions` without `installment_changes` | Task-level [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation |
+| 2 | Two entries repeat the same `(product_id, installment_ref)`, whether or not their actions agree | Task-level [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request); the seller never picks a winner by position |
+| 3 | `product_id` is neither bought by the source proposal nor included by `product_changes` in the same request, or `product_changes` omits it | Task-level `INVALID_REQUEST`; no draft is created |
+| 4 | `installment_ref` doesn't resolve for the named product | Task-level [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found); no draft is created |
+| 5 | The change resolves, but the seller will not or cannot make it | `partial` or `unable` with `reason_code: "constraint_unsatisfiable"` and the entry in `unsatisfied_installment_changes` with its `reason` |
+
+A swap is not atomic. The seller may satisfy the `omit`, fail the `include`, and return `partial` with a plan worse than the source, so say so in `ask` when you need all or nothing. Adding a creator and choosing its slots is one round trip, because an entry may name a product that `product_changes` includes in the same request.
+
+See [Choosing installments](/docs/media-buy/product-discovery/collections-and-installments#choosing-installments-experimental) for how a selection relates to collections and to [installment holds](#installment-holds-experimental).
 
 ## Finalize and hold inventory
 

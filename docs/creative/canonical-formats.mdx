@@ -585,6 +585,14 @@ Technical constraints are explicit; canonical prose, examples, common practice, 
 
 Completeness is not general creative approval. Policy, legal, security, malware, transport/fetch failure, corrupt bytes, or a material mismatch between declared metadata and inspected content can still cause rejection. For custom formats and platform extensions, a completeness assertion includes the technical constraints in the referenced schema artifacts.
 
+Completeness governs what an option leaves undeclared. It never weakens what the option declares:
+
+- A declared parameter is the whole constraint for its slot. A seller MUST NOT refuse, with a conformance code, a creative on the grounds of a declared parameter that the creative satisfies, and MUST NOT enforce a narrower value. An option declaring `main_image_sizes: [{ "width": 600, "height": 400 }]` accepts a 600×400 `main_image`.
+- A closed set narrows a slot only when declared. With no `cta_values`, the `cta` slot takes free text within any declared `cta_max_chars`, and `CREATIVE_VALUE_NOT_ALLOWED` does not apply.
+- Any other narrowing parameter the option omits sets no limit through that parameter. Under `technical_requirements_complete: true` the seller holds no undeclared limit either, so a creative that conforms to every parameter is not refused with a conformance code. Without the assertion, the omitted constraint is undeclared as described above.
+
+The task-level rule, including how sellers code refusals outside format conformance, is in [`sync_creatives`: format conformance](/docs/creative/task-reference/sync_creatives#format-conformance).
+
 Creative file-size units are decimal and exact throughout AdCP: a field ending in `_kb` uses **1 KB = 1,000 bytes**, a field ending in `_mb` uses **1 MB = 1,000,000 bytes**, and a field ending in `_bytes` is an exact byte count. Implementations MUST NOT substitute binary KiB/MiB units for these fields.
 
 ### Responsive bounds and effective acceptance

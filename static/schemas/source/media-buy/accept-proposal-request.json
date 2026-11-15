@@ -48,7 +48,7 @@
         "currency": { "$ref": "/schemas/core/currency-code.json" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "daily_budget_cap": {
       "type": "number",
@@ -68,7 +68,7 @@
         "signature_id": { "type": "string", "minLength": 1 }
       },
       "required": ["io_id", "accepted_at", "signatory"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "purchase_order_ref": {
       "$ref": "/schemas/core/purchase-order-ref.json"

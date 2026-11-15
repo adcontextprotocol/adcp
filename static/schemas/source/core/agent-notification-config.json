@@ -69,7 +69,7 @@
       "required": [
         "schemes"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "signing_profile": {
       "x-status": "experimental",
@@ -132,7 +132,7 @@
     "required": ["all_authorized_accounts"]
   },
   "not": { "required": ["authentication", "signing_profile"] },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Registry subscriber receiving capability-change invalidations",

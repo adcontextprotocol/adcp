@@ -77,7 +77,7 @@
               "package_id": { "$ref": "/schemas/core/package-id.json" }
             },
             "required": ["purchase_index", "product_id", "package_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "uniqueItems": true
@@ -155,13 +155,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status"],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["media_buy_id"] },
-          { "required": ["warnings"] }
-        ]
-      }
+      "additionalProperties": true
     }
   ]
 }

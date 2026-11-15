@@ -31,5 +31,5 @@
   "required": [
     "tmpx_macro_mapping"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

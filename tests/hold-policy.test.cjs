@@ -88,14 +88,15 @@ const DRAFT = {
   terms_digest: 'sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg',
 };
 
-test('hold_policy validates standalone and rejects undeclared properties', async () => {
+test('hold_policy validates standalone and accepts undeclared properties', async () => {
   const validate = await compile('/schemas/core/hold-policy.json');
   assert.equal(validate(HOLDABLE), true, errors(validate));
   assert.equal(validate({ available: true }), true, errors(validate));
   assert.equal(validate({ available: false }), true, errors(validate));
   assert.equal(validate({ available: false, extendable: false }), false, 'extendable is forbidden without a hold');
   assert.equal(validate({}), false, 'available is required');
-  assert.equal(validate({ ...HOLDABLE, undeclared: true }), false, 'additionalProperties is closed');
+  // Open by default (DR-0036): an unknown key validates.
+  assert.equal(validate({ ...HOLDABLE, undeclared: true }), true, errors(validate));
   assert.equal(validate({ available: 'yes' }), false);
 });
 
@@ -142,7 +143,8 @@ test('legacy and canonical products carry hold_policy', async () => {
 
   const validateCanonical = await compile('/schemas/core/canonical-product.json');
   assert.equal(validateCanonical({ ...CANONICAL_PRODUCT, hold_policy: HOLDABLE }), true, errors(validateCanonical));
-  assert.equal(validateCanonical({ ...CANONICAL_PRODUCT, hold_policy: { ...HOLDABLE, undeclared: 1 } }), false);
+  // Open by default (DR-0036): an unknown key inside hold_policy validates.
+  assert.equal(validateCanonical({ ...CANONICAL_PRODUCT, hold_policy: { ...HOLDABLE, undeclared: 1 } }), true, errors(validateCanonical));
 });
 
 test('only canonical proposals carry hold_policy; the legacy proposal does not', async () => {
@@ -200,7 +202,8 @@ test('hold_policy surfaces are experimental 3.3 additions', () => {
   const holdPolicy = readSchema('core/hold-policy.json');
   assert.equal(holdPolicy['x-status'], 'experimental');
   assert.equal(holdPolicy['x-added-in'], '3.3.0');
-  assert.equal(holdPolicy.additionalProperties, false);
+  // Open by default (DR-0036).
+  assert.equal(holdPolicy.additionalProperties, true);
   assert.deepEqual(holdPolicy.required, ['available']);
   for (const [name, field] of Object.entries(holdPolicy.properties)) {
     assert.equal(field['x-status'], 'experimental', `${name} x-status`);

@@ -432,7 +432,7 @@
               "default": "desc"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "spot": {
           "type": "object",

@@ -21,7 +21,7 @@
     }
   },
   "required": ["id"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     { "id": "234284238", "name": "Nova EMEA" },
     { "id": "benelux-seat", "name": "Nova Benelux" }

@@ -1,12 +1,13 @@
 ---
 id: DR-0036
-title: A closed schema stays closed within a major and changes only by a correction or a named exception
+title: Schemas are open within a major; a schema is closed only for a structural reason
 class: normative
-status: proposed
-date: 2026-10-27
-decided_by: pending WG ratification
-refs: ["#8501", "DR-0009", "DR-0019", "DR-0024", "DR-0034"]
-supersedes: DR-0019  # in part: "adding an optional field to a closed schema is a minor change"
+status: ratified
+date: 2026-11-09
+decided: 2026-11-09
+decided_by: WG session 2026-11-09
+refs: ["#8501", "#7224", "PR #8704", "PR #8777", "PR #8519", "DR-0009", "DR-0019", "DR-0024"]
+supersedes: DR-0019
 dissent: none recorded
 ---
 
@@ -14,105 +15,117 @@ dissent: none recorded
 
 A schema is **closed** when it sets `additionalProperties: false` or
 `unevaluatedProperties: false`. A validator rejects any property that a closed
-schema doesn't list.
+schema doesn't list. Every other schema is **open**.
 
-**A closed schema stays closed for the whole major.** When any stable release
-of a major publishes a schema closed, no later minor or patch release of that
-major adds a property to it. Opening the schema doesn't change this, because
-validators of the release that closed it still reject the new property. This
-holds when the property goes only to peers that negotiated the newer minor, and
-when the property is experimental.
+**Schemas are open by default, in every major.** This holds for 3.x and 4.x.
+Within a major, the rules on the versioning page (PR #8704) decide what a
+release may change. A minor only adds, and new fields go on open schemas.
 
-**A minor release changes a schema only by addition.** It adds optional
-properties to open schemas and widens what a schema accepts. It doesn't remove
-a property, require a new name, or tighten a bound.
+**A schema is closed only for a structural reason.** Three reasons qualify:
 
-**Corrections and named exceptions are the only departures from these two
-rules.** Each one is an entry in `scripts/lint-additive-minor-corrections.json`.
-The entry names the schema, the JSON pointer, the change, the release it lands
-in, and the published text it rests on, quoted. The additive-minor check accepts
-exactly the listed changes. A PR that adds an entry is reviewed against this
-record. The record itself doesn't list entries.
+- **Disjoint branches.** The schema is a `oneOf` branch, and closing it keeps
+  an instance from matching more than one branch.
+- **A closed key set or vocabulary.** Consumers join, reconcile, or dispatch on
+  the full set of keys, so an unknown key is a correctness hazard.
+- **A signed or binding payload.** An extra key would change what is signed or
+  what a party is bound by. `commercial-terms`, which `terms_digest` signs, is
+  one.
+
+The PR that closes a schema, or keeps one closed, names its reason. Catching
+misnamed fields is not a reason to close a schema. The conformance runner's
+`undefined_properties` check reports them instead.
+
+**3.x schemas that were closed without a structural reason are opened, as a
+correction.** Opening a schema rejects nothing that was valid before. 3.3 opens
+them. A patch of each maintained earlier line opens them too: 3.2.x, and 3.1.x
+where needed. From the release that opens it, the schema is open, and a later
+minor adds to it like any open schema.
+
+**A schema that stays closed changes only in a major.** No minor adds a
+property to it. No release in a major closes a schema that the major published
+open (DR-0009). A feature that needs a new property on a closed schema puts the
+property on an open schema or waits for the next major.
+
+**The rule covers stable schemas.** An experimental schema changes under the
+experimental status contract (`docs/reference/experimental-status.mdx`).
 
 ### Corrections
 
-A correction changes a schema to match what the published text of the major
-already says. There are two kinds.
+A correction makes a schema match what the published text of the major already
+says. It may ship in a minor, and in a patch of an earlier minor of the same
+major. There are two kinds:
 
-1. **Opening a schema that the published text keeps open.** DR-0019 allows a
-   closed schema only in class A (a join-key or discriminator object) or
-   class B (a row envelope with an escape hatch). It keeps request roots,
-   response roots, capability blocks, and containers open, and it calls a
-   class B schema without an escape hatch a defect. A schema closed against
-   those rules is opened. From the release that opens it, it is an open schema,
-   and a later minor may add to it. A property added after the opening goes
-   only to peers served that release or a later one (DR-0024).
+1. **Opening a schema that was closed without a structural reason,** as above.
 2. **Bounding a concept as the published text bounds it.** When the published
    text of the major gives a concept a bound or a required name, that bound or
    name holds wherever the concept appears. The text can be prose, a schema of
-   the major that defines the concept, or an external standard the text names,
-   such as RFC 1035 for a domain name. A correction applies the bound at a site
-   that lacked it. No conforming peer sends a value outside it, so the
-   correction rejects nothing a conforming peer sends.
+   the major that defines the concept, or an external standard that the text
+   names. No conforming peer sends a value outside the bound, so the correction
+   rejects nothing a conforming peer sends.
 
-A correction lands in a minor release. It may also ship in a patch of an
-earlier minor of the same major.
-
-### Named exceptions
-
-A named exception lets a schema that DR-0019 keeps closed accept a named
-property that no published text required. The schema stays closed for every
-other name. It is allowed only when all three hold:
-
-- The schema validates a request, so the request's receiver is the validator.
-- Each name requires a capability that the receiver declares.
-- A sender MUST NOT send the name to a receiver that doesn't declare the
-  capability.
-
-### Closing schemas
-
-New schemas default to open (DR-0009). A schema is closed only when it fits
-DR-0019 class A or class B, and the PR that closes it names the class. The rule
-covers stable schemas. A schema that is experimental in the release that
-closes it carries no stability promise.
-
-**This replaces part of DR-0019.** Its consequence "adding an optional field to
-a closed schema is a `minor` change" no longer holds. The rest of DR-0019
-stands.
+Each correction that the additive-minor check would otherwise report is an
+entry in `scripts/lint-additive-minor-corrections.json`. The entry names the
+schema, the JSON pointer, the change, the release it lands in, and the
+published text it rests on, quoted. The check accepts exactly the listed
+changes. A PR that adds an entry is reviewed against this record. The record
+itself doesn't list entries.
 
 ## Rationale
 
-A strict validator rejects any property its closed schema doesn't list, so an
-addition breaks it exactly as a removal does. That the property is optional
-doesn't help: the validator rejects the payload before any reader sees it.
+Closing a schema gives one thing: a strict validator rejects a key the schema
+doesn't list. Across releases, that turns every addition into a break, exactly
+like a removal. A closed object can't grow in a minor. That is why 3.3 had to
+withdraw or move features whose parent object happened to be closed (#8501).
 
-Negotiating a release doesn't contain the break. Objects are stored and read
-back later, relayed to other agents, and covered by digests. So a property sent
-to one peer can reach a validator that never negotiated the newer release.
+Opening a schema breaks no peer that follows the protocol. Senders send a
+newer field only to peers served that release (DR-0024), and readers ignore
+fields they don't know. A validator that hard-codes an earlier release's closed
+schema does reject the newer field. The WG accepted that cost so that minors
+can add to the objects that need to grow. The patch backports reduce the cost:
+a validator on the latest patch of a maintained line accepts the opened
+schemas.
 
-A correction is safe because it restores what the text already said. Opening a
-schema that the text keeps open fixes only a validator that diverged from the
-text. Applying a bound the text already sets rejects only values that no
-conforming peer sends.
+A structural reason is different, because there the closure is the contract.
+Opening a `oneOf` branch can let an instance match two branches. A new key on a
+join-key object changes the join. A new term in a signed payload changes what a
+party agreed to. Those schemas stay closed, and a change to them waits for a
+major.
 
-A named exception is safe for a different reason. A request is validated by the
-receiver it is sent to, and a conforming sender sends the name only to a
-receiver that declared the capability. The declaration is that receiver's own
-statement that it accepts the name. A negotiated release makes no such
-statement about the validators an object reaches later.
+The rewrite in PR #8777, by Konstantin Mirin, set the shape of this record. It
+states the decision and leaves the entries to the register, and it defines the
+correction that bounds a concept. Those parts are reused here. His rules in
+PR #8704 decide what a minor may change; this record decides only which schemas
+are open.
+
+Source: the WG session of 2026-11-09. An earlier draft of this record, proposed
+on 2026-10-27 after WG Session C (#8501), held the opposite rule: a closed
+schema stays closed for the whole major, and only recorded corrections may
+change it. That draft was never ratified. This record replaces it.
 
 ## Implications
 
-- Any other change to a closed schema waits for the next major: a new property,
-  a removal, a newly required name, or a tighter bound that the published text
-  doesn't set.
-- A schema closed on purpose stays closed even when a feature needs it to grow.
-  The feature moves to an open schema or waits for the next major.
-  `commercial-terms` is one: a buyer must not be bound by terms it can't read,
-  and `terms_digest` signs exactly those terms.
-- Changes that shipped before this record stay as published until the next
-  major. `scripts/lint-additive-minor-baseline.json` lists them.
-- `core/postal-area-support.json` counts as closed since 3.0, because 3.0 closed
-  the object it replaced. No 3.x release adds a country key to it.
-- This record doesn't settle how closed schemas such as `commercial-terms` grow
-  in the next major.
+- **DR-0019 is superseded.** Its two classes no longer decide which schemas may
+  be closed; the structural reasons above do. A class B row envelope is opened
+  and keeps its escape hatch. A class A object stays closed only when its key
+  set is one of the structural reasons. DR-0019 itself said that opening the
+  row family or everything (#7224 options B and C) would supersede it. Its
+  consequences that opening is non-breaking and closing is breaking (DR-0009)
+  still hold.
+- **The schemas that 3.3 opens, and those it keeps closed with their reasons,
+  are listed in the PR that opens them.** The 3.2.x backport opens the same
+  set.
+- **Features withdrawn from the 3.3 betas only because their parent schema was
+  closed can return in 3.3.** Features withdrawn for another reason stay
+  withdrawn. The #8501 re-triage records which is which.
+- **New fields go only to peers that negotiated them**, including fields on
+  schemas opened in 3.3 (DR-0024). A request that names only the major is served
+  the oldest supported release (DR-0034), so it never gets them.
+- **The additive-minor check follows this record.** It accepts opening a
+  schema, and a property added to a schema the candidate leaves open. It still
+  fails closing a schema, a property added to a schema that stays closed, and a
+  removal, rename, retype, removed enum value, tightened bound, or newly
+  required name, apart from the listed corrections.
+- **4.x starts from the same rule.** 4.0 may break, but it closes a schema only
+  for a structural reason.
+- **Not settled here:** how `commercial-terms` grows in 4.0. A declared
+  extension point with must-understand semantics is the expected direction.

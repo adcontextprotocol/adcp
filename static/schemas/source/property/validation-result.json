@@ -63,7 +63,7 @@
                 "items": {}
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "confidence": {
             "$ref": "/schemas/core/fraction.json",
@@ -71,7 +71,7 @@
           }
         },
         "required": ["feature_id", "status"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "authorization": {
@@ -83,5 +83,5 @@
     }
   },
   "required": ["identifier", "status", "impressions"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

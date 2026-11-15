@@ -226,7 +226,7 @@
             "minimum": 1
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "description": "List of accepted (width, height) pairs for a multi-size flexible slot (publisher banner that accepts 300×250 OR 728×90 OR 970×250). Mirrors OpenRTB `banner.format[]`. Mutually exclusive with `(width, height)` and with responsive ranges."
     },

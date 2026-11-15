@@ -284,17 +284,31 @@ describe.each(['source', 'published bundle'])('authored optional-tool applicabil
     expect(hosted(storyboard, result, tools).statuses[0]).toMatchObject({ status: 'failing', failure_count: 1 });
   });
 
-  it('product coverage skips only the absent compact tool and keeps the legacy path mandatory', async () => {
+  it('product coverage skips only the absent compact tool and keeps the legacy path mandatory for wholesale sellers', async () => {
     const storyboard = load('product_coverage_filters', surface);
     const tools = allTools.filter(tool => tool !== 'list_products');
     // required_tools is any-of: get_products/controller start this storyboard,
-    // and the mandatory legacy path still produces a real failure.
-    const { result, calls } = await execute(storyboard, tools);
+    // and the mandatory legacy path still produces a real failure. The legacy
+    // phase sends a wholesale read, so it applies only to wholesale sellers.
+    const raw = capabilities();
+    Object.assign(raw.media_buy, { buying_modes: ['brief', 'wholesale'] });
+    const { result, calls } = await execute(storyboard, tools, raw);
     expect(calls.map(call => call.task)).toEqual(['get_products']);
     const compact = result.phases.flatMap(phase => phase.steps).find(step => step.step_id === 'compact_country_and_metro');
     expect(compact?.skip_reason).toBe('missing_tool');
     const graded = hosted(storyboard, result, tools);
     expect(graded.statuses[0]).toMatchObject({ status: 'failing', steps_total: 1, failure_count: 1 });
+  });
+
+  it('product coverage skips the wholesale legacy path for a brief-only seller', async () => {
+    const storyboard = load('product_coverage_filters', surface);
+    const tools = allTools.filter(tool => tool !== 'list_products');
+    const raw = capabilities();
+    Object.assign(raw.media_buy, { buying_modes: ['brief'] });
+    const { result, calls } = await execute(storyboard, tools, raw);
+    expect(calls).toEqual([]);
+    expect(result.failed_count).toBe(0);
+    expect(hosted(storyboard, result, tools).statuses[0]).toMatchObject({ status: 'untested', steps_total: 0 });
   });
 
   it('product coverage fails a compact tool that is advertised but broken', async () => {

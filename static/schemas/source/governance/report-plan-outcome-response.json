@@ -65,7 +65,7 @@
           "severity",
           "explanation"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "plan_summary": {
@@ -81,7 +81,7 @@
           "description": "Authorized budget minus total committed."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "context": {
       "$ref": "/schemas/core/context.json"

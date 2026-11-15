@@ -33,7 +33,7 @@
 import type { PoolClient } from 'pg';
 import { getClient, query } from './client.js';
 import { createLogger } from '../logger.js';
-import { isSpecExactAgentMatch } from './registry-agent-url-key.js';
+import { agentUrlAuthorizedBy, authorizationLookupKeys } from './registry-agent-url-key.js';
 
 const log = createLogger('authorization-snapshot-db');
 
@@ -260,30 +260,32 @@ async function readSyncCursor(client: PoolClient): Promise<string> {
  * read shape for the two endpoints.
  */
 /**
- * Raw `agent_url` values under `key` that are spec-exactly the same agent as
- * `agentUrl`. Mirrors FederatedIndexDatabase.specExactAgentUrls; kept here
- * rather than shared because this class deliberately owns its own client.
+ * Raw `agent_url` values under `keys` whose entry authorizes `agentUrl` under
+ * the adagents.json matching rule (`agentUrlAuthorizedBy`, #7829 / #8943):
+ * the agent's own canonical URL, or its bare origin. Mirrors
+ * FederatedIndexDatabase.authorizingAgentUrls; kept here rather than shared
+ * because this class deliberately owns its own client.
  *
  * It must read the SAME relation the caller's `include` mode reads. An
  * `include=effective` pull surfaces phantom rows from the override layer
  * that have no base row at all, so resolving against the base table would
  * filter every one of them out.
  */
-async function specExactAgentUrls(
+async function authorizingAgentUrls(
   client: PoolClient,
   include: IncludeMode,
-  key: string,
+  keys: string[],
   agentUrl: string,
 ): Promise<string[]> {
   const sql = include === 'effective'
     ? `SELECT DISTINCT agent_url FROM v_effective_agent_authorizations
-        WHERE agent_url_canonical = $1`
+        WHERE agent_url_canonical = ANY($1::text[])`
     : `SELECT DISTINCT agent_url FROM catalog_agent_authorizations
-        WHERE deleted_at IS NULL AND agent_url_canonical = $1`;
-  const { rows } = await client.query<{ agent_url: string }>(sql, [key]);
+        WHERE deleted_at IS NULL AND agent_url_canonical = ANY($1::text[])`;
+  const { rows } = await client.query<{ agent_url: string }>(sql, [keys]);
   return rows
     .map(row => row.agent_url)
-    .filter(rowUrl => isSpecExactAgentMatch(rowUrl, agentUrl));
+    .filter(rowUrl => agentUrlAuthorizedBy(rowUrl, agentUrl));
 }
 
 export class AuthorizationSnapshotDatabase {
@@ -298,9 +300,11 @@ export class AuthorizationSnapshotDatabase {
    *
    * The key folds a trailing slash for identity (#7830); this endpoint
    * answers an AUTHORIZATION question, so it additionally restricts to the
-   * raw `agent_url` values that are spec-exactly the same agent as what the
-   * caller asked for (#7829, trailing slash significant). The key does the
-   * index work; `specExactAgentUrls` decides the answer.
+   * raw `agent_url` values whose entry authorizes what the caller asked for
+   * (#7829, trailing slash significant for an entry with a path). An
+   * origin-only entry authorizes every path at its origin (#8943) and is
+   * stored under the origin's key, so the lookup also reads that key. The
+   * keys do the index work; `authorizingAgentUrls` decides the answer.
    */
   async getNarrow({ agentUrl, agentUrlCanonical, evidence, include }: NarrowOpts): Promise<NarrowResult> {
     // Guard: defensive copy + recheck. Public callers come through
@@ -315,16 +319,17 @@ export class AuthorizationSnapshotDatabase {
     try {
       const cursor = await readSyncCursor(client);
 
-      const specExact = await specExactAgentUrls(client, include, agentUrlCanonical, agentUrl);
+      const keys = [...new Set([agentUrlCanonical, ...authorizationLookupKeys(agentUrl)])];
+      const authorizing = await authorizingAgentUrls(client, include, keys, agentUrl);
       const sql = `
         ${selectClause(include)}
-        ${whereConnector(include)} agent_url_canonical = $1
+        ${whereConnector(include)} agent_url_canonical = ANY($1::text[])
           AND agent_url = ANY($3::text[])
           AND evidence = ANY($2::text[])
         ORDER BY publisher_domain NULLS LAST, property_id_slug NULLS LAST, id
       `;
       const { rows } = await client.query<AuthRow>(
-        sql, [agentUrlCanonical, [...evidence], specExact]);
+        sql, [keys, [...evidence], authorizing]);
       return { rows, cursor };
     } finally {
       client.release();

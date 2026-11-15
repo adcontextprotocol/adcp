@@ -10,7 +10,7 @@
   "x-pattern": "^[a-z][a-z0-9_]*$",
   "enum": ["package", "creative", "country", "region", "metro"],
   "enumDescriptions": {
-    "package": "One row per media-buy package.",
+    "package": "One row per media-buy package. A contract_version 1.2 report definition names this breakdown with its package_id dimension.",
     "creative": "One row per creative.",
     "country": "One row per ISO 3166-1 country.",
     "region": "One row per ISO 3166-2 subdivision.",

@@ -44,6 +44,12 @@
       "format_kind": "image_carousel",
       "params": {
         "card_aspect_ratio": "1:1",
+        "card_image_sizes": [
+          {
+            "width": 1080,
+            "height": 1080
+          }
+        ],
         "min_cards": 2,
         "max_cards": 10,
         "allowed_card_media_asset_types": [

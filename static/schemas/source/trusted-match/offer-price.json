@@ -26,5 +26,5 @@
     "amount",
     "model"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

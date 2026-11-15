@@ -79,7 +79,7 @@
               "brand_id": { "$ref": "/schemas/core/brand-id.json" }
             },
             "required": ["domain"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1
         },
@@ -98,7 +98,7 @@
           "description": "Include only collections whose name contains this string, compared case-insensitively."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json",
@@ -111,7 +111,7 @@
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Key lookup to refresh two cards, passing product selectors through unchanged",

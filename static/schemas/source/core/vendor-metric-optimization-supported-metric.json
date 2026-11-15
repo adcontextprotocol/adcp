@@ -23,5 +23,5 @@
     }
   },
   "required": ["vendor", "metric_id"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -35,5 +35,5 @@
     }
   },
   "required": ["feature_id"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

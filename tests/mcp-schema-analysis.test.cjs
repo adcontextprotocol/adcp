@@ -58,14 +58,20 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Core gender adds one shared predicate reached by five inputs.
   // core/task-id.json, the one task_id definition, is reached by one input
   // (+1 instance, +1 unique).
+  // Experimental installment refinement (#8967) adds installment-change-set,
+  // installment-change and the closed canonical-installment-ref to the
+  // refine_proposals input (+3 instances, +3 unique).
   // Naming the currency code, country code, idempotency key, domain name, and
   // HTTPS URL (#8525) turns five inline subschemas into definitions (+78
   // instances, +5 unique). Naming the further repeated scalar concepts adds 209
   // instances and 61 unique definitions; naming repeated enums adds 27 and 8;
   // naming every remaining repeat adds 95 and 27. Pointing every site at one
-  // definition adds 57 and 10.
-  assert.equal(report.definition_instances, 1177);
-  assert.equal(report.unique_definitions, 303);
+  // definition adds 57 and 10. With installment refinement on top, whose
+  // product_id and action reference core/product-id.json and
+  // enums/membership-action.json, the report measures 1,182 instances and 306
+  // unique definitions.
+  assert.equal(report.definition_instances, 1182);
+  assert.equal(report.unique_definitions, 306);
   assert.equal(report.repeated_definitions, 205);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -176,7 +182,10 @@ test("prompt argument adapter expands compact targeting requirements before vali
     strict: false,
     validateFormats: false,
   }).compile(canonicalSchema);
-  assert.equal(validator(compactArguments), false);
+  // The requirements container is open (a correction under DR-0036), so the
+  // compact form also validates, but only as unknown requirements, which
+  // match no product. The adapter turns it into the canonical dimensions.
+  assert.equal(validator(compactArguments), true, JSON.stringify(validator.errors));
   assert.equal(validator(adapted), true, JSON.stringify(validator.errors));
 });
 
@@ -190,7 +199,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 303);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 306);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

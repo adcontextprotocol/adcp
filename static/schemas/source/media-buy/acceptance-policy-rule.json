@@ -74,5 +74,5 @@
       "then": { "required": ["requirements"] }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

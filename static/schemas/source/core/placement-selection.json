@@ -40,9 +40,10 @@
         }
       },
       "required": ["mode", "placement_refs"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
+      "description": "Rejects `placement_refs`: the default mode names no placements.",
       "title": "Product default placements",
       "type": "object",
       "properties": {
@@ -55,7 +56,8 @@
         }
       },
       "required": ["mode"],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "required": ["placement_refs"] }
     }
   ]
 }

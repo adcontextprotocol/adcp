@@ -77,7 +77,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "definitions": {
     "clock_time": {
       "title": "Clock Time",

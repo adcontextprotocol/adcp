@@ -25,8 +25,14 @@ interface MetadataRow {
   heartbeat_claim_owner: string | null;
   heartbeat_started_at: Date | null;
   heartbeat_orphan_streak: number;
+  minutes_until_lock_expiry: number | null;
   minutes_until_next_check: number | null;
+  last_heartbeat_attempt_at: Date | null;
+  last_heartbeat_skip_reason: string | null;
 }
+
+/** Cadence seeded on claimed agents: due ten minutes ago, as a claim requires. */
+const DUE_CADENCE_MINUTES = -10;
 
 describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership', () => {
   let pool: Pool;
@@ -61,33 +67,52 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
 
   const seedClaim = async (
     agentUrl: string,
-    claim: { owner: string | null; started: boolean; nextCheckMinutes: number | null; streak?: number },
+    claim: {
+      owner: string | null;
+      started: boolean;
+      lockMinutes: number | null;
+      nextCheckMinutes?: number | null;
+      streak?: number;
+    },
   ) => {
     await pool.query(
       `INSERT INTO agent_registry_metadata (
-         agent_url, heartbeat_claim_owner, heartbeat_started_at, heartbeat_orphan_streak, next_compliance_check_at
+         agent_url, heartbeat_claim_owner, heartbeat_started_at, heartbeat_orphan_streak,
+         compliance_lock_until, next_compliance_check_at
        ) VALUES (
          $1, $2, CASE WHEN $3::boolean THEN NOW() - INTERVAL '1 minute' END, $5,
-         CASE WHEN $4::int IS NULL THEN NULL ELSE NOW() + make_interval(mins => $4::int) END
+         CASE WHEN $4::int IS NULL THEN NULL ELSE NOW() + make_interval(mins => $4::int) END,
+         CASE WHEN $6::int IS NULL THEN NULL ELSE NOW() + make_interval(mins => $6::int) END
        )`,
-      [agentUrl, claim.owner, claim.started, claim.nextCheckMinutes, claim.streak ?? 0],
+      [
+        agentUrl, claim.owner, claim.started, claim.lockMinutes, claim.streak ?? 0,
+        claim.nextCheckMinutes === undefined ? DUE_CADENCE_MINUTES : claim.nextCheckMinutes,
+      ],
     );
   };
 
   const readRow = async (agentUrl: string): Promise<MetadataRow> => (await pool.query<MetadataRow>(
     `SELECT heartbeat_claim_owner, heartbeat_started_at, heartbeat_orphan_streak,
-            (EXTRACT(EPOCH FROM next_compliance_check_at - NOW()) / 60)::float8 AS minutes_until_next_check
+            (EXTRACT(EPOCH FROM compliance_lock_until - NOW()) / 60)::float8 AS minutes_until_lock_expiry,
+            (EXTRACT(EPOCH FROM next_compliance_check_at - NOW()) / 60)::float8 AS minutes_until_next_check,
+            last_heartbeat_attempt_at, last_heartbeat_skip_reason
      FROM agent_registry_metadata WHERE agent_url = $1`,
     [agentUrl],
   )).rows[0];
 
+  /** The seeded cadence survived: claims, releases and quarantines never move it. */
+  const expectCadenceKept = (row: MetadataRow, minutes = DUE_CADENCE_MINUTES) => {
+    expect(row.minutes_until_next_check).toBeGreaterThan(minutes - 1);
+    expect(row.minutes_until_next_check).toBeLessThanOrEqual(minutes);
+  };
+
   const deadProcess = (machineId: string) => `${machineId}:${randomUUID()}`;
 
   describe('orphan reconciliation', () => {
-    it('backs off an agent whose suite was running when its process died and releases the claim', async () => {
+    it('quarantines an agent whose suite was running when its process died and releases the claim', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
-      await seedClaim(agentUrl, { owner: deadProcess('other-machine'), started: true, nextCheckMinutes: -1 });
+      await seedClaim(agentUrl, { owner: deadProcess('other-machine'), started: true, lockMinutes: -1 });
 
       await reconcileOrphanedHeartbeatClaims(me);
 
@@ -95,8 +120,11 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       expect(row.heartbeat_claim_owner).toBeNull();
       expect(row.heartbeat_started_at).toBeNull();
       expect(row.heartbeat_orphan_streak).toBe(1);
-      expect(row.minutes_until_next_check).toBeGreaterThan(29);
-      expect(row.minutes_until_next_check).toBeLessThanOrEqual(30);
+      expect(row.minutes_until_lock_expiry).toBeGreaterThan(29);
+      expect(row.minutes_until_lock_expiry).toBeLessThanOrEqual(30);
+      expectCadenceKept(row);
+      expect(row.last_heartbeat_skip_reason).toBe('worker_died');
+      expect(row.last_heartbeat_attempt_at).not.toBeNull();
       expect(logs.warn).toHaveBeenCalledWith(
         expect.objectContaining({ agentUrl, orphanStreak: 1 }),
         expect.any(String),
@@ -114,22 +142,22 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
       await seedClaim(agentUrl, {
-        owner: deadProcess('other-machine'), started: true, nextCheckMinutes: -1, streak: priorStreak,
+        owner: deadProcess('other-machine'), started: true, lockMinutes: -1, streak: priorStreak,
       });
 
       await reconcileOrphanedHeartbeatClaims(me);
 
       const row = await readRow(agentUrl);
       expect(row.heartbeat_orphan_streak).toBe(priorStreak + 1);
-      expect(row.minutes_until_next_check).toBeGreaterThan(minutes - 1);
-      expect(row.minutes_until_next_check).toBeLessThanOrEqual(minutes);
+      expect(row.minutes_until_lock_expiry).toBeGreaterThan(minutes - 1);
+      expect(row.minutes_until_lock_expiry).toBeLessThanOrEqual(minutes);
     });
 
     it('escalates with logger.error once the streak reaches 3', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
       await seedClaim(agentUrl, {
-        owner: deadProcess('other-machine'), started: true, nextCheckMinutes: -1, streak: 2,
+        owner: deadProcess('other-machine'), started: true, lockMinutes: -1, streak: 2,
       });
 
       await reconcileOrphanedHeartbeatClaims(me);
@@ -144,7 +172,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
       await seedClaim(agentUrl, {
-        owner: deadProcess('other-machine'), started: false, nextCheckMinutes: -1, streak: 2,
+        owner: deadProcess('other-machine'), started: false, lockMinutes: -1, streak: 2,
       });
 
       await reconcileOrphanedHeartbeatClaims(me);
@@ -152,7 +180,9 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       const row = await readRow(agentUrl);
       expect(row.heartbeat_claim_owner).toBeNull();
       expect(row.heartbeat_orphan_streak).toBe(2);
-      expect(Math.abs(row.minutes_until_next_check ?? 99)).toBeLessThan(1);
+      expect(row.minutes_until_lock_expiry).toBeNull();
+      expectCadenceKept(row);
+      expect(row.last_heartbeat_skip_reason).toBeNull();
       expect(logs.warn).not.toHaveBeenCalled();
       expect(logs.error).not.toHaveBeenCalled();
     });
@@ -161,7 +191,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
       const otherOwner = deadProcess('other-machine');
-      await seedClaim(agentUrl, { owner: otherOwner, started: true, nextCheckMinutes: 90, streak: 1 });
+      await seedClaim(agentUrl, { owner: otherOwner, started: true, lockMinutes: 90, streak: 1 });
 
       await reconcileOrphanedHeartbeatClaims(me);
 
@@ -169,27 +199,27 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       expect(row.heartbeat_claim_owner).toBe(otherOwner);
       expect(row.heartbeat_started_at).not.toBeNull();
       expect(row.heartbeat_orphan_streak).toBe(1);
-      expect(row.minutes_until_next_check).toBeGreaterThan(89);
+      expect(row.minutes_until_lock_expiry).toBeGreaterThan(89);
     });
 
     it('treats a different process on this machine as dead even when its lock has not expired', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
-      await seedClaim(agentUrl, { owner: deadProcess(me.machineId), started: true, nextCheckMinutes: 90 });
+      await seedClaim(agentUrl, { owner: deadProcess(me.machineId), started: true, lockMinutes: 90 });
 
       await reconcileOrphanedHeartbeatClaims(me);
 
       const row = await readRow(agentUrl);
       expect(row.heartbeat_claim_owner).toBeNull();
       expect(row.heartbeat_orphan_streak).toBe(1);
-      expect(row.minutes_until_next_check).toBeLessThanOrEqual(30);
+      expect(row.minutes_until_lock_expiry).toBeLessThanOrEqual(30);
     });
 
     it('does not mistake a machine whose id merely starts with this machine\'s id for the same machine', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
       const neighbour = deadProcess(`${me.machineId}-2`);
-      await seedClaim(agentUrl, { owner: neighbour, started: true, nextCheckMinutes: 90 });
+      await seedClaim(agentUrl, { owner: neighbour, started: true, lockMinutes: 90 });
 
       await reconcileOrphanedHeartbeatClaims(me);
 
@@ -199,7 +229,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
     it('does not reclaim this process\'s own claims', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
-      await seedClaim(agentUrl, { owner: me.owner, started: true, nextCheckMinutes: -1 });
+      await seedClaim(agentUrl, { owner: me.owner, started: true, lockMinutes: -1 });
 
       await reconcileOrphanedHeartbeatClaims(me);
 
@@ -210,10 +240,10 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
   });
 
   describe('claim lifecycle', () => {
-    it('records the owner and clears any stale start marker when claiming', async () => {
+    it('records the owner and the lock, clears any stale start marker, and keeps the cadence', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
-      await seedClaim(agentUrl, { owner: null, started: true, nextCheckMinutes: -5 });
+      await seedClaim(agentUrl, { owner: null, started: true, lockMinutes: -5 });
 
       const claimed = await claimHeartbeatAgents([agentUrl], new Date(Date.now() + 3_600_000), me.owner);
 
@@ -221,19 +251,33 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       const row = await readRow(agentUrl);
       expect(row.heartbeat_claim_owner).toBe(me.owner);
       expect(row.heartbeat_started_at).toBeNull();
-      expect(row.minutes_until_next_check).toBeGreaterThan(59);
+      expect(row.minutes_until_lock_expiry).toBeGreaterThan(59);
+      expectCadenceKept(row);
     });
 
     it('does not claim an agent whose lock is still held', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
       const otherOwner = deadProcess('other-machine');
-      await seedClaim(agentUrl, { owner: otherOwner, started: false, nextCheckMinutes: 60 });
+      await seedClaim(agentUrl, { owner: otherOwner, started: false, lockMinutes: 60 });
 
       const claimed = await claimHeartbeatAgents([agentUrl], new Date(Date.now() + 3_600_000), me.owner);
 
       expect(claimed.size).toBe(0);
       expect((await readRow(agentUrl)).heartbeat_claim_owner).toBe(otherOwner);
+    });
+
+    it('does not claim an unlocked agent that another worker finished since selection', async () => {
+      const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
+      const agentUrl = newAgentUrl();
+      await seedClaim(agentUrl, { owner: null, started: false, lockMinutes: null, nextCheckMinutes: 720 });
+
+      const claimed = await claimHeartbeatAgents([agentUrl], new Date(Date.now() + 3_600_000), me.owner);
+
+      expect(claimed.size).toBe(0);
+      const row = await readRow(agentUrl);
+      expect(row.heartbeat_claim_owner).toBeNull();
+      expect(row.minutes_until_lock_expiry).toBeNull();
     });
 
     it('marks the suite started only for the claim owner', async () => {
@@ -249,10 +293,10 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       expect((await readRow(agentUrl)).heartbeat_started_at).not.toBeNull();
     });
 
-    it('clears the claim and resets the orphan streak when a started suite finishes, leaving the schedule alone', async () => {
+    it('clears the claim and resets the orphan streak when a started suite finishes, leaving the schedule and lock alone', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
-      await seedClaim(agentUrl, { owner: me.owner, started: true, nextCheckMinutes: 720, streak: 2 });
+      await seedClaim(agentUrl, { owner: me.owner, started: true, lockMinutes: 30, nextCheckMinutes: 720, streak: 2 });
 
       await releaseHeartbeatClaim(agentUrl, me.owner);
 
@@ -260,13 +304,15 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       expect(row.heartbeat_claim_owner).toBeNull();
       expect(row.heartbeat_started_at).toBeNull();
       expect(row.heartbeat_orphan_streak).toBe(0);
-      expect(row.minutes_until_next_check).toBeGreaterThan(719);
+      expectCadenceKept(row, 720);
+      // No outcome cleared it, so the lock stays as backoff until it expires.
+      expect(row.minutes_until_lock_expiry).toBeGreaterThan(29);
     });
 
     it('keeps the orphan streak when the release comes from a path that never started the suite', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
-      await seedClaim(agentUrl, { owner: me.owner, started: false, nextCheckMinutes: 5, streak: 2 });
+      await seedClaim(agentUrl, { owner: me.owner, started: false, lockMinutes: 5, streak: 2 });
 
       await releaseHeartbeatClaim(agentUrl, me.owner);
 
@@ -279,7 +325,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const agentUrl = newAgentUrl();
       const otherOwner = deadProcess('other-machine');
-      await seedClaim(agentUrl, { owner: otherOwner, started: true, nextCheckMinutes: 60, streak: 1 });
+      await seedClaim(agentUrl, { owner: otherOwner, started: true, lockMinutes: 60, streak: 1 });
 
       await releaseHeartbeatClaim(agentUrl, me.owner);
 
@@ -288,26 +334,27 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       expect(row.heartbeat_orphan_streak).toBe(1);
     });
 
-    it('makes only this batch\'s unstarted claims due immediately', async () => {
+    it('unlocks only this batch\'s unstarted claims, keeping their cadence', async () => {
       const me = createHeartbeatProcessIdentity(`machine-${randomUUID()}`);
       const unstarted = newAgentUrl();
       const started = newAgentUrl();
       const otherBatch = newAgentUrl();
       const theirs = newAgentUrl();
-      await seedClaim(unstarted, { owner: me.owner, started: false, nextCheckMinutes: 110 });
-      await seedClaim(started, { owner: me.owner, started: true, nextCheckMinutes: 110 });
-      await seedClaim(otherBatch, { owner: me.owner, started: false, nextCheckMinutes: 110 });
-      await seedClaim(theirs, { owner: deadProcess('other-machine'), started: false, nextCheckMinutes: 110 });
+      await seedClaim(unstarted, { owner: me.owner, started: false, lockMinutes: 110 });
+      await seedClaim(started, { owner: me.owner, started: true, lockMinutes: 110 });
+      await seedClaim(otherBatch, { owner: me.owner, started: false, lockMinutes: 110 });
+      await seedClaim(theirs, { owner: deadProcess('other-machine'), started: false, lockMinutes: 110 });
 
       await releaseUnstartedHeartbeatClaims([unstarted, started, theirs], me.owner);
 
       const released = await readRow(unstarted);
       expect(released.heartbeat_claim_owner).toBeNull();
-      expect(released.minutes_until_next_check).toBeLessThanOrEqual(0.1);
+      expect(released.minutes_until_lock_expiry).toBeNull();
+      expectCadenceKept(released);
       expect((await readRow(started)).heartbeat_claim_owner).toBe(me.owner);
-      expect((await readRow(started)).minutes_until_next_check).toBeGreaterThan(100);
+      expect((await readRow(started)).minutes_until_lock_expiry).toBeGreaterThan(100);
       expect((await readRow(otherBatch)).heartbeat_claim_owner).toBe(me.owner);
-      expect((await readRow(theirs)).minutes_until_next_check).toBeGreaterThan(100);
+      expect((await readRow(theirs)).minutes_until_lock_expiry).toBeGreaterThan(100);
     });
   });
 
@@ -353,8 +400,8 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance heartbeat claim ownership
       const healthy = newAgentUrl();
       await seedKnownAgent(suspect);
       await seedKnownAgent(healthy);
-      await seedClaim(suspect, { owner: null, started: false, nextCheckMinutes: -1, streak: 2 });
-      await seedClaim(healthy, { owner: null, started: false, nextCheckMinutes: -1 });
+      await seedClaim(suspect, { owner: null, started: false, lockMinutes: -1, streak: 2 });
+      await seedClaim(healthy, { owner: null, started: false, lockMinutes: -1 });
 
       const selected = (await db.getAgentsDueForCheck(100_000))
         .filter(agent => agent.agent_url === suspect || agent.agent_url === healthy);

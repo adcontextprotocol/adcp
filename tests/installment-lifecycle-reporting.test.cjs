@@ -43,22 +43,22 @@ const publication = {
 describe("installment lifecycle and proof of publication", () => {
   let validateRow;
   let validatePublication;
-  let validateCapabilities;
+  let validateCanonicalCapabilities;
   let validateController;
 
   before(async () => {
-    [validateRow, validatePublication, validateCapabilities, validateController] =
+    [validateRow, validatePublication, validateCanonicalCapabilities, validateController] =
       await Promise.all([
         compile(readSchema("/schemas/core/installment-delivery-metrics.json")),
         compile(readSchema("/schemas/core/installment-publication.json")),
-        compile(readSchema("/schemas/core/reporting-capabilities.json")),
+        compile(readSchema("/schemas/core/canonical-reporting-capabilities.json")),
         compile(readSchema("/schemas/compliance/comply-test-controller-request.json")),
       ]);
   });
 
   it("marks every new node experimental and 3.3.0", () => {
     const rowProps = readSchema("/schemas/core/installment-delivery-metrics.json").allOf[1].properties;
-    const caps = readSchema("/schemas/core/reporting-capabilities.json").properties;
+    const caps = readSchema("/schemas/core/canonical-reporting-capabilities.json").properties;
     const publicationSchema = readSchema("/schemas/core/installment-publication.json");
     const controller = readSchema("/schemas/compliance/comply-test-controller-request.json");
     const nodes = [
@@ -165,7 +165,21 @@ describe("installment lifecycle and proof of publication", () => {
     assert.equal(validatePublication({ ...publication, evidence: { notes: "no url" } }), false);
   });
 
-  it("declares reportable statuses on reporting_capabilities", () => {
+  it("declares available_installment_statuses on canonical reporting capabilities only", () => {
+    const declared = readSchema("/schemas/core/canonical-reporting-capabilities.json").properties
+      .available_installment_statuses;
+    assert.equal(declared.type, "array");
+    assert.equal(declared.uniqueItems, true);
+    assert.equal(declared.items.$ref, "/schemas/enums/installment-status.json");
+    assert.equal(declared["x-status"], "experimental");
+    assert.equal(declared["x-added-in"], "3.3.0");
+    // The legacy schema is open, so it still accepts the key as an unknown field;
+    // assert only that it is not declared (3.3 adds nothing to deprecated get_products).
+    const legacy = readSchema("/schemas/core/reporting-capabilities.json");
+    assert.equal(legacy.properties.available_installment_statuses, undefined);
+  });
+
+  it("declares reportable statuses on canonical reporting_capabilities", () => {
     const base = {
       available_reporting_frequencies: ["daily"],
       expected_delay_minutes: 60,
@@ -176,15 +190,15 @@ describe("installment lifecycle and proof of publication", () => {
       supports_installment_breakdown: true,
     };
     assert.equal(
-      validateCapabilities({ ...base, available_installment_statuses: ["scheduled", "cancelled"] }),
+      validateCanonicalCapabilities({ ...base, available_installment_statuses: ["scheduled", "cancelled"] }),
       true
     );
     assert.equal(
-      validateCapabilities({ ...base, available_installment_statuses: ["scheduled", "scheduled"] }),
+      validateCanonicalCapabilities({ ...base, available_installment_statuses: ["scheduled", "scheduled"] }),
       false
     );
     assert.equal(
-      validateCapabilities({ ...base, available_installment_statuses: ["skipped"] }),
+      validateCanonicalCapabilities({ ...base, available_installment_statuses: ["skipped"] }),
       false
     );
   });

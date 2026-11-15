@@ -19,7 +19,7 @@
           }
         },
         "required": ["subject_category"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -52,5 +52,5 @@
     ]
   },
   "minProperties": 1,
-  "additionalProperties": false
+  "additionalProperties": true
 }

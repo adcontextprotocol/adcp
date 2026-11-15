@@ -77,7 +77,7 @@
     "event",
     "account_id"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Product pricing change webhook",

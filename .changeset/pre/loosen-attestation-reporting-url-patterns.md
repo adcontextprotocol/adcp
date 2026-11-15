@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Loosen seventeen over-specified URL patterns to `^https://` (adcp#8398). Nine attestation URLs (`core/attestation-capabilities.json`, `attestation-evaluation.json`, `attestation-issuer.json`, `attestation-reference.json`, `attestation-subject.json`, `product-audience-evidence-requirements.json`) dropped a pattern that refused userinfo and fragments. Eight reporting URIs (`core/reporting-canonical-content-digest.json`, `reporting-delivery-capabilities.json`, `reporting-delivery-offering.json`, `reporting-reliability-statistics.json`, `reporting-revision.json`) dropped a lexical private-address denylist that could not see DNS or redirects. Every value the old patterns accepted still validates. The fetch-time SSRF rules (the attestation fetch contract and `safe_schema_fetch`) are unchanged, and the descriptions no longer claim the schema enforces them. The origin-shaped patterns, `governance/accepted-governance-agents.json`, and `reference-renderer.source_repository` are unchanged.

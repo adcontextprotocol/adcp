@@ -43,7 +43,7 @@
         }
       },
       "required": ["lat", "lng"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "destination_type": {
       "type": "string",

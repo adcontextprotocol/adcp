@@ -22,7 +22,7 @@
       },
       "minProperties": 1,
       "maxProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "coverage_requirement": { "type": "string", "enum": ["full", "allow_partial"], "description": "Whether every package in the resolved media-buy scope must support the exact selected offering. full fails closed when any package is unsupported or unknown. allow_partial permits publication only for the explicitly covered package denominator; every revision and status response still exposes partial coverage and MUST NOT present covered-subset totals as whole-buy totals." },
     "required_finality": { "$ref": "/schemas/enums/reporting-finality.json", "description": "Finality the durable path must ultimately provide. Snapshot delivery may still precede an official requirement." },
@@ -54,5 +54,5 @@
     "billing_continuity": "Experimental (3.3). Billing on an account-level configuration follows the same continuity rules as billing reporting subscriptions. For a billing feed_purpose, when a new generation of the caller's configuration for the account takes effect, or an account timezone change switches an account_timezone schedule, at instant T, the handoff is a cutover as reporting-subscription.json cutover defines it: the outgoing schedule owes its periods that start before T, in full, ending at E, and when the incoming schedule has no boundary at E, the stretch from E to its first boundary is owed as one stub obligation whose stub is true, followed by the incoming schedule's regular periods. A seller with an active billing generation for an account MUST NOT deliver on a buy in that account outside the buy's flight, as reporting-subscription.json delivery_within_flight defines: it extends end_time before any later delivery, make-goods included, and a canceled or completed buy's make-good goes on a subsequent buy.",
     "coverage_requirement": "A full configuration MUST NOT become ready for a current nonempty partial, none, or unknown scope and any later incomplete period becomes action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial MAY become ready when some scope is covered, but every obligation and revision freezes exact coverage and aggregate consumers keep the partial label."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

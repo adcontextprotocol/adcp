@@ -24,7 +24,7 @@
           }
         },
         "required": ["policy_id", "version", "content_digest"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "description": "Exact registry policy versions from which this profile was derived. Consumers MUST NOT silently substitute a different version."
@@ -74,7 +74,7 @@
         { "required": ["jurisdiction_groups"] },
         { "required": ["all_jurisdictions"] }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "region_aliases": {
       "type": "object",
@@ -121,5 +121,5 @@
       "then": { "required": ["scope"] }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

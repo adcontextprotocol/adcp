@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import type { DerivedLogoBackground } from '../services/logo-rendition.js';
 
 export interface InsertBrandLogoInput {
   domain: string;
@@ -17,6 +18,14 @@ export interface InsertBrandLogoInput {
   original_filename?: string;
   source_flow?: string;
   provenance?: Record<string, unknown>;
+}
+
+/** A logo the background backfill has claimed, with its bytes. */
+export interface ClaimedLogoForBackground {
+  id: string;
+  domain: string;
+  content_type: string;
+  data: Buffer;
 }
 
 export interface BrandLogoRow {
@@ -44,6 +53,8 @@ export interface BrandLogoRow {
   reviewed_at: Date | null;
   deleted_at: Date | null;
   slack_thread_ts: string | null;
+  derived_background: DerivedLogoBackground | null;
+  background_derived_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -54,7 +65,7 @@ const SUMMARY_COLUMNS = `id, domain, content_type, storage_type, storage_key, sh
   tags, width, height, source, review_status, uploaded_by_user_id, uploaded_by_org_id,
   uploaded_by_email, upload_note, original_filename, source_flow, provenance,
   review_note, reviewed_by_user_id, reviewed_at, deleted_at, slack_thread_ts,
-  created_at, updated_at`;
+  derived_background, background_derived_at, created_at, updated_at`;
 
 export interface ListBrandLogosOptions {
   tags?: string[];
@@ -295,5 +306,70 @@ export class BrandLogoDatabase {
       [limit, offset]
     );
     return result.rows;
+  }
+
+  /**
+   * Claim the oldest logo the background backfill has not classified, and
+   * return it with its bytes (one row at a time: a row holds up to 5 MB).
+   *
+   * Claiming sets background_derived_at before anything is rendered, so a
+   * logo whose render takes the process down is not picked up again, and
+   * SKIP LOCKED keeps runs on several machines off each other's rows.
+   * `excludeIds` are rows this run already released.
+   */
+  async claimLogoForBackground(excludeIds: string[] = []): Promise<ClaimedLogoForBackground | null> {
+    const result = await query<ClaimedLogoForBackground>(
+      `UPDATE brand_logos
+          SET background_derived_at = now()
+        WHERE id = (
+          SELECT id FROM brand_logos
+           WHERE background_derived_at IS NULL
+             AND review_status IN ('pending', 'approved')
+             AND NOT (id = ANY($1::uuid[]))
+           ORDER BY created_at ASC
+           LIMIT 1
+           FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, domain, content_type, data`,
+      [excludeIds]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Record the classification of a claimed logo (null: unclassifiable). */
+  async recordDerivedBackground(id: string, background: DerivedLogoBackground | null): Promise<void> {
+    await query(
+      `UPDATE brand_logos SET derived_background = $2 WHERE id = $1`,
+      [id, background]
+    );
+  }
+
+  /** Release a claim so a later run classifies the logo again. */
+  async releaseBackgroundClaim(id: string): Promise<void> {
+    await query(
+      `UPDATE brand_logos SET background_derived_at = NULL
+        WHERE id = $1 AND derived_background IS NULL`,
+      [id]
+    );
+  }
+
+  /**
+   * Background facts for approved logos, keyed by id: the derived background
+   * and the tags, which may declare one.
+   */
+  async getApprovedLogoBackgrounds(
+    ids: string[]
+  ): Promise<Map<string, { domain: string; derived_background: DerivedLogoBackground | null; tags: string[] }>> {
+    const map = new Map<string, { domain: string; derived_background: DerivedLogoBackground | null; tags: string[] }>();
+    if (ids.length === 0) return map;
+    const result = await query<{ id: string; domain: string; derived_background: DerivedLogoBackground | null; tags: string[] }>(
+      `SELECT id, domain, derived_background, tags FROM brand_logos
+        WHERE id = ANY($1::uuid[]) AND review_status = 'approved'`,
+      [ids]
+    );
+    for (const row of result.rows) {
+      map.set(row.id, { domain: row.domain, derived_background: row.derived_background, tags: row.tags ?? [] });
+    }
+    return map;
   }
 }

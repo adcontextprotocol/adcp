@@ -27,7 +27,7 @@
           "required": [
             "account_id"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "operator": {
           "$ref": "/schemas/core/domain-name.json",

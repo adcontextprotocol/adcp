@@ -73,6 +73,8 @@ const MAX_GENERATION_REFS = 32;
 const SELLER_ASYNC_EXPERIMENTAL_FEATURES: readonly string[] = ['protocol.principal'];
 /** Algorithms the seller signs webhooks with; also advertised in `webhook_signing`. */
 export const SELLER_WEBHOOK_SIGNING_ALGORITHMS: readonly string[] = ['ed25519'];
+/** The members of core/principal-declarations.json. */
+const DECLARATION_AXES = ['async_adcp_versions', 'webhook_signing_algorithms', 'experimental_features'] as const;
 const SELLER_ASYNC_ADCP_VERSIONS: readonly string[] = TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS
   .filter(version => /^\d+\.\d+$/.test(version));
 
@@ -632,7 +634,13 @@ export async function syncPrincipalLegacy(
       next = { ...next, subscriptions: applySubscriptions(prior.subscriptions ?? [], submitted.reporting_subscriptions, nowIso) };
     }
     if (submitted.declarations !== undefined) {
-      next = { ...next, declared: structuredClone(submitted.declarations) };
+      // The declarations schema is open; keep only the axes this seller reads,
+      // so an unknown member is ignored rather than stored and read back.
+      const declared = Object.fromEntries(
+        DECLARATION_AXES.filter(axis => submitted.declarations![axis] !== undefined)
+          .map(axis => [axis, structuredClone(submitted.declarations![axis])]),
+      );
+      next = { ...next, declared };
     }
     requireSignableWebhooks(next.declared, loaded.hasActiveSubscriber);
   } catch (error) {

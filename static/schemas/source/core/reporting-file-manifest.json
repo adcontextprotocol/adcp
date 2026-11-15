@@ -19,7 +19,7 @@
         "source_timezone": { "$ref": "/schemas/core/iana-timezone.json" }
       },
       "required": ["start", "end", "source_timezone"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "format": { "$ref": "/schemas/enums/reporting-file-format.json" },
     "compression": { "$ref": "/schemas/core/reporting-file-compression.json" },
@@ -43,5 +43,5 @@
     "object_set": "object_ref values MUST be unique. total_size_bytes and row_count MUST equal the sums across files. Every file checksum MUST be verified before downstream commit.",
     "identity_match": "The revision, obligation, materialization, period, format, row count, and control totals MUST equal the referenced ledger records and verification evidence."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

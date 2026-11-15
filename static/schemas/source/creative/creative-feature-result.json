@@ -54,5 +54,5 @@
     }
   },
   "required": ["feature_id", "value"],
-  "additionalProperties": false
+  "additionalProperties": true
 }
