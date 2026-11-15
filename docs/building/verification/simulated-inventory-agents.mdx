@@ -50,9 +50,9 @@ Every time-dependent behaviour of these tenants reads your *sandbox clock*. Unti
 ```
 
 - `get` returns `simulated.simulated_now`, and `pinned: false` while the clock still reads the wall clock.
-- `advance_time` takes either `to` (an RFC 3339 instant) or `by` (an ISO 8601 duration in weeks, days, hours, minutes or seconds). It returns the new `simulated_now` and `days_run`, the number of simulated days it ran.
+- `advance_time` takes either `to` (an RFC 3339 instant) or `by` (an ISO 8601 duration in weeks, days, hours, minutes or seconds). It returns the new `simulated_now` and `days_crossed`, the number of UTC days the clock moved across. The tenant you call runs those days at once; the other runs them on your next call to it, with the same results.
 - The clock only moves forward. An earlier instant is refused with `INVALID_TRANSITION`.
-- `reset_state` unpins the clock and discards your buys on that tenant.
+- `reset_state` on either inventory tenant unpins the clock and discards your buys on both. A `reset_state` elsewhere that unpins the clock, such as `/sales/mcp`'s, also leaves your inventory buys behind: a market that has run days the clock has not reached starts fresh.
 - You have one clock per credential. It is the same clock that `reporting_subscription_probe` `advance_time` moves on `/sales/mcp`, so moving it on either tenant moves it for both.
 
 Both tenants list `sandbox_clock` and `reset_state` in `list_scenarios` and in `compliance_testing.scenarios`.
@@ -87,9 +87,10 @@ A content product lists the installments scheduled in the requested flight, with
 On `/inventory-adserver/mcp`:
 
 1. Pin the clock before the flight: `sandbox_clock` `advance_time` `to` `2026-12-31T12:00:00Z`.
-2. [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for 2027-01-01 to 2027-01-31 with a package on `sports_hero_guaranteed` (`pricing_option_id` `sports_hero_guaranteed_cpm`, `impressions` 180000) and one on `preroll_auction` (`preroll_auction_cpm`, `bid_price` 10).
-3. `sandbox_clock` `advance_time` `by` `P31D`.
-4. [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) for both buys.
+2. [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for 2027-01-01 to 2027-01-31 with one package on `sports_hero_guaranteed` (`pricing_option_id` `sports_hero_guaranteed_cpm`, `impressions` 180000).
+3. `create_media_buy` for the same flight with one package on `preroll_auction` (`preroll_auction_cpm`, `bid_price` 10). Two buys keep each one's `daily_breakdown` separate.
+4. `sandbox_clock` `advance_time` `by` `P31D`.
+5. [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) for both buys.
 
 In the daily breakdown, the guarantee drops to under half its usual delivery during the outage and delivers above its earlier pace afterwards. The auction package's delivery differs from the forecast [`get_products`](/docs/media-buy/task-reference/get_products) gave for the same flight.
 
