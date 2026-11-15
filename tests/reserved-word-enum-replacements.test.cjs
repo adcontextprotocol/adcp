@@ -23,7 +23,7 @@ const REPLACEMENTS = [
     'passed',
   ],
   ['core/registry-event.json', '/$defs/compliancePayload/properties/tracks/additionalProperties', 'pass', 'passed'],
-  ['error-details/rate-limited.json', '/properties/scope', 'global', 'agent'],
+  ['error-details/rate-limited.json', '/properties/scope', 'global', 'all'],
   ['core/signal-definition.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
   ['core/signal-definition-enrichment.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
 ];
@@ -90,9 +90,9 @@ test('x-deprecated-enum-values only lists values the enum still accepts', () => 
   assert.deepEqual(offenders, []);
 });
 
-test('rate-limited scope accepts agent and the deprecated global', async () => {
+test('rate-limited scope accepts all and the deprecated global', async () => {
   const validate = await compile(readSchema('error-details/rate-limited.json'));
-  for (const scope of ['account', 'tool', 'global', 'agent']) {
+  for (const scope of ['account', 'tool', 'global', 'all']) {
     assert.equal(validate({ limit: 10, remaining: 0, window_seconds: 60, scope }), true, scope);
   }
 });
