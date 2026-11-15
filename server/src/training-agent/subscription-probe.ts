@@ -50,6 +50,12 @@ export function onSandboxClockAdvanced(hook: AdvanceHook): void {
   advanceHooks.push(hook);
 }
 
+/** Run the work due by `nowMs` after any move of the caller's sandbox clock,
+ * whichever scenario moved it. */
+export async function runSandboxClockAdvanceHooks(ctx: TrainingContext, nowMs: number): Promise<void> {
+  for (const hook of advanceHooks) await hook(ctx, nowMs);
+}
+
 /**
  * Controller `reset_state` for this probe: put back each account timezone the
  * probe changed, then discard the caller's clock, grants, and timezone history.
@@ -103,7 +109,7 @@ export async function handleReportingSubscriptionProbe(
     }
     doc.simulated_now = new Date(target).toISOString();
     sandbox.save();
-    for (const hook of advanceHooks) await hook(ctx, target);
+    await runSandboxClockAdvanceHooks(ctx, target);
     return success(doc, {}, `Sandbox clock advanced to ${doc.simulated_now}`);
   }
 
