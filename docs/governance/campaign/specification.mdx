@@ -149,7 +149,7 @@ Periods are optional and additive. A plan without them behaves exactly as before
 
 ### Human review required
 
-`human_review_required` is a plan-level boolean (default `false`) that mandates human oversight of every action on the plan, independent of budget reallocation autonomy.
+`human_review_required` is an optional plan-level boolean that mandates human oversight of every action on the plan, independent of budget reallocation autonomy. When a plan omits it, the governance agent derives the value from the plan's resolved policies and policy categories.
 
 The governance agent sets `human_review_required: true` automatically when any resolved policy or policy_category on the plan carries `requires_human_review: true`. This includes regulated verticals such as `fair_housing`, `fair_lending`, `fair_employment`, and `pharmaceutical_advertising`, and the `eu_ai_act_annex_iii` policy covering decisions in Annex III use cases.
 
@@ -162,7 +162,7 @@ This field is distinct from `budget.reallocation_threshold`:
 | `budget.reallocation_threshold` | Operational | Controls agent autonomy for budget reallocation within the plan |
 | `human_review_required` | Regulatory | Mandates human review of decisions affecting individuals (e.g., GDPR Art 22, EU AI Act Annex III) |
 
-Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and overrides a caller-supplied `false` when a triggering policy is present.
+Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and rejects a caller-supplied `false` when a triggering policy is present.
 
 ### Spend-commit invocation
 
@@ -918,7 +918,7 @@ What the claim delivers:
 
 `plan_hash = base64url_no_pad(SHA-256(JCS(plan_payload)))` where:
 
-- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](/docs/building/by-layer/L1/security#payload-equivalence). Governance agents and auditor verifiers SHOULD use the same library implementations listed there. JCS sorts object keys lexicographically by code point (caller key order in the `sync_plans` request does not affect the hash) and preserves the distinction between an omitted optional field and an explicit `null` (these produce different hashes). Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls.
+- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](/docs/building/by-layer/L1/security#payload-equivalence). Governance agents and auditor verifiers SHOULD use the same library implementations listed there. JCS sorts object keys lexicographically by code point (caller key order in the `sync_plans` request does not affect the hash) and preserves the distinction between an omitted optional field and an explicit `null` (these produce different hashes). Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls. Schema `default` annotations are never applied to the preimage: a field the buyer omitted stays omitted, and a value the governance agent derives for itself, such as `human_review_required`, is not written into it.
 - `plan_payload` is **one element of the `plans[]` array as supplied on `sync_plans`** — a single plan object, not the `sync_plans` request envelope and not the `plans` wrapper array. The preimage is the current plan-revision state at the time of attestation, i.e., the plan object the governance agent just evaluated. Implementations constructing the preimage start from the plan-revision object and remove the closed set of bookkeeping fields listed below.
 - `base64url_no_pad` follows RFC 4648 §5 with trailing `=` padding stripped — consistent with `jti` and other base64url values in the JWS profile. Governance agents MUST emit the unpadded form. Verifiers (governance agents re-verifying their own tokens, auditors, buyer-side compliance tooling) MUST compare by base64url-decoding both sides to the raw 32-byte SHA-256 digest and comparing bytes — NOT by string equality of the encoded form — so padding, case, or alphabet variation is rejected as a decode failure rather than producing a false non-match. A `plan_hash` that does not decode to exactly 32 bytes MUST be rejected.
 

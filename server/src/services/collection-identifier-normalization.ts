@@ -29,6 +29,14 @@ export const DISTRIBUTION_IDENTIFIER_TYPE_VALUES = [
   'peacock_id',
   'tiktok_id',
   'twitch_channel',
+  'instagram_account_id',
+  'instagram_handle',
+  'facebook_page_id',
+  'facebook_page_handle',
+  'snapchat_profile_id',
+  'snapchat_handle',
+  'x_user_id',
+  'x_handle',
   'imdb_id',
   'gracenote_id',
   'eidr_id',
@@ -52,7 +60,17 @@ export function isValidCollectionPublisherDomain(value: string): boolean {
   return DOMAIN_PATTERN.test(value);
 }
 
-function normalizeYouTubeHandle(raw: string): string {
+// Platform handles are case-insensitive, so they compare as `@` plus the
+// lowercased name, whether or not the caller sent the `@`.
+const HANDLE_IDENTIFIER_TYPES = new Set<string>([
+  'youtube_channel_handle',
+  'instagram_handle',
+  'facebook_page_handle',
+  'snapchat_handle',
+  'x_handle',
+]);
+
+function normalizeHandle(raw: string): string {
   const trimmed = raw.trim();
   const withoutAt = trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
   return `@${withoutAt.toLowerCase()}`;
@@ -100,8 +118,8 @@ export function normalizeCollectionDistributionIdentifier(
     const norm = normalizeIdentifier(type, value);
     return { type: norm.type, value: norm.value };
   }
-  if (type === 'youtube_channel_handle') {
-    return { type, value: normalizeYouTubeHandle(value) };
+  if (HANDLE_IDENTIFIER_TYPES.has(type)) {
+    return { type, value: normalizeHandle(value) };
   }
   if (type === 'youtube_channel_url') {
     return { type, value: normalizeYouTubeChannelUrl(value) };

@@ -452,7 +452,7 @@ Statuses, per requirement and rolled up per product:
 | `ready` | The account has exactly one suitable resource (for a connection, the one the seller would use is connected) | None beyond binding (below) |
 | `setup_required` | The account has none, or the connection is `missing`, `pending`, `expired`, or `revoked` | Create or restore it, for example with `sync_event_sources`, `sync_catalogs`, or `connection_state.authorization_url` |
 | `selection_required` | The account has several suitable resources | Choose one from `candidates[]` and bind it |
-| `input_required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
+| `input-required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
 | `unknown` | The seller could not read the account's resources | Depends on `unknown_reason`: `permission_denied` needs a human to fix the seller's grant on the account, `platform_unavailable` is worth retrying, `not_evaluated` means refetch fewer products. Meanwhile the purchase task decides |
 
 Rules:
@@ -464,7 +464,7 @@ Rules:
   `execution_requirements` get an entry. A missing entry means not evaluated,
   not ready.
 - **Rollup.** A product's `readiness_status` is the first of `setup_required`,
-  `input_required`, `selection_required`, `unknown` that any requirement
+  `input-required`, `selection_required`, `unknown` that any requirement
   reports, else `ready`: the most blocking state the seller could establish.
   Buyers needing more MUST read `requirements[]`.
 - **Could not check is not lacking.** `unknown` carries `unknown_reason`
@@ -494,7 +494,7 @@ Rules:
   `missing`, `expired`, or `revoked` connection SHOULD include
   `authorization_url` or `authorization_instructions`; `pending` MAY omit both. This
   slice does not list several identities or let the buyer choose among them.
-  `selection_required` and `input_required` never apply to connections.
+  `selection_required` and `input-required` never apply to connections.
 - **Account-scoped and advisory.** The map appears only when the request set
   `include_execution_readiness: true` and carried an `account` the caller is
   authorized for; otherwise the seller omits it (an `account` that does not
@@ -941,7 +941,13 @@ selection and impairment rules and do not re-arm the gate.
 Compact buyers check support before booking, commit through `buy_products` or
 `accept_proposal`, set the gate through `control_media_buy` using the returned
 package IDs and latest revision, then assign the complete set through one
-strict `sync_creatives.assignment_operations` batch. No creative assignment
+strict `sync_creatives.assignment_operations` batch, which needs `assign` in
+the seller's `creative.assignment_operations`. A seller that exposes
+`buy_products` or `accept_proposal` and declares
+`creative.has_creative_library: true` MUST list `assign` in
+`creative.assignment_operations` in every capabilities response served at
+3.3 or later, since this batch is the only way a compact buy gets its
+creatives. No creative assignment
 belongs in the purchase request. For staged supply, keep the buy or package
 paused until the intended set is assigned, then resume when review permits it.
 
@@ -1287,7 +1293,9 @@ Manage first-party CRM audiences on a seller account. Upload hashed customer lis
 
 **Requirements:**
 - Orchestrators MUST include `account_id`
-- Orchestrators MUST include at least one audience with hashed member data
+- Orchestrators MUST include at least one audience with hashed member data when pushing members; a discovery-only call omits `audiences`
+- Sales agents that declare `media_buy.audience_targeting` MUST answer discovery-only calls
+- Sales agents whose `media_buy.audience_targeting.supported_activation_methods` omits the `sync_audiences` pattern MUST reject, with `UNSUPPORTED_FEATURE`, an audience entry that carries `add` or `remove` or that would create a new audience without a `source` reference ([Sellers without inline member push](/docs/media-buy/task-reference/sync_audiences#sellers-without-inline-member-push))
 - Sales agents MUST return per-audience outcomes with matching status
 - Sales agents SHOULD support `push_notification_config` for async matching completion
 - Sales agents MUST accept SHA-256 hashed identifiers and MUST reject cleartext email/phone in `hashed_email`/`hashed_phone` fields (PII minimization at the transport boundary; see [Privacy Considerations](/docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous) for the retention/consent obligations that hashing does not satisfy)

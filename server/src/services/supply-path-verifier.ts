@@ -286,6 +286,10 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
   }
   const owner = domain(input.ownerDomain);
   const host = domain(input.hostDomain);
+  // Exact canonical-URL agent matching, NOT the 3.3 origin-only rule the
+  // validator and registry use: supply-path semantics version 1 keeps exact
+  // matching until 4.0 (https://github.com/adcontextprotocol/adcp/issues/8943).
+  // See agentIdentity in supply-path-input.ts.
   const agent = agentIdentity(input.agentUrl);
   const ownerManifest = record(input.ownerManifest) ? input.ownerManifest : null;
   const hostManifest = record(input.hostManifest) ? input.hostManifest : null;

@@ -21,7 +21,7 @@ async function compile(uri) {
 const projection = {
   projected_impressions: 1180000,
   projected_spend: 9440.0,
-  projected_end_state: 'underdelivery',
+  projected_end_state: 'under_delivery',
   basis: 'trailing_daily_avg',
   as_of: '2026-10-01T00:00:00Z',
 };
@@ -53,7 +53,7 @@ test('projection requires end state, basis, and as_of; volumes are optional', ()
   assert.deepEqual(readSchema('/schemas/enums/delivery-projection-end-state.json').enum, [
     'on_pace',
     'complete',
-    'underdelivery',
+    'under_delivery',
     'early_exhaustion',
   ]);
   assert.equal(core.properties.basis.$ref, '/schemas/enums/delivery-projection-basis.json');

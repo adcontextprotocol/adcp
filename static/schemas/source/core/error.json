@@ -43,7 +43,7 @@
     },
     "suggestion": {
       "type": "string",
-      "description": "Suggested fix for the error",
+      "description": "Suggested fix for the error. A suggestion, and the recovery a correctable error's code documents, SHOULD name only operations and fields the agent declares it accepts or the schema requires it to accept, so a buyer agent can follow a correctable refusal without risking a second refusal. A recovery that depends on a declared capability names the capability, for example an assignment_operations replace only where creative.assignment_operations lists replace.",
       "x-max-length-4.0": 1024
     },
     "retry_after": {

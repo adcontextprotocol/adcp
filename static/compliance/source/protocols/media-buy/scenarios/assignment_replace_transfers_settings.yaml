@@ -16,6 +16,10 @@ required_tools:
   - comply_test_controller
 
 requires_all_capabilities:
+  - path: creative.assignment_operations
+    contains: "assign"
+  - path: creative.assignment_operations
+    contains: "replace"
   - path: creative.supports_assignment_trackers
     equals: true
   - path: creative.supports_assignment_landing_page

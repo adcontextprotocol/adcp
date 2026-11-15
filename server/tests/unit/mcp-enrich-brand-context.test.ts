@@ -47,6 +47,18 @@ vi.mock('../../src/adagents-manager.js', () => ({ AdAgentsManager: class {} }));
 
 const { MCPToolHandler } = await import('../../src/mcp-tools.js');
 
+const USER_AUTH = { sub: 'user_test', isM2M: false, payload: {} };
+
+function freshAcmeEnrichment(domain = 'acme.com', brandfetchDomain = domain) {
+  return {
+    success: true,
+    domain,
+    raw: { id: 'bf_1', name: 'Acme', domain: brandfetchDomain },
+    manifest: { name: 'Acme', url: `https://${brandfetchDomain}` },
+    highQuality: true,
+  };
+}
+
 function parseResource(result: Awaited<ReturnType<InstanceType<typeof MCPToolHandler>['handleToolCall']>>) {
   const first = result.content[0];
   if (first.type !== 'resource' || !first.resource) throw new Error('expected resource');
@@ -130,7 +142,7 @@ describe('MCP enrich_brand Brand Context boundary', () => {
     });
 
     const handler = new MCPToolHandler();
-    const result = await handler.handleToolCall('enrich_brand', { domain: 'acme.com' });
+    const result = await handler.handleToolCall('enrich_brand', { domain: 'acme.com' }, USER_AUTH);
     const body = parseResource(result);
 
     expect(mocks.fetchBrandData).toHaveBeenCalledWith('acme.com');
@@ -152,5 +164,53 @@ describe('MCP enrich_brand Brand Context boundary', () => {
         description: 'Brand API description.',
       },
     }));
+  });
+
+  describe('registry write rules (#9024)', () => {
+    it('does not create a record for an anonymous caller, and returns the same lookup', async () => {
+      mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
+      mocks.fetchBrandData.mockResolvedValue(freshAcmeEnrichment());
+
+      const handler = new MCPToolHandler();
+      const anonymous = parseResource(await handler.handleToolCall('enrich_brand', { domain: 'acme.com' }));
+      expect(mocks.upsertDiscoveredBrand).not.toHaveBeenCalled();
+
+      const signedIn = parseResource(await handler.handleToolCall('enrich_brand', { domain: 'acme.com' }, USER_AUTH));
+      expect(mocks.upsertDiscoveredBrand).toHaveBeenCalledTimes(1);
+      expect(anonymous).toEqual(signedIn);
+      expect(anonymous).toMatchObject({ success: true, domain: 'acme.com', source_type: 'enriched' });
+    });
+
+    it('treats the anonymous MCP context as unauthenticated', async () => {
+      mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
+      mocks.fetchBrandData.mockResolvedValue(freshAcmeEnrichment());
+
+      const handler = new MCPToolHandler();
+      await handler.handleToolCall('enrich_brand', { domain: 'acme.com' }, { sub: 'anonymous', isM2M: false, payload: {} });
+
+      expect(mocks.upsertDiscoveredBrand).not.toHaveBeenCalled();
+    });
+
+    it('does not save a subdomain as its own brand, even for a signed-in caller', async () => {
+      mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
+      mocks.fetchBrandData.mockResolvedValue(freshAcmeEnrichment('e2e-123.acme.com', 'acme.com'));
+
+      const handler = new MCPToolHandler();
+      const body = parseResource(await handler.handleToolCall('enrich_brand', { domain: 'e2e-123.acme.com' }, USER_AUTH));
+
+      expect(body).toMatchObject({ success: true, domain: 'e2e-123.acme.com', manifest: { name: 'Acme' } });
+      expect(mocks.upsertDiscoveredBrand).not.toHaveBeenCalled();
+    });
+
+    it('does not save a reserved name, even for a signed-in caller', async () => {
+      mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
+      mocks.fetchBrandData.mockResolvedValue(freshAcmeEnrichment('acme-test.example.org'));
+
+      const handler = new MCPToolHandler();
+      const body = parseResource(await handler.handleToolCall('enrich_brand', { domain: 'acme-test.example.org' }, USER_AUTH));
+
+      expect(body).toMatchObject({ success: true, domain: 'acme-test.example.org' });
+      expect(mocks.upsertDiscoveredBrand).not.toHaveBeenCalled();
+    });
   });
 });

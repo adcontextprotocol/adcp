@@ -179,6 +179,12 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     blocked_by_reason: 'failed',
   };
 
+  const VERDICT_EXPLANATION = {
+    reason: 'assertion_failed',
+    detail: 'A storyboard-level assertion failed: status.monotonic.',
+    contributing: [],
+  };
+
   it('full-suite compliance writes prune disappeared storyboard rows before upsert', async () => {
     const statusRow = { rows: [{ status: 'passing', previous_status: 'passing' }] };
     const client = makeTransactionClient([
@@ -210,6 +216,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
           first_failed_step_task: 'create_media_buy',
           first_failure_message: 'Expected media_buy_id',
           skipped_steps: [SKIPPED_STEP],
+          verdict_explanation: VERDICT_EXPLANATION,
         },
       ],
     });
@@ -243,8 +250,12 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
       null,
       null,
       [JSON.stringify([SKIPPED_STEP])],
+      [JSON.stringify(VERDICT_EXPLANATION)],
     ]);
     expect(client.query.mock.calls[insertIndex][0]).toContain('skipped_steps_jsonb = EXCLUDED.skipped_steps_jsonb');
+    expect(client.query.mock.calls[insertIndex][0]).toContain(
+      'verdict_explanation_jsonb = EXCLUDED.verdict_explanation_jsonb',
+    );
   });
 
   it('zero-row authoritative compliance writes clear all materialized storyboard rows', async () => {
@@ -490,6 +501,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     expect(sql).not.toContain('agent_compliance_step_diagnostics');
     expect(sql).toContain('NULL::jsonb AS first_failure_validations_jsonb');
     expect(sql).toContain('s.skipped_steps_jsonb AS skipped_steps');
+    expect(sql).toContain('s.verdict_explanation_jsonb AS verdict_explanation');
     expect(params).toEqual([AGENT_URL, null, null, true]);
   });
 
