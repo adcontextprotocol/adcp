@@ -13,6 +13,7 @@ import { createLogger } from '../logger.js';
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from './brandfetch.js';
 import { downloadAndCacheLogos } from './logo-cdn.js';
 import { classifyBrand } from './brand-classifier.js';
+import { classifyEnrichmentDomain, decideEnrichmentPersistence } from './enrichment-persistence-guard.js';
 import { brandDb } from '../db/brand-db.js';
 import { registryRequestsDb } from '../db/registry-requests-db.js';
 import { query } from '../db/client.js';
@@ -109,6 +110,14 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     return { domain, status: 'failed', error: 'Invalid domain format' };
   }
 
+  // Reserved names and subdomains never become registry records (#9024).
+  // Check before calling Brandfetch so a queued registry request for such a
+  // name costs nothing.
+  const domainCheck = classifyEnrichmentDomain(domain);
+  if (domainCheck.rejection) {
+    return { domain, status: 'skipped', error: `Not saved to the registry: ${domainCheck.rejection}` };
+  }
+
   if (!isBrandfetchConfigured()) {
     return { domain, status: 'failed', error: 'BRANDFETCH_API_KEY not configured' };
   }
@@ -200,6 +209,26 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       brand_name: result.manifest.name,
       classification: classification || undefined,
       error: `Variant of ${canonicalDomain}`,
+    };
+  }
+
+  // Brandfetch answered with a brand that lives on another domain. Saving it
+  // here would file that brand under a domain it does not own (#9024).
+  const persistence = decideEnrichmentPersistence({
+    requestedDomain: domain,
+    brandfetchDomain: result.raw?.domain,
+    // enrichBrand runs from admin routes, admin tools and background jobs,
+    // never directly for an anonymous caller.
+    authenticated: true,
+  });
+  if (!persistence.persist) {
+    logger.info({ domain, reason: persistence.reason, brandfetch_domain: result.raw?.domain }, 'Enrichment result not saved');
+    return {
+      domain,
+      status: 'skipped',
+      brand_name: result.manifest.name,
+      classification: classification || undefined,
+      error: `Not saved to the registry: ${persistence.reason}`,
     };
   }
 
