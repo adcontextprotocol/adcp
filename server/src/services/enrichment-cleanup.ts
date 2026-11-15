@@ -98,7 +98,19 @@ type CandidateRow = {
   removable: boolean;
 };
 
-export class EnrichmentCleanupInputError extends Error {}
+/**
+ * A request the cleanup refuses. `clientMessage` is a fixed string written
+ * here, safe to return to the caller.
+ */
+export class EnrichmentCleanupInputError extends Error {
+  readonly clientMessage: string;
+
+  constructor(clientMessage: string) {
+    super(clientMessage);
+    this.name = 'EnrichmentCleanupInputError';
+    this.clientMessage = clientMessage;
+  }
+}
 
 /** Validate the requested mode. Defaults to criteria without a list and explicit_list with one. */
 export function parseCleanupMode(raw: unknown, hasDomains: boolean): EnrichmentCleanupMode {

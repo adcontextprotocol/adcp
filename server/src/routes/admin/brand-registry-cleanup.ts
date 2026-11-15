@@ -46,7 +46,7 @@ export function setupBrandRegistryCleanupRoutes(apiRouter: Router): void {
       }
     } catch (err) {
       if (err instanceof EnrichmentCleanupInputError) {
-        return res.status(400).json({ error: err.message });
+        return res.status(400).json({ error: err.clientMessage });
       }
       throw err;
     }
@@ -90,7 +90,7 @@ export function setupBrandRegistryCleanupRoutes(apiRouter: Router): void {
       return res.json({ dry_run: false, ...result });
     } catch (err) {
       if (err instanceof EnrichmentCleanupInputError) {
-        return res.status(400).json({ error: err.message });
+        return res.status(400).json({ error: err.clientMessage });
       }
       logger.error({ err }, 'Enrichment cleanup failed');
       return res.status(500).json({ error: 'Enrichment cleanup failed' });
