@@ -6,6 +6,10 @@
  *
  * - `/inventory-adserver` — display, video and a homepage takeover, sold
  *   guaranteed and in a first-price auction.
+ * - `/inventory-content` — a podcast, a newsletter and a creator series,
+ *   sold as exclusive sponsorships of the installments scheduled in a
+ *   package's flight. Installments run, are postponed or are cancelled on
+ *   their dates, and each builds its audience over its channel's curve.
  *
  * Their `comply_test_controller` serves `sandbox_clock` (get and advance the
  * caller's sandbox clock; the router intercepts it, as the SDK's controller
@@ -17,7 +21,7 @@
  */
 
 import type { TenantConfig } from '@adcp/sdk/server';
-import { ADSERVER_SEASON } from '../inventory-sim/engine/index.js';
+import { ADSERVER_SEASON, CONTENT_SEASON } from '../inventory-sim/engine/index.js';
 import { InventoryPlatform, type InventoryTenantProfile } from '../inventory-sim/platform.js';
 import { resetMarket } from '../inventory-sim/market-store.js';
 import { SANDBOX_CLOCK_SCENARIO, handleSandboxClock } from '../inventory-sim/sandbox-clock.js';
@@ -27,15 +31,18 @@ import { listAccountsTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
 
 export const INVENTORY_ADSERVER_TENANT_ID = 'inventory-adserver';
+export const INVENTORY_CONTENT_TENANT_ID = 'inventory-content';
 
 export const INVENTORY_TENANT_PROFILES: Readonly<Record<string, InventoryTenantProfile>> = {
   [INVENTORY_ADSERVER_TENANT_ID]: { tenantId: INVENTORY_ADSERVER_TENANT_ID, seed: ADSERVER_SEASON },
+  [INVENTORY_CONTENT_TENANT_ID]: { tenantId: INVENTORY_CONTENT_TENANT_ID, seed: CONTENT_SEASON },
 };
 
 export const INVENTORY_TENANT_IDS: readonly string[] = Object.keys(INVENTORY_TENANT_PROFILES);
 
 const LABELS: Readonly<Record<string, string>> = {
   [INVENTORY_ADSERVER_TENANT_ID]: 'Training agent — inventory: ad server',
+  [INVENTORY_CONTENT_TENANT_ID]: 'Training agent — inventory: content',
 };
 
 export function isInventoryTenant(tenantId: string): boolean {
