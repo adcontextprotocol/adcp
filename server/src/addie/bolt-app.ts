@@ -1280,8 +1280,12 @@ async function createUserScopedTools(
   }
 
 
-  // Add brand tools (brand research and registry management)
-  const brandHandlers = createBrandToolHandlers();
+  // Add brand tools (brand research and registry management). Only a Slack
+  // user linked to an AgenticAdvertising.org account may add new registry
+  // records through research_brand (#9024).
+  const brandHandlers = createBrandToolHandlers({
+    authenticated: Boolean(memberContext?.workos_user?.workos_user_id),
+  });
   allTools.push(...BRAND_TOOLS);
   for (const [name, handler] of brandHandlers) {
     allHandlers.set(name, handler);

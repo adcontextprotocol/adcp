@@ -259,6 +259,7 @@ import {
   runWithComplianceRefreshAuthorizationWatchdog,
 } from "../services/compliance-refresh-authorization.js";
 import { getSandboxBrand } from "../services/sandbox-brands.js";
+import { decideEnrichmentPersistence } from "../services/enrichment-persistence-guard.js";
 import { publicEditorName } from "./registry-revision-access.js";
 
 const RegistryAdminAuthorizationUnavailableSchema = z.object({
@@ -5971,7 +5972,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : undefined;
       const sourceType = enrichment.raw ? 'enriched' : undefined;
 
-      if (enrichment.raw && enrichment.manifest) {
+      // Anyone may look a domain up, but only an identified caller may add
+      // the answer to the public registry, and never under a reserved name
+      // or a subdomain (#9024). The response is the same either way.
+      const persistence = enrichment.raw && enrichment.manifest
+        ? decideEnrichmentPersistence({
+            requestedDomain: enrichment.domain,
+            brandfetchDomain: enrichment.raw.domain,
+            authenticated: includeContext,
+            existingRecord: existing,
+          })
+        : null;
+      if (persistence && !persistence.persist) {
+        logger.info({ domain, reason: persistence.reason }, 'Enrichment result returned without saving it');
+      }
+
+      if (enrichment.raw && enrichment.manifest && persistence?.persist) {
         brandDb.upsertDiscoveredBrand({
           domain: enrichment.domain,
           brand_name: enrichment.manifest.name,
