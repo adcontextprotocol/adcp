@@ -22,9 +22,10 @@ RUN node scripts/deduplicate-runtime-artifacts.cjs
 
 # Historical releases remain immutable in git and in the public R2 artifact
 # CDN. Fly retains every compliance bundle, configured docs snapshot and required
-# schema/protocol pair. Historical tarball bodies outside that closure are
-# offloaded only after byte verification against the CDN; their sidecars and a
-# discovery inventory stay local. Prune only the builder copy, never Git records.
+# schema bundle. Versioned protocol tarball bodies are offloaded only after byte
+# verification against the CDN; a required release's archive that R2 does not
+# list yet stays local, and every sidecar plus a discovery inventory stays local.
+# Prune only the builder copy, never Git records.
 FROM builder AS runtime-artifacts
 RUN node scripts/prune-runtime-artifacts.cjs --offload-protocol \
  && DOCS_SMOKE_APP_ROOT=/app node scripts/smoke-docs-index-runtime.mjs \

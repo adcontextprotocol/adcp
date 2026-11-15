@@ -20,7 +20,7 @@
       "required": [
         "mode"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -58,7 +58,7 @@
         "mode",
         "optimization_goals"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

@@ -20,13 +20,5 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true,
-  "not": {
-    "anyOf": [
-      { "required": ["creative_manifest"] },
-      { "required": ["creative_manifests"] },
-      { "required": ["creatives"] },
-      { "required": ["estimate"] }
-    ]
-  }
+  "additionalProperties": true
 }

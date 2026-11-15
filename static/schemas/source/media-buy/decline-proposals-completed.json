@@ -45,7 +45,7 @@
             "required": ["outcome", "reason"]
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },

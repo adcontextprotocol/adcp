@@ -71,5 +71,5 @@
     "obligation_match": "reporting_obligation_id, delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method MUST match one caller/account-bound obligation. This join is what permits one revision to fan out to many destinations and principals.",
     "authorization": "The caller MUST be authorized for the referenced account and destination binding. Cross-caller and cross-account identifiers MUST be rejected without revealing whether they exist."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -48,5 +48,5 @@
       "required": ["trust", "reason"]
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

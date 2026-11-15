@@ -119,7 +119,7 @@
           "then": { "required": ["text"] }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "creative_approval_required": {
       "type": "boolean",

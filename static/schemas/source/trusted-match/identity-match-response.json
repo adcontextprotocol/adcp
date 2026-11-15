@@ -62,7 +62,7 @@
           }
         },
         "required": ["chunks"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     }
   },

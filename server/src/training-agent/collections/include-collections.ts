@@ -1,8 +1,11 @@
 /**
- * `include_collections` on `get_products`, `list_products`,
- * `request_proposals` and `refine_proposals` (experimental,
- * `media_buy.collection_cards`, #8094/#8141). See
- * collections-and-installments.mdx, "Collections in responses".
+ * `include_collections` on `list_products`, `request_proposals` and
+ * `refine_proposals` (experimental, `media_buy.collection_cards`,
+ * #8094/#8141). See collections-and-installments.mdx, "Collections in
+ * responses". The flag was withdrawn from the deprecated `get_products` in
+ * 3.3 (adcp#8501): a `get_products` read still gets the `sample_content`
+ * card projection below, but never the `collections` array or a cards-scoped
+ * feed token.
  *
  * - Opt-in: `collections` is returned only when the request set
  *   `include_collections: true`, and only to a caller served 3.3 or later.
@@ -44,12 +47,10 @@ interface CardsContext {
 const CARDS_SCOPE_MARKER = '~cards.';
 
 const CONDITIONAL_FIELD: Partial<Record<CollectionReadTool, string>> = {
-  get_products: 'if_wholesale_feed_version',
   list_products: 'if_feed_version',
 };
 
 const VERSION_FIELD: Partial<Record<CollectionReadTool, string>> = {
-  get_products: 'wholesale_feed_version',
   list_products: 'feed_version',
 };
 
@@ -57,7 +58,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function collectionsRequested(args: Record<string, unknown>, ctx: CardsContext): boolean {
+export function collectionsRequested(
+  args: Record<string, unknown>,
+  ctx: CardsContext,
+  tool?: CollectionReadTool,
+): boolean {
+  if (tool === 'get_products') return false;
   return supportsCollections33(ctx.servedAdcpVersion) && args.include_collections === true;
 }
 
@@ -78,7 +84,7 @@ export function prepareCollectionRead(
   ctx: CardsContext,
 ): Record<string, unknown> {
   const field = CONDITIONAL_FIELD[tool];
-  if (!field || typeof args[field] !== 'string' || !collectionsRequested(args, ctx)) return args;
+  if (!field || typeof args[field] !== 'string' || !collectionsRequested(args, ctx, tool)) return args;
   const presented = args[field] as string;
   const suffix = cardsScopeSuffix(ctx);
   return {
@@ -157,7 +163,7 @@ export function finishCollectionRead<T>(
   const record: Record<string, unknown> = result;
   const products = Array.isArray(record.products) ? record.products : undefined;
   if (products) projectSampleContentRole(products);
-  if (!collectionsRequested(args, ctx)) return result;
+  if (!collectionsRequested(args, ctx, tool)) return result;
   const versionField = VERSION_FIELD[tool];
   if (versionField && typeof record[versionField] === 'string') {
     record[versionField] = `${record[versionField] as string}${cardsScopeSuffix(ctx)}`;

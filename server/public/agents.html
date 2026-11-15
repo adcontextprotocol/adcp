@@ -202,6 +202,14 @@
             font-size: var(--text-xs);
             font-weight: var(--font-semibold);
         }
+        .coverage-incomplete-badge {
+            padding: var(--space-1) var(--space-2);
+            background: var(--color-warning-bg);
+            color: var(--color-warning-fg);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
+            font-weight: var(--font-semibold);
+        }
         .track-pills {
             display: flex;
             gap: 3px;
@@ -1034,12 +1042,14 @@
                         <div>
                             <div class="ds-alert__title compliance-badge__title">
                                 Compliance: ${sc.label}
+                                ${cs.coverage_incomplete ? '<span class="coverage-incomplete-badge">Coverage incomplete</span>' : ''}
                                 ${cs.streak_days > 0 ? `<span class="streak-badge">${parseInt(cs.streak_days, 10)}d streak</span>` : ''}
                             </div>
                             <div class="ds-alert__desc">
                                 ${cs.headline ? escapeHtml(cs.headline) : ''}
                                 ${cs.last_checked_at ? ` &middot; Last checked: ${new Date(cs.last_checked_at).toLocaleString()}` : ''}
                             </div>
+                            ${cs.coverage_incomplete ? '<div class="ds-alert__desc">Some storyboards were not exercised, so they do not count toward verification.</div>' : ''}
                             ${trackPillsHtml ? `<div class="track-pills" style="margin-top: var(--space-2);">${trackPillsHtml}</div>` : ''}
                         </div>
                     </div>

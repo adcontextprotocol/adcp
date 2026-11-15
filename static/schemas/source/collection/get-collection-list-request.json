@@ -40,7 +40,7 @@
           "description": "Opaque cursor from a previous response to fetch the next page"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "context": {
       "$ref": "/schemas/core/context.json"

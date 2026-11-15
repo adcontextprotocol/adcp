@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-placement.json",
   "title": "Canonical Product Placement",
-  "description": "Compact product placement with canonical format narrowing. Publisher references carry their publisher authority. New seller-inline placements SHOULD carry seller_agent as their defining authority; legacy seller-inline placements without it remain valid in product context.",
+  "description": "Compact product placement with canonical format narrowing. Publisher references carry their publisher authority. New seller-inline placements SHOULD carry seller_agent as their defining authority; legacy seller-inline placements without it remain valid in product context. Rejects `format_ids`, the legacy placement format list; canonical placements reference format options.",
   "type": "object",
   "definitions": {
     "CanonicalDoohScreenResolution": {
@@ -14,7 +14,7 @@
         "height": { "type": "integer", "minimum": 1 }
       },
       "required": ["width", "height"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "CanonicalDoohAddress": {
       "title": "Canonical DOOH Address",
@@ -27,7 +27,7 @@
         "postal_code": { "type": "string", "description": "Postal or ZIP code." },
         "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "CanonicalDoohLocation": {
       "title": "Canonical DOOH Location",
@@ -48,7 +48,7 @@
         },
         "address": { "$ref": "#/definitions/CanonicalDoohAddress" }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "CanonicalDoohPlacementAttributes": {
       "title": "Canonical DOOH Placement Attributes",
@@ -139,5 +139,6 @@
       "required": ["kind", "name"]
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true,
+  "not": { "required": ["format_ids"] }
 }

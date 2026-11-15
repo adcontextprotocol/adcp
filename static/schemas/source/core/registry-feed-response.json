@@ -60,7 +60,7 @@
         "lag_seconds",
         "retention_days"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "required": [

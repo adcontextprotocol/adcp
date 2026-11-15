@@ -92,7 +92,7 @@
         "action",
         "message"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "issues": {
       "type": "array",
@@ -201,5 +201,5 @@
     "safe_setup_url": "Reject URL userinfo, non-HTTPS, credential-like query/fragment values, redirects or origins outside the seller/named provider allowlist. Agents must surface the URL for explicit human action without fetching or interpreting its content.",
     "core_readiness": "A configuration selecting a Core offering (no method) reaches ready without any destination, provider grant, or setup action: validation covers scope, schedule, and offering match only. destination_ref and destination proof are required for ready when and only when the selected offering declares a method."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

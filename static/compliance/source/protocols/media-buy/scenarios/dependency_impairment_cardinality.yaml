@@ -78,6 +78,10 @@ narrative: |
   `"snapshot"` grade this scenario not_applicable. Sellers declaring
   `["snapshot", "webhook"]` are graded here on the snapshot surface.
 
+  Format gating also mirrors the base scenario: when the first product's
+  first format option is not an `image` format, the fixed image creatives
+  are not sent and every creative phase is skipped (adcp#8770).
+
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -126,11 +130,12 @@ fixtures:
 
 phases:
   - id: setup
-    title: "Create a buy with two packages, two creatives, two assignments"
+    title: "Create a buy with two packages"
     narrative: |
-      Discover a product, create a buy with two packages (same product is
-      fine — packages are independent line items), sync two creatives each
-      assigned to its own package, and force both to approved baseline.
+      Discover a product and create a buy with two packages (same product is
+      fine — packages are independent line items). The next phase syncs two
+      creatives, assigns each to its own package, and forces both to the
+      approved baseline.
 
     steps:
       - id: get_products_brief
@@ -229,6 +234,23 @@ phases:
             path: "packages[1].package_id"
             description: "Second package_id returned (multi-package buy is supported)"
 
+  # The creatives below are a fixed 300x250 image. That manifest is valid only
+  # when the selected format option is an image format. A seller whose first
+  # format option is a display tag, VAST or any other non-image kind correctly
+  # refuses it, so every creative-dependent phase is skipped for that seller
+  # instead of failing it (adcp#8770). Building the manifest from the seller's
+  # own params with $build_assets_from_format needs runner support for
+  # canonical default slots and tag/VAST fixtures first: today a params object
+  # without explicit `slots` leaves the directive unresolved.
+  - id: assign_creatives
+    title: "Sync two image creatives, assign them and approve them"
+    skip_if: "context.format_kind != 'image'"
+    narrative: |
+      Sync two image creatives, assign each to its own package, and force both
+      to the approved baseline. Runs only when the selected format option is an
+      image format.
+
+    steps:
       - id: sync_two_creatives
         title: "Sync creatives A and B into the library"
         task: sync_creatives
@@ -441,6 +463,7 @@ phases:
 
   - id: reject_first_cardinality_one
     title: "Reject creative A — impairments[] cardinality 1, scoped to package_a"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       Force creative A to rejected. The buy MUST report exactly ONE
       impairment entry, with resource_id matching A and package_ids
@@ -576,6 +599,7 @@ phases:
 
   - id: reject_second_cardinality_two
     title: "Reject creative B — impairments[] grows to cardinality 2"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       Force creative B to rejected. The buy MUST report exactly TWO
       impairment entries, one per creative, each scoped to its own package.
@@ -700,6 +724,7 @@ phases:
 
   - id: recover_first_via_swap
     title: "Swap package_a's binding to a fresh creative C — cardinality back to 1"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       Sync creative C (approved), then update_media_buy to swap
       package_a's creative_assignments from A → C. Creative A stays rejected
@@ -867,6 +892,7 @@ phases:
 
   - id: recover_second_via_swap
     title: "Swap package_b's binding to a fresh creative D — cardinality back to 0"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       Sync creative D (approved), swap package_b's binding from B → D, read
       the buy: impairments[] empty, health: ok. Full cardinality round-trip

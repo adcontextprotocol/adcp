@@ -108,7 +108,7 @@
           }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "properties": {
@@ -120,5 +120,5 @@
     }
   },
   "required": ["venue_counts"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -1,0 +1,178 @@
+id: trusted_match_publisher_authentication
+version: "1.0.0"
+title: "Trusted Match publisher authentication rejection"
+category: trusted_match_publisher_authentication
+summary: "Verifies that a TMP router deployment rejects schema-valid Context Match and Identity Match requests with absent or invalid publisher authentication using HTTP 401 and a WWW-Authenticate challenge."
+track: security_transport
+introduced_in: "3.2"
+
+requires_capability:
+  path: experimental_features
+  contains: trusted_match.core
+
+requires:
+  - trusted_match_publisher_auth_runner
+
+narrative: |
+  Publisher-to-router authentication is a deployment obligation. Trusted Match
+  does not prescribe whether a router, gateway, service mesh, or other trusted
+  ingress enforces it. Normatively, authentication must occur before the router
+  signs or fans out a request. This storyboard observes only that the deployment
+  authentication gate rejects an unauthenticated request with HTTP 401 and a
+  WWW-Authenticate challenge; it does not prove internal execution order.
+
+  This storyboard uses runner-owned raw-HTTP probes because TMP requests are not
+  MCP or A2A tasks. The runner sends schema-valid Context Match and Identity
+  Match requests to operator-supplied publisher-facing endpoints using
+  credential-profile-neutral adapter configuration for absent and invalid
+  credentials. The adapter supplies only declarative credential headers and
+  TLS key material; the runner constructs the HTTP client and owns the guarded
+  network request and bounded response read. TMP does not prescribe
+  router-ingress paths. The storyboard
+  asserts only the observable HTTP
+  responses; no TMP error body is required because the gate may reject before
+  TMP request parsing.
+
+agent:
+  interaction_model: tmp_router
+  capabilities:
+    - trusted_match
+  examples:
+    - "A publisher-operated Trusted Match router behind an API gateway"
+    - "A Trusted Match router with authentication enforced at trusted ingress"
+
+caller:
+  role: unauthenticated_publisher
+  example: "Compliance runner with all publisher credentials removed"
+
+prerequisites:
+  description: |
+    The operator supplies the exact HTTPS publisher-facing `contextEndpoint` and
+    `identityEndpoint` plus a `preparePublisherAuthProbe` adapter. For each
+    operation and credential state, the adapter returns only credential headers
+    and optional PEM-encoded client certificate, private key, passphrase, and CA
+    certificate. It cannot override the endpoint, method, body, HTTP client,
+    routing headers, or response. The runner constructs the HTTP client and owns
+    endpoint validation, the POST, redirect rejection, timeout, bounded response
+    reading, and output redaction.
+  test_kit: "test-kits/trusted-match-router-runner.yaml"
+
+phases:
+  - id: unauthenticated_context_rejection
+    title: "Reject an unauthenticated Context Match request"
+    narrative: |
+      Send well-formed Context Match and Identity Match requests with publisher
+      authentication absent and with credentials known to be invalid for the
+      deployment. The actual publisher-facing endpoints must return HTTP 401
+      with a WWW-Authenticate challenge in all four cases. The responses may
+      omit a body and are not required to use the TMP error schema. These probes
+      do not observe signing or fan-out behavior.
+
+    steps:
+      - id: reject_missing_publisher_authentication_context
+        title: "Context Match rejects missing publisher authentication"
+        task: trusted_match_missing_auth_context_probe
+        schema_ref: "trusted-match/context-match-request.json"
+        doc_ref: "/trusted-match/specification#signature-verification"
+        stateful: false
+        expected: |
+          Return HTTP 401 with a WWW-Authenticate challenge. No TMP error body
+          is required.
+        sample_request:
+          type: context_match_request
+          protocol_version: "1.0"
+          request_id: "tmp-auth-probe-0001"
+          property_rid: "01916f3a-f8cb-7000-8000-000000000099"
+          property_type: website
+          placement_id: "tmp-authentication-probe"
+          seller_agent_url: "https://publisher-auth-probe.example/mcp"
+        validations:
+          - check: http_status
+            value: 401
+            description: "Missing publisher authentication is rejected with HTTP 401"
+          - check: on_401_require_header
+            value: "www-authenticate"
+            description: "The 401 response includes a WWW-Authenticate challenge; TMP does not constrain its scheme"
+
+      - id: reject_invalid_publisher_authentication_context
+        title: "Context Match rejects invalid publisher authentication"
+        task: trusted_match_invalid_auth_context_probe
+        schema_ref: "trusted-match/context-match-request.json"
+        doc_ref: "/trusted-match/specification#signature-verification"
+        stateful: false
+        expected: |
+          Return HTTP 401 with a WWW-Authenticate challenge. No TMP error body
+          is required.
+        sample_request:
+          type: context_match_request
+          protocol_version: "1.0"
+          request_id: "tmp-invalid-auth-probe-0001"
+          property_rid: "01916f3a-f8cb-7000-8000-000000000099"
+          property_type: website
+          placement_id: "tmp-authentication-probe"
+          seller_agent_url: "https://publisher-auth-probe.example/mcp"
+        validations:
+          - check: http_status
+            value: 401
+            description: "Invalid publisher authentication is rejected with HTTP 401 on Context Match"
+          - check: on_401_require_header
+            value: "www-authenticate"
+            description: "The invalid-auth 401 response includes a WWW-Authenticate challenge; TMP does not constrain its scheme"
+
+      - id: reject_missing_publisher_authentication_identity
+        title: "Identity Match rejects missing publisher authentication"
+        task: trusted_match_missing_auth_identity_probe
+        schema_ref: "trusted-match/identity-match-request.json"
+        doc_ref: "/trusted-match/specification#signature-verification"
+        stateful: false
+        expected: |
+          Return HTTP 401 with a WWW-Authenticate challenge. No TMP error body
+          is required.
+        sample_request:
+          type: identity_match_request
+          protocol_version: "1.0"
+          request_id: "tmp-auth-identity-probe-0001"
+          seller_agent_url: "https://publisher-auth-probe.example/mcp"
+          identities:
+            - uid_type: publisher_first_party
+              user_token: "tmp-auth-probe-opaque-token"
+        validations:
+          - check: http_status
+            value: 401
+            description: "Missing publisher authentication is rejected with HTTP 401 on Identity Match"
+          - check: on_401_require_header
+            value: "www-authenticate"
+            description: "The Identity Match 401 response includes a WWW-Authenticate challenge; TMP does not constrain its scheme"
+
+      - id: reject_invalid_publisher_authentication_identity
+        title: "Identity Match rejects invalid publisher authentication"
+        task: trusted_match_invalid_auth_identity_probe
+        schema_ref: "trusted-match/identity-match-request.json"
+        doc_ref: "/trusted-match/specification#signature-verification"
+        stateful: false
+        expected: |
+          Return HTTP 401 with a WWW-Authenticate challenge. No TMP error body
+          is required.
+        sample_request:
+          type: identity_match_request
+          protocol_version: "1.0"
+          request_id: "tmp-invalid-auth-identity-probe-0001"
+          seller_agent_url: "https://publisher-auth-probe.example/mcp"
+          identities:
+            - uid_type: publisher_first_party
+              user_token: "tmp-auth-probe-opaque-token"
+        validations:
+          - check: http_status
+            value: 401
+            description: "Invalid publisher authentication is rejected with HTTP 401 on Identity Match"
+          - check: on_401_require_header
+            value: "www-authenticate"
+            description: "The invalid-auth Identity Match 401 response includes a WWW-Authenticate challenge; TMP does not constrain its scheme"
+
+grading:
+  pass_criteria: |
+    All four raw HTTP probes receive status 401 with a WWW-Authenticate header.
+    Response bodies are optional and are not validated as TMP responses.
+  report_format: |
+    Report the endpoint origin, observed HTTP status, and whether a body was
+    present. Never render credentials or operator-default headers.

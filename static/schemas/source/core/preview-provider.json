@@ -40,14 +40,14 @@
             "description": "True only when the publisher delegates both creative rendering and the complete placement-specific frame to this route. When false or omitted, consumers compose any presentation_ref around the provider's creative render."
           }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "x-adcp-validation": {
         "unique_item_properties": ["format_option_id"]
       }
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-validation": {
     "verifier_constraints": {
       "format_option_id": "resolves_within_declaring_adagents_json_and_is_listed_on_placement",

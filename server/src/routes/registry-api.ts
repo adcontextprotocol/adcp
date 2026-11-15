@@ -6,7 +6,7 @@ import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { declaredSpecialismsNotApplicableForTarget } from '../compliance/forward-introduced-specialisms.js';
-import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
+import { isAuthoritativeComplianceRun, isCoverageIncomplete } from '../compliance/run-publication.js';
 import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details.js';
 import {
   HEARTBEAT_TIMEOUT_STREAK_WINDOW,
@@ -51,6 +51,8 @@ import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
 import { isRegistryDomain } from "../services/registry-domain.js";
 import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
+import { annotateLogoBackgrounds } from "../services/logo-background.js";
+import { DEFAULT_LOGO_RENDITION_WIDTH, LOGO_RENDITION_WIDTHS } from "../services/logo-rendition.js";
 import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, capabilityProbeRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { compareAdcpVersions, listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
@@ -1130,6 +1132,76 @@ registry.registerPath({
   },
 });
 
+const LogoRenditionQuerySchema = z.object({
+  format: z.enum(["png"]).optional().openapi({
+    description: "Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.",
+  }),
+  w: z.enum(LOGO_RENDITION_WIDTHS.map(String) as [string, ...string[]]).optional().openapi({
+    description: `Rendition width in pixels; requires \`format=png\`. Defaults to ${DEFAULT_LOGO_RENDITION_WIDTH}. Height follows the logo's aspect ratio, capped at four times the width.`,
+    example: "512",
+  }),
+});
+
+const logoAssetResponses = {
+  200: {
+    description: "The logo, or its PNG rendition. Served with `Cache-Control: public, max-age=2592000`: a logo id names immutable bytes, so a changed logo gets a new id and URL.",
+    content: {
+      "image/png": { schema: z.string().openapi({ format: "binary" }) },
+      "image/svg+xml": { schema: z.string() },
+      "image/jpeg": { schema: z.string().openapi({ format: "binary" }) },
+      "image/webp": { schema: z.string().openapi({ format: "binary" }) },
+      "image/gif": { schema: z.string().openapi({ format: "binary" }) },
+    },
+  },
+  400: { description: "Invalid domain, logo id, `format` or `w`", content: { "application/json": { schema: ErrorSchema } } },
+  404: { description: "No approved logo with this id for this domain", content: { "application/json": { schema: ErrorSchema } } },
+  415: { description: "The stored logo type (for example ICO) has no PNG rendition", content: { "application/json": { schema: ErrorSchema } } },
+  422: { description: "The stored logo could not be rendered as PNG", content: { "application/json": { schema: ErrorSchema } } },
+  503: { description: "Too many renditions are already being rendered; retry after the `Retry-After` interval", content: { "application/json": { schema: ErrorSchema } } },
+} as const;
+
+registry.registerPath({
+  method: "get",
+  path: "/assets/brands/{domain}/{logoId}.{ext}",
+  operationId: "getBrandLogoAsset",
+  summary: "Get brand logo",
+  description: [
+    "Download an approved AgenticAdvertising.org-hosted brand logo. This is the URL form that `brand_manifest.logos[].url` uses. When `ext` does not match the stored type, the response is a 301 to the canonical extension, keeping `format` and `w`.",
+    "",
+    "Add `?format=png&w=<width>` for a PNG rendition, for clients that cannot draw SVG. Renditions are rasterised from the stored, sanitised logo only; the endpoint never fetches a remote URL.",
+  ].join("\n"),
+  tags: ["Brand Resolution"],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "acmecorp.com" }),
+      logoId: z.string().uuid(),
+      ext: z.string().openapi({ example: "svg" }),
+    }),
+    query: LogoRenditionQuerySchema,
+  },
+  responses: {
+    ...logoAssetResponses,
+    301: { description: "Redirect to the URL with the stored type's extension" },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/logos/brands/{domain}/{logoId}",
+  operationId: "getBrandLogoLegacy",
+  summary: "Get brand logo (legacy URL)",
+  description: "Legacy form of the brand logo URL, without an extension. Accepts the same `format` and `w` rendition parameters as `/assets/brands/{domain}/{logoId}.{ext}`.",
+  tags: ["Brand Resolution"],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "acmecorp.com" }),
+      logoId: z.string().uuid(),
+    }),
+    query: LogoRenditionQuerySchema,
+  },
+  responses: logoAssetResponses,
+});
+
 registry.registerPath({
   method: "get",
   path: "/api/brands/brand-json",
@@ -1922,7 +1994,11 @@ registry.registerPath({
   path: "/api/registry/lookup/agent/{agentUrl}/domains",
   operationId: "getAgentDomains",
   summary: "Agent domain lookup",
-  description: "Get all publisher domains associated with an agent.",
+  description:
+    "Get all publisher domains whose adagents.json authorizes an agent. `agentUrl` is matched with the " +
+    "[adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule: an " +
+    "origin-only `authorized_agents[].url` (`https://agent.example.com`) authorizes every agent URL at that " +
+    "origin, and an entry with a path matches that canonical URL only, with a non-root trailing slash significant.",
   tags: ["Authorization Lookups"],
   request: { params: z.object({ agentUrl: z.string() }) },
   responses: {
@@ -1939,7 +2015,12 @@ const AgentPublishersEntrySchema = z.object({
   property_ids: z.array(z.string()).optional().openapi({
     description: "Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.",
   }),
-  signing_keys_pinned: z.boolean(),
+  signing_keys_pinned: z.boolean().openapi({
+    description:
+      "Scope-agnostic summary: true only when every in-window authorized_agents entry " +
+      "that matches the agent carries signing_keys. Verifiers compute the pin per " +
+      "message scope, so a pin can apply where this reads false.",
+  }),
   status: z.enum(["authorized", "revoked"]),
   last_verified_at: z.string().datetime(),
 });
@@ -1954,11 +2035,15 @@ const AgentPublishersOpenApi = {
     "Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant " +
     "richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns " +
     "domain strings only.\n\n" +
-    "`agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a " +
-    "**non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are " +
-    "different agents and can return different publisher sets, the same rule the SDK applies in " +
-    "`verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. " +
-    "(Through 2026-10-18 this endpoint folded the two spellings together and answered both with the " +
+    "`agent_url` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) " +
+    "rule, after [AdCP URL canonicalization](/docs/reference/url-canonicalization) of both sides. A publisher " +
+    "whose `authorized_agents[].url` is **origin-only** (`https://a.example` or `https://a.example/`) authorizes " +
+    "every agent URL with that canonical origin (same scheme, host and port), so it is returned for " +
+    "`https://a.example/mcp` and `https://a.example/a2a` alike (DR-0023, AdCP 3.3). An entry **with a path** " +
+    "matches that canonical URL only, and a **non-root trailing slash is significant**: `https://a.example/mcp` " +
+    "and `https://a.example/mcp/` are different agents and can return different publisher sets. " +
+    "Ask for the spelling the publisher's adagents.json lists. " +
+    "(Through 2026-10-18 this endpoint folded the two trailing-slash spellings together and answered both with the " +
     "slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` " +
     "in the response echoes the canonicalized lookup key, slash included.",
   tags: ["Authorization Lookups"],
@@ -3399,7 +3484,11 @@ const AuthorizationRowSchema = z.object({
       "Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source " +
       "adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. " +
       "Null when the publisher declared no keys; consumers fall back to the " +
-      "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).",
+      "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx). " +
+      "This is one entry's pin. Rows from the same publisher combine per message " +
+      "scope: among the rows that authorize that scope, the publisher pins the agent " +
+      "only if every one carries keys, and the pin is the union of their keys " +
+      "(docs/governance/property/adagents.mdx#agent-url-matching).",
   }),
   collections: z
     .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
@@ -3433,7 +3522,7 @@ registry.registerPath({
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     query: z.object({
-      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not." }),
+      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not. Returns the rows whose `agent_url` authorizes it under adagents.json agent URL matching: rows for the same canonical URL, plus rows whose `agent_url` is origin-only (`https://agent.example.com`) for the same canonical origin, which authorize every path at that origin." }),
       include: z.enum(["raw", "effective"]).optional().openapi({ description: "`effective` (default) applies override layer; `raw` reads base table." }),
       evidence: z.string().optional().openapi({ description: "Comma-separated evidence allowlist. Defaults to `adagents_json`.", example: "adagents_json,agent_claim" }),
     }),
@@ -5598,10 +5687,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-          const selected = storedBrandResolutionResponse(
+          const [selected] = await annotateLogoBackgrounds([storedBrandResolutionResponse(
             discovered,
             liveValidation ? serializeBrandValidation(liveValidation) : undefined,
-          );
+          )]);
           res.setHeader("Cache-Control", brandResolveCacheControl(selected.source, fresh));
           recordBrandResolutionOutcome(selected.source);
           return res.json(selected);
@@ -5620,7 +5709,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         });
       }
 
-      const selected = selectResolvedBrandResponse(resolved, discovered, fresh);
+      const [selected] = await annotateLogoBackgrounds([
+        selectResolvedBrandResponse(resolved, discovered, fresh),
+      ]);
       registryRequestsDb
         .markResolved("brand", domain, selected.canonical_domain)
         .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
@@ -5887,7 +5978,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(400).json({ error: "All domains must be bare multi-label DNS hostnames" });
       }
 
-      const results: Record<string, unknown> = {};
+      const results: Record<string, ResolvedBrandResponse | null> = {};
       const uniqueDomains = [...new Set(domains.map((d: string) => d.trim().toLowerCase()))];
 
       for (let i = 0; i < uniqueDomains.length; i += BRAND_BULK_PROCESS_CONCURRENCY) {
@@ -5940,6 +6031,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           }
         }
       }
+
+      const resolvedDomains = Object.keys(results).filter((domain) => results[domain] !== null);
+      const annotated = await annotateLogoBackgrounds(
+        resolvedDomains.map((domain) => results[domain] as ResolvedBrandResponse),
+      );
+      resolvedDomains.forEach((domain, i) => {
+        results[domain] = annotated[i];
+      });
 
       return res.json({ results });
     } catch (error) {
@@ -7007,10 +7106,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
 
       // The registry lists an agent once, under its folded identity key
-      // (#7830), but the directory answers authorization questions
-      // spec-exactly, with a non-root trailing slash significant (#7829,
-      // #8314): a publisher that declared `https://a.example/mcp/` has not
-      // authorized `https://a.example/mcp`. A consumer holding only the
+      // (#7830), but the directory answers authorization questions with the
+      // adagents.json rule, where a non-root trailing slash is significant
+      // for an entry with a path (#7829, #8314, #8943): a publisher that
+      // declared `https://a.example/mcp/` has not authorized
+      // `https://a.example/mcp`. (An origin-only entry is found for every
+      // spelling at its origin, so it needs no extra spelling here.) A consumer holding only the
       // listed URL therefore cannot ask the directory the right question for
       // such an agent — it would ask about the folded spelling and correctly
       // be told nothing. `declared_urls` is every spelling the directory has
@@ -7181,6 +7282,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
                 lifecycle_stage: cs.lifecycle_stage,
                 tracks: cs.tracks_summary_json || {},
                 track_details: cs.track_details_json || [],
+                coverage_incomplete: isCoverageIncomplete(cs.track_details_json),
                 provenance: cs.provenance_json ?? null,
                 streak_days: cs.streak_days,
                 last_checked_at: cs.last_checked_at?.toISOString() || null,
@@ -7707,6 +7809,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         refresh_availability: HUMAN_REFRESH_AVAILABILITY,
         tracks: status.tracks_summary_json || {},
         track_details: status.track_details_json || [],
+        coverage_incomplete: isCoverageIncomplete(status.track_details_json),
         provenance: status.provenance_json ?? null,
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
@@ -7976,6 +8079,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           tracks_skipped: run.tracks_skipped,
           tracks_partial: run.tracks_partial,
           tracks_json: run.tracks_json,
+          coverage_incomplete: isCoverageIncomplete(run.tracks_json),
           total_duration_ms: run.total_duration_ms,
           triggered_by: run.triggered_by,
           tested_at: run.tested_at,
@@ -11542,10 +11646,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     try {
       const federatedIndex = crawler.getFederatedIndex();
       // AUTHORIZATION route — deliberately NOT keyed here. "Which publishers
-      // authorize this agent" is decided spec-exactly, trailing slash
-      // significant (#7829); getDomainsForAgent keys internally for the
-      // index and then filters on the raw agent_url. Keying the parameter
-      // here would make /mcp/ inherit /mcp's authorizations.
+      // authorize this agent" is decided by the adagents.json rule
+      // (`agentUrlAuthorizedBy`): an origin-only entry authorizes every path
+      // at its origin (#8943), an entry with a path only its canonical URL,
+      // trailing slash significant (#7829). getDomainsForAgent keys
+      // internally for the index and then filters on the raw agent_url.
+      // Keying the parameter here would make /mcp/ inherit /mcp's
+      // authorizations.
       const agentUrl = decodeURIComponent(req.params.agentUrl);
       const domains = await federatedIndex.getDomainsForAgent(agentUrl);
       res.json({ agent_url: agentUrl, domains, count: domains.length });
@@ -11576,19 +11683,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       } catch {
         return res.status(400).json({ error: "Malformed agent_url percent-encoding" });
       }
-      // AUTHORIZATION route — the parameter is matched SPEC-EXACTLY, with a
-      // non-root trailing slash significant (#7829), exactly as the validator
-      // and the sibling /registry/lookup/agent/:agentUrl/domains route match
-      // it, and as docs/aao/directory-api.mdx has always specified.
+      // AUTHORIZATION route — the parameter is matched with the adagents.json
+      // rule (`agentUrlAuthorizedBy`): an origin-only entry authorizes every
+      // path at its origin (#8943), and an entry with a path matches only its
+      // canonical URL, non-root trailing slash significant (#7829) — exactly
+      // as the validator and the sibling
+      // /registry/lookup/agent/:agentUrl/domains route match it, and as
+      // docs/aao/directory-api.mdx specifies.
       //
       // `canonicalizeAgentUrl` is the registry IDENTITY key, which folds
       // `/mcp/` into `/mcp` (#7830). It is used here ONLY as a validity gate:
       // an input the registry cannot key at all cannot name an indexed agent.
       // It MUST NOT become the lookup value — that made a `/mcp/` request
       // answer with `/mcp`'s publishers, a different authorization question.
-      // `getPublishersForAgentDetail` keys internally for the index and then
-      // restricts to the raw `agent_url` spellings that match spec-exactly,
-      // so it takes the URL as the caller wrote it.
+      // `getPublishersForAgentDetail` keys internally for the index (the
+      // agent's key and its origin's key) and then restricts to the raw
+      // `agent_url` spellings whose entry authorizes it, so it takes the URL
+      // as the caller wrote it.
       if (!canonicalizeAgentUrl(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent_url after canonicalization" });
       }

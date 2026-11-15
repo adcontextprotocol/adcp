@@ -16,7 +16,7 @@ if (helperStart < 0 || helperEnd < 0) {
 const context = vm.createContext({});
 vm.runInContext(dashboardSource.slice(helperStart, helperEnd), context);
 const buildTrackCoverageGapNote = context.buildTrackCoverageGapNote as (
-  trackData: { has_coverage_gap_skip?: boolean; status?: string },
+  trackData: { has_coverage_gap_skip?: boolean; status?: string; skipped_by_reason?: Record<string, unknown> },
 ) => string;
 
 const blockerHelperStart = dashboardSource.indexOf('function pickStoryboardBlockingReason');
@@ -69,11 +69,36 @@ describe('dashboard track coverage-gap guidance', () => {
     expect(html).toContain('do not count as passing');
   });
 
+  it.each(['pass', 'silent', 'skip'])('marks a %s track with a coverage gap as coverage incomplete', (status) => {
+    const html = buildTrackCoverageGapNote({
+      has_coverage_gap_skip: true,
+      status,
+      skipped_by_reason: { fixture_unavailable: 1, capability_unsupported: 3 },
+    });
+
+    expect(html).toContain('class="track-coverage-gap-note"');
+    expect(html).toContain('Coverage incomplete.');
+    expect(html).toContain('do not count as passing');
+    expect(html).toContain('Skipped steps by reason: fixture_unavailable &times;1, capability_unsupported &times;3.');
+  });
+
+  it('drops skip-reason keys and counts that are not runner codes', () => {
+    const html = buildTrackCoverageGapNote({
+      has_coverage_gap_skip: true,
+      status: 'pass',
+      skipped_by_reason: { '<img src=x>': 1, fixture_unavailable: '2', missing_test_controller: 2 },
+    });
+
+    expect(html).toContain('Skipped steps by reason: missing_test_controller &times;2.');
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('fixture_unavailable');
+  });
+
   it.each([
     { has_coverage_gap_skip: false, status: 'partial' },
-    { has_coverage_gap_skip: true, status: 'pass' },
+    { has_coverage_gap_skip: false, status: 'pass' },
     { has_coverage_gap_skip: true, status: 'fail' },
-  ])('omits the note for $status without a partial coverage gap', (trackData) => {
+  ])('omits the note for $status without a coverage gap or with a failure', (trackData) => {
     expect(buildTrackCoverageGapNote(trackData)).toBe('');
   });
 

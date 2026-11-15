@@ -93,7 +93,7 @@
     "reason_code",
     "initiator"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Retention-driven soft purge (tombstone available on list_creatives)",

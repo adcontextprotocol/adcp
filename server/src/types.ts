@@ -321,6 +321,13 @@ export interface AuthorizationResult {
     placement_tags?: string[];
     effective_from?: string;
     effective_until?: string;
+    /**
+     * The keys the agent may sign with for this publisher, across EVERY
+     * entry that authorizes it for the requested scope (#9016): the union of
+     * their pins, or absent when any of them has no `signing_keys`, which
+     * means no restriction. The other fields above describe the first such
+     * entry in document order.
+     */
     signing_keys?: AgentSigningKey[];
   };
 }
@@ -1230,7 +1237,9 @@ export interface AgentCompliance {
     passed_count: number;
     duration_ms: number;
     has_coverage_gap_skip?: boolean;
+    skipped_by_reason?: Record<string, number>;
   }>;
+  coverage_incomplete?: boolean;
   streak_days: number;
   last_checked_at: string | null;
   headline: string | null;

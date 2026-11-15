@@ -18,6 +18,7 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 - Read and understand real protocol messages at each stage
 - Recognize that 3.1 products may describe creative requirements with canonical `format_options[]` that narrow shared `format_kind` contracts
 - Observe a live agent-to-agent transaction
+- Read a capability declaration: some objects signal support by being present, while others carry an explicit `supported` flag that can be `false`
 - Recognize the two things that make agent-to-agent requests safe: the request is signed (so the seller can verify who sent it) and it carries an `idempotency_key` (so a retry doesn't double-book)
 
 ## Reading list
@@ -67,7 +68,11 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 
 ## Protocol versioning
 
-Every request carries `adcp_major_version`; sellers advertise supported versions on `get_adcp_capabilities`. A3 and B1 go deeper on version negotiation and the object-presence pattern sellers use to declare capabilities.
+Every request carries `adcp_major_version`; sellers advertise supported versions on `get_adcp_capabilities`. A3 and B1 go deeper on version negotiation.
+
+## Reading capabilities
+
+`get_adcp_capabilities` also tells buyers what a seller supports, and each capability follows its own schema contract. Optional feature objects such as `media_buy.audience_targeting` signal support by being present. Other blocks carry an explicit flag, and some must be declared even when the answer is no: every agent declares `adcp.idempotency`, with `{"supported": false}` when it does not deduplicate retried requests. Read each capability the way its schema defines it rather than applying one rule to all of them. B1 goes deeper on how sellers declare capabilities.
 
 ## What you'll do with Addie
 

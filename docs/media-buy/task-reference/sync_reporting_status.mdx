@@ -189,9 +189,8 @@ MUST emit it at
 the diagnosed `responsible_party`; `wait_for_retry` must not survive that
 boundary. `operations_contact` is inert human-facing metadata — an operator
 reads it, and agents never dereference the URL or send protocol traffic to it.
-Its URL is constrained to the same hardened public-origin shape as the offering
-document URIs, so it cannot name a loopback host, an IP literal, or a
-credentialed link.
+Its URL is an HTTPS page and never a credentialed link, including one with
+userinfo.
 
 Issues may also carry `issue_state` (`open`, `acknowledged`, `resolved`,
 `waived`) and an inert `external_ref` so both sides can correlate one AdCP issue

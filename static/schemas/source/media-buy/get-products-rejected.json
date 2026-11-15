@@ -39,9 +39,6 @@
     "catalog_applied": {
       "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/catalog_applied"
     },
-    "execution_readiness": {
-      "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/execution_readiness"
-    },
     "sandbox": {
       "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/sandbox"
     },
@@ -56,11 +53,6 @@
       {
         "required": [
           "products"
-        ]
-      },
-      {
-        "required": [
-          "collections"
         ]
       },
       {

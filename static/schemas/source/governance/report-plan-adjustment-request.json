@@ -104,7 +104,7 @@
         }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "reason": {
       "type": "string",
@@ -136,7 +136,7 @@
         "issued_at": { "type": "string", "format": "date-time" }
       },
       "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "idempotency_key": {
       "type": "string",

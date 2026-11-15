@@ -1026,15 +1026,13 @@ const TOOL_SURFACE_DIFFERENCES = {
     create_content_standards: ['submitted', 'working', 'input-required', 'completed', 'canceled', 'rejected', 'auth-required', 'unknown'],
   } },
 };
+// build_creative, control_media_buy, create_media_buy, update_media_buy,
+// sync_catalogs, sync_creatives and the commitment body have no excluded
+// field: #8934 aligned their tool responses' submitted branches with the
+// published status files, which accept those fields.
 const SUBMITTED_CONTRADICTIONS = {
-  build_creative: { excluded: ['creative_manifest', 'creative_manifests', 'creatives', 'estimate'] },
-  control_media_buy: { excluded: ['media_buy_id', 'warnings'] },
-  create_media_buy: { excluded: ['media_buy_id', 'packages', 'warnings'] },
-  update_media_buy: { excluded: ['media_buy_id', 'warnings'] },
-  buy_products: { excluded: ['media_buy_id', 'warnings'], declared: ['expected_confirmation_at'] },
-  accept_proposal: { excluded: ['media_buy_id', 'warnings'], declared: ['expected_confirmation_at'] },
-  sync_catalogs: { excluded: ['catalogs', 'item_availability_updates', 'item_availability_states'] },
-  sync_creatives: { excluded: ['creatives', 'merges', 'warnings'] },
+  buy_products: { declared: ['expected_confirmation_at'] },
+  accept_proposal: { declared: ['expected_confirmation_at'] },
   refine_proposals: {
     excluded: ['proposals', 'refinement_applied', 'pagination'],
     declared: ['results', 'products', 'collections'],

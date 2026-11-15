@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Targeting can carry display names beside its geographic codes. `core/targeting.json` adds `geo_value_labels`, a map from the ISO codes in `geo_countries`, `geo_countries_exclude`, `geo_regions` and `geo_regions_exclude` to their names (`{ "DE": "Germany", "US-CA": "California" }`), and `core/targeting-input.json` accepts it. `core/geo-metro.json` and the `geo_metros_exclude` entries add `value_labels`, the shape `geo_places` already uses (`{ "501": "New York" }`). Every label key must appear in the values it labels, which conformance tooling enforces through `x-adcp-validation`. Labels are not a targeting dimension: sellers never resolve or apply targeting from them, never reject a request because they are present, and may omit, keep or supply their own in readback, and targeting equality and exact readback compare codes only. A name in place of a code is still invalid. This lets a package, proposal or audit log show "New York" next to `501` without a separate lookup. Buyers should not send `geo_value_labels` to a seller on a version before 3.3. Updated: the Geographic Restrictions section of the targeting guide.

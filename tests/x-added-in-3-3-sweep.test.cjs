@@ -80,6 +80,8 @@ const PROPERTIES_3_3 = [
   ['protocol/get-adcp-capabilities-completed.json', ['properties', 'governance', 'properties', 'supports_budget_periods']],
   ['protocol/get-adcp-capabilities-completed.json', ['properties', 'request_signing', 'properties', 'operation_sources']],
   ['formats/canonical/video_hosted.json', ['properties', 'loudness']],
+  ['formats/canonical/image_carousel.json', ['properties', 'card_image_sizes']],
+  ['formats/canonical/image_carousel.json', ['properties', 'cta_values']],
   ['core/installment-deadlines.json', ['properties', 'change_cutoff']],
   ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
   ['governance/check-governance-request.json', ['properties', 'budget_period_id']],
@@ -97,7 +99,6 @@ const PROPERTIES_3_3 = [
   ['core/notification-config.json', ['properties', 'signing_profile']],
   ['core/push-notification-config.json', ['properties', 'signing_profile']],
   ['core/reporting-webhook.json', ['properties', 'signing_profile']],
-  ['media-buy/create-media-buy-request.json', ['properties', 'artifact_webhook', 'properties', 'signing_profile']],
   ['protocol/get-adcp-capabilities-completed.json', ['properties', 'request_signing', 'properties', 'profiles']],
   ['protocol/get-adcp-capabilities-completed.json', ['properties', 'webhook_signing', 'properties', 'profiles']],
   ['protocol/get-adcp-capabilities-completed.json', ['properties', 'media_buy', 'properties', 'event_source_archive']],
@@ -152,6 +153,7 @@ const PROPERTIES_3_3 = [
   ['core/product-identity.json', ['properties', 'match_keys']],
   ['trusted-match/provider-registration.json', ['properties', 'match_keys']],
   ['protocol/get-adcp-capabilities-completed.json', ['properties', 'media_buy', 'properties', 'supported_match_keys']],
+  ['protocol/get-adcp-capabilities-completed.json', ['properties', 'creative', 'properties', 'assignment_operations']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the
@@ -185,9 +187,14 @@ test('by_spot lifecycle fields carry x-added-in 3.3.0', () => {
 
 test('added enum values are noted in the enum description', () => {
   assert.match(load('enums/demographic-system.json').description, /`nmo` and `videoamp`.*3\.3/);
+  assert.match(load('enums/distribution-identifier-type.json').description, /`instagram_account_id`.*`x_handle` values were added in AdCP 3\.3/);
   const video = load('formats/canonical/video_hosted.json').properties;
   assert.match(video.video_codecs.description, /`mpeg2`, `avc_intra`, and `xavc`.*3\.3/);
   assert.match(video.containers.description, /`mxf`.*3\.3/);
+  assert.match(load('core/requirements/video-asset-requirements.json').properties.containers.description, /`3gp`, `mpeg`, and `m4v`.*3\.3/);
+  const definition = load('core/reporting-report-definition.json');
+  assert.match(definition.properties.contract_version.description, /`1\.2`.*3\.3/);
+  assert.equal(definition.allOf.find(branch => branch.if?.properties?.contract_version?.const === '1.2')['x-added-in'], '3.3.0');
 });
 
 test('surfaces shipped in 3.2 are not marked 3.3', () => {

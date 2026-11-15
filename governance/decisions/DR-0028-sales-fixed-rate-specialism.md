@@ -7,7 +7,7 @@ decided: 2026-10-30
 decided_by: WG Session C consent (objections closed 2026-10-30)
 date: 2026-10-06
 refs: ["#6303", "#5697", "#6345"]
-dissent: none reported; WG review pending
+dissent: none
 ---
 
 ## Decision

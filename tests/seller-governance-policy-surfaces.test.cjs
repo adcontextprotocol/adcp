@@ -174,7 +174,8 @@ test('acceptance context uses registry category facets instead of a political bo
     delivery_jurisdictions: ['DE'],
   }), true, JSON.stringify(validate.errors));
 
-  assert.equal(validate({ political: true }), false);
+  // Open by default (DR-0036): `political` is an unknown key and validates.
+  assert.equal(validate({ political: true }), true);
 });
 
 test('storyboard fixtures cannot invent acceptance-policy facets', () => {

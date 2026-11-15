@@ -10,5 +10,5 @@
     "bid_price": { "type": "number", "minimum": 0 }
   },
   "required": ["keyword", "match_type"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

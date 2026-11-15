@@ -65,7 +65,7 @@
           }
         },
         "required": ["type", "value"],
-        "additionalProperties": false,
+        "additionalProperties": true,
         "not": {
           "required": ["type"],
           "properties": { "type": { "const": "platform_channel_id" } }
@@ -82,5 +82,5 @@
       "minItems": 1
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

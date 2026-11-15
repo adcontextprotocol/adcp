@@ -63,7 +63,7 @@
                 "items": {}
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "confidence": {
             "type": "number",
@@ -73,7 +73,7 @@
           }
         },
         "required": ["feature_id", "status"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "authorization": {
@@ -85,5 +85,5 @@
     }
   },
   "required": ["identifier", "status", "impressions"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

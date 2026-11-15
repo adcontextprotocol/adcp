@@ -627,7 +627,7 @@
           "required": [
             "scope"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "description": "Account overlay — invalidate the named account overlays only; public layer unaffected. The seller MAY omit account_ids when the affected set is competitively sensitive, but MUST ensure account-scoped webhook fan-out only delivers changes to subscribers authorized for the affected account overlays.",
@@ -647,7 +647,7 @@
           "required": [
             "scope"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -720,7 +720,7 @@
             "min",
             "max"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "signal_type": {
           "$ref": "/schemas/enums/signal-catalog-type.json"

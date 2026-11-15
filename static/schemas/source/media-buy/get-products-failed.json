@@ -13,9 +13,6 @@
     "products": {
       "$ref": "/schemas/media-buy/get-products-completed.json#/properties/products"
     },
-    "collections": {
-      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/collections"
-    },
     "targeting_resolution": {
       "$ref": "/schemas/media-buy/get-products-completed.json#/properties/targeting_resolution"
     },
@@ -52,9 +49,6 @@
     "pricing_version": {
       "$ref": "/schemas/media-buy/get-products-completed.json#/properties/pricing_version"
     },
-    "execution_readiness": {
-      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/execution_readiness"
-    },
     "cache_scope": {
       "$ref": "/schemas/media-buy/get-products-completed.json#/properties/cache_scope"
     },
@@ -67,11 +61,6 @@
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
-  },
-  "dependencies": {
-    "collections": [
-      "products"
-    ]
   },
   "not": {
     "anyOf": [

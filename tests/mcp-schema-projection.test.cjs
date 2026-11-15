@@ -52,10 +52,19 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
-// The canonical Product's `not`, as the projection serializes it.
-const CANONICAL_PRODUCT_PROHIBITION = JSON.stringify({
-  not: JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, 'core', 'canonical-product.json'), 'utf8')).not,
-}).slice(1, -1);
+// A named rejection (`not: { required: [...] }`) forbids a legacy key without
+// exposing it, and its schema description may name the key it rejects. Drops
+// every `not` keyword and description string so a legacy-graph scan sees only
+// what a schema accepts, whatever the rejection's shape or serialization.
+function withoutNamedRejections(node, parentKey) {
+  if (Array.isArray(node)) return node.map((item) => withoutNamedRejections(item, parentKey));
+  if (!node || typeof node !== 'object') return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key, value]) => parentKey === 'properties' || !(key === 'not' || (key === 'description' && typeof value === 'string')))
+      .map(([key, value]) => [key, withoutNamedRejections(value, key)]),
+  );
+}
 // The generated profiles describe the active surface of the package's release
 // line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
 // manifest declares via added_in; once the line has a stable release it is the
@@ -130,6 +139,8 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
 // top of main). Bound at 476 KiB once for the window; resume per-PR bounding
 // after the beta.1 cut.
+// Named rejections (DR-0036) are validation, so the model-context view omits
+// them with the bounds; the budget is unchanged.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 476,
   creative: 410,
@@ -202,7 +213,25 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_376_000.
 // Experimental match keys (#8375) reach the seeded Product through
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
-const PARITY_COMPILE_LIMIT = 1_384_000;
+// image_carousel `card_image_sizes` (#8911) reaches the seeded Product's
+// format_options: 1_384_855 bytes. Bound at 1_385_000.
+// Opening the 3.3 schemas and naming the fields closure used to reject (DR-0036)
+// adds 395 bytes to the comply-test-controller-request closure
+// (account-identity-change 30, attestation-reference 72, audience-source 113,
+// collection 40, inventory-list-application 68, placement-selection 38,
+// product-allowed-action 34): 1_383_804 → 1_384_081 bytes. Bound at 1_385_000.
+// The later named rejections and their descriptions measure 1_385_027 bytes;
+// bound at 1_386_000.
+// With both on main (#8911 and the named rejections), the controller measures
+// 1_386_397 bytes; bound at 1_387_000.
+// #8501 entries 11-12 restore sla-window to its 3.2.8 text and give the
+// creative review SLA its own clock, durations and calendar constraints in
+// place of a $ref; the controller measures 1_387_457 bytes, bound at 1_388_000.
+// The no-buyer-secrets rule and the https_put transport text (#8149) reach the
+// controller through reporting-write-destination.json and
+// reporting-delivery-method.json; after the #8501 withdrawals the controller
+// measures 1_330_813 bytes, within the bound.
+const PARITY_COMPILE_LIMIT = 1_388_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -422,6 +451,13 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.extensions.additionalProperties, undefined);
   assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
+  // A named rejection beside declared properties is validation-only.
+  const named = stripModelContextAnnotations({
+    type: 'object',
+    properties: { a: { type: 'string' } },
+    not: { anyOf: [{ required: ['b'] }, { required: ['c'] }] },
+  });
+  assert.equal(named.not, undefined);
 
   const negotiated = stripModelContextAnnotations({
     type: 'object',
@@ -1094,9 +1130,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     path.join(PROJECTION_DIR, projectionManifest.tools.get_task_status.outputSchema)
   );
   // The bound catches embedding the global task-result union (over 1 MB). The
-  // get_products rejected body types the six fields it shares with the
-  // completed body, which brings their targeting and execution-readiness
-  // schemas in: 191,085 bytes, against 62,625 on the base.
+  // get_products rejected body types the five fields it shares with the
+  // completed body, which brings their targeting schemas in: 170,093 bytes,
+  // against 63,027 on the base.
   assert.ok(
     measureSchema(projectedTaskStatus).bytes < 200_000,
     'generic get_task_status output should not embed the global task-result union'
@@ -1123,9 +1159,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      // The canonical Product forbids the legacy Product's keys by name;
-      // forbidding them does not expose them.
-      const exposed = output.replaceAll(CANONICAL_PRODUCT_PROHIBITION, '');
+      // The canonical Product forbids the legacy Product's keys by name and
+      // says so in descriptions; forbidding them does not expose them.
+      const exposed = JSON.stringify(withoutNamedRejections(JSON.parse(output)));
       assert.doesNotMatch(exposed, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }
@@ -1278,7 +1314,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // grows it; the 23 MiB cap holds both (23,815,187 bytes measured).
   // Declaring task responses as status bodies, each output schema a
   // generated status union, and typing the get_products rejected body's
-  // shared fields takes it to 24,229,447 bytes, so the cap moves to 24 MiB.
+  // shared fields takes it to 24,427,253 bytes, so the cap moves to 24 MiB.
   assert.ok(totalBytes < 24 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
@@ -1643,7 +1679,6 @@ test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to 
 
 for (const [relativePath, expectedDefinition] of [
   ['compliance/comply-test-controller-request.json', 'external:core/product.json'],
-  ['media-buy/get-products-request.json', 'external:media-buy/package-forecast-input.json'],
   ['media-buy/get-products-response.json', 'external:core/product.json'],
 ]) {
   test(`${relativePath} uses embedded-resource refs without long root-anchored pointers`, () => {

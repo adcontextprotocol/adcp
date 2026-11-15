@@ -14,6 +14,21 @@ Before contributing please see:
 - [RELEASING.md](https://github.com/adcontextprotocol/adcp/blob/main/RELEASING.md)
 - [SECURITY.md](https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.md)
 
+## Smaller local worktrees
+
+To reduce disk usage in a development worktree, run
+`bash scripts/sparse-dist-checkout.sh` after checkout. Traycer runs it
+automatically during setup. The checkout keeps the documentation snapshots
+listed in `docs.json` and all schema and compliance releases needed by build
+and tests; it omits historical protocol archives. Re-run the script after
+pulling changes to documentation versions. Historical `/protocol/` downloads
+and their discovery entries are unavailable locally until the full checkout is
+restored; `npm run build` generates the development `latest` bundle.
+
+Run `bash scripts/sparse-dist-checkout.sh --full` to restore every tracked
+file. Use a full checkout for release work and CDN recovery. The script leaves
+existing sparse checkouts managed by other tools alone.
+
 ## Schema conventions
 Before adding or modifying schemas, read the [Specification Guidelines](https://github.com/adcontextprotocol/adcp/blob/main/docs/spec-guidelines.md). In particular, normative (non-`ext`) schema fields must not reference specific platforms or vendors by name — platform-specific fields belong in the `ext.{vendor}` namespace. Reviewers will flag violations.
 

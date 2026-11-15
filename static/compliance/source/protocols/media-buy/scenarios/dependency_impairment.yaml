@@ -95,6 +95,12 @@ narrative: |
   here and on the webhook contract separately. See lifecycle.mdx §
   Compliance for the surface declaration.
 
+  **Format gating.** The creatives are a fixed 300x250 image, sent against the
+  first product's first format option. When that option is not an `image`
+  format (for example `display_tag` or `video_vast`), the creative phases are
+  skipped rather than failing a seller that correctly refuses an image it
+  does not accept (adcp#8770).
+
   Audience-track and catalog-track variants are out of scope here — the
   comply test controller only ships force_creative_status today; the
   force_audience_status / force_catalog_item_status surface lands in a
@@ -146,11 +152,11 @@ fixtures:
 
 phases:
   - id: setup
-    title: "Create an active buy with a creative assignment"
+    title: "Create an active buy"
     narrative: |
-      Discover a product, create a media buy, sync one creative into the library
-      with an inline assignment to the buy's first package. The buy's `health`
-      starts as `ok` (default) and `impairments[]` is empty.
+      Discover a product and create a media buy. The next phase syncs one
+      creative into the library and assigns it to the buy's first package. The
+      buy's `health` starts as `ok` (default) and `impairments[]` is empty.
 
     steps:
       - id: get_products_brief
@@ -241,6 +247,23 @@ phases:
             path: "packages[0].package_id"
             description: "Seller returns package_id"
 
+  # The creatives below are a fixed 300x250 image. That manifest is valid only
+  # when the selected format option is an image format. A seller whose first
+  # format option is a display tag, VAST or any other non-image kind correctly
+  # refuses it, so every creative-dependent phase is skipped for that seller
+  # instead of failing it (adcp#8770). Building the manifest from the seller's
+  # own params with $build_assets_from_format needs runner support for
+  # canonical default slots and tag/VAST fixtures first: today a params object
+  # without explicit `slots` leaves the directive unresolved.
+  - id: assign_creative
+    title: "Sync an image creative and assign it to the package"
+    skip_if: "context.format_kind != 'image'"
+    narrative: |
+      Sync one image creative into the library, bind it to the buy's first
+      package, and force it to approved. Runs only when the selected format
+      option is an image format.
+
+    steps:
       - id: sync_creative
         title: "Sync a creative into the library"
         narrative: |
@@ -380,6 +403,7 @@ phases:
 
   - id: baseline_healthy
     title: "Baseline: buy reads as healthy, no impairments"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       With the creative at approved and assigned, the buy MUST report
       `health: ok` and an empty (or absent) `impairments[]`. This is the
@@ -427,6 +451,7 @@ phases:
 
   - id: transition_offline
     title: "Force the creative to rejected"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       The seller transitions the creative from approved → rejected via
       comply_test_controller. This is the resource-state transition that the
@@ -466,6 +491,7 @@ phases:
 
   - id: verify_impaired
     title: "Buy reads as impaired with a matching impairments[] entry"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       After the rejection, the buy MUST report `health: impaired` and
       `impairments[]` MUST contain an entry whose resource_type is `creative`,
@@ -570,6 +596,7 @@ phases:
 
   - id: swap_recovery
     title: "Recover via assignment swap — different creative replaces the rejected one"
+    skip_if: "context.format_kind != 'image'"
     narrative: |
       Sync a second creative (B) into the library as approved, then use
       update_media_buy to swap the package's creative_assignments from

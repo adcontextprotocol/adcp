@@ -12,6 +12,7 @@ const { createHash } = require("node:crypto");
 const semver = require("semver");
 
 const PROTOCOL_OFFLOAD_INDEX = ".runtime-offloaded-tarballs.json";
+const PROTOCOL_VERIFY_CONCURRENCY = 6;
 
 function readOffloadedTarballs(repoRoot) {
   const file = join(repoRoot, "dist", "protocol", PROTOCOL_OFFLOAD_INDEX);
@@ -26,11 +27,14 @@ function readOffloadedTarballs(repoRoot) {
   return index.files;
 }
 
-function protocolOffloadCandidates(repoRoot, manifest = runtimeArtifactManifest(repoRoot)) {
+// Every versioned archive is a candidate. latest.tgz is rebuilt in the image
+// and never offloaded. Archive bodies are only served for download, and the
+// CDN serves them from R2, so a required release's archive need not stay on Fly
+// once R2 holds the same bytes.
+function protocolOffloadCandidates(repoRoot) {
   return readdirSync(join(repoRoot, "dist", "protocol"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".tgz")
-      && semver.valid(entry.name.slice(0, -4)) === entry.name.slice(0, -4)
-      && !manifest.schemaVersions.has(entry.name.slice(0, -4)))
+      && semver.valid(entry.name.slice(0, -4)) === entry.name.slice(0, -4))
     .map((entry) => entry.name).sort();
 }
 
@@ -39,8 +43,9 @@ function protocolOffloadCandidates(repoRoot, manifest = runtimeArtifactManifest(
 // emits R2's strong object ETag; its optional Fly fallback preserves Fly's weak
 // static-file ETag and request ID. Reject that fallback even if bytes match.
 async function verifyProtocolOffloads(repoRoot, fetchArtifact = fetch) {
-  const files = protocolOffloadCandidates(repoRoot);
-  if (!files.length) return files;
+  const candidates = protocolOffloadCandidates(repoRoot);
+  if (!candidates.length) return candidates;
+  const { schemaVersions } = runtimeArtifactManifest(repoRoot);
   // Worker protocol discovery lists R2 objects directly and has no Fly miss
   // fallback. A matching origin body alone cannot establish off-app storage.
   const discovery = await fetchArtifact("https://adcontextprotocol.org/protocol/", {
@@ -52,10 +57,15 @@ async function verifyProtocolOffloads(repoRoot, fetchArtifact = fetch) {
   const index = await discovery.json();
   if (!Array.isArray(index?.versions)) throw new Error("Invalid R2 protocol discovery");
   const published = new Set(index.versions.map((entry) => entry?.tarball));
-  if (files.some((name) => !published.has(`/protocol/${name}`))) {
+  // A release cut in this tree reaches R2 only after its tag is published, so
+  // a required archive that R2 does not list yet stays local. Any other archive
+  // must already be in R2.
+  if (candidates.some((name) => !published.has(`/protocol/${name}`)
+    && !schemaVersions.has(name.slice(0, -4)))) {
     throw new Error("Protocol offload candidate is absent from R2 discovery");
   }
-  for (const name of files) {
+  const files = candidates.filter((name) => published.has(`/protocol/${name}`));
+  const verifyArchive = async (name) => {
     const bytes = readFileSync(join(repoRoot, "dist", "protocol", name));
     const expected = createHash("sha256").update(bytes).digest("hex");
     const response = await fetchArtifact(`https://adcontextprotocol.org/protocol/${name}`, {
@@ -72,6 +82,10 @@ async function verifyProtocolOffloads(repoRoot, fetchArtifact = fetch) {
     if (length !== bytes.length || hash.digest("hex") !== expected) {
       throw new Error(`CDN protocol archive differs from committed bytes: ${name}`);
     }
+  };
+  // Every image build downloads each offloaded body, so verify a few at a time.
+  for (let start = 0; start < files.length; start += PROTOCOL_VERIFY_CONCURRENCY) {
+    await Promise.all(files.slice(start, start + PROTOCOL_VERIFY_CONCURRENCY).map(verifyArchive));
   }
   return files;
 }
@@ -298,9 +312,9 @@ function pruneRuntimeArtifacts(repoRoot = resolve(__dirname, ".."), verifiedProt
   assertAdcpRepoRoot(repoRoot);
   const manifest = verifyRequiredArtifacts(repoRoot);
   const offloaded = readOffloadedTarballs(repoRoot);
-  const candidates = new Set(protocolOffloadCandidates(repoRoot, manifest));
+  const candidates = new Set(protocolOffloadCandidates(repoRoot));
   if (verifiedProtocolFiles.some((name) => !candidates.has(name))) {
-    throw new Error("Refusing to offload a required or unknown protocol archive");
+    throw new Error("Refusing to offload an unknown protocol archive");
   }
   const protocolFiles = [...new Set([...offloaded, ...verifiedProtocolFiles])].sort();
   for (const name of protocolFiles) {
@@ -333,7 +347,7 @@ async function run() {
   console.log(
     `Runtime artifact closure retained ${result.manifest.schemaVersions.size} schema releases; ` +
       `pruned ${result.schemasRemoved.length}; offloaded ${verified.length} CDN-verified protocol archives. ` +
-      "Compliance, docs, required protocol archives and all sidecars were left intact.",
+      "Compliance, docs, latest.tgz, archives not yet in R2 and all sidecars were left intact.",
   );
 }
 

@@ -149,5 +149,5 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

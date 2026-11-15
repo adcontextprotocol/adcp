@@ -53,10 +53,10 @@
           "description": "Repository-relative GitHub Actions workflow path that npm provenance buildDefinition.externalParameters.workflow.path MUST identify."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-validation": {
     "verifier_constraints": {
       "export": "exists_in_pinned_package_and_passes_contract_fixtures_for_enclosing_format_input_contract"

@@ -631,9 +631,11 @@ export const ResolvedBrandSchema = z
       description: "Loss or ambiguity encountered while promoting a pre-v3 document. A `house` warning means the legacy house object was preserved only as opaque metadata and did not establish a trusted relationship.",
     }),
     brand_agent_url: z.string().optional(),
-    brand_manifest: z.record(z.string(), z.unknown()).optional(),
+    brand_manifest: z.record(z.string(), z.unknown()).optional().openapi({
+      description: "Stored or origin brand manifest. Each logo object in `logos[]` (and in `brands[].logos[]`) carries `background`, the brand.json field naming the background the logo is drawn for: `light-bg` (dark ink), `dark-bg` (light ink) or `transparent-bg`. A declared `background` in that enum is returned as published; any other declared value is treated as undeclared and is never returned. Otherwise it comes from a `light-bg` or `dark-bg` tag, then a `transparent-bg` tag, and for AgenticAdvertising.org-hosted logos from the luminance of the rendered logo (`light-bg` or `dark-bg`). It is absent when none of these is known.",
+    }),
     brand: z.record(z.string(), z.unknown()).optional().openapi({
-      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.",
+      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization. Logos in `brand.logos[]` carry `background` on the same rules as `brand_manifest.logos[]`.",
     }),
     source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
       description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
@@ -812,7 +814,9 @@ export const AgentComplianceSchema = z
       passed_count: z.number().int(),
       duration_ms: z.number(),
       has_coverage_gap_skip: z.boolean().optional(),
-    })).optional().openapi({ description: "Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller." }),
+      skipped_by_reason: z.record(z.string(), z.number().int()).optional().openapi({ description: "Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped." }),
+    })).optional().openapi({ description: "Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass." }),
+    coverage_incomplete: z.boolean().optional().openapi({ description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges." }),
     streak_days: z.number().int(),
     last_checked_at: z.string().nullable(),
     headline: z.string().nullable(),
@@ -904,6 +908,12 @@ const BadgeGradingEvidenceSchema = z.object({
   relevant_bundle_ids: z.array(z.string()),
   failing_bundle_count: z.number().int().nonnegative(),
   incomplete_bundle_count: z.number().int().nonnegative(),
+  incomplete_bundle_ids: z.array(z.string()).optional().openapi({
+    description: "Relevant bundles, as kind:id, that keep Strict Spec partial because their evidence is incomplete: an untested or partially covered storyboard, including runner and test-kit gaps.",
+  }),
+  not_applicable_universal_bundle_ids: z.array(z.string()).optional().openapi({
+    description: "Universal bundles left partial only because the agent does not offer the surface: it advertises none of the tools for a surface it does not declare, or it does not advertise request signing for signed_requests. They do not count as incomplete.",
+  }),
   relevant_failure_count: z.number().int().nonnegative(),
   missing_universal_bundle: z.boolean(),
   missing_protocol_bundle: z.boolean(),
@@ -1012,7 +1022,9 @@ export const AgentComplianceDetailSchema = z
       passed_count: z.number().int(),
       duration_ms: z.number(),
       has_coverage_gap_skip: z.boolean().optional(),
-    })).optional().openapi({ description: "Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller." }),
+      skipped_by_reason: z.record(z.string(), z.number().int()).optional().openapi({ description: "Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped." }),
+    })).optional().openapi({ description: "Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass." }),
+    coverage_incomplete: z.boolean().optional().openapi({ description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges." }),
     streak_days: z.number().int().optional(),
     last_checked_at: z.string().nullable().optional(),
     last_passed_at: z.string().nullable().optional(),
@@ -1193,7 +1205,7 @@ export const FederatedAgentWithDetailsSchema = z
     compliance: AgentComplianceSchema.optional(),
     declared_urls: z.array(z.string()).optional().openapi({
       description:
-        "Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches spec-exactly with the slash significant — so a client answering \"which publishers authorize this agent\" must query once per spelling here and merge the results.",
+        "Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches with adagents.json agent URL matching, where the slash is significant for an entry with a path — so a client answering \"which publishers authorize this agent\" must query once per spelling here and merge the results. Publishers that authorize the agent's bare origin are returned for every spelling.",
     }),
     publisher_domains: z.array(z.string()).optional(),
     property_summary: PropertySummarySchema.optional(),
@@ -1588,6 +1600,7 @@ export const ComplianceRunSchema = z
     tracks_skipped: z.number().int(),
     tracks_partial: z.number().int(),
     tracks_json: z.any(),
+    coverage_incomplete: z.boolean().optional().openapi({ description: "True when any track in this run has a coverage-gap skip (tracks_json[].has_coverage_gap_skip)." }),
     total_duration_ms: z.number().nullable(),
     triggered_by: z.string(),
     tested_at: z.string(),

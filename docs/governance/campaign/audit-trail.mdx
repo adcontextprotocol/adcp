@@ -41,7 +41,7 @@ The table below classifies every field in the [`get_plan_audit_logs`](/docs/gove
 | `plans[].summary.checks_performed`, `outcomes_reported` | yes | no | yes |
 | `plans[].summary.statuses` | yes | no | yes |
 | `plans[].summary.findings_count` | yes | no | yes |
-| `plans[].summary.human_reviews[]` | yes | no | redact reason; share resolution + timestamp on request |
+| `plans[].summary.escalations[]` | yes | no | redact reason; share resolution + timestamp on request |
 | `plans[].summary.drift_metrics.*` | yes | no | available if the buyer's counterparty rules require disclosure |
 | `plans[].entries[].id`, `type`, `timestamp` | yes | yes (own context only) | yes |
 | `plans[].entries[].caller` | yes | yes (own context only) | yes |
@@ -96,9 +96,9 @@ The seller can verify the `plan_hash` against the plan revision they signed unde
 
 A regulator typically asks for one of three things:
 
-1. **Did human oversight occur where required?** Share `summary.human_reviews[]` and the `requires_human_review` flag from the resolved policies. Reasons may be redacted or summarized; resolutions and timestamps should be intact.
+1. **Did human oversight occur where required?** Share `summary.escalations[]` and the `requires_human_review` flag from the resolved policies. Reasons may be redacted or summarized; resolutions and timestamps should be intact.
 2. **Did the buy comply with a specific regulation?** Share entries scoped by `policies_evaluated` containing the regulation's `policy_id` (e.g., `us_coppa`). Include `plan_hash` so the regulator can verify against the plan revision.
-3. **Are oversight metrics within thresholds?** Share `summary.drift_metrics` and the policy-derived thresholds. A `human_review_rate` below `human_review_rate_min` is a signal worth explaining.
+3. **Are oversight metrics within thresholds?** Share `summary.drift_metrics` and the policy-derived thresholds. An `escalation_rate` below `thresholds.escalation_rate_min` is a signal worth explaining.
 
 The protocol does not define a regulator API. Counterparty rules govern the disclosure; the audit trail makes the disclosure possible.
 
@@ -230,7 +230,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
 
 ## The operator's dial: enforce / advisory / audit
 
-`mode` is set on the plan via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) and is the operator's primary lever. The same caller, same payload, same finding produces three different outcomes depending on mode.
+`mode` is governance agent configuration. The buyer's policy team sets it on the governance agent itself; it is not a plan field and is not sent in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans). It is the operator's primary lever, and an agent that reports `mode` records the mode in force on each check entry. The same caller, same payload, same finding produces three different outcomes depending on mode.
 
 **`mode: "enforce"`** — the buy is blocked at the governance layer:
 
@@ -313,7 +313,7 @@ The trade-off:
 | `advisory` | Full velocity | Findings surface but don't block | Rolling out a new policy; observing behavior before tightening |
 | `audit` | Full velocity | Findings logged silently | Backstop telemetry; never the only governance posture |
 
-A plan can shift modes between revisions — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; today it appears on the per-`check_governance` response but not consistently on `get_plan_audit_logs` responses ([#3156](https://github.com/adcontextprotocol/adcp/issues/3156)).
+The agent's mode can change during a plan's lifetime. A different `mode` on two audit entries reflects a change to the governance agent's configuration, not a plan revision — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; today it appears on the per-`check_governance` response but not consistently on `get_plan_audit_logs` responses ([#3156](https://github.com/adcontextprotocol/adcp/issues/3156)).
 
 ## What the protocol guarantees
 

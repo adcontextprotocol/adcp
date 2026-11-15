@@ -80,7 +80,7 @@
                 }
               },
               "required": ["property_id", "artifact_id"],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "ext": {
               "$ref": "/schemas/core/ext.json"

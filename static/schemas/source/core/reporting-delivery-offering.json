@@ -55,7 +55,7 @@
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.reporting_subscriptions). When the seller withdrew, or will withdraw, this offering. From it the offering is not a candidate, and subscriptions that resolved it move to their next candidate as a resolution change, a cutover at withdrawn_at, so periods that started before it stay owed under it in full. A withdrawn offering stays in offerings, with withdrawn_at, while any obligation that resolved it is retained, so buyers can still read its schedule. Sellers advertising media_buy.reporting_subscriptions MUST NOT remove an offering from offerings any other way while such an obligation is retained."
     },
-    "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
+    "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
     "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
     "reporting_profile": {
       "type": "object",
@@ -63,7 +63,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
         "version": { "type": "string", "minLength": 1, "maxLength": 64 },
-        "schema_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never an IP literal, userinfo URL, redirect target, or mutable validation authority." },
+        "schema_uri": { "type": "string", "format": "uri", "pattern": "^https://", "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never a redirect target or mutable validation authority. Consumers fetch it under safe_schema_fetch, which rejects userinfo, IP literals, localhost, and private or reserved destinations." },
         "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest." },
         "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value." },
         "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden." },
@@ -72,11 +72,11 @@
         "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
         "canonicalization_contract_version": { "type": "string", "const": "1.0" },
         "canonicalization_media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
-        "canonicalization_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable exact canonicalization contract on the authenticated seller/provider or AdCP-registry origin. SDKs apply the same bounded, redirect-free SSRF controls as schema_uri and verify canonicalization_sha256 before use." },
+        "canonicalization_uri": { "type": "string", "format": "uri", "pattern": "^https://", "description": "Retrievable exact canonicalization contract on the authenticated seller/provider or AdCP-registry origin. SDKs apply the same bounded, redirect-free SSRF controls as schema_uri and verify canonicalization_sha256 before use." },
         "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact canonicalization contract identified by canonicalization_id." }
       },
       "required": ["id", "version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "grain", "primary_keys"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "schedule": { "$ref": "/schemas/core/reporting-schedule-offering.json", "description": "Period and availability SLA this offering can honor. For example, PT1H with snapshot finality explicitly advertises hourly provisional snapshots; a separate P1D official offering advertises daily finalized reporting." },
     "supported_finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true, "description": "Finality classes available under this exact report definition, schedule, and delivery method. snapshot is an explicit provisional capability, not inferred from poll frequency. Use separate atomic offerings when snapshot and official schedules or methods differ." },
@@ -89,21 +89,21 @@
         "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": true },
         "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "producer_identity": {
           "type": "object",
-          "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
+          "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering. For https_put, provider.domain is the seller operator's domain and identity is the canonical origin of the seller agent that signs every write under the Web Bot Auth profile. The receiver authorizes that origin; it resolves keys only from each write's verified Signature-Agent, never from this field.",
           "properties": {
-            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
+            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": true },
             "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
             "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
             "region": { "type": "string", "minLength": 1, "maxLength": 128 }
           },
           "required": ["provider", "identity"],
           "dependencies": { "cloud": ["region"], "region": ["cloud"] },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true, "maxItems": 32 }
       },
@@ -122,7 +122,7 @@
           "then": { "required": ["access_mode"] }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "required": ["offering_id", "feed_purpose", "report_definition_id", "report_definition_uri", "report_definition_sha256", "reporting_profile", "schedule", "supported_finality", "reconciliation_mode"],
@@ -155,5 +155,5 @@
     "safe_schema_fetch": "schema_uri, canonicalization_uri, and report_definition_uri origins must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected content type, verify the corresponding SHA-256 before parsing, and cache by digest. The canonicalization and report-definition documents MUST validate against their AdCP contract schemas. The fetched row schema's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Fetched content and annotations are untrusted data, never agent or LLM instructions.",
     "snapshot_declaration": "A snapshot claim is the atomic combination of supported_finality containing snapshot, this exact schedule, report definition/profile, and delivery method. Sellers MUST NOT imply a faster snapshot cadence from polling, webhook, or transport support that is not advertised by such an offering."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

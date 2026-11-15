@@ -26,7 +26,7 @@
               }
             },
             "required": ["result", "consumer_status"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "Unchanged reporting consumer status",
@@ -41,7 +41,7 @@
               }
             },
             "required": ["result", "consumer_status"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "Failed reporting consumer status",
@@ -58,7 +58,7 @@
               "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1, "maxItems": 16 }
             },
             "required": ["result", "reporting_status_id", "errors"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
