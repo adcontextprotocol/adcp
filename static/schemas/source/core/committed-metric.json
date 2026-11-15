@@ -21,7 +21,7 @@
         },
         "qualifier": {
           "type": "object",
-          "description": "Disambiguates metrics whose definition varies by qualifier. Today carries five keys — `viewability_standard` (MRC vs GroupM viewability), `completion_source` (seller- vs vendor-attested completion), `attribution_methodology` (how attribution was computed for outcome metrics), `attribution_window` (the time window over which outcomes were attributed), and `lift_dimension` (which dimension of brand_lift this row represents — awareness, consideration, etc.). Required when the underlying `metric_id` has multiple incompatible measurement paths AND the seller commits to a specific one. Symmetric on `missing_metrics`. Reserved for additive qualifiers in future minors — schema is closed (`additionalProperties: false`); new keys ship explicitly. **Heterogeneous value types**: qualifier values can be either string enums (`viewability_standard`, `completion_source`, `attribution_methodology`, `lift_dimension`) or structured objects (`attribution_window` is a duration `{interval, unit}`). Consumers MUST dispatch on key name to know value shape; structured-value qualifiers join on canonical (key-sorted) deep equality so `{interval: 14, unit: 'days'}` and `{unit: 'days', interval: 14}` resolve to the same partition. Rate-style metrics (`new_to_brand_rate`, `engagement_rate`, etc.) inherit the methodology of their numerator — when a rate carries `attribution_methodology` qualifier, it applies to the underlying conversions/events being rated.",
+          "description": "Disambiguates metrics whose definition varies by qualifier. Today carries five keys — `viewability_standard` (MRC vs GroupM viewability), `completion_source` (seller- vs vendor-attested completion), `attribution_methodology` (how attribution was computed for outcome metrics), `attribution_window` (the time window over which outcomes were attributed), and `lift_dimension` (which dimension of brand_lift this row represents — awareness, consideration, etc.). Required when the underlying `metric_id` has multiple incompatible measurement paths AND the seller commits to a specific one. Symmetric on `missing_metrics`. Closed (`additionalProperties: false`), because consumers join on the key set; new keys ship in a major release. **Heterogeneous value types**: qualifier values can be either string enums (`viewability_standard`, `completion_source`, `attribution_methodology`, `lift_dimension`) or structured objects (`attribution_window` is a duration `{interval, unit}`). Consumers MUST dispatch on key name to know value shape; structured-value qualifiers join on canonical (key-sorted) deep equality so `{interval: 14, unit: 'days'}` and `{unit: 'days', interval: 14}` resolve to the same partition. Rate-style metrics (`new_to_brand_rate`, `engagement_rate`, etc.) inherit the methodology of their numerator — when a rate carries `attribution_methodology` qualifier, it applies to the underlying conversions/events being rated.",
           "properties": {
             "viewability_standard": {
               "$ref": "/schemas/enums/viewability-standard.json",
@@ -53,7 +53,7 @@
         }
       },
       "required": ["scope", "metric_id", "committed_at"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -76,7 +76,7 @@
         },
         "qualifier": {
           "type": "object",
-          "description": "Optional qualifier disambiguating commitments to the same vendor metric measured under different methodologies or windows. Same closed key set as standard-scope entries; new keys ship explicitly.",
+          "description": "Optional qualifier disambiguating commitments to the same vendor metric measured under different methodologies or windows. Same closed key set as standard-scope entries; new keys ship in a major release.",
           "properties": {
             "viewability_standard": {
               "$ref": "/schemas/enums/viewability-standard.json",
@@ -108,7 +108,7 @@
         }
       },
       "required": ["scope", "vendor", "metric_id", "committed_at"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

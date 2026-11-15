@@ -88,7 +88,7 @@
                 "description": "Committed as a percentage of authorized."
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "channel_allocation": {
             "type": "object",
@@ -105,7 +105,7 @@
                   "description": "Channel's share of the authorized total budget."
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "summary": {
@@ -146,7 +146,7 @@
                     "description": "Supplementary count of checks that went through internal human review. These checks are also counted in approved or denied."
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "findings_count": {
                 "type": "integer",
@@ -181,7 +181,7 @@
                     "check_id",
                     "reason"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               },
               "drift_metrics": {
@@ -250,13 +250,13 @@
                         "description": "Maximum acceptable human override rate. A high rate suggests the governance agent's recommendations are poorly calibrated."
                       }
                     },
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "entries": {
             "type": "array",
@@ -379,7 +379,7 @@
                       "severity",
                       "explanation"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 },
                 "delivery_statement": {
@@ -400,7 +400,7 @@
                         "end": { "type": "string", "format": "date-time" }
                       },
                       "required": ["start", "end"],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     "canonical_payload": {
                       "type": "object",
@@ -410,11 +410,11 @@
                         "delivery_metrics": { "type": "object", "additionalProperties": true }
                       },
                       "required": ["seller_reference", "delivery_metrics"],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     }
                   },
                   "required": ["statement_id", "statement_digest", "sequence", "issued_at", "seller_reference", "cumulative_spend", "currency", "reporting_period", "canonical_payload"],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "outcome": {
                   "$ref": "/schemas/enums/outcome-type.json",
@@ -461,7 +461,7 @@
                     "amount",
                     "currency"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "headroom_restored": {
                   "type": "number",
@@ -540,7 +540,7 @@
                         "start",
                         "end"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     "cumulative_spend": {
                       "type": "number",
@@ -583,7 +583,7 @@
                       }
                     },
                     "required": ["reference", "evaluation"],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   "minItems": 1,
                   "maxItems": 10
@@ -624,7 +624,7 @@
                     "issued_at": { "type": "string", "format": "date-time" }
                   },
                   "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "reviewed_by": { "type": "string", "format": "uri" },
                 "reviewed_at": { "type": "string", "format": "date-time" },
@@ -645,7 +645,7 @@
                   }
                 }
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "governed_actions": {
@@ -704,7 +704,7 @@
                     "end": { "type": "string", "format": "date-time" }
                   },
                   "required": ["start", "end"],
-                  "additionalProperties": false,
+                  "additionalProperties": true,
                   "description": "Current seller statement period summarized for this governed action."
                 },
                 "conservative_exposure": {
@@ -737,7 +737,7 @@
                 "committed",
                 "check_count"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         },
@@ -749,7 +749,7 @@
           "governed_actions",
           "summary"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "context": {

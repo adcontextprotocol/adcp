@@ -1,5 +1,5 @@
 id: webhook_emission
-version: "1.4.2"
+version: "1.5.0"
 title: "Webhook emission — outbound webhook conformance (operation ID + signing + idempotency + sync silence)"
 category: core
 summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, avoid duplicate webhook side effects on request replay, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Sellers MUST NOT emit task webhooks for inline terminal responses; any future sync-completion notification mode would be explicit and capability-advertised. Graded by a runner hosting a webhook receiver during storyboard execution."
@@ -49,7 +49,25 @@ narrative: |
      are not AdCP webhooks. In particular, advertised guaranteed-sync wholesale
      discovery requests either reject `push_notification_config` as a
      well-formed but unsupported runtime condition or stay synchronous without
-     firing a completion webhook.
+     firing a completion webhook. The same rule applies to the primary
+     `create_media_buy` trigger: a seller whose `create_media_buy` returns the
+     media buy inline is a conformant polling-only seller for this universal.
+
+  **Synchronous primary trigger.** The first webhook trigger decides which
+  path the rest of the run grades. When `create_media_buy` returns an inline
+  terminal result, no webhook is owed. The runner detects that case from
+  `context.media_buy_id`, recorded from the response, then asserts that none
+  arrives for that trigger and skips the emitted-webhook phases
+  (`idempotency_key_presence`, `operation_id_echo`,
+  `idempotency_replay_side_effects`, `idempotency_key_stability`,
+  `signing_keys_published`, `signature_validity`). When the trigger returns
+  `submitted`, or `working` without a `media_buy_id`, those phases run and
+  the seller must deliver signed webhooks. A `working` response that carries
+  `media_buy_id` is currently misclassified as synchronous; see
+  `synchronous_trigger_silence`. Triggers that do not return a
+  `media_buy_id` (other primary emitters) keep the emitted-webhook grading.
+  A synchronous agent that declares `webhook_signing.supported: true` still
+  has its signing JWKS graded (`signing_keys_published_declared`).
 
   Grading is observable-behavior only. The runner hosts a webhook receiver per
   the contract at `test-kits/webhook-receiver-runner.yaml`, drives storyboards
@@ -74,7 +92,12 @@ narrative: |
   `adcp_use: "webhook-signing"` keys remain accepted on the webhook path for
   backward compatibility. Agents without published signing keys fail the
   `signing_keys_published` precheck before the signature phase runs; agents
-  with keys but invalid signatures fail `signature_validity`. The
+  with keys but invalid signatures fail `signature_validity`. Accepting
+  `push_notification_config` is not by itself emitting webhooks: an agent
+  whose primary trigger completes synchronously sends no webhook in this run,
+  so both phases are skipped for it. An agent that still declares
+  `webhook_signing.supported: true` is graded on its JWKS by
+  `signing_keys_published_declared` instead. The
   deprecated HMAC fallback remains a buyer-side registration option in 3.x
   (`push_notification_config.authentication`), but it is not a path that
   exempts the agent from publishing 9421 keys — the runner registers as a
@@ -127,6 +150,10 @@ prerequisites:
     compatibility. The `signing_keys_published` precheck asserts this
     directly; agents without published signing keys fail
     `webhook_signing_keys_unpublished` before the signature phase runs.
+    When the primary trigger completes synchronously the agent emits no
+    webhook in this run and that precheck is skipped, unless the agent
+    declares `webhook_signing.supported: true`: then
+    `signing_keys_published_declared` asserts the same JWKS requirement.
   test_kit: "test-kits/webhook-receiver-runner.yaml"
 
 fixtures:
@@ -231,18 +258,18 @@ phases:
           All sales-agent webhook triggers use the captured product and pricing
           option IDs only after discovery reaches a successful result.
 
-  - id: idempotency_key_presence
-    title: "Every webhook payload carries idempotency_key"
+  - id: primary_webhook_trigger
+    title: "Trigger the primary webhook-emitting operation"
     narrative: |
       The runner triggers a webhook-emitting operation with a
       push_notification_config pointed at the runner's per-step receiver. The
-      first inbound webhook MUST carry an `idempotency_key` matching the
-      required pattern (`^[A-Za-z0-9_.:-]{16,255}$`). Absence of the field or
-      a pattern mismatch fails the phase.
-
-      This is the baseline conformance with adcontextprotocol/adcp#2417 —
-      receivers cannot dedupe without it, so "I forgot to emit the field" is
-      the single highest-impact publisher bug the universal catches.
+      response decides which path the rest of the run grades: an interim
+      `submitted` or `working` response owes webhooks, which the following
+      phases grade; an inline terminal `create_media_buy` result owes none.
+      The runner tells them apart by `context.media_buy_id`, which it
+      records from the response, so a `working` response that carries
+      `media_buy_id` is graded as synchronous (a runner limitation; see
+      `synchronous_trigger_silence`).
 
     steps:
       - id: trigger_webhook_operation
@@ -285,10 +312,66 @@ phases:
           context:
             correlation_id: "webhook_emission--trigger_webhook_operation"
         expected: |
-          Agent accepts the request and begins async execution. Response either
-          returns an immediate terminal status (no webhook needed) or an
-          interim status indicating async processing (webhook will follow).
+          Agent accepts the request. Response either returns an immediate
+          terminal result (no webhook needed) or an interim status indicating
+          async processing (webhook will follow).
 
+  - id: synchronous_trigger_silence
+    title: "Synchronous primary trigger emits no task webhook"
+    narrative: |
+      Runs only when the primary trigger returned an inline terminal
+      `create_media_buy` result. The spec says a task that completes
+      synchronously sends no webhook, even with `push_notification_config`
+      present, so the runner observes the trigger's receiver and fails if a
+      matching task webhook arrives.
+
+      The classification reads `context.media_buy_id` because a storyboard
+      cannot read the trigger's task status. A `submitted` envelope cannot
+      carry `media_buy_id` (the schema forbids it), but a `working` envelope
+      may. The reference runner records `media_buy_id` from any
+      `create_media_buy` response, so it classifies that seller as
+      synchronous and fails its completion webhook here. That is a runner
+      limitation, not a seller obligation; it is tracked in
+      adcontextprotocol/adcp-client#3682.
+    skip_if: "!context.media_buy_id"
+
+    steps:
+      - id: expect_sync_trigger_silence
+        title: "Assert the synchronous trigger emitted no task webhook"
+        narrative: |
+          Observe the receiver associated with the synchronous primary trigger
+          for five seconds. The step passes only after the full observation
+          window completes without a matching task webhook; receiving one
+          fails immediately.
+        task: expect_no_webhook
+        triggered_by: trigger_webhook_operation
+        filter:
+          body:
+            operation_id: "op_webhook_presence_explicit"
+        timeout_seconds: 5
+        stateful: true
+        expected: |
+          No webhook with operation_id op_webhook_presence_explicit arrives
+          during the five-second observation window. A matching delivery fails
+          with unexpected_webhook_received.
+
+  - id: idempotency_key_presence
+    title: "Every webhook payload carries idempotency_key"
+    narrative: |
+      The first inbound webhook for the primary trigger MUST carry an
+      `idempotency_key` matching the required pattern
+      (`^[A-Za-z0-9_.:-]{16,255}$`). Absence of the field or a pattern
+      mismatch fails the phase.
+
+      This is the baseline conformance with adcontextprotocol/adcp#2417 —
+      receivers cannot dedupe without it, so "I forgot to emit the field" is
+      the single highest-impact publisher bug the universal catches.
+
+      Skipped when the primary trigger completed synchronously: no webhook is
+      owed for an inline terminal result.
+    skip_if: "context.media_buy_id"
+
+    steps:
       - id: expect_webhook_presence
         title: "Assert inbound webhook carries a valid idempotency_key"
         narrative: |
@@ -325,6 +408,10 @@ phases:
       an operation id for routing but the JSON payload omitted it, and the
       equally dangerous variant where a seller parses a URL path segment
       instead of using the registered `operation_id` field.
+
+      Skipped when the primary trigger completed synchronously: no webhook is
+      owed, so there is no payload to check for the echo.
+    skip_if: "context.media_buy_id"
 
     steps:
       - id: trigger_operation_id_echo
@@ -410,6 +497,11 @@ phases:
       substitution. Core idempotency remains runnable by agents and runners
       that do not host a webhook receiver; webhook side-effect idempotency is
       graded here when the receiver contract is in scope.
+
+      Skipped when the primary trigger completed synchronously: no webhook is
+      owed, so there is no side effect to duplicate. Request replay itself
+      stays graded by the core idempotency universal.
+    skip_if: "context.media_buy_id"
 
     steps:
       - id: trigger_idempotent_webhook_initial
@@ -704,6 +796,10 @@ phases:
       key on retry." Only a live observation catches publisher-side retry
       bugs.
 
+      Skipped when the primary trigger completed synchronously: no webhook is
+      owed, so there is no delivery to retry.
+    skip_if: "context.media_buy_id"
+
     steps:
       - id: trigger_retry_scenario
         title: "Trigger a webhook that will be retried via 5xx response"
@@ -802,6 +898,11 @@ phases:
       fail" gets a specific keys-vs-signing diagnostic instead of a generic
       `signature_key_unknown` deep in the verifier checklist.
 
+      Skipped when the primary trigger completed synchronously: the agent
+      emits no webhook in this run, so it is not graded on publishing a
+      webhook-signing key here.
+    skip_if: "context.media_buy_id"
+
     steps:
       - id: fetch_brand_json
         title: "Fetch brand.json and resolve jwks_uri"
@@ -838,6 +939,50 @@ phases:
           `webhook_signing_keys_all_revoked` (all webhook-valid signing keys
           revoked).
 
+  - id: signing_keys_published_declared
+    title: "Agent declaring webhook signing publishes a signing JWKS"
+    narrative: |
+      Runs only when the primary trigger completed synchronously and the agent
+      declares `webhook_signing.supported: true`. Such an agent emits no
+      webhook in this run, so signing_keys_published is skipped, but it still
+      advertises signed webhook surfaces (the capabilities schema requires
+      `webhook_signing.supported: true` whenever mutating-webhook emission is
+      advertised, e.g. `media_buy.reporting_delivery_methods` including
+      `webhook`). This storyboard is where sales-agent webhook signing keys are
+      graded, so the same JWKS precheck runs here under its own step ids.
+    skip_if: "!context.media_buy_id"
+    requires_capability:
+      path: "webhook_signing.supported"
+      equals: true
+
+    steps:
+      - id: fetch_brand_json_declared
+        title: "Fetch brand.json and resolve jwks_uri"
+        narrative: |
+          Same probe as signing_keys_published.fetch_brand_json.
+        task: fetch_brand_jwks
+        stateful: false
+        expected: |
+          brand.json reachable and parseable; at least one `agents[]` entry
+          has a `jwks_uri` returning a valid JWKS document. Fails with
+          `brand_json_unreachable`, `brand_json_malformed`, or
+          `agents_jwks_uri_missing`.
+
+      - id: assert_webhook_signing_key_present_declared
+        title: "Assert JWKS contains a webhook-valid signing key"
+        narrative: |
+          Same assertion as
+          signing_keys_published.assert_webhook_signing_key_present.
+        task: assert_jwks_purpose
+        stateful: false
+        expected: |
+          At least one JWK in the agent's published JWKS carries
+          `adcp_use: "request-signing"` or deprecated
+          `adcp_use: "webhook-signing"` and is not marked revoked. Fails
+          with `webhook_signing_keys_unpublished`,
+          `webhook_signing_keys_wrong_purpose`, or
+          `webhook_signing_keys_all_revoked`.
+
   - id: signature_validity
     title: "Webhook signatures validate under the 9421 profile"
     narrative: |
@@ -857,6 +1002,10 @@ phases:
       `/compliance/{version}/test-vectors/webhook-signing/`, including stale
       signature and content-digest tamper cases. This phase grades positive-path
       agents emitting conformant signatures on live traffic.
+
+      Skipped when the primary trigger completed synchronously: no webhook is
+      owed, so there is no signature to verify.
+    skip_if: "context.media_buy_id"
 
     steps:
       - id: trigger_signed_webhook
@@ -931,12 +1080,18 @@ grading:
     Phases idempotency_key_presence, operation_id_echo,
     idempotency_key_stability, signing_keys_published, and
     signature_validity MUST pass when the agent advertises any
-    webhook-emitting operation and the runner hosts a webhook receiver. The
+    webhook-emitting operation and the runner hosts a webhook receiver,
+    unless the primary trigger completed synchronously. In that case
+    synchronous_trigger_silence MUST pass and those phases, plus
+    idempotency_replay_side_effects, are skipped. The
     synchronous completion branch set MUST pass for agents that expose
     get_products and advertise `media_buy.buying_modes` including `"wholesale"`;
     otherwise the branch steps grade not_applicable.
     Agents without a published webhook-valid signing JWKS fail
     signing_keys_published — there is no exemption for "HMAC legacy mode."
+    The only exemption is a synchronous primary trigger, where no webhook is
+    emitted; an agent that declares `webhook_signing.supported: true` is
+    still graded on its JWKS by signing_keys_published_declared.
     Agents that advertise no webhook-emitting operations grade the entire
     universal as not_applicable. Runners without a webhook receiver grade the
     entire universal as not_applicable.

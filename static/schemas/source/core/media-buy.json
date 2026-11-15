@@ -83,7 +83,7 @@
           "maxLength": 500
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "cancellation_effective_at": {
       "type": "string",
@@ -112,7 +112,7 @@
           "stop_time": { "type": "string", "format": "date-time", "description": "Stop time in force before the edit." }
         },
         "required": ["recorded_at", "start_time", "stop_time"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "total_budget": {

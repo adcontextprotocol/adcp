@@ -23,6 +23,7 @@
       "type": "array",
       "description": "One or more campaign plans to sync.",
       "items": {
+        "description": "Rejects `version`, `status`, `syncedAt`, `revisionHistory`, `committedBudget` and `committedByType`: these names are reserved for the governance agent's persisted plan state and excluded from the plan_hash preimage, so a buyer MUST NOT send them.",
         "type": "object",
         "properties": {
           "plan_id": {
@@ -94,7 +95,7 @@
                       "description": "Maximum percentage of total budget for this purchase type."
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               },
               "periods": {
@@ -136,7 +137,7 @@
                     "end",
                     "amount"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             },
@@ -171,7 +172,7 @@
                 }
               }
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "channels": {
             "type": "object",
@@ -204,11 +205,11 @@
                       "type": "number"
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "flight": {
             "type": "object",
@@ -229,7 +230,7 @@
               "start",
               "end"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "countries": {
             "type": "array",
@@ -341,7 +342,7 @@
                     "amount",
                     "currency"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "markets": {
                   "type": "array",
@@ -360,7 +361,7 @@
                 "agent_url",
                 "authority"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "portfolio": {
@@ -390,7 +391,7 @@
                   "amount",
                   "currency"
                 ],
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "shared_policy_ids": {
                 "type": "array",
@@ -411,7 +412,7 @@
             "required": [
               "member_plan_ids"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "ext": {
             "$ref": "/schemas/core/ext.json"
@@ -481,7 +482,8 @@
             }
           }
         ],
-        "additionalProperties": false
+        "not": { "anyOf": [{ "required": ["version"] }, { "required": ["status"] }, { "required": ["syncedAt"] }, { "required": ["revisionHistory"] }, { "required": ["committedBudget"] }, { "required": ["committedByType"] }] },
+        "additionalProperties": true
       }
     },
     "context": {

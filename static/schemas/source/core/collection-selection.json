@@ -42,7 +42,7 @@
         "mode",
         "collections"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Product default collections",
@@ -59,7 +59,7 @@
       "required": [
         "mode"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

@@ -12,5 +12,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["brief_targeting"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

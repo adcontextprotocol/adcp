@@ -34,35 +34,28 @@
  *   additional-properties-closed, file-removed.
  *
  * Closed schemas (DR-0036)
- *   A schema that any stable release of the major published closed
- *   (`additionalProperties: false` or `unevaluatedProperties: false`) stays
- *   closed until the next major, even after a later release opens it. CI
- *   compares every earlier stable release of the base's major with the base,
- *   using the same node and branch matching, and records each node that an
- *   earlier release closed and the base leaves open. A property that such a
- *   node lacked in the last release that closed it is reported as
- *   property-added-to-closed, with that release named in the detail. A
- *   finding whose property the base already has is marked released: it
- *   shipped in a stable release and may enter the baseline at any time.
+ *   Schemas are open by default. A schema stays closed
+ *   (`additionalProperties: false` or `unevaluatedProperties: false`) only
+ *   where closure enforces something; the commercial terms are held closed
+ *   until 4.0. A property added to a schema that is closed in both the base
+ *   and the candidate is property-added-to-closed: a validator
+ *   on the base release rejects it. Opening a closed schema is allowed, and
+ *   so is adding to a schema the candidate opens. Closing an open schema is
+ *   additional-properties-closed.
  *
  * Notices (never fail)
  *   additional-properties-opened: a closed schema is opened. Opening breaks no
- *   validator, but it permits no additions within the major.
+ *   validator.
  *
  * Corrections (DR-0036)
- *   A minor or patch release may change a closed schema only to make it
- *   accept what the published spec text already required.
- *   scripts/lint-additive-minor-corrections.json lists each recorded
- *   correction: the schema location, the property it lets in, the release it
- *   lands in, and the source text that required it. The check accepts
- *   exactly the listed additions from the listed release on. Property `*`
- *   reopens the whole schema: the schema must be open in the candidate, and
- *   any addition to it passes. A named property must be declared at its
- *   location in the candidate. Each source file must exist and contain its
- *   quote, and each entry must appear in the correction tables of the
- *   decision record that the file names.
+ *   A minor or patch release may tighten a schema only where the published
+ *   spec text of the major already set the limit.
+ *   scripts/lint-additive-minor-corrections.json lists each one: the schema
+ *   location, the change, the release it lands in, and the source text it
+ *   rests on. Each source file must exist and contain its quote, and the file
+ *   must name an existing decision record under governance/decisions.
  *
- *   A correction may instead tighten one bound (`bound` and `value`, such as
+ *   A correction may tighten one bound (`bound` and `value`, such as
  *   `minLength` 1) where the published spec text already required it: an
  *   empty identifier that the text says identifies a task. The check accepts
  *   exactly that bound at that location from the listed release on, and the
@@ -82,8 +75,6 @@
  *                                prints a report; exits 0.
  *   --history                    runs the check across consecutive 3.x
  *                                releases and prints tables and findings.
- *                                Each pair is compared on its own, without
- *                                the earlier-release closures.
  *   --prune-baseline             removes stale baseline entries only.
  *   --baseline-ref <git-ref>     also fails when the baseline has an entry
  *                                that the baseline at <git-ref> lacks, so the
@@ -91,9 +82,10 @@
  *                                $ADCP_ADDITIVE_MINOR_BASELINE_REF.
  *
  * Background: DR-0009 makes schemas open by default so that a minor can add
- * optional fields, but many published schemas close objects with
- * `additionalProperties: false`. A later minor that adds a field to a closed
- * object breaks a receiver that validates against the earlier release.
+ * optional fields. A minor that adds a field to an object that stays closed
+ * breaks a receiver that validates against the earlier release, so 3.3 opens
+ * the schemas that were meant to be open (WG, 2026-11-09) and keeps closed
+ * only those whose closure enforces something (DR-0036).
  */
 
 'use strict';
@@ -662,22 +654,15 @@ function describeTypes(set) {
 
 /**
  * Compares two schema trees. Returns violations as `findings` and
- * `notices`, each `{ file, pointer, kind, detail }`; a finding on a property
- * the base already has also carries `released: true`.
+ * `notices`, each `{ file, pointer, kind, detail }`.
  *
  * Options:
- *   closedEarlier  Map from a base node's location to `{ release, names }`:
- *                  the last earlier stable release that published the node
- *                  closed, and the properties it had there.
- *   corrections    `{ reopened, properties }` from readCorrections: the base
- *                  node locations whose additions are all allowed, and a Map
- *                  from a base node location to the property names allowed
- *                  there.
+ *   corrections    `{ bounds, required }` from readCorrections: the bounds
+ *                  and required names a finding location may add.
  *   onObject       Called as (baseNode, baseLocation, candNode, candLocation)
  *                  for every pair of matched object schemas.
  */
 function compareTrees(baseTree, candTree, {
-  closedEarlier = null,
   corrections = null,
   onObject = null,
   skipIdentical = false,
@@ -685,8 +670,6 @@ function compareTrees(baseTree, candTree, {
   const findings = [];
   const notices = [];
   const seen = new Set();
-  const reopened = (location) => Boolean(corrections && location && corrections.reopened.has(location));
-  const corrected = (location) => (corrections && location && corrections.properties.get(location)) || null;
   // A recorded required correction: a name a finding location may newly require.
   const requiredCorrected = (file, pointer, name) => Boolean(
     corrections && corrections.required && corrections.required.get(`${file}#${pointer}`)?.has(name),
@@ -800,8 +783,7 @@ function compareTrees(baseTree, candTree, {
       if (ac === false && ab !== false) {
         report(file, pointer, 'additional-properties-closed', `${keyword} ${describe(ab, bDoc)} → false`);
       } else if (ab === false && ac !== false) {
-        report(file, pointer, 'additional-properties-opened', `${keyword} false → ${describe(ac, cDoc)}`,
-          reopened(bLocation) ? { corrected: true } : null);
+        report(file, pointer, 'additional-properties-opened', `${keyword} false → ${describe(ac, cDoc)}`);
       } else if (isObject(ab) && isObject(ac)) {
         compareNode(file, child(pointer, keyword), ab, bDoc, ac, cDoc, stack);
       }
@@ -818,22 +800,13 @@ function compareTrees(baseTree, candTree, {
         report(file, pointer, 'property-removed', `property ${name} removed`);
       }
     }
-    // The closed form: the base's, or, for a node the base leaves open, the
-    // last earlier release that published it closed.
-    const earlier = !isClosed(b) && closedEarlier && bLocation ? closedEarlier.get(bLocation) : undefined;
-    const allowed = isClosed(b) ? new Set(Object.keys(pb)) : earlier && earlier.names;
-    if (allowed && !reopened(bLocation)) {
-      // A recorded correction lets in exactly the properties it names.
-      const correctedNames = corrected(bLocation);
+    // A node closed on both sides rejects, at the base release, any property
+    // the candidate adds. A node the candidate opens takes additions.
+    if (isClosed(b) && isClosed(c)) {
       for (const name of Object.keys(pc)) {
-        if (allowed.has(name) || (correctedNames && correctedNames.has(name))) continue;
-        if (!earlier) {
+        if (!Object.prototype.hasOwnProperty.call(pb, name)) {
           report(file, pointer, 'property-added-to-closed', `property ${name} added`);
-          continue;
         }
-        const released = Object.prototype.hasOwnProperty.call(pb, name);
-        report(file, pointer, 'property-added-to-closed', `property ${name} added (closed in ${earlier.release})`,
-          released ? { released: true } : null);
       }
     }
 
@@ -886,56 +859,18 @@ function compareTrees(baseTree, candTree, {
   return { findings, notices, filesCompared: files.length };
 }
 
-/**
- * For each node of `baseTree` that is open, the last of `earlierTrees` that
- * published it closed, and the properties it had there. `earlierTrees` is
- * `[{ version, tree }]`, oldest first: the stable releases of the base's
- * major that precede the base.
- */
-function closedInEarlierReleases(baseTree, earlierTrees) {
-  const closed = new Map();
-  for (const { version, tree } of earlierTrees) {
-    // A file identical in both releases has the same closures in both; a $ref
-    // that leaves it is followed from the file that differs.
-    compareTrees(tree, baseTree, {
-      skipIdentical: true,
-      onObject: (earlier, _earlierLocation, base, baseLocation) => {
-        if (!baseLocation || !isClosed(earlier) || isClosed(base)) return;
-        closed.set(baseLocation, {
-          release: version,
-          names: new Set(isObject(earlier.properties) ? Object.keys(earlier.properties) : []),
-        });
-      },
-    });
-  }
-  return closed;
-}
-
-/** The stable releases of `base`'s major that precede it, oldest first. */
-function earlierStableVersions(base, releasedVersions) {
-  const parsed = parseVersion(base);
-  return releasedVersions
-    .map(parseVersion)
-    .filter((v) => v && v.major === parsed.major && v.prerelease.length === 0 && compareVersions(v, parsed) < 0)
-    .sort(compareVersions)
-    .map((v) => v.raw);
-}
-
 // ---------------------------------------------------------------------------
 // Corrections
 // ---------------------------------------------------------------------------
 
-/** The property of a correction entry that reopens the whole schema. */
-const WHOLE_SCHEMA = '*';
-
 /**
- * A correction's identity: its location and the property it lets in, or the
- * bound it adds (`minLength: 1`).
+ * A correction's identity: its location and the bound it adds
+ * (`minLength: 1`) or the name it requires.
  */
 function correctionKey(entry) {
   const change = typeof entry.bound === 'string'
     ? `${entry.bound}: ${entry.value}`
-    : typeof entry.required === 'string' ? `required: ${entry.required}` : entry.property;
+    : `required: ${entry.required}`;
   return `${entry.file}#${entry.pointer} ${change}`;
 }
 
@@ -945,8 +880,6 @@ const CORRECTABLE_BOUNDS = new Set([...LOWER_BOUNDS, ...UPPER_BOUNDS]);
  * Validates the corrections list and returns what `candidateVersion` may
  * carry: the corrections whose release is at or below it. A prerelease counts
  * as its release (3.3.0-beta.1 as 3.3.0). Returns
- *   reopened    the base node locations that a `*` entry reopens;
- *   properties  a Map from a base node location to the names it lets in;
  *   bounds      a Map from a finding location to the bounds (keyword → value)
  *               it may add;
  *   required    a Map from a finding location to the names it may newly
@@ -954,12 +887,10 @@ const CORRECTABLE_BOUNDS = new Set([...LOWER_BOUNDS, ...UPPER_BOUNDS]);
  */
 function readCorrections(value, candidateVersion) {
   const errors = [];
-  const reopened = new Set();
-  const properties = new Map();
   const bounds = new Map();
   const required = new Map();
   if (!isObject(value) || !Array.isArray(value.corrections)) {
-    return { reopened, properties, bounds, required, entries: [], errors: ['corrections list must be an object with a corrections array'] };
+    return { bounds, required, entries: [], errors: ['corrections list must be an object with a corrections array'] };
   }
   const candidate = parseVersion(candidateVersion);
   const current = candidate && { ...candidate, prerelease: [] };
@@ -972,15 +903,20 @@ function readCorrections(value, candidateVersion) {
     }
     const isBound = entry.bound !== undefined;
     const isRequired = entry.required !== undefined;
-    const changeField = isBound ? 'bound' : isRequired ? 'required' : 'property';
+    if (entry.property !== undefined) {
+      errors.push(`${label} lets in a property; opening a schema or adding to an open one needs no correction (DR-0036)`);
+      return;
+    }
+    if (isBound === isRequired) {
+      errors.push(`${label} must name exactly one of bound and required`);
+      return;
+    }
+    const changeField = isBound ? 'bound' : 'required';
     for (const field of ['file', 'pointer', changeField, 'release', 'reason']) {
       if (typeof entry[field] !== 'string') errors.push(`${label}.${field} must be a string`);
     }
     for (const field of [changeField, 'reason']) {
       if (typeof entry[field] === 'string' && !entry[field].trim()) errors.push(`${label}.${field} must not be empty`);
-    }
-    if ([isBound, isRequired, entry.property !== undefined].filter(Boolean).length > 1) {
-      errors.push(`${label} names more than one of property, bound and required`);
     }
     if (isBound) {
       if (typeof entry.bound === 'string' && !CORRECTABLE_BOUNDS.has(entry.bound)) errors.push(`${label}.bound must be a JSON Schema bound keyword`);
@@ -1009,53 +945,26 @@ function readCorrections(value, candidateVersion) {
       bounds.get(location).set(entry.bound, entry.value);
       return;
     }
-    if (isRequired) {
-      if (typeof entry.required !== 'string') return;
-      if (!required.has(location)) required.set(location, new Set());
-      required.get(location).add(entry.required);
-      return;
-    }
-    if (typeof entry.property !== 'string') return;
-    if (entry.property === WHOLE_SCHEMA) reopened.add(location);
-    else {
-      if (!properties.has(location)) properties.set(location, new Set());
-      properties.get(location).add(entry.property);
-    }
+    if (typeof entry.required !== 'string') return;
+    if (!required.has(location)) required.set(location, new Set());
+    required.get(location).add(entry.required);
   });
-  return { reopened, properties, bounds, required, entries: value.corrections, errors };
+  return { bounds, required, entries: value.corrections, errors };
 }
 
 /**
  * Each correction in effect must be applied in the candidate tree: a
- * reopened schema is open, a corrected property is declared there, and a
  * corrected bound has its value there (through a `$ref` if the location
- * refers to a shared definition).
+ * refers to a shared definition), and a required name is in the composed
+ * required set there.
  */
-function checkCorrectionsApplied({ reopened, properties, bounds = new Map(), required = new Map() }, candTree) {
+function checkCorrectionsApplied({ bounds = new Map(), required = new Map() }, candTree) {
   const errors = [];
   const nodeAt = (location) => {
     const [key, pointer] = location.split('#');
     const document = candTree.documents.get(key);
     return document ? readPointer(document.schema, pointer) : undefined;
   };
-  for (const location of reopened) {
-    const node = nodeAt(location);
-    if (!isObject(node)) errors.push(`correction ${location} does not exist in ${candTree.label}`);
-    else if (isClosed(node)) errors.push(`correction ${location} reopens a schema that is still closed in ${candTree.label}`);
-  }
-  for (const [location, names] of properties) {
-    const node = nodeAt(location);
-    if (!isObject(node)) {
-      errors.push(`correction ${location} does not exist in ${candTree.label}`);
-      continue;
-    }
-    const declared = isObject(node.properties) ? node.properties : {};
-    for (const name of names) {
-      if (!Object.prototype.hasOwnProperty.call(declared, name)) {
-        errors.push(`correction ${location} does not declare ${name} in ${candTree.label}`);
-      }
-    }
-  }
   for (const [location, expected] of bounds) {
     let node = nodeAt(location);
     if (isObject(node) && typeof node.$ref === 'string') {
@@ -1126,32 +1035,10 @@ function checkCorrectionSources(entries, root) {
 }
 
 /**
- * The corrections a decision record lists, as correction keys. The tables sit
- * under its `### Corrections` heading. In a table row, the first cell names
- * the schema file in code, the second reads `root` or lists pointers in code,
- * and the third names the property in code.
+ * The corrections list names the decision record that governs it, and that
+ * record must exist under governance/decisions.
  */
-function recordedCorrections(recordText) {
-  const keys = new Set();
-  const heading = /^### Corrections[^\n]*$/m.exec(recordText);
-  if (!heading) return keys;
-  const section = recordText.slice(heading.index + heading[0].length).split(/^#{1,3} /m)[0];
-  for (const line of section.split('\n')) {
-    const cells = line.split('|').map((cell) => cell.trim());
-    const file = /^`([^`]+\.json)`$/.exec(cells[1] || '');
-    const property = /^`([^`]+)`$/.exec(cells[3] || '');
-    if (!file || !property) continue;
-    const pointers = cells[2] === 'root' ? [''] : [...cells[2].matchAll(/`([^`]*)`/g)].map((m) => m[1]);
-    for (const pointer of pointers) keys.add(correctionKey({ file: file[1], pointer, property: property[1] }));
-  }
-  return keys;
-}
-
-/**
- * Each correction must appear in the correction tables of the decision record
- * that the list names, so a new correction needs a governance change.
- */
-function checkCorrectionsRecorded(value, root) {
+function checkCorrectionsDecision(value, root) {
   if (!isObject(value) || !Array.isArray(value.corrections) || value.corrections.length === 0) return [];
   if (typeof value.decision !== 'string' || !/^DR-\d+$/.test(value.decision)) {
     return ['corrections list must name its decision record, such as DR-0036'];
@@ -1160,17 +1047,7 @@ function checkCorrectionsRecorded(value, root) {
   const record = fs.existsSync(directory)
     ? fs.readdirSync(directory).find((name) => name.startsWith(`${value.decision}-`) && name.endsWith('.md'))
     : undefined;
-  if (!record) return [`no decision record for ${value.decision} under governance/decisions`];
-  const recorded = recordedCorrections(fs.readFileSync(path.join(directory, record), 'utf8'));
-  // Malformed entries are reported by readCorrections.
-  const changeField = (entry) => (entry.bound !== undefined ? 'bound' : entry.required !== undefined ? 'required' : 'property');
-  const wellFormed = (entry) => isObject(entry)
-    && ['file', 'pointer', changeField(entry)].every((field) => typeof entry[field] === 'string');
-  return value.corrections
-    .filter(wellFormed)
-    .map(correctionKey)
-    .filter((key) => !recorded.has(key))
-    .map((key) => `correction ${key} is not in the correction tables of ${record}`);
+  return record ? [] : [`no decision record for ${value.decision} under governance/decisions`];
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,13 +1134,10 @@ function checkAgainstBaseline({ base, findings, baselineValue, previousBaseline 
   }
 
   if (previousBaseline) {
-    // A released finding shipped in a stable release, so no change can undo
-    // it within the major. Recording it hides no unreleased change.
-    const released = new Set(findings.filter((f) => f.released).map(findingKey));
     const previous = new Set(validateBaseline(previousBaseline).entries.map(findingKey));
     for (const entry of baseline.entries) {
       const key = findingKey(entry);
-      if (!previous.has(key) && !released.has(key)) {
+      if (!previous.has(key)) {
         errors.push(`baseline grew: ${key} is not in the target branch baseline`);
       }
     }
@@ -1316,34 +1190,25 @@ function formatHistory(results) {
 // ---------------------------------------------------------------------------
 
 /**
- * Compares a candidate tree with a base, applying the closures of the earlier
- * stable releases in the base's major and the recorded corrections.
- * `earlierTrees` defaults to the released trees on disk or in git.
+ * Compares a candidate tree with a base, applying the recorded corrections.
  * Correction sources and the decision record resolve against `repoRoot`.
  */
 function analyze({
-  base,
   baseTree,
   candTree,
   candidateVersion,
-  earlierTrees,
   correctionsValue,
   repoRoot = REPO_ROOT,
 }) {
-  const trees = earlierTrees || (base
-    ? earlierStableVersions(base, listReleasedVersions(repoRoot)).map((version) => ({ version, tree: loadReleasedTree(version, repoRoot) }))
-    : []);
   const value = correctionsValue === undefined ? { corrections: [] } : correctionsValue;
   const corrections = readCorrections(value, candidateVersion);
   const errors = [
-    ...trees.flatMap(({ tree }) => tree.errors),
     ...corrections.errors,
     ...checkCorrectionSources(corrections.entries, repoRoot),
-    ...checkCorrectionsRecorded(value, repoRoot),
+    ...checkCorrectionsDecision(value, repoRoot),
     ...checkCorrectionsApplied(corrections, candTree),
   ];
-  const closedEarlier = closedInEarlierReleases(baseTree, trees);
-  const result = compareTrees(baseTree, candTree, { closedEarlier, corrections });
+  const result = compareTrees(baseTree, candTree, { corrections });
   return { ...result, errors };
 }
 
@@ -1365,7 +1230,6 @@ function lintAdditiveMinor({
   baseTree,
   baseVersion,
   candidateVersion,
-  earlierTrees,
   previousBaseline = null,
 } = {}) {
   let base = baseVersion;
@@ -1377,11 +1241,9 @@ function lintAdditiveMinor({
   const baseSchemas = baseTree || loadReleasedTree(base, repoRoot);
   const candTree = loadDirectoryTree(sourceDir, 'source');
   const { findings, notices, filesCompared, errors: analysisErrors } = analyze({
-    base,
     baseTree: baseSchemas,
     candTree,
     candidateVersion: version,
-    earlierTrees: earlierTrees || (baseTree ? [] : undefined),
     correctionsValue: correctionsValue === undefined ? readJsonFile(correctionsPath, { corrections: [] }) : correctionsValue,
     repoRoot,
   });
@@ -1432,9 +1294,7 @@ function main() {
       console.log(`No stable release precedes ${candidateVersion} in its major line; nothing to compare.`);
       return;
     }
-    const baseIsRelease = Boolean(parseVersion(base));
     const { findings, notices, filesCompared, errors } = analyze({
-      base: baseIsRelease ? base : null,
       baseTree: loadTreeSpec(base, options),
       candTree: loadTreeSpec(candidate, options),
       candidateVersion,
@@ -1477,10 +1337,8 @@ function main() {
     console.log('✓ additive-minor lint: the source major line has no stable release yet; nothing to compare.');
     return;
   }
-  for (const notice of result.notices) {
-    console.log(notice.corrected
-      ? `notice: ${findingKey(notice)}. Reopened as a correction recorded in DR-0036 (scripts/lint-additive-minor-corrections.json).`
-      : `notice: ${findingKey(notice)}. Opening breaks no validator, but it permits no additions until the next major (DR-0036).`);
+  if (result.notices.length) {
+    console.log(`notice: ${result.notices.length} closed schema locations opened since ${result.base}. Opening breaks no validator (DR-0036); see --base/--candidate for the list.`);
   }
   result.warnings.forEach((warning) => console.warn(`warning: ${warning}`));
   if (result.warnings.length) console.warn('Run `node scripts/lint-additive-minor.cjs --prune-baseline` to drop stale entries.');
@@ -1498,8 +1356,9 @@ function main() {
       '\nA minor release only adds. Make the change additive instead: add the property to an open' +
       ' object, keep removed values and properties, and keep new properties optional. If the change' +
       ' has to ship anyway, it needs a WG decision and a major release. If the published spec text' +
-      ' already required it, record it as a correction in DR-0036 and' +
-      ' scripts/lint-additive-minor-corrections.json.',
+      ' already required it, add it as a correction to scripts/lint-additive-minor-corrections.json' +
+      ' (DR-0036). A correction sets a bound or a required name; to add a property to a closed' +
+      ' schema, open the schema instead.',
     );
   }
   process.exitCode = 1;
@@ -1509,7 +1368,6 @@ module.exports = {
   readBaselineAtRef,
   NOTICE_KINDS,
   VIOLATION_KINDS,
-  WHOLE_SCHEMA,
   analyze,
   buildTree,
   checkAgainstBaseline,
@@ -1518,7 +1376,6 @@ module.exports = {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
-  recordedCorrections,
 };
 
 if (require.main === module) main();

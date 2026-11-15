@@ -39,9 +39,11 @@ const CONNECTION = {
   },
 };
 
+// buy_products paths: readiness is read on list_products, whose next step is
+// buy_products, not the legacy create_media_buy packages[] (adcp#8501).
 const ES_BINDING =
-  "packages[].optimization_goals[].event_sources[].event_source_id";
-const CATALOG_BINDING = "packages[].catalogs[]";
+  "purchases[].optimization_goals[].event_sources[].event_source_id";
+const CATALOG_BINDING = "purchases[].catalog_ids[]";
 
 const READY_EVENT_SOURCE = {
   requirement: EVENT_SOURCE,
@@ -306,7 +308,7 @@ test("downstream_connection readiness derives from connection_state and has no c
       "no resolved resource for connections",
     ],
     [
-      { ...connected, binding_field: "packages[].identity" },
+      { ...connected, binding_field: "purchases[].identity" },
       "connections have no binding field",
     ],
     [
@@ -358,9 +360,9 @@ test("product rollup is the first blocking state and is derivable", async () => 
   );
 });
 
-test("the readiness map rides on a public-scope response", async () => {
+test("the readiness map rides on a public-scope list_products response", async () => {
   const validate = await compileSchema(
-    "/schemas/media-buy/get-products-response.json",
+    "/schemas/media-buy/list-products-response.json",
   );
   const execution_readiness = {
     version: "er_7f3a",
@@ -372,45 +374,17 @@ test("the readiness map rides on a public-scope response", async () => {
       },
     },
   };
+  // list_products returns canonical (lightweight) products; the map is keyed by product_id.
   const product = {
     product_id: "social_conversions",
     name: "Social conversions",
-    description: "In-feed conversion placements.",
-    publisher_properties: [
-      { publisher_domain: "social.example", selection_type: "all" },
-    ],
-    delivery_type: "non_guaranteed",
-    format_ids: [
-      {
-        agent_url: "https://creative.adcontextprotocol.org",
-        id: "display_300x250",
-      },
-    ],
-    pricing_options: [
-      {
-        pricing_option_id: "cpm_auction",
-        pricing_model: "cpm",
-        currency: "USD",
-        floor_price: 2,
-      },
-    ],
-    reporting_capabilities: {
-      available_reporting_frequencies: ["daily"],
-      expected_delay_minutes: 60,
-      timezone: "UTC",
-      supports_webhooks: false,
-      available_metrics: ["impressions"],
-      date_range_support: "date_range",
-    },
-    conversion_tracking: { action_sources: ["website"] },
-    execution_requirements: [EVENT_SOURCE, CONNECTION],
   };
   const base = {
-    adcp_version: "3.3",
     status: "completed",
+    outcome: "listed",
     products: [product],
     cache_scope: "public",
-    wholesale_feed_version: "wf_1",
+    feed_version: "feed_1",
   };
   assert.equal(
     validate(base),
@@ -442,23 +416,42 @@ test("the readiness map rides on a public-scope response", async () => {
     "a map entry needs requirements",
   );
 
-  const schema = readJson("media-buy/get-products-response.json");
+  assert.equal(
+    validate({
+      status: "completed",
+      outcome: "unchanged",
+      cache_scope: "public",
+      feed_version: "feed_1",
+      execution_readiness,
+    }),
+    false,
+    "the map never rides on an unchanged outcome (it needs products)",
+  );
+
+  const schema = readJson("media-buy/list-products-response.json");
   assert.ok(
     !schema.required?.includes("execution_readiness"),
     "the map is optional",
   );
+  assert.deepEqual(schema.dependencies.execution_readiness, ["products"]);
   assert.equal(
     schema.properties.execution_readiness["x-status"],
     "experimental",
   );
 });
 
-test("the request flag is optional, boolean, and experimental", async () => {
+test("get_products no longer declares the readiness request flag or response map", () => {
+  const request = readJson("media-buy/get-products-request.json");
+  const response = readJson("media-buy/get-products-response.json");
+  assert.equal(request.properties.include_execution_readiness, undefined);
+  assert.equal(response.properties.execution_readiness, undefined);
+});
+
+test("the list_products request flag is optional, boolean, and experimental", async () => {
   const validate = await compileSchema(
-    "/schemas/media-buy/get-products-request.json",
+    "/schemas/media-buy/list-products-request.json",
   );
   const request = {
-    buying_mode: "wholesale",
     account: { account_id: "acct_1" },
   };
   assert.equal(validate(request), true, validationMessage(validate));
@@ -471,8 +464,11 @@ test("the request flag is optional, boolean, and experimental", async () => {
     validate({ ...request, include_execution_readiness: "yes" }),
     false,
   );
-  const schema = readJson("media-buy/get-products-request.json");
-  assert.deepEqual(schema.required, ["buying_mode"]);
+  const schema = readJson("media-buy/list-products-request.json");
+  assert.ok(
+    !schema.required?.includes("include_execution_readiness"),
+    "the flag is optional",
+  );
   assert.equal(
     schema.properties.include_execution_readiness["x-status"],
     "experimental",

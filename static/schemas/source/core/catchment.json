@@ -27,7 +27,7 @@
         }
       },
       "required": ["value", "unit"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "transport_mode": {
       "$ref": "/schemas/enums/transport-mode.json",
@@ -48,7 +48,7 @@
         }
       },
       "required": ["value", "unit"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "geometry": {
       "type": "object",
@@ -65,7 +65,7 @@
         }
       },
       "required": ["type", "coordinates"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

@@ -36,11 +36,11 @@
           }
         },
         "required": ["operation_index", "creative_id", "package_id", "merged_creative_id", "reason"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     }
   },
   "required": ["rejections"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-added-in": "3.3.0"
 }

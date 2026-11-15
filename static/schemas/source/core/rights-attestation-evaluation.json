@@ -95,5 +95,5 @@
     "scope": "Reusable evaluation of one exact rights grant by evaluation.evaluated_by. It is not a serving authorization and does not cover creative, media buy, use, country, delivery scope, or cap state.",
     "local_provenance": "A consumer MUST require outcome == verified and retrieve the byte-identical evaluation from its own local store keyed by (evaluation.evaluated_by, evaluation.reference_digest). It MUST reject buyer-authored, foreign-evaluator, missing-store, or locally mismatched readback even when evaluated_by names the consumer."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

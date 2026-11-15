@@ -23,6 +23,7 @@ import {
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
+  deriveStatus,
   executeTrainingAgentTool,
   handleGetAdcpCapabilities,
   handleBuildCreative,
@@ -45,6 +46,8 @@ import {
   TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
   TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH,
   TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
+  PROPOSAL_DECLINE_REASONS,
+  validateProductDiscoveryAliasInput,
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
@@ -509,11 +512,9 @@ describe('buildCatalog', () => {
       }
     });
 
-    it('has format_ids as a non-empty array', () => {
+    it('has format_ids as an array', () => {
       for (const cp of catalog) {
-        const fids = cp.product.format_ids as unknown[];
-        expect(Array.isArray(fids)).toBe(true);
-        expect(fids.length).toBeGreaterThanOrEqual(1);
+        expect(Array.isArray(cp.product.format_ids)).toBe(true);
       }
     });
 
@@ -525,7 +526,6 @@ describe('buildCatalog', () => {
         'agent_placement',
       ]);
       for (const cp of catalog) {
-        const formatIds = cp.product.format_ids as Array<{ agent_url: string; id: string }>;
         const formatOptions = cp.product.format_options as Array<{
           format_kind: string;
           format_option_id: string;
@@ -534,17 +534,32 @@ describe('buildCatalog', () => {
           v1_format_ref?: Array<{ agent_url: string; id: string }>;
         }>;
 
-        expect(formatOptions, `${cp.product.product_id} missing canonical format_options`).toHaveLength(formatIds.length);
+        expect(formatOptions?.length, `${cp.product.product_id} missing canonical format_options`).toBeGreaterThan(0);
         expect(formatOptions.every(option => option.format_kind && option.format_option_id && option.params)).toBe(true);
-        formatOptions.forEach((option, index) => {
+        for (const option of formatOptions) {
           if (canonicalOnlyKinds.has(option.format_kind)) {
             expect(option.canonical_formats_only).toBe(true);
             expect(option.v1_format_ref).toBeUndefined();
           } else {
             expect(option.canonical_formats_only).toBeUndefined();
-            expect(option.v1_format_ref).toEqual([formatIds[index]]);
+            expect(option.v1_format_ref).toHaveLength(1);
           }
-        });
+        }
+      }
+    });
+
+    // adcp#8802: core/product.json requires format_ids and format_options to
+    // describe the same formats, and a canonical_formats_only declaration is
+    // absent from format_ids. The SDK runtime refuses a get_products answer
+    // that dual-emits anything else.
+    it('projects format_ids from exactly the format options v1_format_ref values', () => {
+      const key = (ref: { agent_url: string; id: string }) => `${ref.agent_url}#${ref.id}`;
+      for (const cp of catalog) {
+        const formatIds = (cp.product.format_ids ?? []) as Array<{ agent_url: string; id: string }>;
+        const refs = ((cp.product.format_options ?? []) as Array<{ v1_format_ref?: Array<{ agent_url: string; id: string }> }>)
+          .flatMap(option => option.v1_format_ref ?? []);
+        expect(formatIds.map(key).sort(), cp.product.product_id).toEqual(refs.map(key).sort());
+        expect(new Set(formatIds.map(key)).size, `${cp.product.product_id} repeats a format_id`).toBe(formatIds.length);
       }
     });
 
@@ -889,8 +904,14 @@ describe('NovaMind AI publisher', () => {
       const fids = cp.product.format_ids as Array<Record<string, unknown>>;
       return fids.map(f => f.id);
     });
-    expect(allFormatIds).toContain('ai_sponsored_agent');
     expect(allFormatIds).toContain('ai_sponsored_recommendation');
+    // agent_placement has no v1 named format, so the sponsored agent is offered
+    // only as a canonical option, not as a legacy format_id.
+    const agentOptions = novamindProducts.flatMap(cp => cp.product.format_options ?? [])
+      .filter(option => option.format_option_id === 'ai_sponsored_agent_agent_placement');
+    expect(agentOptions.length).toBeGreaterThan(0);
+    expect(agentOptions.every(option => option.canonical_formats_only === true)).toBe(true);
+    expect(allFormatIds).not.toContain('ai_sponsored_agent');
   });
 });
 
@@ -6030,19 +6051,18 @@ describe('create_media_buy handler', () => {
     });
   });
 
-  it('accepts every advertised legacy selector whose canonical kind is intentionally non-equivalent', async () => {
+  it('accepts every advertised legacy selector on the 3.0 surface', async () => {
     const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
-    const cases = buildCatalog().flatMap(({ product }) => {
-      const formatIds = product.format_ids ?? [];
-      const formatOptions = product.format_options ?? [];
-      return formatOptions.flatMap((option, index) => option.canonical_formats_only === true
-        ? [{ product, formatId: formatIds[index] }]
-        : []);
-    });
+    // One case per distinct legacy format, on the first product that advertises it.
+    const seen = new Set<string>();
+    const cases = buildCatalog().flatMap(({ product }) => (product.format_ids ?? []).flatMap(formatId => {
+      if (seen.has(formatId.id)) return [];
+      seen.add(formatId.id);
+      return [{ product, formatId }];
+    }));
     expect(cases.length).toBeGreaterThan(0);
 
     for (const [index, { product, formatId }] of cases.entries()) {
-      expect(formatId, `${product.product_id} canonical-only option lacks its independent legacy selector`).toBeDefined();
       const account = {
         brand: { domain: `legacy-canonical-only-${index}.example` },
         operator: 'pinnacle-agency.example',
@@ -6125,8 +6145,18 @@ describe('create_media_buy handler', () => {
       media_buy_ids: [mediaBuyId],
     });
     const partialBuy = (partiallyReady.media_buys as Array<Record<string, any>>)[0];
-    expect(partialBuy.status).toBe('pending_creatives');
+    // Served at 3.2, where pending_creatives means no creatives assigned: the
+    // assigned package advances, and formats_pending still names the gap.
+    expect(partialBuy.status).toBe('pending_start');
     expect(partialBuy.packages[0].formats_pending).toEqual([selected[1]]);
+
+    // The same buy reads in each release's own vocabulary (#8833).
+    const session = await findMediaBuyAcrossSessions(mediaBuyId);
+    const storedBuy = session!.mediaBuys.get(mediaBuyId)!;
+    expect(deriveStatus(storedBuy, session!, '3.1')).toBe('pending_start');
+    expect(deriveStatus(storedBuy, session!, '3.2')).toBe('pending_start');
+    expect(deriveStatus(storedBuy, session!, '3.3-beta.5')).toBe('pending_creatives');
+    expect(deriveStatus(storedBuy, session!, '3.3')).toBe('pending_creatives');
 
     await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
       account,
@@ -6190,6 +6220,54 @@ describe('create_media_buy handler', () => {
       media_buy_ids: [created.media_buy_id],
     });
     expect((ready.media_buys as Array<Record<string, any>>)[0].status).toBe('pending_start');
+  });
+
+  it('does not report pending_creatives on 3.1 once every package has a creative (#8833)', async () => {
+    // The reported case: one creative assigned on a package with no format
+    // selector, so every product format is active and most stay uncovered.
+    const product = buildCatalog().find(entry => entry.product.channels?.includes('display')
+      && (entry.product.format_options?.length ?? 0) > 1)!.product;
+    const account = { brand: { domain: 'release-readiness.example' }, operator: 'release-readiness.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      adcp_version: '3.1',
+      account,
+      creatives: [{
+        creative_id: 'cr_release_readiness',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: {},
+      }],
+    });
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      adcp_version: '3.1',
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: product.pricing_options[0].pricing_option_id,
+        budget: 50000,
+        creative_assignments: [{ creative_id: 'cr_release_readiness' }],
+      }],
+    });
+    expect(created.media_buy_id, JSON.stringify(created)).toEqual(expect.any(String));
+    expect((created.packages as Array<Record<string, any>>)[0].creative_assignments).toHaveLength(1);
+
+    const { result: read } = await simulateCallTool(server, 'get_media_buys', {
+      adcp_version: '3.1',
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+    const buy = (read.media_buys as Array<Record<string, any>>)[0];
+    expect(buy.status).toBe('pending_start');
+
+    // The 3.3 meaning still holds the same buy for missing coverage.
+    const session = await findMediaBuyAcrossSessions(created.media_buy_id as string);
+    const storedBuy = session!.mediaBuys.get(created.media_buy_id as string)!;
+    expect(storedBuy.packages[0].formatsToProvide?.length ?? 0).toBeGreaterThan(1);
+    expect(deriveStatus(storedBuy, session!, '3.3')).toBe('pending_creatives');
   });
 
   it('keeps a unique-kind package pending for a wrong option ref or fixed dimensions', async () => {
@@ -18000,7 +18078,7 @@ describe('get_adcp_capabilities handler', () => {
     expect(signals.signals).toMatchObject({ anonymous_discovery: true });
   });
 
-  it.each(['3.0', '3.1', '3.2'])('withholds provenance capability from the %s contract', async servedAdcpVersion => {
+  it.each(['3.0', '3.1', '3.2'])('withholds provenance and registry-policy capabilities from the %s contract', async servedAdcpVersion => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,
       tenantId: 'sales',
@@ -18008,16 +18086,20 @@ describe('get_adcp_capabilities handler', () => {
     });
 
     expect(result.creative).not.toHaveProperty('supports_provenance');
+    expect(result.creative).not.toHaveProperty('supports_registry_policy_enforcement');
   });
 
-  it('advertises provenance enforcement on the 3.3 seller contract', async () => {
+  it('advertises provenance and registry-policy enforcement on the 3.3 seller contract', async () => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,
       tenantId: 'sales',
       servedAdcpVersion: '3.3-beta.1',
     });
 
-    expect(result.creative).toMatchObject({ supports_provenance: true });
+    expect(result.creative).toMatchObject({
+      supports_provenance: true,
+      supports_registry_policy_enforcement: true,
+    });
   });
 
   it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
@@ -20262,6 +20344,43 @@ describe('proposal lifecycle', () => {
     expect(unsupported.isError).toBeFalsy();
     expect(unsupported.result).toMatchObject({ outcome: 'listed', products: [] });
 
+    // The requirements container is open, so an unknown requirement validates.
+    // It still fails closed: "Missing or unknown required fields do not match."
+    // The only difference from allRegions above is the unknown key.
+    const unknownRequirement = {
+      geo_regions: { countries: { FR: { values: ['FR-49'] } } },
+      future_unknown_dimension: true,
+    };
+    const unknownRequirementValidation = validateSourceSchema(
+      'core/targeting-overlay-requirements.json',
+      unknownRequirement,
+    );
+    expect(unknownRequirementValidation.valid, JSON.stringify(unknownRequirementValidation.errors)).toBe(true);
+    const unknownListed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        required_overlay_support: unknownRequirement,
+      },
+    });
+    expect(unknownListed.isError, JSON.stringify(unknownListed.result)).toBeFalsy();
+    expect(unknownListed.result).toMatchObject({ outcome: 'listed', products: [] });
+    const discover = (required_overlay_support: Record<string, unknown>) => executeTrainingAgentTool('get_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      account,
+      buying_mode: 'brief',
+      brief: 'Regional display inventory in France',
+      required_overlay_support,
+    }, DEFAULT_CTX);
+    const knownDiscovered = await discover({ geo_regions: unknownRequirement.geo_regions });
+    expect(knownDiscovered.success, knownDiscovered.error).toBe(true);
+    expect((knownDiscovered.data as { products: Array<{ product_id: string }> }).products)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ product_id: targetedProductId })]));
+    const unknownDiscovered = await discover(unknownRequirement);
+    expect(unknownDiscovered.success, unknownDiscovered.error).toBe(true);
+    expect(unknownDiscovered.data).not.toHaveProperty('errors');
+    expect((unknownDiscovered.data as { products: unknown[] }).products).toEqual([]);
+
     const concurrentListings = await Promise.all(['US', 'CA'].map(country => simulateCallTool(
       server,
       'list_products',
@@ -21837,6 +21956,56 @@ describe('proposal lifecycle', () => {
       expect(stored?.__declined).toBe(true);
       expect(stored).not.toHaveProperty('__opportunity_update');
     });
+  });
+
+  it('accepts the unrecognized_terms decline reason on both decline checks and rejects an unknown reason', async () => {
+    const schemaReasons = JSON.parse(
+      readFileSync(new URL('../../../static/schemas/source/enums/proposal-decline-reason.json', import.meta.url), 'utf8'),
+    ).enum as string[];
+    expect([...PROPOSAL_DECLINE_REASONS]).toEqual(schemaReasons);
+    expect(PROPOSAL_DECLINE_REASONS.has('unrecognized_terms')).toBe(true);
+
+    // decline_proposals request check.
+    const declineRequest = (reason: string) => validateProductDiscoveryAliasInput('decline_proposals', {
+      idempotency_key: randomUUID(),
+      declines: [{ proposal_id: 'p1', reason }],
+    });
+    expect(declineRequest('unrecognized_terms')).toBeUndefined();
+    expect(declineRequest('not_a_reason')).toMatchObject({ field: 'declines[0].reason' });
+
+    // Compact refine-decline check, reached directly with the internal flags.
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const compactDecline = (reason: string) => simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      __compact_proposal_lifecycle: true,
+      __decline_proposals: true,
+      refine: [{ scope: 'proposal', proposal_id: 'p1', action: 'decline', reason }],
+    });
+    const compactAccepted = await compactDecline('unrecognized_terms');
+    expect(compactAccepted.isError).toBeFalsy();
+    expect(compactAccepted.result).not.toHaveProperty('code');
+    const compactRejected = await compactDecline('not_a_reason');
+    expect(compactRejected.isError).toBe(true);
+    expect(compactRejected.result).toMatchObject({ code: 'INVALID_REQUEST', field: 'refine[0]' });
+
+    // End to end, a decline_proposals call passes both checks.
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const proposal = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const declined = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: proposal.proposal_id, reason: 'unrecognized_terms' }],
+    });
+    expect(declined.isError).toBeFalsy();
+    expect(declined.result).toMatchObject({
+      results: [{ proposal_id: proposal.proposal_id, outcome: 'declined' }],
+    });
+    const rejected = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: proposal.proposal_id, reason: 'not_a_reason' }],
+    });
+    expect(rejected.isError).toBe(true);
+    expect(rejected.result).toMatchObject({ code: 'INVALID_REQUEST' });
   });
 
   it('rejects duplicate decline proposal IDs and cannot decline registry proposals', async () => {

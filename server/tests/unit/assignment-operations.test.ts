@@ -18,6 +18,7 @@ import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import { trackerAllocationProblem } from '../../src/training-agent/assignment-operations.js';
+import { fieldsAddedAfterRelease } from '../../src/training-agent/served-release-fields.js';
 
 const CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'assign-ops.example' }, operator: 'assign-ops.example', sandbox: true };
@@ -86,6 +87,33 @@ describe('sync_creatives assignment_operations', () => {
     expect(caps.creative.supports_assignment_landing_page).toBe(true);
   });
 
+  it('lists exactly the assignment operations it accepts, including replace for live updates', async () => {
+    const caps = await call(createTrainingAgentServer(CTX), 'get_adcp_capabilities', {});
+    expect(caps.creative.assignment_operations).toEqual(['assign', 'unassign', 'replace']);
+    expect(caps.creative.live_updates).toBeDefined();
+    expect(caps.creative.supports_assignment_merge).toBeUndefined();
+  });
+
+  it('withholds the list from a 3.2 caller, where the field does not exist', () => {
+    const caps = { creative: { has_creative_library: true, assignment_operations: ['assign', 'unassign', 'replace'] } };
+    const schemaFile = 'protocol/get-adcp-capabilities-response.json';
+    expect(fieldsAddedAfterRelease(caps, schemaFile, '3.2')).toEqual(['/creative/assignment_operations']);
+    expect(fieldsAddedAfterRelease(caps, schemaFile, '3.3-beta.0')).toEqual([]);
+  });
+
+  it('refuses every operation on a creative-only route, which lists none', async () => {
+    const server = createTrainingAgentServer({ ...CTX, tenantId: 'creative' } as TrainingContext);
+    const caps = await call(server, 'get_adcp_capabilities', {});
+    expect(caps.creative?.assignment_operations).toBeUndefined();
+    const { packageId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId }],
+    });
+    expect(result).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'assignment_operations[0].operation' });
+  });
+
   it('assigns with trackers and a landing page and reads them back', async () => {
     const server = createTrainingAgentServer(CTX);
     const { mediaBuyId, packageId } = await buyWithPackage(server);
@@ -105,6 +133,23 @@ describe('sync_creatives assignment_operations', () => {
     expect(listed.creatives[0].assignments.assigned_packages[0]).toMatchObject({
       package_id: packageId, media_buy_id: mediaBuyId, trackers: [tracker], landing_page_url: 'https://assign-ops.example/spring',
     });
+  });
+
+  it.each([
+    ['trackers', { trackers: [tracker] }],
+    ['landing_page_url', { landing_page_url: 'https://assign-ops.example/spring' }],
+  ])('rejects %s on a deprecated assignments[] row with INVALID_REQUEST (adcp#8501)', async (field, extra) => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      creatives: [creative('hero_v1')],
+      assignments: [{ creative_id: 'hero_v1', package_id: packageId, ...extra }],
+    });
+    const error = result.errors?.[0] ?? result;
+    expect(error, JSON.stringify(result)).toMatchObject({ code: 'INVALID_REQUEST', field: `assignments[0].${field}` });
+    // Nothing was assigned.
+    expect(await approvals(server, mediaBuyId)).toEqual([]);
   });
 
   it('replace transfers trackers and the landing page, and advances the buy revision once', async () => {
@@ -177,7 +222,8 @@ describe('sync_creatives assignment_operations', () => {
       account: ACCOUNT,
       assignment_operations: [{ operation: 'merge', creative_id: 'a', package_id: packageId, merged_creative_id: 'b' }],
     });
-    expect(merge.code).toBe('UNSUPPORTED_FEATURE');
+    expect(merge).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'assignment_operations[0].operation' });
+    expect(merge.message).toContain('does not accept the merge assignment operation');
     const missingPackage = await call(server, 'sync_creatives', {
       account: ACCOUNT,
       assignment_operations: [{ operation: 'unassign', creative_id: 'a', package_id: 'pkg_nowhere' }],
@@ -378,19 +424,69 @@ describe('assignment tracker slots', () => {
     expect((await approvals(server, mediaBuyId)).map(row => row.creative_id)).toEqual(['hero_v1']);
   });
 
-  it('enforces the same limit on create_media_buy assignment rows', async () => {
+  it('ignores assignment trackers and landing pages on create_media_buy rows', async () => {
     const server = createTrainingAgentServer(CTX);
     await slotLimitedBuy(server);
     await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    // Two trackers would overflow the one-slot format if the row were checked; the row is not.
     const buy = await call(server, 'create_media_buy', {
       account: ACCOUNT, brand: BRAND, start_time: 'asap',
       end_time: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       packages: [{
         product_id: 'tracker_slot_product', pricing_option_id: 'tracker_slot_cpm', budget: 10000,
-        creative_assignments: [{ creative_id: 'hero_v1', trackers: [pixel(1), pixel(2)] }],
+        creative_assignments: [{ creative_id: 'hero_v1', trackers: [pixel(1), pixel(2)], landing_page_url: 'https://assign-ops.example/x' }],
       }],
     });
-    expect(JSON.stringify(buy)).toMatch(/creative_assignments\[0\]\.trackers/);
+    expect(buy.errors, JSON.stringify(buy)).toBeUndefined();
+    expect(buy.media_buy_id).toBeTruthy();
+    const rows = await approvals(server, buy.media_buy_id);
+    expect(rows.map(row => row.creative_id)).toEqual(['hero_v1']);
+    expect(rows[0].trackers ?? []).toEqual([]);
+    // The effective destination is the creative's own click-through, not the ignored request value.
+    expect(rows[0].landing_page_url).toBe('https://assign-ops.example/hero_v1');
+  });
+
+  it('ignores trackers in an update_media_buy creative_assignments replacement', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await slotLimitedBuy(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1'), creative('hero_v2')] });
+    const read = await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] });
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId, revision: read.media_buys[0].revision,
+      packages: [{
+        package_id: packageId,
+        creative_assignments: [{ creative_id: 'hero_v2', trackers: [pixel(1), pixel(2)], landing_page_url: 'https://assign-ops.example/x' }],
+      }],
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    const rows = await approvals(server, mediaBuyId);
+    expect(rows.map(row => row.creative_id)).toEqual(['hero_v2']);
+    expect(rows[0].trackers ?? []).toEqual([]);
+    expect(rows[0].landing_page_url).toBe('https://assign-ops.example/hero_v2');
+  });
+
+  it('keeps trackers stored through sync_creatives assign across an update that changes only the budget', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await slotLimitedBuy(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1')] });
+    const assigned = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId, trackers: [pixel(1)] }],
+    });
+    expect(assigned.code).toBeUndefined();
+    expect((await approvals(server, mediaBuyId))[0]).toMatchObject({ creative_id: 'hero_v1', trackers: [pixel(1)] });
+    const read = await call(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] });
+    const result = await call(server, 'update_media_buy', {
+      account: ACCOUNT, media_buy_id: mediaBuyId, revision: read.media_buys[0].revision,
+      packages: [{ package_id: packageId, budget: 8000 }],
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    // The deprecated update_media_buy response does not echo assign-set settings (adcp#8501).
+    const echoed = result.affected_packages[0].creative_assignments[0];
+    expect(echoed.creative_id).toBe('hero_v1');
+    expect(echoed).not.toHaveProperty('trackers');
+    expect(echoed).not.toHaveProperty('landing_page_url');
+    expect((await approvals(server, mediaBuyId))[0]).toMatchObject({ creative_id: 'hero_v1', trackers: [pixel(1)] });
   });
 
   it('refuses assignment trackers where the capability is not declared', async () => {
@@ -402,5 +498,33 @@ describe('assignment tracker slots', () => {
       assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId, trackers: [pixel(1)] }],
     });
     expect(result.code).toBe('UNSUPPORTED_FEATURE');
+  });
+
+  it('refuses installment-scoped assignments, since it does not list media_buy.installment_creative_assignment', async () => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative('hero_v1'), creative('hero_v2')] });
+    await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      assignment_operations: [{ operation: 'assign', creative_id: 'hero_v1', package_id: packageId }],
+    });
+    const installment_refs = [{
+      collection_ref: { publisher_domain: 'assign-ops.example', collection_id: 'assign_ops_channel' },
+      installment_id: 'post_1',
+    }];
+    for (const operation of [
+      { operation: 'assign', creative_id: 'hero_v2', package_id: packageId, installment_refs },
+      { operation: 'replace', creative_id: 'hero_v2', replaces_creative_id: 'hero_v1', package_id: packageId, installment_refs },
+      { operation: 'unassign', creative_id: 'hero_v1', package_id: packageId, installment_refs },
+    ]) {
+      const result = await call(server, 'sync_creatives', { account: ACCOUNT, assignment_operations: [operation] });
+      expect(result.code, operation.operation).toBe('UNSUPPORTED_FEATURE');
+      expect(result.field, operation.operation).toBe('assignment_operations[0].installment_refs');
+    }
+    // Nothing was applied: hero_v1 is still the only assignment, on every installment.
+    expect((await approvals(server, mediaBuyId)).map((row: any) => row.creative_id)).toEqual(['hero_v1']);
+    expect((await approvals(server, mediaBuyId))[0]).not.toHaveProperty('installment_refs');
+    const capabilities = await call(server, 'get_adcp_capabilities', {});
+    expect(capabilities.experimental_features ?? []).not.toContain('media_buy.installment_creative_assignment');
   });
 });

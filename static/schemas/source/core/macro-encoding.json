@@ -15,7 +15,7 @@
     }
   },
   "required": ["kind", "depth"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": { "properties": { "kind": { "const": "none" } }, "required": ["kind"] },

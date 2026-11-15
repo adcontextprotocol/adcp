@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.6/core/escalation-sla.json",
+  "title": "Escalation SLA",
+  "x-added-in": "3.3.0",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.6/core/sla-window.json"
+    }
+  ],
+  "required": [
+    "response_max"
+  ],
+  "properties": {
+    "response_max": {
+      "description": "Maximum elapsed time from seller receipt of the report to human acknowledgement, including weekends and non-working periods.",
+      "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+    },
+    "completion_max": false
+  },
+  "description": "Critical-report commitment. response_max is the maximum elapsed time from seller receipt to human acknowledgement. Business time and resolution-time commitments are outside this contract."
+}

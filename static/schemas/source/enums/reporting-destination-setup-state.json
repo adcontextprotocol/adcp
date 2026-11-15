@@ -3,7 +3,7 @@
   "$id": "/schemas/enums/reporting-destination-setup-state.json",
   "title": "Reporting Destination Setup State",
   "x-status": "experimental",
-  "description": "Validation and setup state of a reusable reporting destination. Only ready destinations may be selected by a new account-level delivery configuration. ready is pattern-specific: file_transfer requires proven caller control of the normalized location plus a successful seller write-and-read-back probe; warehouse_materialization requires seller-verified create/commit access to the normalized locator; dataset_share requires completed recipient-side acceptance plus provider-observed recipient readability. inactive means the caller suspended the destination (active false): the seller stops initiating new deliveries to every generation within its advertised suspension interval.",
+  "description": "Validation and setup state of a reusable reporting destination. Only ready destinations may be selected by a new account-level delivery configuration. ready is pattern-specific: file_transfer requires proven caller control of the normalized location plus a successful seller write-and-read-back probe, where a write-only https_put endpoint replaces the read-back with the signed probe and its verified echo; warehouse_materialization requires seller-verified create/commit access to the normalized locator; dataset_share requires completed recipient-side acceptance plus provider-observed recipient readability. inactive means the caller suspended the destination (active false): the seller stops initiating new deliveries to every generation within its advertised suspension interval.",
   "type": "string",
   "enum": ["validating", "ready", "action_required", "inactive", "rejected"]
 }

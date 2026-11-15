@@ -23,5 +23,5 @@
     }
   },
   "required": ["url", "auth", "protocol"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

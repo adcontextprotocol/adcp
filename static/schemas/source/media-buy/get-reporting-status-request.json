@@ -48,7 +48,7 @@
         "end": { "type": "string", "format": "date-time" }
       },
       "required": ["start", "end"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "health": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-health.json" }, "minItems": 1, "uniqueItems": true, "description": "Periods-view result filter only; it never changes summary health." },
     "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true },

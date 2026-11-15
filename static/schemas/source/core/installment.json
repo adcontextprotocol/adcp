@@ -100,7 +100,7 @@
         }
       },
       "required": ["installment_id", "type"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

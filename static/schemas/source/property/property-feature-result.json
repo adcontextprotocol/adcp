@@ -39,5 +39,5 @@
     }
   },
   "required": ["property", "coverage_status"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

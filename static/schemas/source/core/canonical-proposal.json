@@ -67,6 +67,7 @@
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.installment_holds). Readback of the specific installments this committed proposal's hold covers. It describes the one hold that finalize placed, not separate holds: every entry was placed by the same all-or-none finalize, shares hold_placed_at and this proposal's expires_at, and is accepted, extended, superseded, or lapses with the proposal as a whole. No task addresses an entry on its own, and there are no partial holds. Allowed only on a non-draft proposal whose hold_policy has available true; forbidden on drafts and on terms-only commitments. It is readback, not contract: commercial_terms stays authoritative. When present it lists every installment the hold covers, once per product_id and installment_ref; every product_id is a product in commercial_terms.purchases, and every installment is one that product includes, scheduled within that purchase's flight. Inventory that is not a specific installment, such as a run-of-collection product, is not listed. Entries carry no expires_at: this proposal's expires_at is the hold deadline for every entry, and it is already capped at the earliest booking_deadline or change_cutoff of the held installments. Under a rankable hold_policy (media_buy.hold_ranking), every entry carries hold_rank, and this proposal's hold_rank is no better than any entry's; it equals the worst entry's unless unlisted inventory is held at a worse position. The array lists only this proposal's own hold: sellers MUST NOT include or describe other buyers' holds on the same installments. A seller that lists media_buy.installment_holds MUST include holds on every committed proposal it returns to a caller at 3.3 or later that allocates a product declaring specific installments. Each extend_hold successor lists the same entries, at positions no worse than the source's. Omitted, with hold_policy, for callers below 3.3.",
       "items": {
+        "description": "Rejects `expires_at`: the proposal's expires_at covers every hold entry.",
         "type": "object",
         "properties": {
           "product_id": {
@@ -86,7 +87,8 @@
           }
         },
         "required": ["product_id", "installment_ref"],
-        "additionalProperties": false
+        "additionalProperties": true,
+        "not": { "required": ["expires_at"] }
       }
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
@@ -96,7 +98,7 @@
     "terms_digest": {
       "type": "string",
       "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
-      "description": "Base64url SHA-256 digest of the RFC 8785 JCS serialization of commercial_terms, prefixed with sha256:."
+      "description": "Base64url SHA-256 digest of the RFC 8785 JCS serialization of commercial_terms, prefixed with sha256:. It covers the entire commercial_terms JSON value: every member at every depth, including ext and members a party does not recognize. A party computes or verifies it over the JSON value as received, never over a re-serialized parsed model, which can drop members the model does not declare. Accepting the terms binds the accepting party to every member, and a party that cannot interpret every member MUST NOT accept them (see commercial-terms.json)."
     },
     "insertion_order": { "$ref": "/schemas/core/insertion-order.json" },
     "total_budget_guidance": {
@@ -110,7 +112,7 @@
       },
       "required": ["currency"],
       "anyOf": [{ "required": ["recommended"] }, { "required": ["min"] }, { "required": ["max"] }],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "forecast": {
       "allOf": [{ "$ref": "/schemas/core/canonical-delivery-forecast.json" }],

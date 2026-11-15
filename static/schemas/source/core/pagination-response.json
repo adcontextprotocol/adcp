@@ -22,5 +22,5 @@
   "required": [
     "has_more"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -1,0 +1,454 @@
+id: brand/single_side_trust_extension
+version: "1.0.0"
+title: "Partners MUST NOT extend trust on a single signed verify_brand_claim response"
+category: brand_baseline
+summary: "Red conformance test for the asymmetric trust model on verify_brand_claim. A partner that auto-provisions, propagates governance, or otherwise extends relationship trust on the strength of one signed `owned` response fails — assertion direction requires reciprocation."
+track: brand
+required_tools:
+  - verify_brand_claim
+
+narrative: |
+  `verify_brand_claim` ships with a direction-asymmetric trust model. Per
+  [`/brand-protocol/tasks/verify_brand_claim`](/brand-protocol/tasks/verify_brand_claim)
+  §"The trust rule — two calls, not one":
+
+  - **Rejection direction** (`disputed` / `not_ours`) is authoritative on a
+    single signed response. A brand has standing to refuse association
+    unilaterally.
+  - **Assertion direction** (`owned` / `pending_review` / `transferring` /
+    `licensed_*`) is informative but NOT trust-extending alone. The
+    reciprocating side must still confirm before relationship trust extends.
+
+  The load-bearing risk is partner-side, not agent-side: a partner that
+  signature-verifies one `owned` response and treats it as trust-conferring
+  would let a malicious or mistaken house claim subsidiaries, properties, or
+  licensed marks it does not legitimately have, and have consumers extend
+  governance trust on the strength of the signature alone. See
+  [`brand.json` § Agent-augmented verification](/brand-protocol/brand-json#agent-augmented-verification)
+  for the full normative trust table and the malicious-house walkthrough.
+
+  ## What this scenario grades
+
+  The subject under test is a CONSUMER of `verify_brand_claim` — a partner
+  that may extend governance trust (auto-provision a member account,
+  propagate governance posture, include the brand in a billable seat
+  computation) based on what the verify response returns. The scenario drives
+  three variants of the malicious-house walkthrough — subsidiary, property,
+  and trademark `licensed_in` — and asserts the partner:
+
+  1. DID call leaf-side reciprocation (a static crawl of the leaf's
+     `brand.json`, or a leaf-side `verify_brand_claim` with the mirror claim
+     type when one is advertised).
+  2. Did NOT extend governance trust on the strength of the malicious house's
+     signed `owned` response alone.
+
+  ## Framework extension
+
+  This scenario is a partner-conformance red test. Every storyboard in the
+  corpus today grades an agent serving a task; this scenario grades a
+  consumer of a task. The dispatch surface required is a partner-side
+  comply_test_controller scenario (`evaluate_verify_brand_claim_trust_extension`)
+  documented in `test-kits/single-side-trust-runner.yaml`. Until adcp-client
+  ships consumer-under-test dispatch and a partner adopter advertises the
+  controller scenario, every graded step in this file declares
+  `requires_contract: single_side_trust_runner` and grades `not_applicable`.
+  Authoring the scenario now gives partners a stable target to register
+  against and gives the runner a stable contract to implement against.
+
+  ## Variants
+
+  - **`subsidiary`** — Malicious house signs `owned` for a subsidiary claim
+    on `independent-leaf.example`. The leaf's static `brand.json` does NOT
+    declare `house_domain: malicious-house.example`. Pass = the partner
+    crawls the leaf and concludes no relationship; trust is not extended.
+  - **`property`** — Malicious house signs `owned` for a property
+    (`real-property-owner.example`) it does not actually own. The property's
+    real owner publishes a `brand.json` listing the property in its own
+    `properties[]`. Pass = the partner cross-checks the property's
+    real owner; trust is not extended.
+  - **`trademark` `licensed_in`** — Malicious house signs `licensed_in` for a
+    mark, naming `non-reciprocating-licensor.example` as the licensor. The
+    licensor's static `brand.json` does NOT publish a matching `licensed_out`
+    entry for the mark. Pass = the partner crawls the licensor and concludes
+    the licensing relationship is unverified; trust is not extended.
+
+  Each variant fires independently and grades independently. A partner that
+  passes one variant and fails another is reported per-variant — partial
+  conformance is informative for implementors.
+
+agent:
+  interaction_model: brand_rights_holder
+  capabilities: []
+  examples:
+    - "Any partner that consumes verify_brand_claim and may extend governance trust on the result — AAO members provisioning brand accounts, agencies inheriting brand relationships, governance platforms propagating spending-authority scope."
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner with consumer-under-test dispatch capability"
+
+prerequisites:
+  description: |
+    The runner hosts the fixture brand-agents and static `brand.json` files
+    documented in `test-kits/single-side-trust-runner.yaml`. The partner
+    under test advertises a comply_test_controller scenario named
+    `evaluate_verify_brand_claim_trust_extension` (see the runner contract
+    for the request shape). Partners that do not advertise this scenario
+    grade every step `not_applicable` (the red test is opt-in by partner
+    capability, matching the upstream_traffic convention from
+    `storyboard-schema.yaml`). Partners that DO advertise it but produce
+    traffic patterns inconsistent with the conformance criteria below grade
+    `failed` — silent passing on an empty traffic record is the façade
+    signal this scenario exists to catch.
+  test_kit: "test-kits/single-side-trust-runner.yaml"
+
+phases:
+  - id: subsidiary_variant
+    title: "Subsidiary — malicious house claims a non-reciprocating leaf"
+    narrative: |
+      The runner dispatches the partner under test with a verify_brand_claim
+      target on `malicious-house.example`'s brand-agent, asking the
+      subsidiary question for `independent-leaf.example`. The malicious
+      house signs `owned`. The partner is then observed via
+      `query_upstream_traffic`. The partner MUST have fetched the leaf's
+      static `brand.json` (no leaf-side brand-agent advertised) and MUST
+      NOT have triggered any trust-extension side effect.
+
+    steps:
+      - id: dispatch_subsidiary_red_test
+        title: "Drive partner through verify_brand_claim subsidiary walkthrough"
+        narrative: |
+          The runner calls the partner's comply_test_controller with
+          scenario `evaluate_verify_brand_claim_trust_extension`,
+          variant `subsidiary`. The controller scenario instructs the
+          partner to invoke verify_brand_claim against
+          `malicious-house.example`'s brand-agent, evaluate the signed
+          response, and decide whether to extend trust to the leaf. The
+          runner returns from the controller call and proceeds to the
+          observability assertions below.
+        task: comply_test_controller
+        schema_ref: "extensions/test/comply-test-controller-request.json"
+        response_schema_ref: "extensions/test/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        requires_contract: single_side_trust_runner
+        stateful: true
+        expected: |
+          The controller scenario completes (any terminal status). The
+          partner's trust-extension decision is asserted by the
+          upstream_traffic checks on the following step, not by the
+          controller's return shape.
+        sample_request:
+          scenario: evaluate_verify_brand_claim_trust_extension
+          params:
+            variant: subsidiary
+            brand_agent_url: "https://malicious-house.example/agents/brand"
+            claim:
+              claim_type: subsidiary
+              claim:
+                subsidiary_domain: "independent-leaf.example"
+                subsidiary_brand_id: "independent_leaf"
+                observed_at: "2026-05-16T00:00:00Z"
+          context:
+            correlation_id: "brand--single_side_trust--subsidiary--dispatch"
+
+      - id: assert_subsidiary_reciprocation_observed
+        title: "Partner DID call leaf-side reciprocation"
+        narrative: |
+          The runner queries the partner's comply_test_controller
+          `query_upstream_traffic` (window scoped to this step's
+          dispatch). The partner MUST have fetched
+          `https://independent-leaf.example/.well-known/brand.json` to
+          check for a reciprocating `house_domain` claim. A partner that
+          extended trust without performing this fetch is the bug the red
+          test exists to surface.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/tasks/verify_brand_claim"
+        requires_contract: single_side_trust_runner
+        stateful: false
+        expected: |
+          Recorded upstream traffic includes at least one GET against the
+          leaf's `.well-known/brand.json` endpoint, carrying the leaf
+          domain as a load-bearing identifier echo (anti-façade).
+        sample_request:
+          claim_type: subsidiary
+          claim:
+            subsidiary_domain: "independent-leaf.example"
+          context:
+            correlation_id: "brand--single_side_trust--subsidiary--reciprocation"
+        validations:
+          - check: upstream_traffic
+            description: "Partner fetched the leaf's brand.json for reciprocation"
+            endpoint_pattern: "GET *independent-leaf.example/.well-known/brand.json"
+            min_count: 1
+            identifier_paths:
+              - "claim.subsidiary_domain"
+
+      - id: assert_subsidiary_trust_not_extended
+        title: "Partner did NOT extend trust on the signed `owned` alone"
+        narrative: |
+          The runner asserts the partner produced ZERO trust-extension
+          side effects in response to the malicious house's signed
+          `owned`. Trust-extension side effects are the partner-side
+          actions a spec-conformant consumer MUST gate on reciprocation:
+          member auto-provisioning, governance-context creation, billable
+          seat inclusion. The runner's candidate endpoint patterns cover
+          the closed set documented in the runner contract. A partner
+          whose trust-extension surface is not represented in the closed
+          set declares its endpoint patterns out of band when registering
+          for this red test; runners merge them into the negative
+          assertion.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/tasks/verify_brand_claim"
+        requires_contract: single_side_trust_runner
+        stateful: false
+        expected: |
+          Zero recorded calls match any of the trust-extension endpoint
+          patterns. The partner's evaluation of the signed `owned`
+          response did not propagate into governance trust.
+        sample_request:
+          claim_type: subsidiary
+          claim:
+            subsidiary_domain: "independent-leaf.example"
+          context:
+            correlation_id: "brand--single_side_trust--subsidiary--no_trust"
+        validations:
+          - check: upstream_traffic
+            description: "No trust-extension side effects fired on the malicious house's owned response"
+            endpoint_pattern: "POST */governance/auto-provision"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No member-auto-creation side effects fired"
+            endpoint_pattern: "POST */accounts/auto-create-member"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No governance-context creation fired"
+            endpoint_pattern: "POST */governance/contexts"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No billable seat auto-inclusion fired"
+            endpoint_pattern: "POST */billing/seats/auto-add"
+            min_count: 0
+
+  - id: property_variant
+    title: "Property — malicious house claims a property it does not own"
+    narrative: |
+      The runner dispatches the partner under test with a property claim
+      against `real-property-owner.example`. The malicious house signs
+      `owned`. The property's real owner publishes a `brand.json` listing
+      the property in its own `properties[]`. The partner MUST cross-check
+      the property against the real owner's `brand.json` before extending
+      trust.
+
+    steps:
+      - id: dispatch_property_red_test
+        title: "Drive partner through verify_brand_claim property walkthrough"
+        narrative: |
+          The runner dispatches the partner with variant `property`. The
+          controller scenario asks the partner to verify the property
+          claim against the malicious house and decide whether to extend
+          trust to the property as owned by that house.
+        task: comply_test_controller
+        schema_ref: "extensions/test/comply-test-controller-request.json"
+        response_schema_ref: "extensions/test/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        requires_contract: single_side_trust_runner
+        stateful: true
+        expected: |
+          The controller scenario completes. The partner's trust-extension
+          decision is asserted by the upstream_traffic checks below.
+        sample_request:
+          scenario: evaluate_verify_brand_claim_trust_extension
+          params:
+            variant: property
+            brand_agent_url: "https://malicious-house.example/agents/brand"
+            claim:
+              claim_type: property
+              claim:
+                property:
+                  type: "website"
+                  identifier: "real-property-owner.example"
+                use_case: "advertising"
+          context:
+            correlation_id: "brand--single_side_trust--property--dispatch"
+
+      - id: assert_property_cross_check_observed
+        title: "Partner DID cross-check the property's real owner"
+        narrative: |
+          The partner MUST have fetched
+          `https://real-property-owner.example/.well-known/brand.json` to
+          verify whether the property is in fact owned by the real
+          owner. Without this cross-check, a partner could let any house
+          claim any property by signing a forged `owned`.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/tasks/verify_brand_claim"
+        requires_contract: single_side_trust_runner
+        stateful: false
+        expected: |
+          Recorded upstream traffic includes at least one GET against
+          the property's real-owner brand.json.
+        sample_request:
+          claim_type: property
+          claim:
+            property:
+              type: "website"
+              identifier: "real-property-owner.example"
+          context:
+            correlation_id: "brand--single_side_trust--property--cross_check"
+        validations:
+          - check: upstream_traffic
+            description: "Partner fetched the property's real-owner brand.json"
+            endpoint_pattern: "GET *real-property-owner.example/.well-known/brand.json"
+            min_count: 1
+            identifier_paths:
+              - "claim.property.identifier"
+
+      - id: assert_property_trust_not_extended
+        title: "Partner did NOT accept the malicious property claim"
+        narrative: |
+          Zero trust-extension side effects fire when the malicious
+          house's signed `owned` for a property is the only positive
+          evidence the partner has seen.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/tasks/verify_brand_claim"
+        requires_contract: single_side_trust_runner
+        stateful: false
+        expected: |
+          Zero recorded calls match the trust-extension endpoint
+          patterns.
+        sample_request:
+          claim_type: property
+          claim:
+            property:
+              type: "website"
+              identifier: "real-property-owner.example"
+          context:
+            correlation_id: "brand--single_side_trust--property--no_trust"
+        validations:
+          - check: upstream_traffic
+            description: "No property-trust auto-binding fired on the malicious house's owned response"
+            endpoint_pattern: "POST */governance/auto-provision"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No inventory/property auto-acceptance fired"
+            endpoint_pattern: "POST */inventory/auto-accept"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No creative-clearance auto-approval fired"
+            endpoint_pattern: "POST */creative/auto-clearance"
+            min_count: 0
+
+  - id: trademark_licensed_in_variant
+    title: "Trademark licensed_in — licensor does not reciprocate licensed_out"
+    narrative: |
+      The runner dispatches the partner under test with a trademark
+      `licensed_in` claim. The malicious house signs `licensed_in` and
+      names `non-reciprocating-licensor.example` as the licensor. The
+      licensor's static `brand.json` does NOT publish a matching
+      `licensed_out` for the mark. Per the task spec's `licensed_in`
+      reciprocation rule, partners SHOULD treat `licensed_in` as
+      unverified until the named `licensor_domain` reciprocates
+      `licensed_out` for the same mark.
+
+    steps:
+      - id: dispatch_trademark_red_test
+        title: "Drive partner through verify_brand_claim trademark walkthrough"
+        narrative: |
+          The runner dispatches the partner with variant
+          `trademark_licensed_in`. The controller scenario asks the
+          partner to evaluate the licensee posture and decide whether to
+          extend trust (e.g., creative-clearance auto-approval).
+        task: comply_test_controller
+        schema_ref: "extensions/test/comply-test-controller-request.json"
+        response_schema_ref: "extensions/test/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        requires_contract: single_side_trust_runner
+        stateful: true
+        expected: |
+          The controller scenario completes. The partner's licensee-trust
+          decision is asserted by the upstream_traffic checks below.
+        sample_request:
+          scenario: evaluate_verify_brand_claim_trust_extension
+          params:
+            variant: trademark_licensed_in
+            brand_agent_url: "https://malicious-house.example/agents/brand"
+            claim:
+              claim_type: trademark
+              claim:
+                mark: "FABRICATED MARK"
+                use_case: "advertising"
+          context:
+            correlation_id: "brand--single_side_trust--trademark--dispatch"
+
+      - id: assert_licensor_reciprocation_observed
+        title: "Partner DID check the licensor for reciprocating licensed_out"
+        narrative: |
+          The partner MUST have fetched
+          `https://non-reciprocating-licensor.example/.well-known/brand.json`
+          (or called the licensor's brand-agent if one were advertised —
+          this fixture intentionally publishes none) to verify the
+          licensor recognizes the licensing relationship.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/tasks/verify_brand_claim"
+        requires_contract: single_side_trust_runner
+        stateful: false
+        expected: |
+          Recorded upstream traffic includes at least one GET against
+          the licensor's brand.json.
+        sample_request:
+          claim_type: trademark
+          claim:
+            mark: "FABRICATED MARK"
+          context:
+            correlation_id: "brand--single_side_trust--trademark--reciprocation"
+        validations:
+          - check: upstream_traffic
+            description: "Partner fetched the licensor's brand.json for licensed_out reciprocation"
+            endpoint_pattern: "GET *non-reciprocating-licensor.example/.well-known/brand.json"
+            min_count: 1
+            identifier_paths:
+              - "claim.mark"
+
+      - id: assert_trademark_trust_not_extended
+        title: "Partner did NOT accept the unverified licensee posture"
+        narrative: |
+          With no reciprocating `licensed_out` from the licensor, the
+          partner MUST NOT have propagated licensee posture into
+          downstream surfaces (creative-clearance auto-approval, mark
+          auto-binding, etc.).
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/tasks/verify_brand_claim"
+        requires_contract: single_side_trust_runner
+        stateful: false
+        expected: |
+          Zero recorded calls match the licensee-trust-extension
+          endpoint patterns.
+        sample_request:
+          claim_type: trademark
+          claim:
+            mark: "FABRICATED MARK"
+          context:
+            correlation_id: "brand--single_side_trust--trademark--no_trust"
+        validations:
+          - check: upstream_traffic
+            description: "No creative-clearance auto-approval fired on the unverified licensee posture"
+            endpoint_pattern: "POST */creative/auto-clearance"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No trademark auto-binding fired"
+            endpoint_pattern: "POST */trademarks/auto-bind"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No governance/licensing auto-extension fired"
+            endpoint_pattern: "POST */governance/licensing/auto-extend"
+            min_count: 0

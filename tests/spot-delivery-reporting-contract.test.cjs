@@ -371,7 +371,8 @@ describe("spot lifecycle, makegood linkage and break position (experimental, 3.3
       JSON.stringify(validateCapabilities.errors)
     );
     assert.equal(validateCapabilities({ ...base, available_statuses: ["bumped"] }), false);
-    assert.equal(validateCapabilities({ ...base, unknown_field: true }), false, "closed object");
+    // A capability block stays open (a correction under DR-0036).
+    assert.equal(validateCapabilities({ ...base, unknown_field: true }), true, "open capability block");
     const capSchema = readSchema("/schemas/core/spot-reporting-capability.json");
     for (const name of ["available_statuses", "supports_break_position"]) {
       assert.equal(capSchema.properties[name]["x-status"], "experimental", name);

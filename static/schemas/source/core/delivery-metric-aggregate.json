@@ -39,7 +39,7 @@
         },
         "qualifier": {
           "type": "object",
-          "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` today; expected to diverge in future minors as transparency disclosures buyers don't commit to ship delivery-only. Closed (`additionalProperties: false`) — new qualifier keys ship explicitly.",
+          "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` today; expected to diverge as transparency disclosures buyers don't commit to ship delivery-only. Closed (`additionalProperties: false`), because consumers join on the key set; new qualifier keys ship in a major release.",
           "properties": {
             "viewability_standard": {
               "$ref": "/schemas/enums/viewability-standard.json",
@@ -114,7 +114,7 @@
         "metric_id",
         "value"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "allOf": [
         {
           "if": {
@@ -195,7 +195,7 @@
         },
         "qualifier": {
           "type": "object",
-          "description": "Optional qualifier keys disambiguating this vendor-metric row from sibling rows under the same (vendor, metric_id) — e.g., attribution_window on a vendor outcome metric. Same closed key set as the standard branch; new keys ship explicitly.",
+          "description": "Optional qualifier keys disambiguating this vendor-metric row from sibling rows under the same (vendor, metric_id) — e.g., attribution_window on a vendor outcome metric. Same closed key set as the standard branch; new keys ship in a major release.",
           "properties": {
             "viewability_standard": {
               "$ref": "/schemas/enums/viewability-standard.json",
@@ -236,7 +236,7 @@
         "metric_id",
         "value"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

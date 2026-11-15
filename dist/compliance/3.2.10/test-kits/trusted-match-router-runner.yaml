@@ -1,0 +1,94 @@
+id: trusted_match_router_runner
+applies_to:
+  universal_storyboard: trusted-match-publisher-authentication
+
+name: "Trusted Match router authentication runner"
+description: |
+  Runner contract for direct HTTP probes against publisher-facing Trusted Match
+  Context and Identity endpoints with publisher authentication absent or
+  invalid. The endpoints and credential configuration are operator-supplied at
+  runtime; this file carries no credentials and does not prescribe a credential
+  profile.
+
+endpoint_scope: sandbox
+
+runner_contract:
+  requirement: trusted_match_publisher_auth_runner
+  selection_order:
+    - requires_capability
+    - requires
+  adapter_method: preparePublisherAuthProbe
+  adapter_arguments:
+    - operation
+    - credentialState
+  adapter_result:
+    credential_headers: optional_record
+    tls:
+      client_certificate_pem: optional_string
+      private_key_pem: optional_string
+      private_key_passphrase: optional_string
+      ca_certificate_pem: optional_string
+  required_endpoints:
+    - contextEndpoint
+    - identityEndpoint
+  credential_states:
+    - absent
+    - invalid
+  task_mapping:
+    trusted_match_missing_auth_context_probe:
+      endpoint: contextEndpoint
+      operation: context
+      credential_state: absent
+    trusted_match_invalid_auth_context_probe:
+      endpoint: contextEndpoint
+      operation: context
+      credential_state: invalid
+    trusted_match_missing_auth_identity_probe:
+      endpoint: identityEndpoint
+      operation: identity
+      credential_state: absent
+    trusted_match_invalid_auth_identity_probe:
+      endpoint: identityEndpoint
+      operation: identity
+      credential_state: invalid
+  network_request_owner: runner
+  transport: raw_http
+  method: POST
+  authentication: operator_adapter
+  redirects: forbidden
+
+security:
+  credential_configuration: operator_adapter
+  endpoint_validation: ssrf_safe_https
+  http_client_construction: runner
+  forbidden_adapter_outputs:
+    - url_or_endpoint
+    - dispatcher_or_fetch_implementation
+    - method_or_body
+    - response
+    - proxy
+    - sni_override
+    - tls_verification_override
+  forbidden_credential_headers:
+    - host
+    - content_framing
+    - hop_by_hop
+    - forwarding
+    - routing_override
+    - proxy
+  redirect_handling: runner_rejects
+  timeout_enforcement: runner
+  response_size_enforcement: runner
+  response_redaction: required
+
+scope:
+  in_scope: |
+    - Observe HTTP 401 with WWW-Authenticate when publisher authentication is absent or invalid.
+    - Send schema-valid Context Match and Identity Match requests for both credential states.
+    - Preserve the observed HTTP status, headers, and optional body for grading.
+  out_of_scope: |
+    - Selecting or validating the deployment's authentication mechanism.
+    - Defining how an operator adapter removes or invalidates deployment-specific credentials.
+    - Supplying a valid publisher credential.
+    - Exercising multi-publisher property bindings; that requires an
+      operator-specific authenticated principal fixture.

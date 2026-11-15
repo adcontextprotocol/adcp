@@ -37,5 +37,5 @@
     "use",
     "x"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

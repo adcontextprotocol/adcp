@@ -76,7 +76,7 @@
         "unidentified_records",
         "unidentified_impressions"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "aggregate": {
       "type": "object",
@@ -149,7 +149,7 @@
         "unknown_records",
         "unknown_impressions"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "results": {
       "type": "array",

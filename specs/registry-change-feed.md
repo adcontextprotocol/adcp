@@ -570,6 +570,8 @@ interface AuthorizationIndex {
 
   // Signing key lookup for TMP request verification
   getSigningKeys(agentUrl: string, publisherDomain: string): SigningKey[];
+  // The pin for one message: entries authorizing the query, pinned only if all pin (#9016).
+  getSigningKeysForScope(query: AuthorizationQuery): SigningKey[] | null;
 }
 
 interface AuthorizationQuery {

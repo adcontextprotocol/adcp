@@ -552,7 +552,7 @@
         }
       },
       "required": ["publisher_domain", "type", "value"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "collectionPayload": {
       "type": "object",
