@@ -33,6 +33,7 @@ import {
 } from '@adcp/sdk/server';
 import { createLogger } from '../logger.js';
 import { mountTenantRoutes } from './tenants/router.js';
+import { INVENTORY_TENANT_IDS } from './tenants/inventory.js';
 import { mountCreative33Sandbox } from './creative33/router.js';
 import { toolsForTenant } from './tenants/tool-catalog.js';
 import { createTrainingAgentServer } from './task-handlers.js';
@@ -375,7 +376,13 @@ export function createTrainingAgentRouter(options: {
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
   // resolveByRequest(host, pathname).
-  mountTenantRoutes(router, TENANT_IDS, {
+  // The inventory tenants (#9025) are mounted beside the others but stay out
+  // of TENANT_IDS, so the host's brand.json and adagents.json listings and
+  // the legacy /mcp-strict routes are unchanged.
+  mountTenantRoutes(router, [
+    ...TENANT_IDS,
+    ...(options.storyboardCompat?.version === '3.0' ? [] : INVENTORY_TENANT_IDS),
+  ], {
     ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
     requireAuth: requireTokenDefault,
     requireSalesAuth,
