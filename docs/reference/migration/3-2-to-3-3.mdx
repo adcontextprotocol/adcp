@@ -30,7 +30,6 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 
 ## Upgrade checklist
 
-{/* depends on #8854 (metric_id, evaluator): row 45 */}
 
 | Step | Who | Action |
 |---|---|---|
@@ -124,8 +123,6 @@ The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration
 
 ## Closed-schema triage: what stays in 3.3
 
-{/* depends on #8854 (metric_id, evaluator). Re-check every row against what merged before the rc.0 cut */}
-
 On 2026-11-09 the working group decided that 3.x opens the schemas that were closed by accident ([Schemas are open by default](#schemas-are-open-by-default)). The [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) triage then re-checked every beta feature that had been withdrawn, or proposed for withdrawal, because its schema was closed. It applied three reasons, in this order:
 
 1. **Deprecated surface.** A field on a deprecated task or row leaves, whatever its schema: `get_products`, `create_media_buy`, `update_media_buy`, `sync_creatives` `assignments[]`, and package creative assignments. The live tasks keep the feature where they already carry it.
@@ -133,6 +130,8 @@ On 2026-11-09 the working group decided that 3.x opens the schemas that were clo
 3. **Closure only.** The withdrawal is moot, and the feature stays in 3.3.
 
 Only the fields below change between beta.5 and rc.0 because of the triage, and each change first shipped in beta.6. The three features withdrawn after beta.1 stay withdrawn ([above](#withdrawn-from-3-3-planned-for-4-0)).
+
+**In review, not in rc.0.** [#8854](https://github.com/adcontextprotocol/adcp/pull/8854) makes two of the triage's changes: it withdraws `metric_id` from `core/canonical-performance-standard.json`, `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json`, and it restores `evaluator` as a deprecated `x-entity-types` value. It has not merged, so rc.0's schemas still carry `metric_id` in those three places and still lack `evaluator`. Don't build on `metric_id`: the triage decided it leaves 3.3.
 
 ### Stays in 3.3
 
@@ -146,7 +145,6 @@ Only the fields below change between beta.5 and rc.0 because of the triage, and 
 | `trackers`, `landing_page_url` | The `assign` operation in `sync_creatives` `assignment_operations` |
 | `forced.proposal_id`, `forced.arm: unable` | `comply_test_controller` responses |
 | `signing_profile` | `core/notification-config.json` and `core/agent-notification-config.json` |
-| `evaluator` | `core/x-entity-types.json`, restored as a deprecated value. No 3.3 field carries it, and the `evaluator_id` removal stands ([below](#experimental-creative-evaluator-drops-evaluator_id)). |
 
 ### Leaves 3.3: deprecated surface
 
@@ -160,13 +158,13 @@ Only the fields below change between beta.5 and rc.0 because of the triage, and 
 | `artifact_webhook.signing_profile` | `create_media_buy` | No other task |
 | `start_requires_all_creatives_approved` | Packages on `create_media_buy` and `update_media_buy` | `control_media_buy` package controls (`media_buy.features.creative_start_policy`) |
 | `target_audiences` | Packages on `create_media_buy` and `update_media_buy` | Purchases, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)) |
-| `metric_id` | `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json` | Performance standards, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)) |
+| `metric_id` | `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json` | Performance standards, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)). Still in the rc.0 schemas: the withdrawal, [#8854](https://github.com/adcontextprotocol/adcp/pull/8854), is in review. |
 
 ### Leaves 3.3: held closed until 4.0
 
 | Field | Why it waits |
 |---|---|
-| `metric_id` on `core/canonical-performance-standard.json` | The canonical performance standard is one of the commercial terms held closed until 4.0. |
+| `metric_id` on `core/canonical-performance-standard.json` | The canonical performance standard is one of the commercial terms held closed until 4.0. Still in the rc.0 schema: the withdrawal, [#8854](https://github.com/adcontextprotocol/adcp/pull/8854), is in review. |
 | `price_adjustments` (`media_buy.price_adjustments`) | Its 3.3 home is the legacy `get_products` pricing option, a deprecated surface, and `canonical-pricing-option` is held closed until 4.0. The whole experiment waits for 4.0. |
 | `counting_mechanisms` on `measurement_terms` (`media_buy.measurement_provenance`) | `measurement_terms` sits on deprecated tasks, and the canonical measurement terms are held closed until 4.0. `vendor_metric_provenance[]` on delivery metrics stays in 3.3. |
 | `target_audiences` on purchases | A purchase records its terms in `product-purchase.json`, which is held closed until 4.0. |
@@ -696,10 +694,8 @@ These change generated types or bundle shape without changing what a conformant 
 - **Local-alignment durations (#8718, beta.4).** `core/reporting-schedule.json` and `core/reporting-schedule-offering.json` reject a `period_duration` with both a non-zero date and a non-zero time component under `account_timezone`, `source_timezone`, or `billing_cycle`. Generated validators reject `P1DT12H` there; `P1DT0H`, `P0DT12H`, and `utc` mixed durations stay valid.
 - **New error codes and shapes (beta.4 and beta.5).** `SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY` (recovery `correctable`) for a managed-delivery offering without `account_id` in its primary keys (#8718); `budget_field`, `basis`, `constraint`, and `related_field` on `BUDGET_TOO_LOW` details (#8710); `SetAccountTimezoneResult` on the controller response (#8717); and `core/match-key.json` with `enums/match-key-use.json` (#8446).
 
-{/* depends on #8854 (metric_id, evaluator): the second bullet */}
-
 - **Opened schemas ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), rc.0).** `additionalProperties` goes from `false` to `true` at 744 of the 859 closed locations, and nothing else in those schemas changes. Generated types change: json-schema-to-typescript gives an opened object an index signature, Pydantic models stop forbidding extra fields, and Zod validators accept unknown keys where the schema opened. Where closure also rejected a specific field, the opened schema names it in `not: { anyOf: [{ required: [...] }] }`, so a validator keeps that rejection. Code that relied on a type or validation error for any other unknown key needs its own check. See [Schemas are open by default](#schemas-are-open-by-default).
-- **Withdrawn and moved beta fields (rc.0).** Regenerate to drop the fields the [closed-schema triage](#closed-schema-triage-what-stays-in-3-3) removes and to pick up the ones that change home, such as `execution_readiness` on `list_products`.
+- **Withdrawn and moved beta fields (rc.0).** Regenerate to drop the fields the [closed-schema triage](#closed-schema-triage-what-stays-in-3-3) removes and to pick up the ones that change home, such as `execution_readiness` on `list_products`. `metric_id` on performance standards stays in the rc.0 schemas until [#8854](https://github.com/adcontextprotocol/adcp/pull/8854) merges.
 
 ## Adopt by capability
 
