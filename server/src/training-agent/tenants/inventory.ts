@@ -10,7 +10,7 @@
  * Their `comply_test_controller` serves `sandbox_clock` (get and advance the
  * caller's sandbox clock; the router intercepts it, as the SDK's controller
  * config has no slot for it) and `reset_state` (unpin the clock and discard
- * the caller's market on the tenant).
+ * the caller's markets on every inventory tenant).
  *
  * They speak the media-buy protocol as it is; no new tasks. They are not in
  * the host's brand.json or adagents.json tenant listings.
@@ -45,19 +45,20 @@ export function isInventoryTenant(tenantId: string): boolean {
 /** Controller scenarios an inventory tenant lists. */
 export const INVENTORY_COMPLY_SCENARIOS: readonly string[] = ['reset_state', SANDBOX_CLOCK_SCENARIO];
 
-/** `sandbox_clock` for a caller: moving the clock catches up every
- * inventory market the caller has. */
-export function handleInventorySandboxClock(params: Record<string, unknown>, principal: string | undefined) {
+/** `sandbox_clock` for a caller, called on one inventory tenant. */
+export function handleInventorySandboxClock(tenantId: string, params: Record<string, unknown>, principal: string | undefined) {
   return handleSandboxClock(
     params,
     { mode: 'open', principal: principal ?? 'anonymous' },
-    Object.values(INVENTORY_TENANT_PROFILES),
+    INVENTORY_TENANT_PROFILES[tenantId],
   );
 }
 
-async function resetInventoryCaller(tenantId: string, principal: string | undefined): Promise<void> {
+/** `reset_state`: unpin the caller's clock, which every tenant shares, and
+ * discard the caller's market on every inventory tenant with it. */
+async function resetInventoryCaller(principal: string | undefined): Promise<void> {
   await resetReportingSubscriptionProbe({ mode: 'open', principal: principal ?? 'anonymous' });
-  await resetMarket(tenantId, principal);
+  for (const id of INVENTORY_TENANT_IDS) await resetMarket(id, principal);
 }
 
 export function buildInventoryTenantConfig(
@@ -82,7 +83,7 @@ export function buildInventoryTenantConfig(
         },
         complyTest: {
           resetState: async ctx => {
-            await resetInventoryCaller(tenantId, (ctx.authInfo as { clientId?: string } | undefined)?.clientId);
+            await resetInventoryCaller((ctx.authInfo as { clientId?: string } | undefined)?.clientId);
           },
         },
       },
