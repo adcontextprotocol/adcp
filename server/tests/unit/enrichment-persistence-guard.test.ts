@@ -55,8 +55,43 @@ describe('enrichment persistence guard (#9024)', () => {
 
     it('rejects names that are not domains', () => {
       expect(classifyEnrichmentDomain('localhost').rejection).toBe('invalid_domain');
-      expect(classifyEnrichmentDomain('co.uk').rejection).toBe('not_registrable_domain');
+      expect(classifyEnrichmentDomain('com').rejection).toBe('invalid_domain');
       expect(classifyEnrichmentDomain('').rejection).toBe('invalid_domain');
+    });
+
+    it('accepts a domain that is itself an ICANN public suffix', () => {
+      for (const domain of ['nhs.uk', 'gov.uk', 'police.uk']) {
+        expect(getRegistrableDomain(domain)).toBe(domain);
+        expect(classifyEnrichmentDomain(domain).rejection).toBeUndefined();
+      }
+    });
+
+    it('treats a name under an ICANN suffix like nhs.uk as its own registrable domain', () => {
+      // By the Public Suffix List, nhs.uk is a suffix like co.uk, so
+      // trust.nhs.uk is registered in its own right, as acme.co.uk is.
+      // Rejecting it would mean rejecting every acme.co.uk brand too.
+      expect(classifyEnrichmentDomain('trust.nhs.uk')).toMatchObject({
+        registrable_domain: 'trust.nhs.uk',
+      });
+      expect(classifyEnrichmentDomain('trust.nhs.uk').rejection).toBeUndefined();
+      // A deeper name is a subdomain of it.
+      expect(classifyEnrichmentDomain('x.trust.nhs.uk')).toMatchObject({
+        registrable_domain: 'trust.nhs.uk',
+        rejection: 'not_registrable_domain',
+      });
+    });
+
+    it('saves a shared-hosting apex but rejects its tenants', () => {
+      expect(classifyEnrichmentDomain('carrd.co').rejection).toBeUndefined();
+      expect(classifyEnrichmentDomain('duckdns.org').rejection).toBeUndefined();
+      expect(classifyEnrichmentDomain('foo.carrd.co')).toMatchObject({
+        registrable_domain: 'carrd.co',
+        rejection: 'not_registrable_domain',
+      });
+      expect(classifyEnrichmentDomain('acme.github.io')).toMatchObject({
+        registrable_domain: 'github.io',
+        rejection: 'not_registrable_domain',
+      });
     });
   });
 
@@ -121,7 +156,7 @@ describe('enrichment persistence guard (#9024)', () => {
         requestedDomain: 'acme.com',
         brandfetchDomain: 'acme.com',
         authenticated: false,
-        existingRecord: { source_type: 'enriched' },
+        existingRecord: { domain: 'acme.com', source_type: 'enriched' },
       })).toEqual({ persist: true, domain: 'acme.com' });
     });
 
@@ -130,8 +165,17 @@ describe('enrichment persistence guard (#9024)', () => {
         requestedDomain: 'acme.com',
         brandfetchDomain: 'acme.com',
         authenticated: false,
-        existingRecord: { source_type: 'community' },
+        existingRecord: { domain: 'acme.com', source_type: 'community' },
       })).toMatchObject({ persist: false, reason: 'unauthenticated' });
+    });
+
+    it('does not let an anonymous refresh of www.acme.com create acme.com', () => {
+      expect(decideEnrichmentPersistence({
+        requestedDomain: 'www.acme.com',
+        brandfetchDomain: 'acme.com',
+        authenticated: false,
+        existingRecord: { domain: 'www.acme.com', source_type: 'enriched' },
+      })).toMatchObject({ persist: false, domain: 'acme.com', reason: 'unauthenticated' });
     });
   });
 });

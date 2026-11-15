@@ -62,8 +62,8 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
     currentUser = { id: 'user_admin', email: 'admin@test.example' };
     isAdmin = true;
     isStaticAdminApiKey = false;
-    mocks.preview.mockResolvedValue({ mode: 'criteria', candidates: [], skipped: [], total_candidates: 0, truncated: false, max_batch: 200 });
-    mocks.apply.mockResolvedValue({ mode: 'criteria', deleted: [], skipped: [], failed: [], remaining: 0, max_batch: 200 });
+    mocks.preview.mockResolvedValue({ mode: 'criteria', candidates: [], skipped: [], total_candidates: 0, total_skipped: 0, truncated: false, max_batch: 200 });
+    mocks.apply.mockResolvedValue({ mode: 'criteria', deleted: [], skipped: [], failed: [], max_batch: 200 });
   });
 
   it('is admin-only', async () => {
@@ -77,7 +77,7 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
     const res = await request(makeApp()).post(URL).send({});
     expect(res.status).toBe(200);
     expect(res.body.dry_run).toBe(true);
-    expect(mocks.preview).toHaveBeenCalledWith({ domains: undefined });
+    expect(mocks.preview).toHaveBeenCalledWith({ domains: undefined, mode: 'criteria' });
     expect(mocks.apply).not.toHaveBeenCalled();
   });
 
@@ -85,7 +85,7 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
     isStaticAdminApiKey = true;
     const res = await request(makeApp()).post(URL).send({ domains: ['A.Example.com '] });
     expect(res.status).toBe(200);
-    expect(mocks.preview).toHaveBeenCalledWith({ domains: ['a.example.com'] });
+    expect(mocks.preview).toHaveBeenCalledWith({ domains: ['a.example.com'], mode: 'explicit_list' });
   });
 
   it('does not delete without confirm', async () => {
@@ -96,20 +96,39 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
 
   it('does not delete with an API key', async () => {
     isStaticAdminApiKey = true;
-    const res = await request(makeApp()).post(URL).send({ dry_run: false, confirm: true });
+    const res = await request(makeApp()).post(URL).send({ dry_run: false, confirm: true, domains: ['x.acme.com'] });
     expect(res.status).toBe(403);
     expect(mocks.apply).not.toHaveBeenCalled();
   });
 
-  it('deletes as the signed-in admin when confirmed', async () => {
+  it('refuses a delete without the previewed domain list', async () => {
     const res = await request(makeApp()).post(URL).send({ dry_run: false, confirm: true });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Domains required');
+    expect(mocks.apply).not.toHaveBeenCalled();
+  });
+
+  it('deletes exactly the listed domains as the signed-in admin when confirmed', async () => {
+    const res = await request(makeApp()).post(URL).send({
+      dry_run: false,
+      confirm: true,
+      mode: 'criteria',
+      domains: ['x.acme.com', 'y.acme.com'],
+    });
     expect(res.status).toBe(200);
     expect(res.body.dry_run).toBe(false);
     expect(mocks.apply).toHaveBeenCalledWith({
-      domains: undefined,
+      domains: ['x.acme.com', 'y.acme.com'],
+      mode: 'criteria',
       actorUserId: 'user_admin',
       actorEmail: 'admin@test.example',
     });
+  });
+
+  it('rejects an unknown mode, and explicit_list without a list', async () => {
+    expect((await request(makeApp()).post(URL).send({ mode: 'everything' })).status).toBe(400);
+    expect((await request(makeApp()).post(URL).send({ mode: 'explicit_list' })).status).toBe(400);
+    expect(mocks.preview).not.toHaveBeenCalled();
   });
 
   it('rejects a malformed or oversized domain list', async () => {

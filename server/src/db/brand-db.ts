@@ -519,8 +519,8 @@ const DISCOVERED_BRAND_WRITE_ALLOWED_SQL = `(
  * An enrichment record that nobody owns or has curated, so removing it loses
  * nothing a person contributed (#9024). Excludes rows that an organization
  * holds (hosted or claimed, verified or not), rows with any human revision,
- * rows with a logo from anyone but Brandfetch, and rows another brand names
- * as its house. Used by the admin cleanup to select candidates and, again,
+ * rows with a logo from anyone but Brandfetch, rows another brand names as
+ * its house, and rows an admin pointed a domain alias at. Used by the admin cleanup to select candidates and, again,
  * inside the DELETE so a record claimed after the preview is never removed.
  */
 export const REMOVABLE_ENRICHMENT_SQL = `(
@@ -533,6 +533,10 @@ export const REMOVABLE_ENRICHMENT_SQL = `(
     WHERE logo.domain = brands.domain AND logo.source <> 'brandfetch'
   )
   AND NOT EXISTS (SELECT 1 FROM brands child WHERE child.house_domain = brands.domain)
+  AND NOT EXISTS (
+    SELECT 1 FROM brand_domain_aliases alias
+    WHERE alias.brand_domain = brands.domain AND alias.source = 'admin'
+  )
 )`;
 /** Control of the domain was demonstrated, by owner verification or by serving a valid brand.json from it. */
 const DOMAIN_CONTROL_VERIFIED_SQL =
@@ -1504,10 +1508,13 @@ export class BrandDatabase {
    *
    * `options.onlyIfRemovableEnrichment` does the same for the enrichment
    * cleanup (#9024): the row is deleted only while it still matches
-   * `REMOVABLE_ENRICHMENT_SQL`. `options.recordDeletion` writes a
-   * `brand_deleted` entry to `registry_audit_log` in the same transaction,
-   * with the actor and source from `audit` plus the given details. The
-   * hierarchy-edge entry alone records nothing for a row with no house.
+   * `REMOVABLE_ENRICHMENT_SQL`, and its Brandfetch logo rows and the domain
+   * aliases pointing at it go with it (nothing cascades from `brands`).
+   * `options.recordDeletion` writes a `brand_deleted` entry to
+   * `registry_audit_log` in the same transaction, with the actor and source
+   * from `audit`, the given details, and a snapshot of the deleted row, logo
+   * references and aliases so the record can be restored. The hierarchy-edge
+   * entry alone records nothing for a row with no house.
    */
   async deleteDiscoveredBrand(
     domain: string,
@@ -1535,8 +1542,11 @@ export class BrandDatabase {
         house_domain: string | null;
         brand_name: string | null;
         source_type: string | null;
+        snapshot: Record<string, unknown> | null;
       }>(
-        `DELETE FROM brands WHERE domain = $1${conditions} RETURNING domain, house_domain, brand_name, source_type`,
+        `DELETE FROM brands WHERE domain = $1${conditions}
+         RETURNING domain, house_domain, brand_name, source_type,
+                   ${options?.recordDeletion ? 'to_jsonb(brands.*)' : 'NULL::jsonb'} AS snapshot`,
         [canonicalDomain],
       );
       const deleted = result.rows[0];
@@ -1547,6 +1557,23 @@ export class BrandDatabase {
           new_house_domain: null,
           audit,
         });
+        let deletedLogos: unknown[] = [];
+        let deletedAliases: unknown[] = [];
+        if (options?.onlyIfRemovableEnrichment) {
+          // REMOVABLE_ENRICHMENT_SQL already required every logo to be
+          // Brandfetch's, so this removes all of them.
+          const logos = await client.query(
+            `DELETE FROM brand_logos WHERE domain = $1 AND source = 'brandfetch'
+             RETURNING id, content_type, storage_type, storage_key, sha256, tags, review_status`,
+            [deleted.domain],
+          );
+          deletedLogos = logos.rows;
+          const aliases = await client.query(
+            'DELETE FROM brand_domain_aliases WHERE brand_domain = $1 RETURNING alias_domain, source',
+            [deleted.domain],
+          );
+          deletedAliases = aliases.rows;
+        }
         if (options?.recordDeletion) {
           await client.query(
             `INSERT INTO registry_audit_log
@@ -1560,6 +1587,9 @@ export class BrandDatabase {
                 source: audit.source,
                 brand_name: deleted.brand_name,
                 source_type: deleted.source_type,
+                snapshot: deleted.snapshot,
+                deleted_logos: deletedLogos,
+                deleted_aliases: deletedAliases,
               }),
             ],
           );

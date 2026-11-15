@@ -53,6 +53,9 @@ const CLAIMED_SUBDOMAIN = `claimed-${SUFFIX}.${PARENT}`;
 const CURATED_SUBDOMAIN = `curated-${SUFFIX}.${PARENT}`;
 const COMMUNITY_SUBDOMAIN = `community-${SUFFIX}.${PARENT}`;
 const LEGIT_ENRICHED = `legit-${SUFFIX}.com`;
+const ADMIN_ALIASED_SUBDOMAIN = `aliased-${SUFFIX}.${PARENT}`;
+const CLASSIFIER_ALIAS = `alias-${SUFFIX}.com`;
+const ADMIN_ALIAS = `admin-alias-${SUFFIX}.com`;
 
 const ALL_DOMAINS = [
   HOSTED_PARENT,
@@ -65,7 +68,9 @@ const ALL_DOMAINS = [
   CURATED_SUBDOMAIN,
   COMMUNITY_SUBDOMAIN,
   LEGIT_ENRICHED,
+  ADMIN_ALIASED_SUBDOMAIN,
 ];
+const CRITERIA_JUNK = [JUNK_SUBDOMAIN, JUNK_SUBDOMAIN_2, JUNK_RESERVED, JUNK_UNDER_HOSTED].sort();
 
 function makeApp() {
   const app = express();
@@ -120,6 +125,8 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
   async function cleanup() {
     await pool.query('DELETE FROM brands WHERE domain = ANY($1::text[])', [ALL_DOMAINS]);
     await pool.query('DELETE FROM brand_revisions WHERE brand_domain = ANY($1::text[])', [ALL_DOMAINS]);
+    await pool.query('DELETE FROM brand_logos WHERE domain = ANY($1::text[])', [ALL_DOMAINS]);
+    await pool.query('DELETE FROM brand_domain_aliases WHERE alias_domain = ANY($1::text[])', [[CLASSIFIER_ALIAS, ADMIN_ALIAS]]);
     await pool.query(
       "DELETE FROM registry_audit_log WHERE action = 'brand_deleted' AND resource_id = ANY($1::text[])",
       [ALL_DOMAINS],
@@ -172,7 +179,28 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
     );
     await insertBrand({ domain: COMMUNITY_SUBDOMAIN, source_type: 'community' });
     await insertBrand({ domain: LEGIT_ENRICHED, source_type: 'enriched' });
+    await insertBrand({ domain: ADMIN_ALIASED_SUBDOMAIN, source_type: 'enriched' });
+    await pool.query(
+      `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source) VALUES ($1, $2, 'admin')`,
+      [ADMIN_ALIAS, ADMIN_ALIASED_SUBDOMAIN],
+    );
+    // Artifacts that should leave with the junk record they belong to.
+    await pool.query(
+      `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source) VALUES ($1, $2, 'classifier')`,
+      [CLASSIFIER_ALIAS, JUNK_SUBDOMAIN],
+    );
+    await pool.query(
+      `INSERT INTO brand_logos (domain, content_type, data, sha256, tags, source, review_status)
+       VALUES ($1, 'image/png', '\\x00'::bytea, 'sha-test', ARRAY['icon'], 'brandfetch', 'approved')`,
+      [JUNK_SUBDOMAIN],
+    );
   });
+
+  async function previewCriteriaDomains(): Promise<string[]> {
+    const res = await request(app).post('/api/admin/brand-registry/enrichment-cleanup').send({});
+    expect(res.status).toBe(200);
+    return mine(res.body.candidates as Array<{ domain: string }>).map((c) => c.domain).sort();
+  }
 
   function mine<T extends { domain: string }>(rows: T[]): T[] {
     return rows.filter((row) => ALL_DOMAINS.includes(row.domain));
@@ -185,9 +213,7 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
     expect(res.body.dry_run).toBe(true);
     expect(res.body.mode).toBe('criteria');
     const candidates = mine(res.body.candidates as Array<{ domain: string; reason: string; brand_name: string }>);
-    expect(candidates.map((c) => c.domain).sort()).toEqual(
-      [JUNK_SUBDOMAIN, JUNK_SUBDOMAIN_2, JUNK_RESERVED, JUNK_UNDER_HOSTED].sort(),
-    );
+    expect(candidates.map((c) => c.domain).sort()).toEqual(CRITERIA_JUNK);
     expect(candidates.find((c) => c.domain === JUNK_RESERVED)).toMatchObject({
       reason: 'reserved_name',
       brand_name: 'Nova Brands',
@@ -201,6 +227,7 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
     expect(skipped).toEqual(expect.arrayContaining([
       expect.objectContaining({ domain: CLAIMED_SUBDOMAIN, reason: 'owned_by_organization' }),
       expect.objectContaining({ domain: CURATED_SUBDOMAIN, reason: 'edited_or_curated' }),
+      expect.objectContaining({ domain: ADMIN_ALIASED_SUBDOMAIN, reason: 'edited_or_curated' }),
     ]));
     const listed = [...candidates, ...skipped].map((row) => row.domain);
     expect(listed).not.toContain(HOSTED_PARENT);
@@ -213,7 +240,7 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
   it('requires an explicit confirm to delete', async () => {
     const res = await request(app)
       .post('/api/admin/brand-registry/enrichment-cleanup')
-      .send({ dry_run: false });
+      .send({ dry_run: false, domains: [JUNK_SUBDOMAIN] });
 
     expect(res.status).toBe(400);
     expect(await existing()).toHaveLength(ALL_DOMAINS.length);
@@ -223,22 +250,36 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
     isStaticAdminApiKey = true;
     const res = await request(app)
       .post('/api/admin/brand-registry/enrichment-cleanup')
-      .send({ dry_run: false, confirm: true });
+      .send({ dry_run: false, confirm: true, domains: [JUNK_SUBDOMAIN] });
 
     expect(res.status).toBe(403);
     expect(await existing()).toHaveLength(ALL_DOMAINS.length);
   });
 
-  it('deletes the junk, keeps everything else, audits each removal, and is idempotent', async () => {
+  it('refuses a delete without the previewed list', async () => {
     const res = await request(app)
       .post('/api/admin/brand-registry/enrichment-cleanup')
       .send({ dry_run: false, confirm: true });
 
+    expect(res.status).toBe(400);
+    expect(await existing()).toHaveLength(ALL_DOMAINS.length);
+  });
+
+  it('deletes exactly the previewed junk, keeps everything else, audits each removal, and is idempotent', async () => {
+    const previewed = await previewCriteriaDomains();
+    expect(previewed).toEqual(CRITERIA_JUNK);
+
+    // A registrable domain slipped into a criteria-mode list is refused.
+    const res = await request(app)
+      .post('/api/admin/brand-registry/enrichment-cleanup')
+      .send({ dry_run: false, confirm: true, mode: 'criteria', domains: [...previewed, LEGIT_ENRICHED] });
+
     expect(res.status).toBe(200);
     expect(res.body.dry_run).toBe(false);
-    expect(mine(res.body.deleted as Array<{ domain: string }>).map((d) => d.domain).sort()).toEqual(
-      [JUNK_SUBDOMAIN, JUNK_SUBDOMAIN_2, JUNK_RESERVED, JUNK_UNDER_HOSTED].sort(),
-    );
+    expect((res.body.deleted as Array<{ domain: string }>).map((d) => d.domain).sort()).toEqual(CRITERIA_JUNK);
+    expect(res.body.skipped).toEqual([
+      expect.objectContaining({ domain: LEGIT_ENRICHED, reason: 'registrable_domain' }),
+    ]);
 
     expect(await existing()).toEqual([
       HOSTED_PARENT,
@@ -247,26 +288,43 @@ describe('POST /api/admin/brand-registry/enrichment-cleanup', () => {
       CURATED_SUBDOMAIN,
       LEGIT_ENRICHED,
       JUNK_REGISTRABLE,
+      ADMIN_ALIASED_SUBDOMAIN,
     ].sort());
+
+    const logos = await pool.query('SELECT 1 FROM brand_logos WHERE domain = $1', [JUNK_SUBDOMAIN]);
+    expect(logos.rowCount).toBe(0);
+    const aliases = await pool.query<{ alias_domain: string }>(
+      'SELECT alias_domain FROM brand_domain_aliases WHERE alias_domain = ANY($1::text[])',
+      [[CLASSIFIER_ALIAS, ADMIN_ALIAS]],
+    );
+    expect(aliases.rows.map((r) => r.alias_domain)).toEqual([ADMIN_ALIAS]);
 
     const audit = await pool.query<{ workos_user_id: string; resource_id: string; details: Record<string, unknown> }>(
       `SELECT workos_user_id, resource_id, details FROM registry_audit_log
        WHERE action = 'brand_deleted' AND resource_id = ANY($1::text[])`,
       [ALL_DOMAINS],
     );
-    expect(audit.rows.map((r) => r.resource_id).sort()).toEqual(
-      [JUNK_SUBDOMAIN, JUNK_SUBDOMAIN_2, JUNK_RESERVED, JUNK_UNDER_HOSTED].sort(),
-    );
+    expect(audit.rows.map((r) => r.resource_id).sort()).toEqual(CRITERIA_JUNK);
     for (const row of audit.rows) {
       expect(row.workos_user_id).toBe('user_cleanup_admin');
-      expect(row.details).toMatchObject({ source: 'cleanup_test_enrichment', source_type: 'enriched' });
+      expect(row.details).toMatchObject({
+        source: 'cleanup_test_enrichment',
+        source_type: 'enriched',
+        snapshot: { domain: row.resource_id, brand_manifest: { name: 'Nova Brands' } },
+      });
     }
+    const junkAudit = audit.rows.find((r) => r.resource_id === JUNK_SUBDOMAIN)!;
+    expect(junkAudit.details).toMatchObject({
+      deleted_logos: [expect.objectContaining({ sha256: 'sha-test', storage_type: 'inline' })],
+      deleted_aliases: [{ alias_domain: CLASSIFIER_ALIAS, source: 'classifier' }],
+    });
 
     const again = await request(app)
       .post('/api/admin/brand-registry/enrichment-cleanup')
-      .send({ dry_run: false, confirm: true });
+      .send({ dry_run: false, confirm: true, mode: 'criteria', domains: previewed });
     expect(again.status).toBe(200);
-    expect(mine(again.body.deleted as Array<{ domain: string }>)).toEqual([]);
+    expect(again.body.deleted).toEqual([]);
+    expect((again.body.skipped as Array<{ reason: string }>).every((s) => s.reason === 'not_found')).toBe(true);
   });
 
   it('removes only enriched, unowned records from an explicit list', async () => {

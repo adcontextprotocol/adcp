@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   deleteDiscoveredBrand: vi.fn(),
   fetchBrandData: vi.fn(),
   classifyBrand: vi.fn(),
+  query: vi.fn(),
+  markResolved: vi.fn(),
+  listUnresolved: vi.fn(),
 }));
 
 vi.mock('@anthropic-ai/sdk', () => {
@@ -31,14 +34,14 @@ vi.mock('../../src/db/brand-db.js', () => ({
 
 vi.mock('../../src/db/registry-requests-db.js', () => ({
   registryRequestsDb: {
-    markResolved: vi.fn().mockResolvedValue(true),
-    listUnresolved: vi.fn().mockResolvedValue([]),
+    markResolved: mocks.markResolved,
+    listUnresolved: mocks.listUnresolved,
   },
 }));
 
 vi.mock('../../src/db/client.js', () => ({
   getPool: () => ({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
-  query: vi.fn().mockResolvedValue({ rows: [] }),
+  query: mocks.query,
 }));
 
 vi.mock('../../src/services/brandfetch.js', () => ({
@@ -63,7 +66,7 @@ vi.mock('../../src/services/lusha.js', () => ({
   isLushaConfigured: () => false,
 }));
 
-const { enrichBrand } = await import('../../src/services/brand-enrichment.js');
+const { enrichBrand, getEnrichmentCandidates } = await import('../../src/services/brand-enrichment.js');
 
 function brandfetchHit(domain: string, brandDomain = domain) {
   return {
@@ -81,6 +84,9 @@ describe('enrichBrand registry write rules (#9024)', () => {
     mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
     mocks.upsertDiscoveredBrand.mockResolvedValue({});
     mocks.classifyBrand.mockResolvedValue(null);
+    mocks.query.mockResolvedValue({ rows: [] });
+    mocks.markResolved.mockResolvedValue(true);
+    mocks.listUnresolved.mockResolvedValue([]);
   });
 
   it('skips a reserved name without calling Brandfetch', async () => {
@@ -96,7 +102,11 @@ describe('enrichBrand registry write rules (#9024)', () => {
 
     expect(result).toMatchObject({ status: 'skipped', error: 'Not saved to the registry: not_registrable_domain' });
     expect(mocks.fetchBrandData).not.toHaveBeenCalled();
+    expect(mocks.classifyBrand).not.toHaveBeenCalled();
     expect(mocks.upsertDiscoveredBrand).not.toHaveBeenCalled();
+    // The registry request is closed, pointing at the parent, so bulk
+    // enrichment does not pick it up again.
+    expect(mocks.markResolved).toHaveBeenCalledWith('brand', 'sandbox.novabrands.com', 'novabrands.com');
   });
 
   it('does not save a result Brandfetch answered with another domain', async () => {
@@ -106,6 +116,7 @@ describe('enrichBrand registry write rules (#9024)', () => {
 
     expect(result).toMatchObject({ status: 'skipped', error: 'Not saved to the registry: brand_domain_mismatch' });
     expect(mocks.upsertDiscoveredBrand).not.toHaveBeenCalled();
+    expect(mocks.markResolved).toHaveBeenCalledWith('brand', 'novabrands.net', 'novabrands.com');
   });
 
   it('still saves a registrable domain Brandfetch answered for itself', async () => {
@@ -119,5 +130,29 @@ describe('enrichBrand registry write rules (#9024)', () => {
       source_type: 'enriched',
       enrichment_provider: 'brandfetch',
     }));
+  });
+});
+
+describe('getEnrichmentCandidates skips names that can never be saved (#9024)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('pages past junk community rows and junk registry requests', async () => {
+    const junkCommunity = Array.from({ length: 3 }, (_, i) => ({ domain: `e2e-${i}.novabrands.com`, brand_name: 'Nova Brands' }));
+    mocks.query
+      .mockResolvedValueOnce({ rows: junkCommunity })
+      .mockResolvedValueOnce({ rows: [{ domain: 'pinnacle-media.com', brand_name: 'Pinnacle Media' }] });
+    mocks.listUnresolved
+      .mockResolvedValueOnce([
+        { domain: 'novabrands-ai-1.example.org', request_count: 9 },
+        { domain: 'sandbox.novabrands.com', request_count: 8 },
+        { domain: 'acme-corp.com', request_count: 7 },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const candidates = await getEnrichmentCandidates({ source: 'all', limit: 3 });
+
+    expect(candidates.map((c) => c.domain)).toEqual(['pinnacle-media.com', 'acme-corp.com']);
   });
 });

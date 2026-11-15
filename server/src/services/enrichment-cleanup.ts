@@ -6,23 +6,25 @@
  * could save a Brandfetch answer, so test runs filed made-up subdomains and
  * reserved names as brands. This finds those records and removes them.
  *
- * Two ways to select:
+ * Two modes:
  *
- *  - **Criteria** (no domain list): `source_type = 'enriched'` rows whose
- *    domain is a reserved name or is not its own registrable domain, the
- *    same domain rules the write guard now applies.
- *  - **Explicit list**: the given domains, when each is an enriched record.
+ *  - **criteria**: `source_type = 'enriched'` rows whose domain is a reserved
+ *    name or is not its own registrable domain, the same domain rules the
+ *    write guard now applies. A preview without a domain list scans the
+ *    registry; a preview or delete with a list keeps only the listed domains
+ *    that meet the criteria.
+ *  - **explicit_list**: the listed domains, when each is an enriched record.
  *    For junk that is a registrable domain, such as a lookup Brandfetch
  *    answered with another domain's brand.
  *
- * Either way, a record is only ever removed while it matches
- * `REMOVABLE_ENRICHMENT_SQL`: enriched, held by no organization, never edited
- * by a person, no logo from anyone but Brandfetch, and not the house of
- * another brand. That predicate runs in the selection and again inside each
- * DELETE, so hosted, brand.json, community and curated records are never
- * removed, even if one changes between the preview and the apply. Batches
- * are capped, and running the same cleanup twice removes nothing the second
- * time.
+ * A delete always takes the exact list the admin previewed and removes
+ * nothing else. Each listed record is re-checked against the mode's rules
+ * and against `REMOVABLE_ENRICHMENT_SQL`: enriched, held by no organization,
+ * never edited by a person, no logo from anyone but Brandfetch, no admin
+ * alias, and not the house of another brand. That predicate runs again
+ * inside each DELETE, so hosted, brand.json, community and curated records
+ * are never removed, even if one changes after the preview. Lists are
+ * capped, and running the same delete twice removes nothing the second time.
  */
 
 import { query } from '../db/client.js';
@@ -40,21 +42,25 @@ export const ENRICHMENT_CLEANUP_AUDIT_SOURCE = 'cleanup_test_enrichment';
 
 const DOMAIN_SHAPE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
+export type EnrichmentCleanupMode = 'criteria' | 'explicit_list';
+
 export type EnrichmentCleanupReason = 'reserved_name' | 'not_registrable_domain' | 'explicit_list';
 
 export type EnrichmentCleanupSkipReason =
   | 'invalid_domain'
   | 'not_found'
+  | 'registrable_domain'
   | 'not_enriched'
   | 'owned_by_organization'
   | 'edited_or_curated'
-  | 'changed_since_preview';
+  /** The row stopped being removable, or was already gone, by the time of its DELETE. */
+  | 'no_longer_removable';
 
 export interface EnrichmentCleanupCandidate {
   domain: string;
   brand_name: string | null;
   reason: EnrichmentCleanupReason;
-  /** eTLD+1 of the domain, so the admin can see which brand it shadows. */
+  /** Registrable domain of the domain, so the admin can see which brand it shadows. */
   registrable_domain: string | null;
 }
 
@@ -65,22 +71,22 @@ export interface EnrichmentCleanupSkip {
 }
 
 export interface EnrichmentCleanupPreview {
-  mode: 'criteria' | 'explicit_list';
+  mode: EnrichmentCleanupMode;
   candidates: EnrichmentCleanupCandidate[];
   skipped: EnrichmentCleanupSkip[];
-  /** Candidates found before the batch cap. */
+  /** Candidates found before the cap. */
   total_candidates: number;
+  /** Skipped records found before the cap. */
+  total_skipped: number;
   truncated: boolean;
   max_batch: number;
 }
 
 export interface EnrichmentCleanupResult {
-  mode: 'criteria' | 'explicit_list';
+  mode: EnrichmentCleanupMode;
   deleted: EnrichmentCleanupCandidate[];
   skipped: EnrichmentCleanupSkip[];
   failed: Array<{ domain: string; error: string }>;
-  /** Candidates past the batch cap, left for another run. */
-  remaining: number;
   max_batch: number;
 }
 
@@ -94,9 +100,16 @@ type CandidateRow = {
 
 export class EnrichmentCleanupInputError extends Error {}
 
+/** Validate the requested mode. Defaults to criteria without a list and explicit_list with one. */
+export function parseCleanupMode(raw: unknown, hasDomains: boolean): EnrichmentCleanupMode {
+  if (raw === undefined || raw === null) return hasDomains ? 'explicit_list' : 'criteria';
+  if (raw === 'criteria' || raw === 'explicit_list') return raw;
+  throw new EnrichmentCleanupInputError('mode must be "criteria" or "explicit_list"');
+}
+
 /**
- * Validate an explicit domain list. Domains are matched exactly, after
- * trimming and lowercasing, because a delete should name the row it removes.
+ * Validate a domain list. Domains are matched exactly, after trimming and
+ * lowercasing, because a delete should name the row it removes.
  */
 export function normalizeCleanupDomains(raw: unknown): string[] | undefined {
   if (raw === undefined || raw === null) return undefined;
@@ -104,7 +117,7 @@ export function normalizeCleanupDomains(raw: unknown): string[] | undefined {
     throw new EnrichmentCleanupInputError('domains must be an array of strings');
   }
   if (raw.length === 0) {
-    throw new EnrichmentCleanupInputError('domains must not be empty; omit it to select by criteria');
+    throw new EnrichmentCleanupInputError('domains must not be empty; omit it to preview by criteria');
   }
   if (raw.length > ENRICHMENT_CLEANUP_MAX_BATCH) {
     throw new EnrichmentCleanupInputError(`At most ${ENRICHMENT_CLEANUP_MAX_BATCH} domains per request`);
@@ -125,11 +138,20 @@ function skipReasonFor(row: CandidateRow): EnrichmentCleanupSkipReason {
   return 'edited_or_curated';
 }
 
-async function selectByCriteria(): Promise<{ candidates: EnrichmentCleanupCandidate[]; skipped: EnrichmentCleanupSkip[] }> {
+/** The domain-rule reason a domain qualifies under criteria mode, if any. */
+function criteriaReason(domain: string): { reason: 'reserved_name' | 'not_registrable_domain'; registrable_domain: string | null } | null {
+  const classification = classifyEnrichmentDomain(domain);
+  if (classification.rejection === 'reserved_name' || classification.rejection === 'not_registrable_domain') {
+    return { reason: classification.rejection, registrable_domain: classification.registrable_domain };
+  }
+  return null;
+}
+
+async function scanByCriteria(): Promise<{ candidates: EnrichmentCleanupCandidate[]; skipped: EnrichmentCleanupSkip[] }> {
   // SQL narrows to enriched rows that could fail the domain rules: three or
   // more labels, or a reserved suffix. The Public Suffix List check runs
-  // here in code, since a two-label name like `acme.co.uk` is a subdomain
-  // only if the PSL says so.
+  // here in code, since a name like `acme.co.uk` is a subdomain only if the
+  // PSL says so.
   const result = await query<CandidateRow>(
     `SELECT brands.domain, brands.brand_name, brands.source_type,
             brands.workos_organization_id,
@@ -150,25 +172,21 @@ async function selectByCriteria(): Promise<{ candidates: EnrichmentCleanupCandid
   const candidates: EnrichmentCleanupCandidate[] = [];
   const skipped: EnrichmentCleanupSkip[] = [];
   for (const row of result.rows) {
-    const classification = classifyEnrichmentDomain(row.domain);
-    if (classification.rejection !== 'reserved_name' && classification.rejection !== 'not_registrable_domain') {
-      continue;
-    }
+    const match = criteriaReason(row.domain);
+    if (!match) continue;
     if (!row.removable) {
       skipped.push({ domain: row.domain, brand_name: row.brand_name, reason: skipReasonFor(row) });
       continue;
     }
-    candidates.push({
-      domain: row.domain,
-      brand_name: row.brand_name,
-      reason: classification.rejection,
-      registrable_domain: classification.registrable_domain,
-    });
+    candidates.push({ domain: row.domain, brand_name: row.brand_name, ...match });
   }
   return { candidates, skipped };
 }
 
-async function selectByList(domains: string[]): Promise<{ candidates: EnrichmentCleanupCandidate[]; skipped: EnrichmentCleanupSkip[] }> {
+async function selectFromList(
+  domains: string[],
+  mode: EnrichmentCleanupMode,
+): Promise<{ candidates: EnrichmentCleanupCandidate[]; skipped: EnrichmentCleanupSkip[] }> {
   const candidates: EnrichmentCleanupCandidate[] = [];
   const skipped: EnrichmentCleanupSkip[] = [];
 
@@ -198,59 +216,74 @@ async function selectByList(domains: string[]): Promise<{ candidates: Enrichment
       skipped.push({ domain, reason: 'not_found' });
       continue;
     }
+    const match = criteriaReason(domain);
+    if (mode === 'criteria' && !match) {
+      skipped.push({ domain, brand_name: row.brand_name, reason: 'registrable_domain' });
+      continue;
+    }
     if (!row.removable) {
       skipped.push({ domain, brand_name: row.brand_name, reason: skipReasonFor(row) });
       continue;
     }
-    const classification = classifyEnrichmentDomain(domain);
-    const reason: EnrichmentCleanupReason =
-      classification.rejection === 'reserved_name' || classification.rejection === 'not_registrable_domain'
-        ? classification.rejection
-        : 'explicit_list';
     candidates.push({
       domain,
       brand_name: row.brand_name,
-      reason,
-      registrable_domain: classification.registrable_domain,
+      reason: match?.reason ?? 'explicit_list',
+      registrable_domain: match?.registrable_domain ?? classifyEnrichmentDomain(domain).registrable_domain,
     });
   }
   return { candidates, skipped };
 }
 
 /** List what a cleanup would remove. Deletes nothing. */
-export async function previewEnrichmentCleanup(options: { domains?: string[] } = {}): Promise<EnrichmentCleanupPreview> {
-  const mode = options.domains ? 'explicit_list' : 'criteria';
+export async function previewEnrichmentCleanup(options: {
+  domains?: string[];
+  mode?: EnrichmentCleanupMode;
+} = {}): Promise<EnrichmentCleanupPreview> {
+  const mode = options.mode ?? (options.domains ? 'explicit_list' : 'criteria');
+  if (mode === 'explicit_list' && !options.domains) {
+    throw new EnrichmentCleanupInputError('explicit_list mode needs a domains list');
+  }
   const { candidates, skipped } = options.domains
-    ? await selectByList(options.domains)
-    : await selectByCriteria();
+    ? await selectFromList(options.domains, mode)
+    : await scanByCriteria();
   return {
     mode,
     candidates: candidates.slice(0, ENRICHMENT_CLEANUP_MAX_BATCH),
-    skipped,
+    skipped: skipped.slice(0, ENRICHMENT_CLEANUP_MAX_BATCH),
     total_candidates: candidates.length,
-    truncated: candidates.length > ENRICHMENT_CLEANUP_MAX_BATCH,
+    total_skipped: skipped.length,
+    truncated: candidates.length > ENRICHMENT_CLEANUP_MAX_BATCH || skipped.length > ENRICHMENT_CLEANUP_MAX_BATCH,
     max_batch: ENRICHMENT_CLEANUP_MAX_BATCH,
   };
 }
 
 /**
- * Remove what `previewEnrichmentCleanup` lists, up to the batch cap, with an
- * audit entry per record attributed to `actorUserId`.
+ * Remove exactly the listed records that still qualify, with an audit entry
+ * per record attributed to `actorUserId`. Listed records that no longer
+ * qualify are reported in `skipped`, never removed.
  */
 export async function applyEnrichmentCleanup(options: {
-  domains?: string[];
+  domains: string[];
+  mode: EnrichmentCleanupMode;
   actorUserId: string;
   actorEmail?: string | null;
 }): Promise<EnrichmentCleanupResult> {
   if (!options.actorUserId) {
     throw new EnrichmentCleanupInputError('An admin user is required to apply a cleanup');
   }
-  const preview = await previewEnrichmentCleanup({ domains: options.domains });
+  if (!Array.isArray(options.domains) || options.domains.length === 0) {
+    throw new EnrichmentCleanupInputError('A delete needs the exact domains list from the preview');
+  }
+  const { candidates, skipped: selectionSkips } = await selectFromList(
+    options.domains.slice(0, ENRICHMENT_CLEANUP_MAX_BATCH),
+    options.mode,
+  );
   const deleted: EnrichmentCleanupCandidate[] = [];
-  const skipped = [...preview.skipped];
+  const skipped = [...selectionSkips];
   const failed: Array<{ domain: string; error: string }> = [];
 
-  for (const candidate of preview.candidates) {
+  for (const candidate of candidates) {
     try {
       const removed = await brandDb.deleteDiscoveredBrand(
         candidate.domain,
@@ -260,7 +293,7 @@ export async function applyEnrichmentCleanup(options: {
           recordDeletion: {
             reason: candidate.reason,
             registrable_domain: candidate.registrable_domain,
-            mode: preview.mode,
+            mode: options.mode,
             ...(options.actorEmail ? { actor_email: options.actorEmail } : {}),
           },
         },
@@ -268,7 +301,7 @@ export async function applyEnrichmentCleanup(options: {
       if (removed) {
         deleted.push(candidate);
       } else {
-        skipped.push({ domain: candidate.domain, brand_name: candidate.brand_name, reason: 'changed_since_preview' });
+        skipped.push({ domain: candidate.domain, brand_name: candidate.brand_name, reason: 'no_longer_removable' });
       }
     } catch (err) {
       logger.error({ err, domain: candidate.domain }, 'Failed to delete enrichment record during cleanup');
@@ -279,7 +312,8 @@ export async function applyEnrichmentCleanup(options: {
   logger.info(
     {
       actor: options.actorUserId,
-      mode: preview.mode,
+      mode: options.mode,
+      requested: options.domains.length,
       deleted: deleted.length,
       skipped: skipped.length,
       failed: failed.length,
@@ -287,12 +321,5 @@ export async function applyEnrichmentCleanup(options: {
     'Enrichment cleanup applied',
   );
 
-  return {
-    mode: preview.mode,
-    deleted,
-    skipped,
-    failed,
-    remaining: Math.max(preview.total_candidates - preview.candidates.length, 0),
-    max_batch: ENRICHMENT_CLEANUP_MAX_BATCH,
-  };
+  return { mode: options.mode, deleted, skipped, failed, max_batch: ENRICHMENT_CLEANUP_MAX_BATCH };
 }

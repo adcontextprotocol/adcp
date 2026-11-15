@@ -13,17 +13,26 @@
  * the lookup result, so a refused write is invisible to the caller.
  *
  *  1. Reserved names (RFC 2606, RFC 6761) are never saved.
- *  2. A domain that is not its own registrable domain (eTLD+1 by the Public
- *     Suffix List) is never saved, and neither is a result whose Brandfetch
- *     brand domain differs from the domain asked about. Brandfetch answers a
- *     made-up subdomain with the parent's brand, which is how 103 copies of
- *     one real brand reached the registry. The result is not written under
- *     the registrable domain either: that would let a lookup of one domain
- *     create or refresh the record of another, and the parent gets its own
- *     record when someone looks it up directly.
+ *  2. A domain that is not its own registrable domain is never saved, and
+ *     neither is a result whose Brandfetch brand domain differs from the
+ *     domain asked about. Brandfetch answers a made-up subdomain with the
+ *     parent's brand, which is how 103 copies of one real brand reached the
+ *     registry. The result is not written under the registrable domain
+ *     either: that would let a lookup of one domain create or refresh the
+ *     record of another, and the parent gets its own record when someone
+ *     looks it up directly.
  *  3. Only authenticated callers create records. An anonymous lookup may
- *     refresh an `enriched` record that already exists for the domain, so the
- *     read cache keeps working, but it never creates one.
+ *     refresh an `enriched` record already stored under the same canonical
+ *     domain, so the read cache keeps working, but it never creates one.
+ *
+ * "Registrable domain" is eTLD+1 by the ICANN section of the Public Suffix
+ * List, with one addition: a domain that is itself an ICANN public suffix
+ * (`nhs.uk`, `gov.uk`) is its own registrable domain, since such names are
+ * run by one organization and can be a brand's site. The private section
+ * (shared hosting such as `carrd.co`, `github.io`) is deliberately not used:
+ * `carrd.co` is a brand, but `acme.carrd.co` is a tenant page on someone
+ * else's domain, which Brandfetch answers with the host's brand. Tenant
+ * hosts are rejected like any other subdomain.
  */
 
 import { parse as parseDomain } from 'tldts';
@@ -48,7 +57,7 @@ export type EnrichmentSkipReason =
 export interface EnrichmentDomainClassification {
   /** The canonical form of the domain (lowercased, no protocol, no www/m). */
   domain: string;
-  /** eTLD+1 by the Public Suffix List, or null when there is none. */
+  /** The registrable domain (see the module comment), or null when there is none. */
   registrable_domain: string | null;
   /** Set when the domain may never hold an enrichment record. */
   rejection?: EnrichmentDomainRejection;
@@ -65,11 +74,16 @@ export interface EnrichmentPersistenceInput {
   brandfetchDomain?: string | null;
   /** Whether the caller has an identity (user session, API key, or a trusted system path). */
   authenticated: boolean;
-  /** The row already stored for the requested domain, if the caller read one. */
-  existingRecord?: { source_type?: string | null } | null;
+  /**
+   * The row the caller read for the requested domain, if any. It counts for
+   * an anonymous refresh only when it is stored under the same canonical
+   * domain the result would be written to.
+   */
+  existingRecord?: { domain?: string | null; source_type?: string | null } | null;
 }
 
-function canonical(domain: string): string {
+/** Canonical brand-registry form of a domain: lowercased, no protocol or path, no www/m. */
+export function canonicalEnrichmentDomain(domain: string): string {
   return canonicalizeBrandDomain(String(domain ?? '').trim());
 }
 
@@ -79,20 +93,25 @@ function canonical(domain: string): string {
  * subdomains.
  */
 export function isReservedDomain(domain: string): boolean {
-  const d = canonical(domain);
+  const d = canonicalEnrichmentDomain(domain);
   if (!d) return false;
   const tld = d.slice(d.lastIndexOf('.') + 1);
   if (RESERVED_TLDS.includes(tld)) return true;
   return RESERVED_SECOND_LEVEL_DOMAINS.some((reserved) => d === reserved || d.endsWith(`.${reserved}`));
 }
 
-/** The registrable domain (eTLD+1) by the Public Suffix List, private section included. */
+/**
+ * The registrable domain: eTLD+1 by the ICANN section of the Public Suffix
+ * List, or the domain itself when it is a multi-label ICANN public suffix.
+ */
 export function getRegistrableDomain(domain: string): string | null {
-  const d = canonical(domain);
+  const d = canonicalEnrichmentDomain(domain);
   if (!d) return null;
-  const parsed = parseDomain(d, { allowPrivateDomains: true });
+  const parsed = parseDomain(d, { allowPrivateDomains: false });
   if (parsed.isIp) return null;
-  return parsed.domain ?? null;
+  if (parsed.domain) return parsed.domain;
+  if (parsed.publicSuffix === d && d.includes('.')) return d;
+  return null;
 }
 
 /**
@@ -101,7 +120,7 @@ export function getRegistrableDomain(domain: string): string | null {
  * now refuses to create.
  */
 export function classifyEnrichmentDomain(domain: string): EnrichmentDomainClassification {
-  const d = canonical(domain);
+  const d = canonicalEnrichmentDomain(domain);
   if (!d || d.length > 253 || !DOMAIN_SHAPE.test(d)) {
     return { domain: d, registrable_domain: null, rejection: 'invalid_domain' };
   }
@@ -124,14 +143,21 @@ export function decideEnrichmentPersistence(input: EnrichmentPersistenceInput): 
   }
 
   if (input.brandfetchDomain) {
-    const answered = canonical(input.brandfetchDomain);
+    const answered = canonicalEnrichmentDomain(input.brandfetchDomain);
     if (answered && answered !== domain) {
       return { persist: false, domain, reason: 'brand_domain_mismatch', registrable_domain };
     }
   }
 
-  if (!input.authenticated && input.existingRecord?.source_type !== 'enriched') {
-    return { persist: false, domain, reason: 'unauthenticated', registrable_domain };
+  if (!input.authenticated) {
+    const existing = input.existingRecord;
+    // A row stored under `www.acme.com` does not license creating `acme.com`.
+    const refreshesSameRecord = existing?.source_type === 'enriched'
+      && typeof existing.domain === 'string'
+      && existing.domain.trim().toLowerCase() === domain;
+    if (!refreshesSameRecord) {
+      return { persist: false, domain, reason: 'unauthenticated', registrable_domain };
+    }
   }
 
   return { persist: true, domain };

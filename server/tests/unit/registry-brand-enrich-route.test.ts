@@ -447,6 +447,27 @@ describe('GET /api/brands/enrich registry write rules (#9024)', () => {
     }));
   });
 
+  it('does not let an anonymous lookup of a www. row create the apex record', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        id: 'brand-www',
+        domain: 'www.acme.com',
+        has_brand_manifest: true,
+        brand_manifest: { name: 'Acme', url: 'https://acme.com' },
+        source_type: 'enriched',
+        last_validated: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      }),
+      upsertDiscoveredBrand: vi.fn().mockResolvedValue({}),
+    };
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com'));
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/enrich?domain=www.acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true, domain: 'acme.com' });
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
   it('still saves an authenticated lookup of a registrable domain', async () => {
     const brandDb = emptyRegistry();
     mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com'));

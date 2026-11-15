@@ -1209,6 +1209,8 @@
 
     // Enrichment cleanup (adcp#9024)
     let cleanupPreviewInput = null;
+    // What the last preview offered to delete; Delete sends exactly this.
+    let cleanupPreviewed = null;
 
     function cleanupDomainsFromInput(text) {
       return text.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
@@ -1221,6 +1223,7 @@
       document.getElementById('cleanupResults').style.display = 'none';
       document.getElementById('cleanupApplyBtn').style.display = 'none';
       cleanupPreviewInput = null;
+      cleanupPreviewed = null;
     }
 
     function closeCleanupModal() {
@@ -1270,13 +1273,14 @@
       try {
         const data = await postCleanup({ dry_run: true, ...(domains.length ? { domains } : {}) });
         document.getElementById('cleanupList').replaceChildren();
-        document.getElementById('cleanupSummary').textContent = data.truncated
+        document.getElementById('cleanupSummary').textContent = data.total_candidates > data.candidates.length
           ? `${data.total_candidates} records match; the first ${data.candidates.length} would be removed in this batch`
           : `${data.candidates.length} records would be removed`;
         renderCleanupRows('Would remove', data.candidates, (c) => `${c.domain}  ${c.brand_name || ''}  [${c.reason}]`);
         renderCleanupRows('Kept', data.skipped, (s) => `${s.domain}  [${s.reason}]`);
         document.getElementById('cleanupResults').style.display = 'block';
         cleanupPreviewInput = input;
+        cleanupPreviewed = { mode: data.mode, domains: data.candidates.map((c) => c.domain) };
         if (data.candidates.length > 0) {
           const applyBtn = document.getElementById('cleanupApplyBtn');
           applyBtn.textContent = `Delete ${data.candidates.length} records`;
@@ -1291,26 +1295,30 @@
 
     async function applyCleanup() {
       const input = document.getElementById('cleanupDomains').value;
-      if (input !== cleanupPreviewInput) {
+      if (input !== cleanupPreviewInput || !cleanupPreviewed || cleanupPreviewed.domains.length === 0) {
         showCleanupMessage('cleanupError', 'The domain list changed since the preview. Preview again before deleting.');
         document.getElementById('cleanupApplyBtn').style.display = 'none';
         return;
       }
-      if (!confirm('Delete the records listed in the preview? This cannot be undone.')) return;
-      const domains = cleanupDomainsFromInput(input);
+      if (!confirm(`Delete the ${cleanupPreviewed.domains.length} records listed in the preview? This cannot be undone from this page.`)) return;
       const btn = document.getElementById('cleanupApplyBtn');
       btn.disabled = true;
       try {
-        const data = await postCleanup({ dry_run: false, confirm: true, ...(domains.length ? { domains } : {}) });
+        const data = await postCleanup({
+          dry_run: false,
+          confirm: true,
+          mode: cleanupPreviewed.mode,
+          domains: cleanupPreviewed.domains,
+        });
         document.getElementById('cleanupList').replaceChildren();
-        document.getElementById('cleanupSummary').textContent = `Removed ${data.deleted.length} records`
-          + (data.remaining > 0 ? `; ${data.remaining} more match, run it again` : '');
+        document.getElementById('cleanupSummary').textContent = `Removed ${data.deleted.length} of ${cleanupPreviewed.domains.length} previewed records`;
         renderCleanupRows('Removed', data.deleted, (c) => `${c.domain}  ${c.brand_name || ''}  [${c.reason}]`);
         renderCleanupRows('Kept', data.skipped, (s) => `${s.domain}  [${s.reason}]`);
         renderCleanupRows('Failed', data.failed, (f) => `${f.domain}  [${f.error}]`);
         showCleanupMessage('cleanupSuccess', `Removed ${data.deleted.length} records.`);
         btn.style.display = 'none';
         cleanupPreviewInput = null;
+        cleanupPreviewed = null;
         loadBrands();
       } catch (error) {
         showCleanupMessage('cleanupError', error.message);
