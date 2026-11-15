@@ -1838,6 +1838,9 @@
     function storyboardNextStep(statusInfo) {
       if (!statusInfo) return 'Next step: run this storyboard to check current behavior.';
       const status = normalizeStoryboardStatus(statusInfo.status);
+      if ((status === 'failing' || status === 'partial') && storyboardVerdictExplanation(statusInfo)) {
+        return 'Next step: review why the storyboard verdict failed, then re-test.';
+      }
       const failedStep = statusInfo.first_failed_step_title || statusInfo.first_failed_step_id;
       if (status === 'failing') return failedStep ? `Next step: review ${failedStep}, then re-test.` : 'Next step: preview or run to inspect the failing checks, then re-test.';
       if (status === 'partial') return failedStep ? `Next step: review ${failedStep}, then re-test.` : 'Next step: review incomplete checks, then re-test.';
@@ -1849,19 +1852,24 @@
       if (!storyboardStatusNeedsAttention(statusInfo)) return '';
       const failures = finiteCount(statusInfo.failure_count);
       const skipped = finiteCount(statusInfo.skipped_count);
-      const hasFailureDetail = failures > 0 && (
+      const verdict = storyboardVerdictExplanation(statusInfo);
+      // The runner's synthetic `storyboard` row is not a step the seller can
+      // fix; when it carries an explanation, show the explanation instead.
+      const syntheticVerdictRow = !!verdict && statusInfo.first_failed_step_id === 'storyboard';
+      const hasFailureDetail = failures > 0 && !syntheticVerdictRow && (
         statusInfo.first_failed_step_id ||
         statusInfo.first_failed_step_title ||
         statusInfo.first_failed_step_task ||
         statusInfo.first_failure_message
       );
-      if (!hasFailureDetail && skipped === 0) return '';
+      if (!hasFailureDetail && !verdict && skipped === 0) return '';
 
       const issueSummary = storyboardIssueSummary(statusInfo);
       const summaryLabel = failures > 0 ? 'Show failure details' : 'Show skip details';
       const summary = issueSummary ? `${summaryLabel} (${issueSummary})` : summaryLabel;
       let html = '<details class="storyboard-map-drilldown">';
       html += '<summary>' + escapeHtml(summary) + '</summary>';
+      if (verdict) html += storyboardVerdictHtml(verdict);
       if (hasFailureDetail) {
         const stepTitle = statusInfo.first_failed_step_title || statusInfo.first_failed_step_id || 'Failed step';
         const stepMeta = [statusInfo.first_failed_step_id, statusInfo.first_failed_step_task]
@@ -1896,10 +1904,67 @@
       return html;
     }
 
+    const STORYBOARD_VERDICT_REASON_LABELS = {
+      step_failed: 'A step failed',
+      assertion_failed: 'A storyboard-level assertion failed',
+      controller_prerequisite_unmet: 'Required steps need comply_test_controller or its seeding, which was unavailable',
+      required_phase_not_executed: 'A required phase did not run',
+      no_executed_steps: 'No required step executed and passed',
+      fixture_error: 'Fixture setup failed before the checks could run',
+      coverage_unverified: 'No probe reached the agent, so coverage is unverified',
+      runner_error: 'The grader could not proceed. This is not an agent failure',
+      unexplained: 'The grader could not attribute this verdict',
+    };
+
+    // Owner-scoped explanation of a storyboard-level verdict (adcp#8576).
+    // Absent for other viewers and for rows recorded before it was captured.
+    function storyboardVerdictExplanation(statusInfo) {
+      const verdict = statusInfo && statusInfo.verdict_explanation;
+      if (!verdict || typeof verdict !== 'object' || typeof verdict.reason !== 'string' || !verdict.reason) return null;
+      return verdict;
+    }
+
+    // Runner text may echo third-party agent values: every field goes
+    // through escapeHtml.
+    function storyboardVerdictHtml(verdict) {
+      const label = STORYBOARD_VERDICT_REASON_LABELS[verdict.reason] || verdict.reason;
+      let html = '<div class="storyboard-map-detail-row">';
+      html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--failure">Why the storyboard failed</span>';
+      html += '<span class="storyboard-map-detail-title">' + escapeHtml(label) + '</span>';
+      html += '<div>' + escapeHtml(verdict.reason) + '</div>';
+      if (verdict.detail) {
+        html += '<div class="storyboard-map-detail-message">' + escapeHtml(verdict.detail) + '</div>';
+      }
+      const rows = Array.isArray(verdict.contributing)
+        ? verdict.contributing.filter(row => row && typeof row === 'object')
+        : [];
+      for (const row of rows.slice(0, 3)) {
+        const what = [row.kind, row.id].filter(Boolean).join(' ');
+        const how = row.skip_reason
+          ? 'skipped: ' + storyboardSkipReasonLabel(row.skip_reason) + (row.requirement ? ' (requires ' + row.requirement + ')' : '')
+          : row.status || '';
+        const where = [row.phase_id ? 'phase ' + row.phase_id : null, Number.isInteger(row.pass_index) ? 'pass ' + row.pass_index : null]
+          .filter(Boolean)
+          .join(', ');
+        let line = what || 'Contributor';
+        if (how) line += ' — ' + how;
+        if (where) line += ' (' + where + ')';
+        html += '<div class="storyboard-map-detail-message">' + escapeHtml(line) + '</div>';
+        if (row.message) html += '<div class="storyboard-map-detail-message">' + escapeHtml(row.message) + '</div>';
+      }
+      if (rows.length > 3) {
+        html += '<div class="storyboard-map-detail-message">Showing 3 causes; ' + escapeHtml(pluralizeCount(rows.length - 3, 'more cause')) + ' remain.</div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
     const STORYBOARD_SKIP_REASON_LABELS = {
       prerequisite_failed: 'Prerequisite step did not pass',
       controller_seeding_failed: 'Test controller seeding failed',
       missing_tool: 'Required tool not advertised',
+      missing_test_controller: 'Requires comply_test_controller',
+      requirement_unmet: 'Run requirement unmet',
       not_applicable: 'Not applicable',
       unresolved_substitution: 'Context variable unresolved',
     };
@@ -4861,6 +4926,8 @@
           let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
           html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Results</div>';
           html += '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(formatStoryboardRunSummary(data.storyboard_status, data.summary?.headline)) + ' (' + (data.total_duration_ms / 1000).toFixed(1) + 's)</div>';
+          const runVerdict = storyboardVerdictExplanation(data.storyboard_status);
+          if (runVerdict) html += '<div class="storyboard-map-drilldown" style="margin-bottom:var(--space-3);">' + storyboardVerdictHtml(runVerdict) + '</div>';
 
           for (const phase of data.phases) {
             html += '<div class="storyboard-phase">';
