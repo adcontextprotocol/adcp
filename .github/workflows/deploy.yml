@@ -417,8 +417,6 @@ jobs:
             "/creative/mcp"
             "/creative-builder/mcp"
             "/brand/mcp"
-            "/inventory-adserver/mcp"
-            "/inventory-content/mcp"
             "/mcp"
           )
           # Build curl args once. Omit the Authorization header when the secret
