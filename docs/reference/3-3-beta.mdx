@@ -15,8 +15,6 @@ description: "Where the AdCP 3.3 prerelease stands at the first release candidat
 
 ## Prerelease status
 
-{/* depends on the rc.0 Version Packages cut (planned 2026-11-16): confirm the published date */}
-
 The latest checkpoint is **`3.3.0-rc.0`, the first release candidate, published 2026-11-16**. It follows seven betas, the last of them `3.3.0-beta.6` (2026-11-13). Each prerelease is an immutable, signed checkpoint. In beta.6, 3.3 opened the schemas that were closed by accident, and the closed-schema triage settled which beta features stay in 3.3 and which leave ([below](#closed-schema-triage-before-rc-0)).
 
 GA follows the first release candidate that meets every one of the GA criteria in [#8600](https://github.com/adcontextprotocol/adcp/issues/8600): SDK support for the latest prerelease, green storyboards, the closed-schema triage ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)), no open objections on consent items and decision records, and current release docs. The criteria stand as written: their consent closed on 2026-11-07 with no objections. The target for GA is the week of 2026-11-30, or the week of 2026-11-23 if every criterion passes first time. A later release candidate follows rc.0 if a correction needs adopter action.
@@ -80,9 +78,7 @@ Useful tests are:
 
 ## Try the preview on the public test agent
 
-{/* depends on the training agent adopting an rc.0 SDK: update the preview pin when it moves */}
-
-The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.6` as an opt-in preview alongside its stable releases. The preview moves to rc.0 when the `@adcp/sdk` prerelease the agent runs on negotiates rc.0. It lists `"3.3-beta.6"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
+The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.6` as an opt-in preview alongside its stable releases. The preview moves to rc.0 once an `@adcp/sdk` prerelease that negotiates rc.0 publishes, which is expected within days of the cut; until then, this section describes the beta.6 preview. It lists `"3.3-beta.6"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
 
 | Request | Served |
 |---|---|
@@ -152,9 +148,7 @@ SDK maintainers should report protocol ambiguities against the [AdCP repository]
 
 ## SDK guidance
 
-{/* depends on the rc.0 SDK prereleases: name them here once they ship */}
-
-**rc.0.** No published SDK bundles `3.3.0-rc.0` yet. New TypeScript and Python prereleases follow the cut, and GA needs SDK support for the latest release candidate. Until a row in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) names rc.0, test rc.0 from its signed bundle and keep SDK-backed testing on beta.6.
+**rc.0.** TypeScript and Python prereleases that adopt `3.3.0-rc.0` follow within days of the cut; see [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk). GA needs SDK support for the latest release candidate. Until a row there names rc.0, test rc.0 from its signed bundle and keep SDK-backed testing on beta.6.
 
 **TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, 17.0.0-beta.11 through 17.0.0-beta.17 bundle `3.3.0-beta.3`, 17.0.0-beta.18 through 17.0.0-beta.20 bundle `3.3.0-beta.4`, 17.0.0-beta.21 through 17.0.0-beta.23 bundle `3.3.0-beta.5`, and 17.0.0-beta.24 and later bundle `3.3.0-beta.6`. Each negotiates only its own prerelease, so a buyer and seller on different checkpoints settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
 
