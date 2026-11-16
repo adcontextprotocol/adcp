@@ -946,7 +946,7 @@ describe('check_governance request-shape binding', () => {
     }));
   });
 
-  it.each(['advisory', 'audit'])('denies an intent from a caller outside delegations in %s mode', async (mode) => {
+  it.each(['advisory', 'audit'])('denies an intent from a delegate over its budget_limit in %s mode', async (mode) => {
     const result = await withPlan(async () => {
       const resync = await handleSyncPlans({
         plans: [{ ...PLAN, mode, delegations: [{ agent_url: 'https://delegate.example', authority: 'full', budget_limit: { amount: 500, currency: 'USD' } }] }],

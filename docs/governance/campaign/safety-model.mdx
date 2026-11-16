@@ -59,7 +59,7 @@ Governance agents support three internal operating modes so organizations can bu
 
 | Mode | What happens | Risk |
 |------|-------------|------|
-| **Audit** | Log everything, never block. Returns `approved` with findings attached, except in two cases that hold in every mode: plans with `human_review_required: true` escalate, and a failed `approved_sellers` or `delegations` evaluation is `denied`. | Zero. See what governance would flag without affecting live campaigns. |
+| **Audit** | Log everything. Returns `approved` with findings attached, except in two cases that hold in every mode: plans with `human_review_required: true` escalate, and a failed `approved_sellers` or `delegations` evaluation is `denied`. | Lowest. See what governance would flag. Only the two cases named here affect live campaigns. |
 | **Advisory** | Return `approved` with prominent findings and recommended corrections, with the same two exceptions. | Minimal. Humans review findings post-hoc and act on them. |
 | **Enforce** | Block on violations. Require resolution before proceeding. | Production governance with full protection. |
 
