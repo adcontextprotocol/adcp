@@ -105,7 +105,7 @@ describe("DOOH impression basis schemas", () => {
     const canonicalPoint = readSchema("/schemas/core/canonical-forecast-point.json").properties;
     const nodes = [
       dooh.properties.impression_basis, dooh.properties.audience_multiplier, dooh.properties.basis_metric,
-      dooh.properties.impression_basis_breakdown, venue.impression_basis, venue.audience_multiplier,
+      dooh.properties.impression_basis_breakdown, venue.impression_basis, venue.plays,
       point.impression_basis, point.audience_multiplier, point.impression_basis_breakdown,
       canonicalPoint.impression_basis, canonicalPoint.audience_multiplier, canonicalPoint.impression_basis_breakdown,
       product.impression_basis, product.audience_multiplier, canonical.impression_basis, canonical.audience_multiplier,

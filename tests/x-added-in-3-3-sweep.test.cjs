@@ -84,7 +84,7 @@ const PROPERTIES_3_3 = [
   ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'basis_metric']],
   ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'impression_basis_breakdown']],
   ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'venue_breakdown', 'items', 'properties', 'impression_basis']],
-  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'venue_breakdown', 'items', 'properties', 'audience_multiplier']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'venue_breakdown', 'items', 'properties', 'plays']],
   ['core/forecast-point.json', ['properties', 'impression_basis']],
   ['core/forecast-point.json', ['properties', 'audience_multiplier']],
   ['core/forecast-point.json', ['properties', 'impression_basis_breakdown']],

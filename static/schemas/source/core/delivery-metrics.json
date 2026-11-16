@@ -289,7 +289,7 @@
           "minimum": 0,
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). The row's `impressions / plays`, rounded, so a buyer can compare rows. `impressions` is authoritative: a receiver MUST NOT reject a multiplier that differs from `impressions / plays` only by rounding. On `sensor_measured` and `hybrid` rows sellers SHOULD include it, and it is the realised ratio for the period, which varies by row. On `currency_measured` rows it is optional, for currencies whose terms prohibit disclosing it. A row that reports `impression_basis_breakdown` SHOULD omit it and give each entry's multiplier instead: a multiplier blended across tiers mixes different units and misleads."
+          "description": "Experimental (media_buy.dooh_impression_basis). The row's `impressions / plays`, rounded, so a buyer can compare rows. `impressions` is authoritative: a receiver MUST NOT reject a multiplier that differs from `impressions / plays` only by rounding. On `sensor_measured` and `hybrid` rows sellers SHOULD include it, and it is the realised ratio for the period, which varies by row. On `currency_measured` rows it is optional. A row that reports `impression_basis_breakdown` SHOULD omit it and give each entry's multiplier instead: a multiplier blended across tiers mixes different units and misleads."
         },
         "basis_metric": {
           "type": "object",
@@ -362,12 +362,12 @@
                 "x-added-in": "3.3.0",
                 "description": "Experimental (media_buy.dooh_impression_basis). Methodology tier of this venue's impressions, when it differs across venues of the row. Sellers MUST omit it on a venue whose plays were estimated on different tiers."
               },
-              "audience_multiplier": {
+              "plays": {
                 "type": "number",
                 "minimum": 0,
                 "x-status": "experimental",
                 "x-added-in": "3.3.0",
-                "description": "Experimental (media_buy.dooh_impression_basis). This venue's audience per play, on the same basis as the row's `audience_multiplier`: `impressions` divided by the plays, not by `loop_plays`. SHOULD be omitted on a venue whose plays were estimated on different tiers."
+                "description": "Experimental (media_buy.dooh_impression_basis). Plays at this venue, counted like the delivery row's `plays`: raw plays before any impression multiplier, not `loop_plays`. Each screen that played the spot counts one play, so a spot shown at once on three synchronized screens is three plays. A venue row carries no multiplier; its audience per play is `impressions / plays`."
               }
             },
             "required": [

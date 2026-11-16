@@ -82,7 +82,7 @@
           "minimum": 0,
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). Planning audience per play for this placement: the `impressions / plays` the seller's forecasts use. Optional on `currency_measured` placements whose currency terms prohibit disclosing it."
+          "description": "Experimental (media_buy.dooh_impression_basis). Planning audience per play for this placement: the `impressions / plays` the seller's forecasts use. Optional on `currency_measured` placements."
         }
       },
       "x-adcp-validation": {

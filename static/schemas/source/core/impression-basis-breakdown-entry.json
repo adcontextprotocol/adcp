@@ -24,7 +24,7 @@
     "audience_multiplier": {
       "type": "number",
       "minimum": 0,
-      "description": "`impressions / plays` of these plays, rounded. A receiver MUST NOT reject a multiplier that differs from `impressions / plays` only by rounding. Optional on `currency_measured` entries when the currency's terms prohibit disclosing it."
+      "description": "`impressions / plays` of these plays, rounded. A receiver MUST NOT reject a multiplier that differs from `impressions / plays` only by rounding. Optional on `currency_measured` entries."
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
