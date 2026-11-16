@@ -289,13 +289,13 @@
           "minimum": 0,
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). The row's effective `impressions / plays`, declared rather than inferred, so a verifier can check `impressions ≈ plays × audience_multiplier` and a buyer can compare rows. On `sensor_measured` and `hybrid` rows sellers SHOULD include it, and it is the realised ratio for the period, which varies by row. On `currency_measured` rows it is optional, for currencies whose terms prohibit disclosing it. A row that reports `impression_basis_breakdown` SHOULD omit it and give each entry's multiplier instead: a multiplier blended across tiers mixes different units and misleads."
+          "description": "Experimental (media_buy.dooh_impression_basis). The row's `impressions / plays`, rounded, so a buyer can compare rows. `impressions` is authoritative: a receiver MUST NOT reject a multiplier that differs from `impressions / plays` only by rounding. On `sensor_measured` and `hybrid` rows sellers SHOULD include it, and it is the realised ratio for the period, which varies by row. On `currency_measured` rows it is optional, for currencies whose terms prohibit disclosing it. A row that reports `impression_basis_breakdown` SHOULD omit it and give each entry's multiplier instead: a multiplier blended across tiers mixes different units and misleads."
         },
         "basis_metric": {
           "type": "object",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). On rows whose impressions are, wholly or through an `impression_basis_breakdown` entry, `sensor_measured` or `hybrid`, the `vendor_metric_values[]` row of the same object the sensor audience derives from, joined on `(vendor, metric_id, qualifier)`. That row carries the coverage (`measurable_plays`) and the seller–vendor relationship, and the vendor catalog the methodology. When `basis_metric` is present, a matching `vendor_metric_values[]` row MUST be present in the same object.",
+          "description": "Experimental (media_buy.dooh_impression_basis). On rows whose impressions are, wholly or through an `impression_basis_breakdown` entry, `sensor_measured` or `hybrid`, the `vendor_metric_values[]` row the sensor audience derives from, joined on `(vendor, metric_id, qualifier)`. That row carries the coverage (`measurable_plays`) and the seller–vendor relationship, and the vendor catalog the methodology. When `basis_metric` is present, a matching row MUST be present in the `vendor_metric_values[]` of the delivery row that carries this `dooh_metrics`. Totals and package rows MAY omit it when the rows below them carry it.",
           "properties": {
             "vendor": {
               "$ref": "/schemas/core/vendor-metric-value.json#/properties/vendor",
@@ -317,7 +317,7 @@
           "type": "array",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). For a row that aggregates plays estimated on different tiers — a product mixing sensor-equipped screens and screens without a sensor, or a sensor-equipped screen whose fallback plays, estimated while its sensor was not reporting, are `seller_modeled` — one entry per tier present: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to the row's. Each entry of a parent row (totals, a package) MUST equal the sum of its child rows' entries for that tier, a single-tier child counting as one entry. A row never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier, and plays and spend across tiers. Billing is unchanged: a CPM bills the row's total `impressions`, all tiers together. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`.",
+          "description": "Experimental (media_buy.dooh_impression_basis). For a row that aggregates plays estimated on different tiers — a product mixing sensor-equipped screens and screens without a sensor, or a sensor-equipped screen whose fallback plays, estimated while its sensor was not reporting, are `seller_modeled` — one entry per tier present: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to the row's. Each entry of a parent row (totals, a package) MUST equal the sum of its child rows' entries for that tier, a single-tier child counting as one entry. A row never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier (and for `sensor_measured`, within the same `basis_metric`), and plays and spend across tiers. Billing is unchanged: a CPM bills the row's total `impressions`, all tiers together. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`.",
           "items": {
             "$ref": "/schemas/core/impression-basis-breakdown-entry.json"
           },
@@ -367,7 +367,7 @@
                 "minimum": 0,
                 "x-status": "experimental",
                 "x-added-in": "3.3.0",
-                "description": "Experimental (media_buy.dooh_impression_basis). This venue's effective `impressions / loop_plays`, declared rather than inferred. SHOULD be omitted on a venue whose plays were estimated on different tiers."
+                "description": "Experimental (media_buy.dooh_impression_basis). This venue's audience per play, on the same basis as the row's `audience_multiplier`: `impressions` divided by the plays, not by `loop_plays`. SHOULD be omitted on a venue whose plays were estimated on different tiers."
               }
             },
             "required": [

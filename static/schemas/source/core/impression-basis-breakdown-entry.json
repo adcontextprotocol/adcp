@@ -12,19 +12,19 @@
       "description": "Tier the audience of these plays was estimated on."
     },
     "plays": {
-      "type": "integer",
+      "type": "number",
       "minimum": 0,
-      "description": "Plays whose audience was estimated on this tier."
+      "description": "Plays whose audience was estimated on this tier. A number like the row's `plays`, so that a forecast's fractional expected values can sum exactly."
     },
     "impressions": {
-      "type": "integer",
+      "type": "number",
       "minimum": 0,
-      "description": "Impressions those plays produced: their plays × their audience multiplier."
+      "description": "Impressions those plays produced. Authoritative: `audience_multiplier` is derived from it, not the other way round."
     },
     "audience_multiplier": {
       "type": "number",
       "minimum": 0,
-      "description": "Effective `impressions / plays` of these plays, declared rather than inferred. Optional on `currency_measured` entries when the currency's terms prohibit disclosing it."
+      "description": "`impressions / plays` of these plays, rounded. A receiver MUST NOT reject a multiplier that differs from `impressions / plays` only by rounding. Optional on `currency_measured` entries when the currency's terms prohibit disclosing it."
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

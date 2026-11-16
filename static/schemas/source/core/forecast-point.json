@@ -40,13 +40,13 @@
       "minimum": 0,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.dooh_impression_basis). The planning multiplier of a single-tier DOOH point: the `impressions / plays` the forecast applies, so `metrics.impressions.mid ≈ metrics.plays.mid × audience_multiplier`. A point that reports `impression_basis_breakdown` SHOULD omit it and give each entry's planning multiplier instead: a multiplier blended across tiers mixes different units and misleads. A declaration, not a forecastable metric, so it sits outside `metrics`."
+      "description": "Experimental (media_buy.dooh_impression_basis). The planning multiplier of a single-tier DOOH point: `metrics.impressions.mid / metrics.plays.mid`, rounded. The impressions are authoritative: a receiver MUST NOT reject a multiplier that differs from that ratio only by rounding. A point that reports `impression_basis_breakdown` SHOULD omit it and give each entry's planning multiplier instead: a multiplier blended across tiers mixes different units and misleads. A declaration, not a forecastable metric, so it sits outside `metrics`."
     },
     "impression_basis_breakdown": {
       "type": "array",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.dooh_impression_basis). For a DOOH point covering plays expected on different tiers, one entry per tier with the expected plays and impressions behind the point's midpoints: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to `metrics.plays.mid` and `metrics.impressions.mid`. It SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting. A point never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier, and plays and spend across tiers.",
+      "description": "Experimental (media_buy.dooh_impression_basis). For a DOOH point covering plays expected on different tiers, one entry per tier with the expected plays and impressions behind the point's midpoints: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to `metrics.plays.mid` and `metrics.impressions.mid`, which a point carrying a breakdown therefore carries. It SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting. A point never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier (and for `sensor_measured`, within the same metric), and plays and spend across tiers.",
       "items": {
         "$ref": "/schemas/core/impression-basis-breakdown-entry.json"
       },

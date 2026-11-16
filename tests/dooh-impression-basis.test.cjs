@@ -23,11 +23,13 @@ function fixture(name) {
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
-// A declared multiplier and the counts it relates agree to within half a percent.
+// A declared multiplier is the counts' ratio, rounded.
 function assertMultiplier(multiplier, impressions, plays, where) {
   assert.ok(plays > 0, `${where}: plays`);
+  // impressions is authoritative; the multiplier is impressions / plays rounded to its own decimals.
   const ratio = impressions / plays;
-  assert.ok(Math.abs(ratio - multiplier) / ratio < 0.005, `${where}: ${impressions} / ${plays} = ${ratio}, declared ${multiplier}`);
+  const decimals = (String(multiplier).split(".")[1] ?? "").length;
+  assert.ok(Math.abs(ratio - multiplier) <= 0.5 * 10 ** -decimals + 1e-9, `${where}: ${impressions} / ${plays} = ${ratio}, declared ${multiplier}`);
 }
 
 // Breakdown entries: at least two, one per tier, summing exactly to the row's counts, each
@@ -100,10 +102,12 @@ describe("DOOH impression basis schemas", () => {
     const point = readSchema("/schemas/core/forecast-point.json").properties;
     const product = readSchema("/schemas/core/placement.json").definitions.ProductDoohPlacementAttributes.properties;
     const canonical = readSchema("/schemas/core/canonical-placement.json").definitions.CanonicalDoohPlacementAttributes.properties;
+    const canonicalPoint = readSchema("/schemas/core/canonical-forecast-point.json").properties;
     const nodes = [
       dooh.properties.impression_basis, dooh.properties.audience_multiplier, dooh.properties.basis_metric,
       dooh.properties.impression_basis_breakdown, venue.impression_basis, venue.audience_multiplier,
       point.impression_basis, point.audience_multiplier, point.impression_basis_breakdown,
+      canonicalPoint.impression_basis, canonicalPoint.audience_multiplier, canonicalPoint.impression_basis_breakdown,
       product.impression_basis, product.audience_multiplier, canonical.impression_basis, canonical.audience_multiplier,
       readSchema("/schemas/core/impression-basis-breakdown-entry.json"),
     ];
@@ -130,8 +134,9 @@ describe("DOOH impression basis schemas", () => {
   it("requires two or more entries and never a breakdown beside a row-level tier", () => {
     const dooh = readSchema("/schemas/core/delivery-metrics.json").properties.dooh_metrics;
     const point = readSchema("/schemas/core/forecast-point.json");
+    const canonicalPoint = readSchema("/schemas/core/canonical-forecast-point.json");
     const exclusion = { impression_basis_breakdown: { not: { required: ["impression_basis"] } } };
-    for (const schema of [dooh, point]) {
+    for (const schema of [dooh, point, canonicalPoint]) {
       assert.equal(schema.properties.impression_basis_breakdown.minItems, 2);
       assert.deepEqual(schema.dependencies, exclusion);
     }
@@ -144,7 +149,7 @@ describe("DOOH impression basis schemas", () => {
 });
 
 describe("DOOH impression basis fixtures: a product mixing sensor-measured and seller-modeled screens", () => {
-  let validateProduct, validateForecast, validateDelivery, validateEntry;
+  let validateProduct, validateCanonicalProduct, validateForecast, validateCanonicalForecast, validateDelivery, validateEntry;
 
   before(async () => {
     const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async (ref) => readSchema(ref) });
@@ -152,7 +157,9 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
     // A schema another one already pulled in is compiled from the instance, not added twice.
     const compile = async (id) => ajv.getSchema(id) ?? ajv.compileAsync(readSchema(id));
     validateProduct = await compile("/schemas/core/product.json");
+    validateCanonicalProduct = await compile("/schemas/core/canonical-product.json");
     validateForecast = await compile("/schemas/core/delivery-forecast.json");
+    validateCanonicalForecast = await compile("/schemas/core/canonical-delivery-forecast.json");
     validateDelivery = await compile("/schemas/media-buy/get-media-buy-delivery-response.json");
     validateEntry = await compile("/schemas/core/impression-basis-breakdown-entry.json");
   });
@@ -160,6 +167,8 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
   it("discovery: each placement declares its planned tier and multiplier", () => {
     const product = fixture("discovery-product.json");
     assert.equal(validateProduct(product), true, JSON.stringify(validateProduct.errors, null, 2));
+    // The same product in list_products.
+    assert.equal(validateCanonicalProduct(product), true, JSON.stringify(validateCanonicalProduct.errors, null, 2));
     const tiers = product.placements.map((placement) => placement.dooh_placement_attributes.impression_basis);
     assert.deepEqual(tiers, ["sensor_measured", "seller_modeled"]);
   });
@@ -169,6 +178,8 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
   it("forecast: the expected split, fallback included, reconciles with the midpoints", () => {
     const forecast = fixture("forecast.json");
     assert.equal(validateForecast(forecast), true, JSON.stringify(validateForecast.errors, null, 2));
+    // The same forecast in list_products and the proposal tasks.
+    assert.equal(validateCanonicalForecast(forecast), true, JSON.stringify(validateCanonicalForecast.errors, null, 2));
     for (const point of forecast.points) {
       const plays = point.metrics.plays.mid;
       const impressions = point.metrics.impressions.mid;
@@ -178,6 +189,20 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
     const [sensor, modeled] = forecast.points[0].impression_basis_breakdown;
     const platformPlays = 58300;
     assert.equal(sensor.plays / (sensor.plays + modeled.plays - platformPlays), 0.7, "concourse: 70% sensor plays, 30% fallback");
+  });
+
+  it("forecast: fractional expected counts can sum exactly", () => {
+    const forecast = fixture("forecast.json");
+    const point = forecast.points[0];
+    point.metrics.plays.mid = 1000;
+    point.metrics.impressions.mid = 14400.5;
+    point.impression_basis_breakdown = [
+      { impression_basis: "sensor_measured", plays: 500, impressions: 7200.25 },
+      { impression_basis: "seller_modeled", plays: 500, impressions: 7200.25 },
+    ];
+    for (const validate of [validateForecast, validateCanonicalForecast])
+      assert.equal(validate(forecast), true, JSON.stringify(validate.errors, null, 2));
+    assertBreakdown(point.impression_basis_breakdown, 1000, 14400.5, point.label);
   });
 
   it("delivery: totals, package and placements carry a consistent basis, including a sensor screen that fell back", () => {
@@ -214,7 +239,10 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
     });
 
     it("a negative multiplier", () => {
-      assertFailsOn(reject((dooh) => { dooh.audience_multiplier = -1; }), "minimum");
+      // On the single-tier platform row, which may carry a multiplier.
+      const delivery = fixture("delivery.json");
+      delivery.media_buy_deliveries[0].by_package[0].by_placement[1].dooh_metrics.audience_multiplier = -1;
+      assertFailsOn(failures(validateDelivery, delivery), "minimum");
     });
 
     it("a breakdown entry without its tier", () => {
@@ -227,6 +255,7 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
       const point = fixture("forecast.json");
       point.points[0].impression_basis_breakdown.pop();
       assertFailsOn(failures(validateForecast, point), "minItems");
+      assertFailsOn(failures(validateCanonicalForecast, point), "minItems");
     });
 
     it("a breakdown repeating a tier", () => {
@@ -241,6 +270,7 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
       const forecast = fixture("forecast.json");
       forecast.points[0].impression_basis = "seller_modeled";
       assertFailsOn(failures(validateForecast, forecast), "not");
+      assertFailsOn(failures(validateCanonicalForecast, forecast), "not");
     });
 
     it("a basis_metric without its metric_id", () => {

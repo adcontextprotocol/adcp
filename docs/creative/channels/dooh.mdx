@@ -258,13 +258,13 @@ Proof-of-play reporting uses `plays` for the raw playout count and `impressions`
 
 ## Impression basis (experimental)
 
-A DOOH `impressions` figure is `plays × audience multiplier`, and the multiplier can come from a measurement currency, the seller's own model, or a sensor counting the audience at each play. Sellers that declare `media_buy.dooh_impression_basis` in `experimental_features` say which, with the tiers of `enums/impression-estimation-basis.json`:
+A DOOH `impressions` figure is `plays × audience multiplier`, and the multiplier can come from a measurement currency, the seller's own model, or a sensor counting the audience at each play. Sellers that declare `media_buy.dooh_impression_basis` in `experimental_features` say which, with the tiers of `enums/impression-estimation-basis.json`. Everywhere below, `impressions` is authoritative and `audience_multiplier` is `impressions / plays`, rounded: a receiver never rejects a multiplier that differs only by rounding.
 
 - **Discovery.** `dooh_placement_attributes.impression_basis` is the tier the seller plans to use for a placement, and `audience_multiplier` the audience per play its forecasts apply. A product mixing sensor-equipped screens and screens without a sensor declares each placement's tier. Discovery declares no fallback tier: the fallback a sensor-equipped placement expects shows in its forecast, and the realised one in delivery.
-- **Forecast.** A single-tier point carries `impression_basis` and its planning `audience_multiplier`, so `metrics.impressions.mid ≈ metrics.plays.mid × audience_multiplier`. A point covering plays expected on different tiers carries an `impression_basis_breakdown` instead, each entry with its planning multiplier. That breakdown SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting.
+- **Forecast.** A single-tier point carries `impression_basis` and its planning `audience_multiplier`. A point covering plays expected on different tiers carries an `impression_basis_breakdown` instead, each entry with its planning multiplier. That breakdown SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting. The same fields appear on the forecasts of `get_products`, `list_products` and the proposal tasks.
 - **Delivery.** `dooh_metrics.impression_basis` is the tier of every play in the row. A row whose plays were estimated on different tiers reports `impression_basis_breakdown` instead. That includes a sensor-equipped screen that falls back to the seller's model while its sensor is not reporting. `basis_metric` points to the `vendor_metric_values[]` row the sensor audience comes from, whose `measurable_plays` is the sensor's coverage.
 
-`hybrid` is a seller model calibrated by the seller's own sensors, never a published currency figure and never a mix of plays on different tiers, which the breakdown reports.
+`hybrid` is a seller model calibrated by sensors on the seller's own screens, whoever supplies them, never a published currency figure and never a mix of plays on different tiers, which the breakdown reports.
 
 ### Rows mixing tiers
 
@@ -280,10 +280,11 @@ A row never carries both `impression_basis` and a breakdown, and SHOULD omit its
 
 ### Reading the basis
 
-- **Tiers are different units.** A sensor counts the people in its zone, a currency usually publishes a visibility-adjusted "likely to see" figure, and a seller model is traffic-based. There is no exchange rate between them: compare impressions within a tier, and plays and spend across tiers.
+- **Tiers are different units.** A sensor counts the people in its zone, a currency usually publishes a visibility-adjusted "likely to see" figure, and a seller model is traffic-based. There is no exchange rate between them: compare impressions within a tier, and plays and spend across tiers. Within `sensor_measured`, compare only rows with the same `basis_metric`: a sensor counting people in front of a screen and a turnstile counting entries are different units too.
 - **Billing is unchanged.** A CPM bills the row's total `impressions`, all tiers together.
 - **A blended multiplier misleads.** A multiplier over plays on several tiers mixes those units, which is why a row with a breakdown omits it.
 - **A filter on `impression_basis` misses mixed rows.** A row with a breakdown has no row-level tier: read the breakdown.
+- **The tier is not OpenRTB's `qty.sourcetype`.** `sourcetype` says who supplies the multiplier, the tier says how it is derived. A third-party sensor vendor is `sourcetype` 1 and `sensor_measured`.
 
 A placement row whose sensor-equipped screens fell back to the seller's model for part of the flight:
 
