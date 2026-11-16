@@ -362,7 +362,7 @@ checks:
     detection: "A party that judges an ivt, brand_safety, or attention_score performance standard against one of its vendor's metrics cannot name that metric in metric_id on the performance standard."
     fix: >-
       Nothing in 3.3. metric_id on performance standards (#8436) shipped in
-      3.3.0-beta.1 through 3.3.0-beta.5 and is withdrawn after beta.5
+      3.3.0-beta.1 through 3.3.0-rc.0 and is withdrawn after rc.0
       (adcp#8501): it selects which vendor value decides a signed performance
       standard, so a 3.2 buyer would read the same standard differently. Do
       not send or emit it. Until 4.0, which of the vendor's metrics a standard
@@ -373,7 +373,7 @@ checks:
       none:
         reason: >-
           The canonical performance standard is closed in 3.x and 3.3 has no
-          wire form for the field after beta.5, so a 3.x run cannot observe it.
+          wire form for the field after rc.0, so a 3.x run cannot observe it.
 
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
