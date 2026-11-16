@@ -66,6 +66,8 @@ import type {
   OverallRunStatus,
   RecordComplianceRunInput,
   StoryboardStatusEntry,
+  StoryboardVerdictContributor,
+  StoryboardVerdictExplanation,
   StepDiagnosticEntry,
   LifecycleStage,
   TriggeredBy,
@@ -1163,8 +1165,16 @@ function normalizeControllerPreflightGapVerdicts(result: ComplianceResult): Comp
       (!('storyboard_id' in observation.source) || !observation.source.storyboard_id ||
         observation.source.storyboard_id === id))) continue;
     const detail = 'Not tested: comply_test_controller is unavailable; required fixture state was not established.';
+    // The replacement is a pass, so the runner's failing-verdict explanation
+    // no longer describes it.
+    const {
+      verdict_reason: _verdictReason,
+      verdict_detail: _verdictDetail,
+      verdict_contributing: _verdictContributing,
+      ...verdictRest
+    } = verdict as Scenario & Record<'verdict_reason' | 'verdict_detail' | 'verdict_contributing', unknown>;
     replacements.set(verdict, {
-      ...verdict,
+      ...verdictRest,
       overall_passed: true,
       summary: detail,
       steps: [{
@@ -1360,6 +1370,7 @@ export function deriveStoryboardStatuses(
     failureCount: number;
     skippedCount: number;
     firstFailure: FirstFailure | null;
+    verdictExplanation: StoryboardVerdictExplanation | null;
   }
   const perStoryboard = new Map<string, Aggregate>();
   // Storyboard IDs can contain slashes (e.g. media_buy_seller/available_actions).
@@ -1383,6 +1394,7 @@ export function deriveStoryboardStatuses(
           failureCount: 0,
           skippedCount: 0,
           firstFailure: null,
+          verdictExplanation: null,
         };
         perStoryboard.set(sbId, agg);
       }
@@ -1398,6 +1410,9 @@ export function deriveStoryboardStatuses(
         } else {
           agg.failureCount++;
           if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardPhaseFailure(s, sbId);
+          // The synthetic `<id>/storyboard` scenario carries the runner's
+          // reason for a storyboard-level verdict (adcp#8576).
+          agg.verdictExplanation ??= extractStoryboardVerdictExplanation(s);
         }
         continue;
       }
@@ -1497,6 +1512,7 @@ export function deriveStoryboardStatuses(
       entry.first_failed_step_task = agg.firstFailure.task;
       entry.first_failure_message = agg.firstFailure.message;
     }
+    if (agg.verdictExplanation) entry.verdict_explanation = agg.verdictExplanation;
     entries.push(entry);
   }
 
@@ -1526,6 +1542,55 @@ function summarizeStoryboardStepFailure(step: {
   const rawMessage = firstString(step.error, step.details, warnings, step.skip_reason);
   const message = redactDiagnosticText(rawMessage) ?? null;
   return { stepId, title, task, message };
+}
+
+const VERDICT_CONTRIBUTOR_LIMIT = 10;
+const VERDICT_TEXT_LIMIT = 600;
+
+function verdictText(value: unknown, limit: number): string | null {
+  const redacted = redactDiagnosticText(value);
+  if (redacted === undefined) return null;
+  const trimmed = redacted.trim();
+  if (trimmed.length === 0) return null;
+  return trimmed.length > limit ? `${trimmed.slice(0, limit)}...` : trimmed;
+}
+
+function verdictCode(value: unknown): string | null {
+  return typeof value === 'string' && /^[a-z][a-z0-9_:.-]{0,79}$/i.test(value) ? value : null;
+}
+
+/**
+ * Read the runner's storyboard-level verdict explanation from a synthetic
+ * `<storyboard_id>/storyboard` scenario (`@adcp/sdk` `verdict_reason`,
+ * `verdict_detail`, `verdict_contributing`; adcp#8576). Older runners emit
+ * none, so every field is read defensively. Free text is redacted and capped;
+ * identifiers and codes keep a strict shape.
+ */
+export function extractStoryboardVerdictExplanation(scenario: unknown): StoryboardVerdictExplanation | null {
+  if (!scenario || typeof scenario !== 'object') return null;
+  const record = scenario as Record<string, unknown>;
+  const reason = verdictCode(record.verdict_reason);
+  if (!reason) return null;
+  const rows = Array.isArray(record.verdict_contributing) ? record.verdict_contributing : [];
+  const contributing: StoryboardVerdictContributor[] = rows
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object' && !Array.isArray(row))
+    .slice(0, VERDICT_CONTRIBUTOR_LIMIT)
+    .map(row => ({
+      kind: verdictCode(row.kind),
+      id: verdictText(row.id, 200),
+      reason: verdictCode(row.reason),
+      status: verdictCode(row.status),
+      phase_id: verdictText(row.phase_id, 200),
+      pass_index: typeof row.pass_index === 'number' && Number.isInteger(row.pass_index) ? row.pass_index : null,
+      skip_reason: verdictCode(row.skip_reason),
+      requirement: verdictCode(row.requirement),
+      message: verdictText(row.message, VERDICT_TEXT_LIMIT),
+    }));
+  return {
+    reason,
+    detail: verdictText(record.verdict_detail, VERDICT_TEXT_LIMIT),
+    contributing,
+  };
 }
 
 function summarizeStoryboardPhaseFailure(

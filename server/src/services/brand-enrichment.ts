@@ -13,6 +13,7 @@ import { createLogger } from '../logger.js';
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from './brandfetch.js';
 import { downloadAndCacheLogos } from './logo-cdn.js';
 import { classifyBrand } from './brand-classifier.js';
+import { classifyEnrichmentDomain, decideEnrichmentPersistence } from './enrichment-persistence-guard.js';
 import { brandDb } from '../db/brand-db.js';
 import { registryRequestsDb } from '../db/registry-requests-db.js';
 import { query } from '../db/client.js';
@@ -109,6 +110,18 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     return { domain, status: 'failed', error: 'Invalid domain format' };
   }
 
+  // Reserved names and subdomains never become registry records (#9024).
+  // Check before calling Brandfetch so a queued registry request for such a
+  // name costs nothing.
+  const domainCheck = classifyEnrichmentDomain(domain);
+  if (domainCheck.rejection) {
+    // Close the registry request so bulk enrichment stops picking it up.
+    registryRequestsDb.markResolved('brand', domain, domainCheck.registrable_domain ?? domain).catch(err => {
+      logger.warn({ err, domain }, 'Failed to mark registry request as resolved');
+    });
+    return { domain, status: 'skipped', error: `Not saved to the registry: ${domainCheck.rejection}` };
+  }
+
   if (!isBrandfetchConfigured()) {
     return { domain, status: 'failed', error: 'BRANDFETCH_API_KEY not configured' };
   }
@@ -200,6 +213,31 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       brand_name: result.manifest.name,
       classification: classification || undefined,
       error: `Variant of ${canonicalDomain}`,
+    };
+  }
+
+  // Brandfetch answered with a brand that lives on another domain. Saving it
+  // here would file that brand under a domain it does not own (#9024).
+  const persistence = decideEnrichmentPersistence({
+    requestedDomain: domain,
+    brandfetchDomain: result.raw?.domain,
+    // enrichBrand runs from admin routes, admin tools and background jobs,
+    // never directly for an anonymous caller.
+    authenticated: true,
+  });
+  if (!persistence.persist) {
+    logger.info({ domain, reason: persistence.reason, brandfetch_domain: result.raw?.domain }, 'Enrichment result not saved');
+    // Point the registry request at the domain Brandfetch says the brand
+    // lives on, so bulk enrichment does not pay for this lookup again.
+    registryRequestsDb.markResolved('brand', domain, result.raw?.domain || domain).catch(err => {
+      logger.warn({ err, domain }, 'Failed to mark registry request as resolved');
+    });
+    return {
+      domain,
+      status: 'skipped',
+      brand_name: result.manifest.name,
+      classification: classification || undefined,
+      error: `Not saved to the registry: ${persistence.reason}`,
     };
   }
 
@@ -331,6 +369,9 @@ export async function enrichBrands(options: {
   return summary;
 }
 
+/** Pages of each source scanned for candidates before giving up. */
+const CANDIDATE_MAX_PAGES = 10;
+
 /**
  * List brands eligible for enrichment.
  */
@@ -342,32 +383,43 @@ export async function getEnrichmentCandidates(options: {
   const limit = Math.min(Math.max(1, options.limit || 25), 100);
   const candidates: EnrichmentCandidate[] = [];
 
+  // Reserved names and subdomains can never be saved (#9024), so they are not
+  // candidates. Skipping them here, and paging past them, keeps a run of junk
+  // rows at the head of either list from starving every bulk run.
+  const isEnrichable = (domain: string) => !classifyEnrichmentDomain(domain).rejection;
+
   // Community brands: both those without manifests and those with low-quality data
   // that may benefit from re-enrichment (last validated > 30 days ago)
   if (source === 'community' || source === 'all') {
-    const communityResult = await query<{ domain: string; brand_name: string | null }>(
-      `SELECT domain, brand_name FROM brands
-       WHERE source_type = 'community' AND (
-         has_brand_manifest = false
-         OR (has_brand_manifest = true AND (last_validated IS NULL OR last_validated < NOW() - INTERVAL '30 days'))
-       )
-       ORDER BY has_brand_manifest ASC, brand_name, domain
-       LIMIT $1`,
-      [limit]
-    );
-    for (const row of communityResult.rows) {
-      candidates.push({ domain: row.domain, brand_name: row.brand_name, source: 'community' });
+    for (let page = 0; page < CANDIDATE_MAX_PAGES && candidates.length < limit; page++) {
+      const communityResult = await query<{ domain: string; brand_name: string | null }>(
+        `SELECT domain, brand_name FROM brands
+         WHERE source_type = 'community' AND (
+           has_brand_manifest = false
+           OR (has_brand_manifest = true AND (last_validated IS NULL OR last_validated < NOW() - INTERVAL '30 days'))
+         )
+         ORDER BY has_brand_manifest ASC, brand_name, domain
+         LIMIT $1 OFFSET $2`,
+        [limit, page * limit]
+      );
+      for (const row of communityResult.rows) {
+        if (candidates.length < limit && isEnrichable(row.domain)) {
+          candidates.push({ domain: row.domain, brand_name: row.brand_name, source: 'community' });
+        }
+      }
+      if (communityResult.rows.length < limit) break;
     }
   }
 
   // Unresolved registry requests (brands people searched for but don't exist)
   if (source === 'requests' || source === 'all') {
-    const remaining = limit - candidates.length;
-    if (remaining > 0) {
-      const requests = await registryRequestsDb.listUnresolved('brand', { limit: remaining });
-      const existingDomains = new Set(candidates.map(c => c.domain));
+    const existingDomains = new Set(candidates.map(c => c.domain));
+    for (let page = 0; page < CANDIDATE_MAX_PAGES && candidates.length < limit; page++) {
+      const pageSize = limit;
+      const requests = await registryRequestsDb.listUnresolved('brand', { limit: pageSize, offset: page * pageSize });
       for (const req of requests) {
-        if (!existingDomains.has(req.domain)) {
+        if (candidates.length < limit && !existingDomains.has(req.domain) && isEnrichable(req.domain)) {
+          existingDomains.add(req.domain);
           candidates.push({
             domain: req.domain,
             brand_name: null,
@@ -376,6 +428,7 @@ export async function getEnrichmentCandidates(options: {
           });
         }
       }
+      if (requests.length < pageSize) break;
     }
   }
 

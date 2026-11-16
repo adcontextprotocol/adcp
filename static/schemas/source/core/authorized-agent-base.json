@@ -18,7 +18,7 @@
     },
     "signing_keys": {
       "type": "array",
-      "description": "Optional publisher-attested public signing keys for this agent. They narrow the keys a verifier accepts for signatures the agent makes in its sell-side role about this publisher's inventory, such as webhooks about a media buy: a key MUST appear both here and in the JWKS of the agent's brand.json `agents[]` entry. A pin never adds a key and does not apply to the agent's other traffic. See docs/building/by-layer/L1/security.mdx#agent-resolution.",
+      "description": "Optional publisher-attested public signing keys for this agent. They narrow the keys a verifier accepts for signatures the agent makes in its sell-side role about this publisher's inventory, such as webhooks about a media buy: a key MUST appear both here and in the JWKS of the agent's brand.json `agents[]` entry. A pin never adds a key and does not apply to the agent's other traffic. When more than one entry matches the agent and authorizes a message's scope, the agent is pinned for that message only if every such entry carries signing_keys, and the accepted keys are the union of their pins; an entry that authorizes nothing for the message neither pins nor unpins it (docs/governance/property/adagents.mdx#signing_keys). See docs/building/by-layer/L1/security.mdx#agent-resolution.",
       "items": {
         "$ref": "/schemas/core/agent-signing-key.json"
       },

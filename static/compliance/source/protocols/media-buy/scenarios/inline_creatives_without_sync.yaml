@@ -811,6 +811,9 @@ phases:
                 - creative_id: "acme-inline-product-scoped-display-v1"
                   name: "Acme Outdoor inline product-scoped display v1"
                   format_kind: "$context.canonical_format_kind"
+                  # Routes the manifest to the package's declaration (adcp#8625): the product
+                  # can declare several options of this format_kind.
+                  format_option_ref: "$context.canonical_declaration"
                   assets:
                     image:
                       asset_type: "image"
@@ -826,6 +829,8 @@ phases:
         context_inputs:
           - key: "format_option_scope_product"
             inject_at: "packages[0].format_option_refs[0].scope"
+          - key: "format_option_scope_product"
+            inject_at: "packages[0].creatives[0].format_option_ref.scope"
         context_outputs:
           - path: "media_buy_id"
             key: "product_scoped_media_buy_id"
@@ -876,6 +881,9 @@ phases:
                 - creative_id: "acme-inline-product-scoped-display-v2"
                   name: "Acme Outdoor inline product-scoped display v2"
                   format_kind: "$context.canonical_format_kind"
+                  # Routes the manifest to the package's declaration (adcp#8625): the product
+                  # can declare several options of this format_kind.
+                  format_option_ref: "$context.canonical_declaration"
                   assets:
                     image:
                       asset_type: "image"
@@ -889,6 +897,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_update_product_scoped"
           context:
             correlation_id: "inline_creatives_without_sync--update_product_scoped"
+        context_inputs:
+          - key: "format_option_scope_product"
+            inject_at: "packages[0].creatives[0].format_option_ref.scope"
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
@@ -1027,6 +1038,9 @@ phases:
                 - creative_id: "acme-inline-publisher-scoped-display-v1"
                   name: "Acme Outdoor inline publisher-scoped display v1"
                   format_kind: "$context.canonical_format_kind"
+                  # Routes the manifest to the package's declaration (adcp#8625): the product
+                  # can declare several options of this format_kind.
+                  format_option_ref: "$context.canonical_declaration"
                   assets:
                     image:
                       asset_type: "image"
@@ -1042,6 +1056,8 @@ phases:
         context_inputs:
           - key: "format_option_scope_publisher"
             inject_at: "packages[0].format_option_refs[0].scope"
+          - key: "format_option_scope_publisher"
+            inject_at: "packages[0].creatives[0].format_option_ref.scope"
         context_outputs:
           - path: "media_buy_id"
             key: "publisher_scoped_media_buy_id"
@@ -1092,6 +1108,9 @@ phases:
                 - creative_id: "acme-inline-publisher-scoped-display-v2"
                   name: "Acme Outdoor inline publisher-scoped display v2"
                   format_kind: "$context.canonical_format_kind"
+                  # Routes the manifest to the package's declaration (adcp#8625): the product
+                  # can declare several options of this format_kind.
+                  format_option_ref: "$context.canonical_declaration"
                   assets:
                     image:
                       asset_type: "image"
@@ -1105,6 +1124,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_update_publisher_scoped"
           context:
             correlation_id: "inline_creatives_without_sync--update_publisher_scoped"
+        context_inputs:
+          - key: "format_option_scope_publisher"
+            inject_at: "packages[0].creatives[0].format_option_ref.scope"
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"

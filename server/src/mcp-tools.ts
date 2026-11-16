@@ -24,6 +24,7 @@ import {
 import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
+import { decideEnrichmentPersistence } from "./services/enrichment-persistence-guard.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { bansDb } from "./db/bans-db.js";
 import { notifyRegistryCreate, notifyRegistryEdit } from "./notifications/registry.js";
@@ -1512,8 +1513,23 @@ export class MCPToolHandler {
           : undefined;
         const sourceType = 'enriched' as const;
 
-        // Save enrichment to DB for future cache hits
-        if (enrichment.success && enrichment.manifest) {
+        // Save enrichment to DB for future cache hits, under the same rules as
+        // GET /api/brands/enrich (#9024): no reserved names, no subdomains,
+        // and no new records from callers without an identity.
+        const persistence = enrichment.success && enrichment.manifest
+          ? decideEnrichmentPersistence({
+              requestedDomain: enrichment.domain,
+              brandfetchDomain: enrichment.raw?.domain,
+              authenticated: Boolean(
+                authContext?.sub && authContext.sub !== 'anonymous' && authContext.sub !== 'unknown'
+              ),
+              existingRecord: existingBrand,
+            })
+          : null;
+        if (persistence && !persistence.persist) {
+          logger.info({ domain: enrichDomain, reason: persistence.reason }, 'Enrichment result returned without saving it');
+        }
+        if (enrichment.success && enrichment.manifest && persistence?.persist) {
           brandDb.upsertDiscoveredBrand({
             domain: enrichment.domain,
             brand_name: enrichment.manifest.name,

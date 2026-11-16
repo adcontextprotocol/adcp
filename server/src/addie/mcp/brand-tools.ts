@@ -12,6 +12,7 @@ import { BrandDatabase } from '../../db/brand-db.js';
 import { isDomainControlVerified } from '../../services/brand-trust-fields.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from '../../services/brandfetch.js';
+import { decideEnrichmentPersistence } from '../../services/enrichment-persistence-guard.js';
 import { downloadAndCacheLogos, getBrandAssetUrl, isBrandfetchUrl } from '../../services/logo-cdn.js';
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { safeFetch } from '../../utils/url-security.js';
@@ -168,11 +169,24 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
 ];
 
+export interface BrandToolHandlerOptions {
+  /**
+   * Whether the conversation has an identified user (a WorkOS account), so
+   * `research_brand` may add a new enrichment record to the registry. Off by
+   * default: anonymous surfaces still get the lookup, but only refresh a
+   * record that already exists (#9024).
+   */
+  authenticated?: boolean;
+}
+
 /**
  * Create handlers for brand tools
  */
-export function createBrandToolHandlers(): Map<string, (args: Record<string, unknown>) => Promise<string>> {
+export function createBrandToolHandlers(
+  options: BrandToolHandlerOptions = {},
+): Map<string, (args: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<string>>();
+  const authenticated = options.authenticated === true;
 
   handlers.set('research_brand', async (args) => {
     const rawDomain = args.domain as string;
@@ -246,8 +260,20 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       });
     }
 
-    // Save enrichment to DB for future cache hits (download logos to our CDN first)
-    if (result.manifest) {
+    // Save enrichment to DB for future cache hits (download logos to our CDN
+    // first), under the shared registry write rules (#9024).
+    const persistence = result.manifest
+      ? decideEnrichmentPersistence({
+          requestedDomain: result.domain,
+          brandfetchDomain: result.raw?.domain,
+          authenticated,
+          existingRecord: existing,
+        })
+      : null;
+    if (persistence && !persistence.persist) {
+      logger.info({ domain, reason: persistence.reason }, 'Enrichment result returned without saving it');
+    }
+    if (result.manifest && persistence?.persist) {
       (async () => {
         try {
           const logos = result.manifest!.logos && result.manifest!.logos.length > 0

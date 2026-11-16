@@ -11,7 +11,9 @@ import {
   resolveHostedComplianceVersion,
   withHostedComplianceRunOptions,
   withHostedStoryboardRunOptions,
+  withHostedTestOptions,
 } from '../../src/services/hosted-compliance-version.js';
+import { prereleaseDiscoveryEnvelope } from '../../src/compliance/prerelease-discovery-envelope.js';
 
 type HostedComplianceVersionModule = typeof import('../../src/services/hosted-compliance-version.js');
 
@@ -176,5 +178,48 @@ describe('hosted run options register the served-release schema roots', () => {
       .toBe(custom);
     expect(withHostedStoryboardRunOptions({ servedReleaseSchemaRoots: custom }, target).servedReleaseSchemaRoots)
       .toBe(custom);
+  });
+});
+
+describe('hosted run options pin capability discovery for prerelease targets (adcp-client#3715)', () => {
+  // @adcp/sdk 17.0.0-beta.23+ discovers unpinned for a prerelease pin and
+  // profiles the agent's stable surface. An explicit `auto` envelope keeps
+  // discovery on the prerelease the run grades.
+  const builders = {
+    comply: (options: { versionEnvelope?: 'auto' | 'none' | 'major-only' }, target: ReturnType<typeof hostedComplianceTarget>) =>
+      withHostedComplianceRunOptions(options, target),
+    storyboard: (options: { versionEnvelope?: 'auto' | 'none' | 'major-only' }, target: ReturnType<typeof hostedComplianceTarget>) =>
+      withHostedStoryboardRunOptions(options, target),
+    test: (options: { versionEnvelope?: 'auto' | 'none' | 'major-only' }, target: ReturnType<typeof hostedComplianceTarget>) =>
+      withHostedTestOptions(options, target),
+  };
+
+  it.each(Object.entries(builders))('pins an exact prerelease target for %s', (_name, build) => {
+    const target = hostedComplianceTarget('3.3.0-beta.6');
+    expect(target.version).toBe('3.3.0-beta.6');
+    expect(build({}, target).versionEnvelope).toBe('auto');
+  });
+
+  it.each(Object.entries(builders))('leaves stable targets on the SDK default for %s', (_name, build) => {
+    for (const line of ['3.0', '3.1', '3.2']) {
+      const target = hostedComplianceTarget(line);
+      expect(target.version, line).toMatch(/^3\.[0-2]\.\d+$/);
+      expect(build({}, target).versionEnvelope, line).toBeUndefined();
+    }
+  });
+
+  it.each(Object.entries(builders))('keeps a caller-supplied envelope for %s', (_name, build) => {
+    expect(build({ versionEnvelope: 'major-only' }, hostedComplianceTarget('3.3.0-beta.6')).versionEnvelope)
+      .toBe('major-only');
+    expect(build({ versionEnvelope: 'auto' }, hostedComplianceTarget('3.2')).versionEnvelope).toBe('auto');
+  });
+
+  it('classifies release- and wire-precision prerelease pins', () => {
+    for (const pin of ['3.3.0-beta.6', '3.3-beta.6', '3.3.0-rc.0', '3.3-rc.0']) {
+      expect(prereleaseDiscoveryEnvelope(pin), pin).toBe('auto');
+    }
+    for (const pin of [undefined, '3', '3.2', '3.2.8', '3.3']) {
+      expect(prereleaseDiscoveryEnvelope(pin), String(pin)).toBeUndefined();
+    }
   });
 });

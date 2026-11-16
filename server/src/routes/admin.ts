@@ -31,6 +31,7 @@ import { setupDiscountRoutes } from "./admin/discounts.js";
 import { setupAccountRoutes } from "./admin/accounts.js";
 import { setupAccountsBillingRoutes } from "./admin/accounts-billing.js";
 import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
+import { setupBrandRegistryCleanupRoutes } from "./admin/brand-registry-cleanup.js";
 import { setupBanRoutes } from "./admin/bans.js";
 import { setupGeoRoutes } from "./admin/geo.js";
 import { setupAnnouncementsRoutes } from "./admin/announcements.js";
@@ -162,6 +163,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Brand registry enrichment routes (Brandfetch)
   setupBrandEnrichmentRoutes(apiRouter);
+
+  // Dry-run and audited removal of junk enrichment records (adcp#9024)
+  setupBrandRegistryCleanupRoutes(apiRouter);
 
   // Ban management and registry activity routes
   setupBanRoutes(pageRouter, apiRouter);

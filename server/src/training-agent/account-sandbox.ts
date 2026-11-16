@@ -127,9 +127,17 @@ export async function resetSandbox(principal: string | undefined): Promise<void>
   loaded.session.principalConfigurations.delete(loaded.key);
 }
 
+let wallClock: () => number = () => Date.now();
+
+/** Tests only: the wall clock an unpinned sandbox clock reads. Omit to
+ * restore `Date.now`. */
+export function setSandboxWallClockForTesting(clock?: () => number): void {
+  wallClock = clock ?? (() => Date.now());
+}
+
 export function sandboxNowMs(doc: SandboxDocument): number {
   const simulated = doc.simulated_now ? Date.parse(doc.simulated_now) : Number.NaN;
-  return Number.isFinite(simulated) ? simulated : Date.now();
+  return Number.isFinite(simulated) ? simulated : wallClock();
 }
 
 export function sandboxNowIso(doc: SandboxDocument): string {
