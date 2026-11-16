@@ -17,8 +17,8 @@ dist/docs/*
 # the runtime image.
 !dist/docs/3.2.8
 !dist/docs/3.2.8/**
-!dist/docs/3.3.0-beta.5
-!dist/docs/3.3.0-beta.5/**
+!dist/docs/3.3.0-beta.6
+!dist/docs/3.3.0-beta.6/**
 !dist/docs/3.1.32
 !dist/docs/3.1.32/**
 !dist/docs/3.0.28
