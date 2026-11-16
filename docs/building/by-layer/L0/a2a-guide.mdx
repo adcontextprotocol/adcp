@@ -779,7 +779,7 @@ await a2a.send({
 
 ## Agent Cards
 
-A2A agents advertise capabilities via Agent Cards at `.well-known/agent.json`.
+A2A agents advertise capabilities via Agent Cards at `.well-known/agent-card.json`.
 
 ### Discovering Agent Cards
 ```javascript
@@ -895,7 +895,7 @@ The A2A protocol uses an `extensions` array where each extension has:
 
 ```javascript
 // Check if agent supports AdCP
-const agentCard = await fetch('https://sales.example.com/.well-known/agent.json')
+const agentCard = await fetch('https://sales.example.com/.well-known/agent-card.json')
   .then(r => r.json());
 
 // Find the AdCP extension in the extensions array
