@@ -87,7 +87,7 @@ When `purchase_type` is omitted, the governance agent assumes `media_buy`.
 
 ### Budget reallocation
 
-`budget.reallocation_threshold` (required number) governs budget reallocation autonomy. It does not cover mandatory human review of decisions that affect data subjects — for that, see the plan-level `human_review_required` field.
+`budget.reallocation_threshold` (a number, required unless `budget.reallocation_unlimited` is `true`; the two are mutually exclusive) governs budget reallocation autonomy. It does not cover mandatory human review of decisions that affect data subjects — for that, see the plan-level `human_review_required` field.
 
 | Value | Meaning |
 |-------|---------|
