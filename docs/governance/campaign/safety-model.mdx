@@ -75,7 +75,7 @@ Budget is committed based on confirmed outcomes, not intended actions:
 
 If a seller reduces the amount, the governance agent commits the actual amount and flags the discrepancy. If the action fails, the governance agent commits zero. Budget state reflects reality, not intent.
 
-Concurrent media buys are handled through optimistic concurrency control or budget reservation, preventing concurrent approvals that together exceed the plan budget.
+Budget checks are point-in-time: `check_governance` validates against the current committed total and does not reserve budget, so concurrent approvals can together exceed the plan budget. The governance agent detects the overspend when outcomes are reported and returns a `budget_authority` finding. To prevent it, partition the budget across executing agents with per-agent `budget_limit` [delegations](/docs/governance/campaign/specification#delegations); stronger concurrency control is a deployment choice, not a protocol guarantee. See [budget tracking](/docs/governance/campaign/specification#budget-tracking).
 
 ## Two dimensions of autonomy
 
@@ -106,11 +106,11 @@ Every finding includes a human-readable `explanation` and structured `details` f
 
 The audit log surfaces aggregate metrics that detect oversight erosion over time:
 
-- **Human review rate** -- fraction of checks that required internal human review, with trend direction
+- **Escalation rate** -- fraction of checks escalated for human review, with trend direction
 - **Auto-approval rate** -- fraction of checks approved without human intervention
-- **Human override rate** -- fraction of human reviews where the human disagreed with the governance agent
+- **Human override rate** -- fraction of escalations where the human overrode the governance agent's recommendation
 
-Organizations set thresholds on these metrics. When a threshold is breached, the governance agent includes a finding on the next check. A declining human review rate may mean well-calibrated governance or eroding oversight -- the threshold breach surfaces the question so the organization can decide.
+Organizations set thresholds on these metrics. When a threshold is breached, the governance agent includes a finding on the next check. A declining escalation rate may mean well-calibrated governance or eroding oversight -- the threshold breach surfaces the question so the organization can decide.
 
 ## Multi-brand and agency governance
 
