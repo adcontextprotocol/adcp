@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-dimension-systems.json",
+  "title": "Reporting Dimension Systems",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Experimental (media_buy.reporting_subscriptions). The classification system behind each geography breakdown that has more than one, so a metro or postal breakdown names which codes its rows carry. On an offering it states the systems the offering reports in; on a subscription selector it narrows which offerings match. Rows for these dimensions carry codes in exactly these systems, the same values geo-delivery-metrics.json uses for geo_code.",
+  "type": "object",
+  "properties": {
+    "metro": {
+      "$ref": "/schemas/enums/metro-system.json",
+      "description": "Metro system of the metro breakdown, such as nielsen_dma. Required on an offering whose standard_dimensions include metro."
+    },
+    "postal_area": {
+      "type": "array",
+      "description": "Countries and their postal systems in the postal_area breakdown, each a native country-local postal system. Required on an offering whose standard_dimensions include postal_area.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$",
+            "description": "ISO 3166-1 alpha-2 country code."
+          },
+          "system": {
+            "$ref": "/schemas/enums/postal-system.json",
+            "description": "Country-local postal system, such as zip for US or outward for GB."
+          }
+        },
+        "required": ["country", "system"],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": true
+}

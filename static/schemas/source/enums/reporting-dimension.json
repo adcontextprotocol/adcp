@@ -8,12 +8,13 @@
   "type": "string",
   "x-extensible": true,
   "x-pattern": "^[a-z][a-z0-9_]*$",
-  "enum": ["package", "creative", "country", "region", "metro"],
+  "enum": ["package", "creative", "country", "region", "metro", "postal_area"],
   "enumDescriptions": {
     "package": "One row per media-buy package. A contract_version 1.2 report definition names this breakdown with its package_id dimension.",
     "creative": "One row per creative.",
     "country": "One row per ISO 3166-1 country.",
     "region": "One row per ISO 3166-2 subdivision.",
-    "metro": "One row per metro area, such as a Nielsen DMA."
+    "metro": "One row per metro area in one metro system, such as Nielsen DMAs. dimension_systems.metro names the system.",
+    "postal_area": "One row per postal area in one country's postal system, such as US ZIP codes. dimension_systems.postal_area names the country and system."
   }
 }

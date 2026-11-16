@@ -88,6 +88,12 @@
           "enum": ["exact", "finest", "all"],
           "description": "exact selects the offering whose dimension set equals dimensions; native dimensions that do not map to the vocabulary count as distinct, so package by device does not equal package. finest selects the single offering with the most mapped dimensions among those including every selector dimension. Ties under exact and finest go to the lowest offering_id in byte order. all selects every offering including every selector dimension, each with its own obligations. Defaults to exact when dimensions is present and finest when it is absent. With match exact and no dimensions, every candidate qualifies and the lowest offering_id wins. Matching reads each offering's standard_dimensions and unmapped_dimensions. Billing subscriptions MUST use exact with dimensions, so a billing feed's breakdown never depends on which offerings happen to exist."
         },
+        "dimension_systems": {
+          "$ref": "/schemas/core/reporting-dimension-systems.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Optional. Narrows a metro or postal_area breakdown to the systems named here: an offering matches only when its dimension_systems.metro equals this metro, and its dimension_systems.postal_area includes every entry here. Each key it sets must also be in dimensions. Omit a key to accept any system for that dimension."
+        },
         "period_timezone": {
           "type": "string",
           "minLength": 1,
