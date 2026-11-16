@@ -1,0 +1,335 @@
+id: media_buy_seller/owner_sold_channel_carriage
+version: 1.0.1
+introduced_in: "3.2"
+title: Seller accepts declared cross-publisher collection selectors and rejects invalid selectors
+category: media_buy_seller
+summary:
+  Independently grades any collection support with at least 1 distinct domain-qualified pair
+  and a structural cross-publisher relation.
+track: media_buy
+requires:
+  - controller
+required_tools:
+  - create_media_buy
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
+narrative: >-
+  Applicability comes only from fully paginated, schema-valid wholesale sandbox discovery. Select
+  one seller-owned non-guaranteed product and a fixed-price CPM option from that SAME product. No
+  collection product or price is seeded. A completed valid no-match is fixture_unsatisfied: feature
+  not tested, not a pass or proof of nonsupport. Discovery, pagination, schema, capture and
+  selected-path failures remain failures.
+
+
+  This scope resolves independently of the other collection scopes. One-pair default and
+  fixed-restatement coverage do not require a two-pair subset fixture. Fixed targeting accepts
+  either literal false or omission of collection_targeting_allowed. Pair identity includes both
+  publisher_domain and collection_id; grouping, order and legal catalog redundancy do not change the
+  set.
+
+
+  Cross-publisher means a retained collection namespace outside ALL publisher_properties domains of
+  the SAME product. The subset and undeclared-selector witnesses retain that relation; one external
+  plus one local pair suffices for a two-pair scope. This structural fact proves neither beneficial
+  ownership, host authorization, channel kind nor a verified supply path. This storyboard does not
+  fetch adagents.json or evaluate the owner-sold verification ladder.
+
+
+  This core scope grades create and rejection assertions independently of get_media_buys. Separate
+  readback companions cover persisted subset/default selection under their own advertised reader
+  gate. Required arrays, exact buy/package identities and concrete echoes remain graded.
+  Seeded-only, brief-only, guaranteed and auction-priced collection support is outside this catalog
+  slice. A controller without seed_account yields fixture_seed_unsupported; an absent controller
+  yields missing_test_controller.
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - A seller offering native collection-bearing sandbox products
+caller:
+  role: buyer_agent
+  example: Pinnacle Agency (buyer)
+prerequisites:
+  description:
+    Establish one isolated sandbox account, then discover the native product and its scoped
+    price. The repository catalog fixture caller prepares this graph once for full or standalone
+    execution, derives a valid budget from its whole selected price snapshot, and projects canonical
+    full selectors from the protected declaration. Null caller-derived context defaults are
+    unprepared sentinels, never fabricated selectors. Direct SDK callers must perform the same
+    preparation and projection before consuming this storyboard.
+  test_kit: test-kits/acme-outdoor.yaml
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: sandbox_owner_sold_channel_carriage
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
+        operator_unit:
+          id: compliance-media_buy_seller_owner_sold_channel_-f9c89a59
+        sandbox: true
+        billing: operator
+        status: active
+  products:
+    - product_id: catalog_collection_product
+  pricing_options:
+    - product_id: catalog_collection_product
+      pricing_option_id: catalog_collection_fixed_cpm
+fixture_resolution:
+  products:
+    - handle: catalog_collection_product
+      strategies:
+        - discover
+      match:
+        - path: ""
+          operator: collection_selection_satisfies
+          value:
+            collection_targeting: any
+            minimum_pairs: 1
+            require_cross_publisher_collection: true
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /pricing_options
+          operator: any_match
+          where:
+            - path: /pricing_model
+              operator: equals
+              value: cpm
+            - path: /fixed_price
+              operator: present
+      context_outputs:
+        - key: __adcp_fixture_collection_declared
+          witness: declared_selectors
+        - key: __adcp_fixture_collection_product_id
+          path: product_id
+        - key: __adcp_fixture_collection_relation
+          witness: cross_publisher_relation
+        - key: __adcp_fixture_collection_unknown_id
+          witness: undeclared_collection_id_selectors
+        - key: __adcp_fixture_collection_unknown_domain
+          witness: undeclared_publisher_domain_selectors
+  pricing_options:
+    - handle: catalog_collection_fixed_cpm
+      product_handle: catalog_collection_product
+      strategies:
+        - discover
+      match:
+        - path: /pricing_model
+          operator: equals
+          value: cpm
+        - path: /fixed_price
+          operator: present
+      context_outputs:
+        - key: __adcp_fixture_collection_price
+          snapshot: selected_entity
+context:
+  catalog_collection_budget: 1000
+  catalog_collection_full_selectors: null
+  catalog_collection_bulk_selectors: null
+  brand:
+    domain: acmeoutdoor.example
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_owner_sold_channel_-f9c89a59
+    sandbox: true
+  sandbox_account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_owner_sold_channel_-f9c89a59
+    sandbox: true
+  sandbox_brand:
+    domain: acmeoutdoor.example
+phases:
+  - id: commit_selection
+    title: Grade the independently selected collection product
+    steps:
+      - id: create_selection
+        title: Purchase the catalog-qualified concrete collection set
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        sample_request:
+          brand: $context.sandbox_brand
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_owner_sold_channel_-f9c89a59
+            sandbox: true
+          idempotency_key: $generate:uuid_v4#owner_sold_channel_carriage_create_selection
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
+              targeting_overlay:
+                collection_selection:
+                  mode: selected
+                  collections: $context.catalog_collection_full_selectors
+        expected:
+          Accept the selection on the discovered product. Echo exactly the committed concrete
+          domain-qualified set in selected mode; default materializes the complete catalog
+          composition.
+        validations:
+          - check: response_schema
+            description: The response matches the canonical create-media-buy schema
+          - check: field_present
+            path: media_buy_id
+            description: The seller assigns the committed buy identity
+          - check: field_equals_context
+            path: packages[0].product_id
+            context_key: __adcp_fixture_collection_product_id
+            description: The response echoes the explicit SAME selected product identity
+          - check: array_length
+            path: packages
+            value: 1
+            description: The one-package request produces exactly one committed package
+          - check: field_value
+            path: packages[0].targeting_overlay.collection_selection.mode
+            value: selected
+            description: Package readback materializes concrete selected-form collection selectors
+          - check: collection_set_equals_context
+            path: packages[0].targeting_overlay.collection_selection.collections
+            context_key: __adcp_fixture_collection_declared
+            description:
+              The committed set exactly matches the selected product witness, preserving publisher
+              namespaces without widening
+        context_outputs:
+          - name: collection_media_buy_id
+            path: media_buy_id
+          - name: collection_package_id
+            path: packages[0].package_id
+          - name: collection_committed_product_id
+            path: packages[0].product_id
+          - name: collection_committed_selectors
+            path: packages[0].targeting_overlay.collection_selection.collections
+      - id: reject_bulk_grant_form
+        title: Reject an authorization-only domain selector as buyer selection
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expect_error: true
+        negative_path: schema_invalid
+        sample_request:
+          brand: $context.sandbox_brand
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_owner_sold_channel_-f9c89a59
+            sandbox: true
+          idempotency_key: $generate:uuid_v4#owner_sold_channel_carriage_reject_bulk_grant_form
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
+              targeting_overlay:
+                collection_selection:
+                  mode: selected
+                  collections: $context.catalog_collection_bulk_selectors
+        expected:
+          Reject with INVALID_REQUEST; preserve the requested selectors rather than substituting a
+          supported set.
+        validations:
+          - check: error_code
+            allowed_values:
+              - INVALID_REQUEST
+            description:
+              The protocol distinguishes invalid shapes, unknown references and unsupported
+              fixed-bundle narrowing
+      - id: reject_unknown_collection_id
+        title: Reject a collision-checked undeclared domain-qualified collection ID
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          brand: $context.sandbox_brand
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_owner_sold_channel_-f9c89a59
+            sandbox: true
+          idempotency_key: $generate:uuid_v4#owner_sold_channel_carriage_reject_unknown_collection_id
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
+              targeting_overlay:
+                collection_selection:
+                  mode: selected
+                  collections: $context.__adcp_fixture_collection_unknown_id
+        expected:
+          Reject with REFERENCE_NOT_FOUND; preserve the requested selectors rather than substituting
+          a supported set.
+        validations:
+          - check: error_code
+            allowed_values:
+              - REFERENCE_NOT_FOUND
+            description:
+              The protocol distinguishes invalid shapes, unknown references and unsupported
+              fixed-bundle narrowing
+      - id: reject_unknown_publisher_domain
+        title: Reject a collection namespace absent from the SAME complete product
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          brand: $context.sandbox_brand
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_owner_sold_channel_-f9c89a59
+            sandbox: true
+          idempotency_key: $generate:uuid_v4#owner_sold_channel_carriage_reject_unknown_publisher_domain
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
+              targeting_overlay:
+                collection_selection:
+                  mode: selected
+                  collections: $context.__adcp_fixture_collection_unknown_domain
+        expected:
+          Reject with REFERENCE_NOT_FOUND; preserve the requested selectors rather than substituting
+          a supported set.
+        validations:
+          - check: error_code
+            allowed_values:
+              - REFERENCE_NOT_FOUND
+            description:
+              The protocol distinguishes invalid shapes, unknown references and unsupported
+              fixed-bundle narrowing
