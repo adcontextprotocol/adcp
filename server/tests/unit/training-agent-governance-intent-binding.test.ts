@@ -921,6 +921,54 @@ describe('check_governance request-shape binding', () => {
     expect(result).not.toHaveProperty('governance_context');
   });
 
+  // adcp#8733 A4: mode does not approve a failed approved_sellers or delegations evaluation.
+  it.each(['advisory', 'audit'])('denies an intent whose target seller is outside approved_sellers in %s mode', async (mode) => {
+    const { result, audit } = await withPlan(async () => {
+      const resync = await handleSyncPlans({
+        plans: [{ ...PLAN, mode, approved_sellers: ['https://approved-seller.example'] }],
+      }, CTX) as Record<string, any>;
+      expect(resync.errors, JSON.stringify(resync)).toBeUndefined();
+      const result = await approvedIntent();
+      return { result, audit: await ownerAudit() };
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.verdict).toBe('denied');
+    expect(result.check_id).toEqual(expect.any(String));
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ category_id: 'seller_compliance', severity: 'critical' }),
+    );
+    expect(result).not.toHaveProperty('governance_context');
+    expect(audit.plans[0].entries).toContainEqual(expect.objectContaining({
+      id: result.check_id,
+      type: 'check',
+      verdict: 'denied',
+    }));
+  });
+
+  it.each(['advisory', 'audit'])('denies an intent from a caller outside delegations in %s mode', async (mode) => {
+    const result = await withPlan(async () => {
+      const resync = await handleSyncPlans({
+        plans: [{ ...PLAN, mode, delegations: [{ agent_url: 'https://delegate.example', authority: 'full', budget_limit: { amount: 500, currency: 'USD' } }] }],
+      }, CTX) as Record<string, any>;
+      expect(resync.errors, JSON.stringify(resync)).toBeUndefined();
+      return handleCheckGovernance({
+        plan_id: PLAN.plan_id,
+        caller: 'https://delegate.example',
+        target_agent: 'https://seller.example',
+        tool: 'create_media_buy',
+        payload: { total_budget: { amount: 1_000, currency: 'USD' } },
+      }, { ...CTX, authenticatedAgentUrl: 'https://delegate.example' }) as Promise<Record<string, any>>;
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.verdict).toBe('denied');
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ category_id: 'delegation_authority', severity: 'critical' }),
+    );
+    expect(result).not.toHaveProperty('governance_context');
+  });
+
   it('keeps PERMISSION_DENIED for an unauthenticated execution check and writes no audit entry', async () => {
     const { result, audit } = await withPlan(async () => {
       const intent = await approvedIntent();

@@ -1747,7 +1747,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const denyBeforeEvaluation = (
     finding: GovernanceFinding,
     explanation: string,
-    extra: Partial<Pick<GovernanceCheckState, 'planOwnerAgentUrl' | 'tool' | 'governanceContext'>> = {},
+    extra: Partial<Pick<GovernanceCheckState, 'planOwnerAgentUrl' | 'tool'>> = {},
   ) => {
     const checkId = `chk_${randomUUID().slice(0, 8)}`;
     const check: GovernanceCheckState = {
@@ -1923,12 +1923,17 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     };
   }
 
+  // One response for a plan that does not exist and for a plan the caller
+  // cannot access (error-code.json PLAN_NOT_FOUND, uniform-response rule).
+  // Nothing is stored and no check_id is issued.
   if (!plan) {
-    return denyBeforeEvaluation(
-      { categoryId: 'plan_lookup', severity: 'critical', explanation: `Plan not found: ${planId}` },
-      `Plan not found: ${planId}. Call sync_plans first.`,
-      { governanceContext },
-    );
+    return {
+      errors: [{
+        code: 'PLAN_NOT_FOUND',
+        message: 'No plan with this plan_id exists or is accessible to the caller. Call sync_plans first.',
+        field: 'plan_id',
+      }],
+    };
   }
 
   const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
@@ -2627,9 +2632,15 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 
   // Apply governance mode — but mode CANNOT neuter human_review_required.
   // Annex III / Art 22 obligations override advisory/audit downgrades.
+  // Mode also cannot approve an authority failure (adcp#8733 A4): a failed
+  // approved_sellers or delegations evaluation is denied in every mode.
   const mode = plan.mode;
+  const authorityFailed = criticalFindings.some(finding =>
+    finding.categoryId === 'seller_compliance' || finding.categoryId === 'delegation_authority');
   if (!plan.humanReviewRequired) {
-    if (mode === 'advisory' && (status === 'denied' || status === 'conditions')) {
+    if (authorityFailed) {
+      // Leave the denial in place.
+    } else if (mode === 'advisory' && (status === 'denied' || status === 'conditions')) {
       status = 'approved';
     } else if (mode === 'audit') {
       status = 'approved';

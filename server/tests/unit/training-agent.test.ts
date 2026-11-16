@@ -18966,8 +18966,8 @@ describe('sync_plans input validation', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
     });
-    expect(result.status).toBe('denied');
-    expect(result.explanation).toContain('Plan not found');
+    expect(result.code).toBe('PLAN_NOT_FOUND');
+    expect(result.field).toBe('plan_id');
   });
 });
 
