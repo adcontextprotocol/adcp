@@ -116,7 +116,7 @@ These are the wire-level hooks deployers implement. They are seams, not guarante
 | Contestation contact point | `brand.data_subject_contestation` | Discoverable endpoint; deployer operates the process |
 | Request signing | RFC 9421 `Signature` / `Signature-Input` headers | Normative in 3.1; allowed in 3.0 |
 | Governance attestation | JWS-signed `governance_context` on `create_media_buy` | Verifiable by seller independently |
-| Regulated-category block | Schema-level rejection of `authority_level: agent_full` on `fair_housing`, `fair_lending`, `fair_employment` | Three categories only; others require governance-agent implementation |
+| Regulated-category block | Schema-level rejection of `human_review_required: false` on `fair_housing`, `fair_lending`, `fair_employment` | Three categories only; others require governance-agent implementation |
 | Brand identity declaration | `brand.json` `house`, `brands[]`, `authorized_operators[]`, house-level `trademarks[]` | Discoverable; deployer / ecosystem resolves against public registries |
 | Mutual-assertion trust state | `brand.json` `house_domain` ↔ `brand_refs[]` (RFC #3533) | `relationship_trust` signal; deployer policy decides what's required |
 | Agent identity | `brand.json` `agents[].jwks_uri` (RFC 9421 profile, deprecated in 3.3), or the agent origin's key directory plus a trust.json listing (Web Bot Auth profile, experimental in 3.3); `adagents.json` `signing_keys` | Verifiable signing keys; key-transparency layer is 4.0 |

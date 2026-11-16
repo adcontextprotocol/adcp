@@ -70,3 +70,146 @@ export const UNAUTHORIZED_CASES: readonly AgentUrlMatchCase[] = [
   { entry: 'https://agent.example.com/?tenant=acme', agent: 'https://agent.example.com/mcp', why: 'root path with a query is not origin-only' },
   { entry: 'https://agent.example.com/?', agent: 'https://agent.example.com/mcp', why: 'root path with an empty query is not origin-only' },
 ];
+
+/**
+ * `signing_keys` when more than one entry matches one agent (#9016,
+ * docs/governance/property/adagents#agent-url-matching): the agent is pinned
+ * only if every matching entry pins (an absent or empty `signing_keys` is
+ * unpinned), and then it may sign with the union of their keys.
+ *
+ * Each key is identified by its `kid`; `expectedKids` is the union in
+ * document order, or `null` for unpinned (no restriction). Shared by the
+ * combination unit test, the `AgentValidator` unit test and the registry
+ * directory integration test (`signing_keys_pinned` is `expectedKids !==
+ * null`).
+ */
+export interface SigningKeyEntry {
+  url: string;
+  /** `kid`s of the keys this entry pins; omitted for no `signing_keys`. */
+  kids?: string[];
+  /** An `effective_until` for the entry; a past one means it authorizes nothing. */
+  effectiveUntil?: string;
+}
+
+export interface SigningKeyMatchCase {
+  why: string;
+  agent: string;
+  entries: readonly SigningKeyEntry[];
+  expectedKids: string[] | null;
+}
+
+const SK_ORIGIN = 'https://signer.example.com';
+const SK_AGENT = 'https://signer.example.com/mcp';
+
+export const SIGNING_KEY_CASES: readonly SigningKeyMatchCase[] = [
+  // The issue's example, in both entry orders.
+  {
+    why: 'origin unpinned, /mcp pinned: unpinned for /mcp',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN }, { url: SK_AGENT, kids: ['k1'] }],
+    expectedKids: null,
+  },
+  {
+    why: '/mcp pinned, origin unpinned (reverse order): unpinned for /mcp',
+    agent: SK_AGENT,
+    entries: [{ url: SK_AGENT, kids: ['k1'] }, { url: SK_ORIGIN }],
+    expectedKids: null,
+  },
+  {
+    why: 'origin pinned, /mcp unpinned: unpinned for /mcp',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: ['k1'] }, { url: SK_AGENT }],
+    expectedKids: null,
+  },
+  {
+    why: 'an empty signing_keys array is unpinned',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: [] }, { url: SK_AGENT, kids: ['k1'] }],
+    expectedKids: null,
+  },
+  // Both pin: the union.
+  {
+    why: 'both pinned with different keys: the union',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: ['k1'] }, { url: SK_AGENT, kids: ['k2'] }],
+    expectedKids: ['k1', 'k2'],
+  },
+  {
+    why: 'both pinned with different keys, reverse order: the union in document order',
+    agent: SK_AGENT,
+    entries: [{ url: SK_AGENT, kids: ['k2'] }, { url: SK_ORIGIN, kids: ['k1'] }],
+    expectedKids: ['k2', 'k1'],
+  },
+  {
+    why: 'both pinned with overlapping keys: a shared key appears once',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: ['k1', 'k2'] }, { url: SK_AGENT, kids: ['k2', 'k3'] }],
+    expectedKids: ['k1', 'k2', 'k3'],
+  },
+  // An entry that does not match the agent never pins it nor unpins it.
+  {
+    why: 'an unpinned entry for another path does not unpin the agent',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: ['k1'] }, { url: 'https://signer.example.com/a2a' }],
+    expectedKids: ['k1'],
+  },
+  {
+    why: 'an unpinned /mcp/ entry does not unpin /mcp (trailing slash is significant)',
+    agent: SK_AGENT,
+    entries: [{ url: SK_AGENT, kids: ['k1'] }, { url: `${SK_AGENT}/` }],
+    expectedKids: ['k1'],
+  },
+  {
+    why: 'a pinned entry for another path adds no key',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: ['k1'] }, { url: 'https://signer.example.com/a2a', kids: ['k9'] }],
+    expectedKids: ['k1'],
+  },
+  {
+    why: 'agent at the origin: an unpinned /mcp entry does not match it',
+    agent: SK_ORIGIN,
+    entries: [{ url: SK_ORIGIN, kids: ['k1'] }, { url: SK_AGENT }],
+    expectedKids: ['k1'],
+  },
+  // An entry outside its effective window authorizes nothing.
+  {
+    why: 'an expired unpinned origin entry does not unpin /mcp',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, effectiveUntil: '2020-01-01T00:00:00Z' }, { url: SK_AGENT, kids: ['k1'] }],
+    expectedKids: ['k1'],
+  },
+  {
+    why: 'an expired pinned entry adds no key and does not keep a pin',
+    agent: SK_AGENT,
+    entries: [{ url: SK_ORIGIN, kids: ['k9'], effectiveUntil: '2020-01-01T00:00:00Z' }, { url: SK_AGENT }],
+    expectedKids: null,
+  },
+  // The 3.2 path: one exact match reads exactly as before.
+  {
+    why: 'one exact entry, pinned: its own keys',
+    agent: SK_AGENT,
+    entries: [{ url: SK_AGENT, kids: ['k1', 'k2'] }],
+    expectedKids: ['k1', 'k2'],
+  },
+  {
+    why: 'one exact entry, unpinned: no restriction',
+    agent: SK_AGENT,
+    entries: [{ url: SK_AGENT }],
+    expectedKids: null,
+  },
+];
+
+/** The JWK a fixture `kid` stands for. */
+export function fixtureSigningKey(kid: string): { kid: string; kty: 'OKP'; crv: 'Ed25519'; alg: 'EdDSA'; x: string } {
+  return { kid, kty: 'OKP', crv: 'Ed25519', alg: 'EdDSA', x: `x-${kid}` };
+}
+
+/** The `authorized_agents[]` entries a signing-key case lists. */
+export function signingKeyCaseEntries(entries: readonly SigningKeyEntry[]): Array<Record<string, unknown>> {
+  return entries.map(({ url, kids, effectiveUntil }) => ({
+    url,
+    authorized_for: 'Direct',
+    ...(kids ? { signing_keys: kids.map(fixtureSigningKey) } : {}),
+    ...(effectiveUntil ? { effective_until: effectiveUntil } : {}),
+  }));
+}

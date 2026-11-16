@@ -587,8 +587,9 @@ async function initializeChatClient(): Promise<void> {
 
   // Directory tools are registered globally (above) — skip here.
 
-  // Brand tools (research, resolve, save, list brands)
-  const brandHandlers = createBrandToolHandlers();
+  // Brand tools (research, resolve, save, list brands). This set is only
+  // served to signed-in users, so research_brand may create registry records.
+  const brandHandlers = createBrandToolHandlers({ authenticated: true });
   for (const tool of BRAND_TOOLS) {
     const handler = brandHandlers.get(tool.name);
     if (handler) {

@@ -153,6 +153,7 @@ import {
   AgentVerificationSchema,
   StoryboardStatusSchema,
   StoryboardSkippedStepSchema,
+  StoryboardVerdictExplanationSchema,
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
   ComplianceRunSchema,
@@ -258,6 +259,7 @@ import {
   runWithComplianceRefreshAuthorizationWatchdog,
 } from "../services/compliance-refresh-authorization.js";
 import { getSandboxBrand } from "../services/sandbox-brands.js";
+import { decideEnrichmentPersistence } from "../services/enrichment-persistence-guard.js";
 import { publicEditorName } from "./registry-revision-access.js";
 
 const RegistryAdminAuthorizationUnavailableSchema = z.object({
@@ -754,6 +756,7 @@ type StoryboardStatusLike = {
   first_failure_message?: string | null;
   first_failure_validations_jsonb?: unknown;
   skipped_steps?: unknown;
+  verdict_explanation?: unknown;
   run_org_id?: string | null;
   last_tested_at?: Date | string | null;
   last_passed_at?: Date | string | null;
@@ -784,6 +787,41 @@ function normalizeSkippedSteps(value: unknown): Array<Record<(typeof SKIPPED_STE
     ])) as Record<(typeof SKIPPED_STEP_FIELDS)[number], string | null>);
 }
 
+const VERDICT_CONTRIBUTOR_STRING_FIELDS = [
+  "kind", "id", "reason", "status", "phase_id", "skip_reason", "requirement", "message",
+] as const;
+
+type SerializedVerdictContributor =
+  Record<(typeof VERDICT_CONTRIBUTOR_STRING_FIELDS)[number], string | null> & { pass_index: number | null };
+
+/**
+ * Re-shape the stored storyboard-level verdict explanation (adcp#8576) into
+ * the documented response shape, dropping anything unexpected in the JSONB.
+ */
+function normalizeVerdictExplanation(value: unknown): {
+  reason: string;
+  detail: string | null;
+  contributing: SerializedVerdictContributor[];
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.reason !== "string" || record.reason.length === 0) return null;
+  const rows = Array.isArray(record.contributing) ? record.contributing : [];
+  return {
+    reason: record.reason,
+    detail: typeof record.detail === "string" ? record.detail : null,
+    contributing: rows
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === "object" && !Array.isArray(row))
+      .map((row) => ({
+        ...Object.fromEntries(VERDICT_CONTRIBUTOR_STRING_FIELDS.map((field) => [
+          field,
+          typeof row[field] === "string" ? row[field] as string : null,
+        ])),
+        pass_index: typeof row.pass_index === "number" && Number.isInteger(row.pass_index) ? row.pass_index : null,
+      }) as SerializedVerdictContributor),
+  };
+}
+
 function serializeStoryboardRunStatus(
   s: StoryboardStatusLike,
   options: { includeDiagnostics?: boolean } = {},
@@ -804,6 +842,9 @@ function serializeStoryboardRunStatus(
       ? normalizeValidationList(s.first_failure_validations_jsonb)
       : [],
     skipped_steps: includeDiagnostics ? normalizeSkippedSteps(s.skipped_steps) : [],
+    // Owner/operator only, like every other diagnostic field: the public
+    // compliance surface says details are available to the owner or operator.
+    verdict_explanation: includeDiagnostics ? normalizeVerdictExplanation(s.verdict_explanation) : null,
   };
 }
 
@@ -2015,7 +2056,12 @@ const AgentPublishersEntrySchema = z.object({
   property_ids: z.array(z.string()).optional().openapi({
     description: "Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.",
   }),
-  signing_keys_pinned: z.boolean(),
+  signing_keys_pinned: z.boolean().openapi({
+    description:
+      "Scope-agnostic summary: true only when every in-window authorized_agents entry " +
+      "that matches the agent carries signing_keys. Verifiers compute the pin per " +
+      "message scope, so a pin can apply where this reads false.",
+  }),
   status: z.enum(["authorized", "revoked"]),
   last_verified_at: z.string().datetime(),
 });
@@ -3479,7 +3525,11 @@ const AuthorizationRowSchema = z.object({
       "Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source " +
       "adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. " +
       "Null when the publisher declared no keys; consumers fall back to the " +
-      "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).",
+      "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx). " +
+      "This is one entry's pin. Rows from the same publisher combine per message " +
+      "scope: among the rows that authorize that scope, the publisher pins the agent " +
+      "only if every one carries keys, and the pin is the union of their keys " +
+      "(docs/governance/property/adagents.mdx#agent-url-matching).",
   }),
   collections: z
     .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
@@ -5303,6 +5353,7 @@ const StoryboardRunStatusResponseSchema = z.object({
   first_failure_message: z.string().nullable(),
   first_failure_validations: z.array(z.any()),
   skipped_steps: z.array(StoryboardSkippedStepSchema),
+  verdict_explanation: StoryboardVerdictExplanationSchema.nullable(),
 });
 
 const StoryboardRunDiagnosticResponseSchema = z.object({
@@ -5921,7 +5972,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : undefined;
       const sourceType = enrichment.raw ? 'enriched' : undefined;
 
-      if (enrichment.raw && enrichment.manifest) {
+      // Anyone may look a domain up, but only an identified caller may add
+      // the answer to the public registry, and never under a reserved name
+      // or a subdomain (#9024). The response is the same either way.
+      const persistence = enrichment.raw && enrichment.manifest
+        ? decideEnrichmentPersistence({
+            requestedDomain: enrichment.domain,
+            brandfetchDomain: enrichment.raw.domain,
+            authenticated: includeContext,
+            existingRecord: existing,
+          })
+        : null;
+      if (persistence && !persistence.persist) {
+        logger.info({ domain, reason: persistence.reason }, 'Enrichment result returned without saving it');
+      }
+
+      if (enrichment.raw && enrichment.manifest && persistence?.persist) {
         brandDb.upsertDiscoveredBrand({
           domain: enrichment.domain,
           brand_name: enrichment.manifest.name,

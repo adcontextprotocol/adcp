@@ -343,6 +343,173 @@ describe('GET /api/brands/enrich', () => {
   });
 });
 
+describe('GET /api/brands/enrich registry write rules (#9024)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.isBrandfetchConfigured.mockReturnValue(true);
+  });
+
+  function brandfetchHit(domain: string, brandDomain = domain) {
+    return {
+      success: true,
+      domain,
+      raw: { id: 'bf_1', name: 'Nova Brands', domain: brandDomain, claimed: true, verified: true },
+      manifest: { name: 'Nova Brands', url: `https://${brandDomain}`, description: 'Fictional brand.' },
+      highQuality: true,
+    };
+  }
+
+  function emptyRegistry() {
+    return {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      upsertDiscoveredBrand: vi.fn().mockResolvedValue({}),
+    };
+  }
+
+  it('does not save a reserved name, and still answers the lookup', async () => {
+    const brandDb = emptyRegistry();
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('novabrands-ai-9384-20260918t0035z.example.org'));
+
+    const res = await request(buildApp(brandDb, true))
+      .get('/api/brands/enrich?domain=novabrands-ai-9384-20260918t0035z.example.org');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      domain: 'novabrands-ai-9384-20260918t0035z.example.org',
+      cached: false,
+      manifest: { name: 'Nova Brands' },
+      source_type: 'enriched',
+    });
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
+  it('does not save a subdomain as its own brand', async () => {
+    const brandDb = emptyRegistry();
+    mocks.fetchBrandData.mockResolvedValue(
+      brandfetchHit('e2e-1787388722440-443399.novabrands.com', 'novabrands.com'),
+    );
+
+    const res = await request(buildApp(brandDb, true))
+      .get('/api/brands/enrich?domain=e2e-1787388722440-443399.novabrands.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      domain: 'e2e-1787388722440-443399.novabrands.com',
+      manifest: { name: 'Nova Brands', url: 'https://novabrands.com' },
+    });
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
+  it('does not save a result Brandfetch answered with another domain', async () => {
+    const brandDb = emptyRegistry();
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('novabrands.net', 'novabrands.com'));
+
+    const res = await request(buildApp(brandDb, true)).get('/api/brands/enrich?domain=novabrands.net');
+
+    expect(res.status).toBe(200);
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
+  it('does not let an unauthenticated lookup create a record', async () => {
+    const brandDb = emptyRegistry();
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com'));
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/enrich?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true, domain: 'acme.com', cached: false, source_type: 'enriched' });
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
+  it('lets an unauthenticated lookup refresh a stale enriched record', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        id: 'brand-1',
+        domain: 'acme.com',
+        has_brand_manifest: true,
+        brand_manifest: { name: 'Acme', url: 'https://acme.com' },
+        source_type: 'enriched',
+        last_validated: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      }),
+      upsertDiscoveredBrand: vi.fn().mockResolvedValue({}),
+    };
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com'));
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/enrich?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.cached).toBe(false);
+    expect(brandDb.upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({
+      domain: 'acme.com',
+      source_type: 'enriched',
+    }));
+  });
+
+  it('does not let an anonymous lookup of a www. row create the apex record', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        id: 'brand-www',
+        domain: 'www.acme.com',
+        has_brand_manifest: true,
+        brand_manifest: { name: 'Acme', url: 'https://acme.com' },
+        source_type: 'enriched',
+        last_validated: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      }),
+      upsertDiscoveredBrand: vi.fn().mockResolvedValue({}),
+    };
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com'));
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/enrich?domain=www.acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true, domain: 'acme.com' });
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
+  it('still saves an authenticated lookup of a registrable domain', async () => {
+    const brandDb = emptyRegistry();
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com'));
+
+    const res = await request(buildApp(brandDb, true)).get('/api/brands/enrich?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(brandDb.upsertDiscoveredBrand).toHaveBeenCalledWith({
+      domain: 'acme.com',
+      brand_name: 'Nova Brands',
+      brand_manifest: {
+        name: 'Nova Brands',
+        url: 'https://acme.com',
+        description: 'Fictional brand.',
+        logos: undefined,
+        colors: undefined,
+        fonts: undefined,
+      },
+      has_brand_manifest: true,
+      source_type: 'enriched',
+      enrichment_provider: 'brandfetch',
+    });
+  });
+
+  it('returns the same response whether or not the result is saved', async () => {
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com'));
+    const saved = emptyRegistry();
+    const savedRes = await request(buildApp(saved, true)).get('/api/brands/enrich?domain=acme.com');
+    expect(saved.upsertDiscoveredBrand).toHaveBeenCalledTimes(1);
+
+    mocks.fetchBrandData.mockResolvedValue(brandfetchHit('acme.com', 'acme-parent.com'));
+    const refused = emptyRegistry();
+    const refusedRes = await request(buildApp(refused, true)).get('/api/brands/enrich?domain=acme.com');
+    expect(refused.upsertDiscoveredBrand).not.toHaveBeenCalled();
+
+    const { manifest: savedManifest, ...savedRest } = savedRes.body;
+    const { manifest: refusedManifest, ...refusedRest } = refusedRes.body;
+    expect(refusedRest).toEqual(savedRest);
+    expect(Object.keys(refusedManifest)).toEqual(Object.keys(savedManifest));
+  });
+});
+
 describe('public registry brand read paths', () => {
   beforeEach(() => {
     vi.clearAllMocks();

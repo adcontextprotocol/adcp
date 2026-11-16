@@ -574,6 +574,15 @@ function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclarat
   });
 }
 
+/**
+ * Canonical format options for training format labels (the keys of the
+ * canonical projection table), for catalogues built outside this module such
+ * as the inventory tenants' seeds.
+ */
+export function formatOptionsForTrainingFormats(labels: readonly string[], agentUrl: string): ProductFormatDeclaration[] {
+  return formatOptionsForFormatIds(labels.map(id => ({ agent_url: agentUrl, id })));
+}
+
 function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): Product['publisher_properties'] {
   if (!channels) {
     return [{ publisher_domain: pub.domain, selection_type: 'all' as const }];

@@ -490,6 +490,67 @@ describe('AuthorizationIndex', () => {
       expect(result.authorized).toBe(true);
       expect(result.signing_keys).toHaveLength(1);
     });
+
+    // #9016: across the entries that authorize the query, pinned only if
+    // every one pins; then the union. getSigningKeysForScope agrees with
+    // check(); the scope-less getSigningKeys is unchanged.
+    const AGENT = 'https://agent.example.com';
+    const PUB = 'publisher.example.com';
+    const k = (public_key: string) => ({ algorithm: 'ed25519', public_key });
+
+    it.each([
+      ['unpinned first', [undefined, [k('key1')]]],
+      ['pinned first', [[k('key1')], undefined]],
+      ['empty array', [[], [k('key1')]]],
+    ] as const)('is unpinned when any authorizing entry is unpinned (%s)', (_label, pins) => {
+      for (const signing_keys of pins) {
+        index.addEntry(makeEntry({ signing_keys: signing_keys as AuthorizationEntry['signing_keys'] }));
+      }
+      const query = { agent_url: AGENT, property_rid: 'rid-001' };
+      const result = index.check(query);
+      expect(result.authorized).toBe(true);
+      expect(result.signing_keys).toBeUndefined();
+      expect(index.getSigningKeysForScope(query)).toEqual([]);
+    });
+
+    it('is the union of the keys when every authorizing entry pins', () => {
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key2'), k('key1')] }));
+      const query = { agent_url: AGENT, property_rid: 'rid-001' };
+      expect(index.check(query).signing_keys?.map(x => x.public_key)).toEqual(['key1', 'key2']);
+      expect(index.getSigningKeysForScope(query)?.map(x => x.public_key)).toEqual(['key1', 'key2']);
+    });
+
+    it('lets an unpinned entry for another country neither pin nor unpin it', () => {
+      index.addEntry(makeEntry({ countries: ['GB'] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      const us = { agent_url: AGENT, property_rid: 'rid-001', country: 'US' };
+      expect(index.check(us).signing_keys?.map(x => x.public_key)).toEqual(['key1']);
+      expect(index.getSigningKeysForScope(us)?.map(x => x.public_key)).toEqual(['key1']);
+      const gb = { agent_url: AGENT, property_rid: 'rid-001', country: 'GB' };
+      expect(index.check(gb).signing_keys).toBeUndefined();
+      expect(index.getSigningKeysForScope(gb)).toEqual([]);
+    });
+
+    it('lets an expired unpinned entry neither pin nor unpin it', () => {
+      index.addEntry(makeEntry({ effective_until: '2020-01-01T00:00:00Z' }));
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      const query = { agent_url: AGENT, property_rid: 'rid-001' };
+      expect(index.getSigningKeysForScope(query)?.map(x => x.public_key)).toEqual(['key1']);
+      expect(index.check(query).signing_keys?.map(x => x.public_key)).toEqual(['key1']);
+    });
+
+    it('getSigningKeysForScope is null when no entry authorizes the query', () => {
+      index.addEntry(makeEntry({ countries: ['GB'], signing_keys: [k('key1')] }));
+      expect(index.getSigningKeysForScope({ agent_url: AGENT, property_rid: 'rid-001', country: 'US' })).toBeNull();
+    });
+
+    it('keeps the scope-less getSigningKeys unchanged (pre-3.3 behaviour)', () => {
+      index.addEntry(makeEntry({ countries: ['GB'] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key2')] }));
+      expect(index.getSigningKeys(AGENT, PUB).map(x => x.public_key)).toEqual(['key1', 'key2']);
+    });
   });
 
   // ── Delegation and exclusivity ──────────────────────────────────
