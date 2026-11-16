@@ -297,6 +297,11 @@ describe('inventory tenants', () => {
       .find((product: Structured) => product.product_id === 'morning_brief_midroll')
       .installments.find((installment: Structured) => installment.installment_id === id);
 
+    it('declares only the guaranteed specialism it sells', async () => {
+      const capabilities = await call(tenant, 'get_adcp_capabilities', {}, CONTENT_TOKEN);
+      expect(capabilities.specialisms).toEqual(['sales-guaranteed']);
+    });
+
     it('sells episode sponsorships, cancels a seeded episode, and delivers listens as they build', async () => {
       await clock({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
       const offer = await products('2027-01-01', '2027-01-31');

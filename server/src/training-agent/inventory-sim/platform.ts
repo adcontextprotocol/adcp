@@ -103,8 +103,15 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
 
   get capabilities() {
     const channels = [...new Set(this.profile.seed.placements.map(placement => ADCP_CHANNEL[placement.channel]))];
+    // Claim only the delivery types the seed sells: the content seed sells
+    // guaranteed sponsorships only.
+    const deliveryTypes = new Set(this.products.map(product => product.delivery_type));
+    const specialisms = [
+      ...(deliveryTypes.has('guaranteed') ? ['sales-guaranteed' as const] : []),
+      ...(deliveryTypes.has('non_guaranteed') ? ['sales-non-guaranteed' as const] : []),
+    ];
     return {
-      specialisms: ['sales-guaranteed', 'sales-non-guaranteed'] as const,
+      specialisms,
       creative_agents: [],
       channels: channels as never,
       pricingModels: ['cpm'] as const,
