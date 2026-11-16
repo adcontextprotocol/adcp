@@ -278,6 +278,37 @@ export interface StoryboardStatusEntry {
   first_failure_validations_jsonb?: unknown;
   /** First few cascaded prerequisite skips with runner reason/detail (adcp#7798). */
   skipped_steps?: StoryboardSkippedStep[] | null;
+  /**
+   * Why a storyboard failed when no counted step did (adcp#8576). Captured
+   * from the runner's synthetic `<storyboard_id>/storyboard` scenario.
+   * Owner-scoped in API responses.
+   */
+  verdict_explanation?: StoryboardVerdictExplanation | null;
+}
+
+/**
+ * The runner's explanation of a storyboard-level verdict (`@adcp/sdk`
+ * `verdict_reason` / `verdict_detail` / `verdict_contributing`). `detail` and
+ * contributor `message` are redacted, length-capped runner text that can echo
+ * agent-supplied values, so they must be escaped when rendered.
+ */
+export interface StoryboardVerdictExplanation {
+  /** Runner code, e.g. controller_prerequisite_unmet, assertion_failed, runner_error. */
+  reason: string;
+  detail: string | null;
+  contributing: StoryboardVerdictContributor[];
+}
+
+export interface StoryboardVerdictContributor {
+  kind: string | null;
+  id: string | null;
+  reason: string | null;
+  status: string | null;
+  phase_id: string | null;
+  pass_index: number | null;
+  skip_reason: string | null;
+  requirement: string | null;
+  message: string | null;
 }
 
 /**
@@ -823,7 +854,8 @@ export class ComplianceDatabase {
                   steps_passed, steps_total, failure_count, skipped_count,
                   first_failed_step_id, first_failed_step_title,
                   first_failed_step_task, first_failure_message,
-                  skipped_steps_jsonb AS skipped_steps
+                  skipped_steps_jsonb AS skipped_steps,
+                  verdict_explanation_jsonb AS verdict_explanation
              FROM agent_storyboard_status
             WHERE agent_url = $1 AND run_id = $2
             ORDER BY storyboard_id`,
@@ -1147,6 +1179,8 @@ export class ComplianceDatabase {
             const sbFirstFailureMessages = input.storyboard_statuses.map(s => s.first_failure_message ?? null);
             const sbSkippedSteps = input.storyboard_statuses.map(s =>
               s.skipped_steps?.length ? JSON.stringify(s.skipped_steps) : null);
+            const sbVerdictExplanations = input.storyboard_statuses.map(s =>
+              s.verdict_explanation ? JSON.stringify(s.verdict_explanation) : null);
 
             await client.query(
               `INSERT INTO agent_storyboard_status (
@@ -1154,7 +1188,7 @@ export class ComplianceDatabase {
                 last_passed_at, last_failed_at, run_id,
                 steps_passed, steps_total, failure_count, skipped_count,
                 first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
-                skipped_steps_jsonb,
+                skipped_steps_jsonb, verdict_explanation_jsonb,
                 triggered_by, requested_compliance_target, adcp_version, updated_at
               )
               SELECT
@@ -1163,10 +1197,10 @@ export class ComplianceDatabase {
                 CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
                 $4, sb_passed, sb_total, sb_failures, sb_skips,
                 sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message,
-                sb_skipped_steps::jsonb,
+                sb_skipped_steps::jsonb, sb_verdict_explanation::jsonb,
                 $13, $14, $15, NOW()
-              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[], $7::int[], $8::int[], $9::text[], $10::text[], $11::text[], $12::text[], $16::text[])
-                AS t(sb_id, sb_status, sb_passed, sb_total, sb_failures, sb_skips, sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message, sb_skipped_steps)
+              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[], $7::int[], $8::int[], $9::text[], $10::text[], $11::text[], $12::text[], $16::text[], $17::text[])
+                AS t(sb_id, sb_status, sb_passed, sb_total, sb_failures, sb_skips, sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message, sb_skipped_steps, sb_verdict_explanation)
               ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
                 status = EXCLUDED.status,
                 last_tested_at = NOW(),
@@ -1188,6 +1222,7 @@ export class ComplianceDatabase {
                 first_failed_step_task = EXCLUDED.first_failed_step_task,
                 first_failure_message = EXCLUDED.first_failure_message,
                 skipped_steps_jsonb = EXCLUDED.skipped_steps_jsonb,
+                verdict_explanation_jsonb = EXCLUDED.verdict_explanation_jsonb,
                 triggered_by = EXCLUDED.triggered_by,
                 requested_compliance_target = EXCLUDED.requested_compliance_target,
                 adcp_version = EXCLUDED.adcp_version,
@@ -1209,6 +1244,7 @@ export class ComplianceDatabase {
                 input.requested_compliance_target ?? null,
                 input.adcp_version ?? null,
                 sbSkippedSteps,
+                sbVerdictExplanations,
               ],
             );
           }
@@ -1251,7 +1287,8 @@ export class ComplianceDatabase {
               steps_passed, steps_total, failure_count, skipped_count,
               first_failed_step_id, first_failed_step_title,
               first_failed_step_task, first_failure_message,
-              skipped_steps_jsonb AS skipped_steps
+              skipped_steps_jsonb AS skipped_steps,
+              verdict_explanation_jsonb AS verdict_explanation
          FROM agent_storyboard_status
         WHERE agent_url = $1 AND run_id = $2
         ORDER BY storyboard_id`,
@@ -1924,6 +1961,7 @@ export class ComplianceDatabase {
     first_failure_message: string | null;
     first_failure_validations_jsonb: unknown;
     skipped_steps: StoryboardSkippedStep[] | null;
+    verdict_explanation: StoryboardVerdictExplanation | null;
     triggered_by: string | null;
     run_org_id: string | null;
   }>> {
@@ -1961,6 +1999,7 @@ export class ComplianceDatabase {
               ${diagnosticsSelect},
               -- Cheap denormalized column; owner gating happens in the serializer.
               s.skipped_steps_jsonb AS skipped_steps,
+              s.verdict_explanation_jsonb AS verdict_explanation,
               s.triggered_by, run_owner.triggered_org_id AS run_org_id
        FROM agent_storyboard_status s
        LEFT JOIN agent_compliance_runs run_owner ON run_owner.id = s.run_id
@@ -2048,6 +2087,7 @@ export class ComplianceDatabase {
     first_failure_message: string | null;
     first_failure_validations_jsonb: unknown;
     skipped_steps: StoryboardSkippedStep[] | null;
+    verdict_explanation: StoryboardVerdictExplanation | null;
     run_org_id: string | null;
   }>>> {
     if (agentUrls.length === 0) return new Map();
@@ -2075,6 +2115,7 @@ export class ComplianceDatabase {
               s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message,
               first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb,
               s.skipped_steps_jsonb AS skipped_steps,
+              s.verdict_explanation_jsonb AS verdict_explanation,
               run_owner.triggered_org_id AS run_org_id
        FROM agent_storyboard_status s
        LEFT JOIN agent_compliance_runs run_owner ON run_owner.id = s.run_id
@@ -2108,6 +2149,7 @@ export class ComplianceDatabase {
       first_failed_step_task: string | null; first_failure_message: string | null;
       first_failure_validations_jsonb: unknown;
       skipped_steps: StoryboardSkippedStep[] | null;
+      verdict_explanation: StoryboardVerdictExplanation | null;
       run_org_id: string | null;
     }>>();
     for (const row of result.rows) {

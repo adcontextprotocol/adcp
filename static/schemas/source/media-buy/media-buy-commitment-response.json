@@ -160,13 +160,7 @@
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status"],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["media_buy_id"] },
-          { "required": ["warnings"] }
-        ]
-      }
+      "additionalProperties": true
     }
   ]
 }

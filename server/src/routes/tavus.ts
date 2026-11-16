@@ -167,6 +167,8 @@ async function initializeTavusClient(): Promise<void> {
       const handler = directoryHandlers.get(tool.name);
       if (handler) claudeClient.registerTool(tool, handler);
     }
+    // Registered for every caller, anonymous ones included, so research_brand
+    // returns lookups here without creating registry records (#9024).
     const brandHandlers = createBrandToolHandlers();
     for (const tool of BRAND_TOOLS) {
       const handler = brandHandlers.get(tool.name);

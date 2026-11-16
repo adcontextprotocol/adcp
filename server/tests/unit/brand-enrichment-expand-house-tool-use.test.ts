@@ -164,25 +164,26 @@ describe('expandHouse: tool_use contract', () => {
   });
 
   it('passes an explicit classifier null through as an audited clear', async () => {
+    // Not a reserved name: enrichBrand refuses to save `.test` domains (#9024).
     mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
     mocks.fetchBrandData.mockResolvedValue({
       success: true,
-      domain: 'standalone.test',
-      manifest: { name: 'Standalone', url: 'https://standalone.test' },
+      domain: 'standalone-acme.com',
+      manifest: { name: 'Standalone', url: 'https://standalone-acme.com' },
       highQuality: true,
     });
     mocks.classifyBrand.mockResolvedValue({
       keller_type: 'master',
       house_domain: null,
       parent_brand: null,
-      canonical_domain: 'standalone.test',
+      canonical_domain: 'standalone-acme.com',
       related_domains: [],
       confidence: 'high',
       reasoning: 'Top-level brand',
     });
 
     const { enrichBrand } = await import('../../src/services/brand-enrichment.js');
-    const result = await enrichBrand('standalone.test');
+    const result = await enrichBrand('standalone-acme.com');
 
     expect(result.status).toBe('enriched');
     expect(mocks.upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({

@@ -1501,6 +1501,196 @@ describe('BrandManager caching', () => {
     });
   });
 
+  describe('House Portfolio canonical_domain (#9034)', () => {
+    const portfolioResponse = (portfolio: unknown) => ({
+      status: 200,
+      data: Buffer.from(JSON.stringify(portfolio)),
+    });
+
+    it('uses the requested domain for a brand found by its website, via authoritative_location', async () => {
+      mockedSafeFetch
+        .mockResolvedValueOnce(portfolioResponse({
+          authoritative_location: 'https://assets.example/wonderstruck/brand.json',
+        }))
+        .mockResolvedValueOnce(portfolioResponse({
+          version: '1.0',
+          house: { domain: 'wonderstruck.org', name: 'Wonderstruck' },
+          brands: [{
+            id: 'wonderstruck',
+            names: [{ en: 'Wonderstruck' }],
+            keller_type: 'master',
+            properties: [{ type: 'website', identifier: 'wonderstruck.org', relationship: 'owned' }],
+          }],
+        }));
+
+      const result = await manager.resolveBrand('wonderstruck.org', { skipCache: true });
+
+      expect(result).toMatchObject({
+        canonical_id: 'wonderstruck',
+        canonical_domain: 'wonderstruck.org',
+        house_domain: 'wonderstruck.org',
+        source: 'brand_json',
+      });
+    });
+
+    it('uses the requested domain for a sub-brand found through a House Redirect', async () => {
+      mockedSafeFetch
+        .mockResolvedValueOnce(portfolioResponse({ house: 'nova-brands.example' }))
+        .mockResolvedValueOnce(portfolioResponse({
+          version: '1.0',
+          house: { domain: 'nova-brands.example', name: 'Nova Brands' },
+          brands: [{
+            id: 'spark',
+            names: [{ en: 'Spark' }],
+            keller_type: 'sub_brand',
+            parent_brand: 'nova',
+            properties: [{ type: 'website', identifier: 'spark.example' }],
+          }],
+        }));
+
+      const result = await manager.resolveBrand('Spark.Example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'nova#spark',
+        canonical_domain: 'spark.example',
+        house_domain: 'nova-brands.example',
+      });
+    });
+
+    it('uses the house domain for the master-brand fallback', async () => {
+      mockedSafeFetch.mockResolvedValueOnce(portfolioResponse({
+        version: '1.0',
+        house: { domain: 'nova-brands.example', name: 'Nova Brands' },
+        brands: [{ id: 'nova', names: [{ en: 'Nova Brands' }], keller_type: 'master' }],
+      }));
+
+      const result = await manager.resolveBrand('nova-brands.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'nova',
+        canonical_domain: 'nova-brands.example',
+        house_domain: 'nova-brands.example',
+      });
+    });
+
+    describe('resolveBrandRef with brand_id', () => {
+      const portfolio = {
+        version: '1.0',
+        house: { domain: 'nova-brands.example', name: 'Nova Brands' },
+        brands: [
+          { id: 'nova', names: [{ en: 'Nova Brands' }], keller_type: 'master' },
+          {
+            id: 'spark',
+            names: [{ en: 'Spark' }],
+            keller_type: 'sub_brand',
+            parent_brand: 'nova',
+            properties: [
+              { type: 'mobile_app', identifier: 'com.spark.app' },
+              { type: 'website', identifier: 'sparkstore.example', relationship: 'delegated' },
+              { type: 'website', identifier: 'spark-blog.example' },
+              { type: 'website', identifier: 'spark.example', primary: true },
+            ],
+          },
+          {
+            id: 'ember',
+            names: [{ en: 'Ember' }],
+            keller_type: 'sub_brand',
+            properties: [{ type: 'website', identifier: 'nova-brands.example' }],
+          },
+          { id: 'glow', names: [{ en: 'Glow' }], keller_type: 'endorsed' },
+        ],
+      };
+
+      beforeEach(() => {
+        mockedSafeFetch.mockResolvedValue(portfolioResponse(portfolio));
+      });
+
+      it("uses the brand's primary owned website", async () => {
+        const result = await manager.resolveBrandRef({ domain: 'nova-brands.example', brand_id: 'spark' });
+
+        expect(result).toMatchObject({
+          canonical_id: 'nova#spark',
+          canonical_domain: 'spark.example',
+          house_domain: 'nova-brands.example',
+        });
+      });
+
+      it('uses the requested domain when the brand owns it', async () => {
+        const result = await manager.resolveBrandRef({ domain: 'nova-brands.example', brand_id: 'ember' });
+
+        expect(result).toMatchObject({ canonical_id: 'ember', canonical_domain: 'nova-brands.example' });
+      });
+
+      it('uses the house domain when the brand names no website', async () => {
+        const result = await manager.resolveBrandRef({ domain: 'nova-brands.example', brand_id: 'glow' });
+
+        expect(result).toMatchObject({ canonical_id: 'glow', canonical_domain: 'nova-brands.example' });
+      });
+
+      it('agrees with resolving the brand by its own website', async () => {
+        const byId = await manager.resolveBrandRef({ domain: 'nova-brands.example', brand_id: 'spark' });
+        mockedSafeFetch.mockReset();
+        mockedSafeFetch
+          .mockResolvedValueOnce(portfolioResponse({ house: 'nova-brands.example' }))
+          .mockResolvedValueOnce(portfolioResponse(portfolio));
+        const byWebsite = await manager.resolveBrand('spark.example', { skipCache: true });
+
+        expect(byId?.canonical_domain).toBe('spark.example');
+        expect(byWebsite?.canonical_domain).toBe(byId?.canonical_domain);
+        expect(byWebsite?.canonical_id).toBe(byId?.canonical_id);
+      });
+    });
+
+    it('returns the resolved sub-brand without a second lookup when brand_id matches canonical_id', async () => {
+      mockedSafeFetch
+        .mockResolvedValueOnce(portfolioResponse({ house: 'nova-brands.example' }))
+        .mockResolvedValueOnce(portfolioResponse({
+          version: '1.0',
+          house: { domain: 'nova-brands.example', name: 'Nova Brands' },
+          brands: [{
+            id: 'spark',
+            names: [{ en: 'Spark' }],
+            parent_brand: 'nova',
+            properties: [{ type: 'website', identifier: 'spark.example' }],
+          }],
+        }));
+
+      const result = await manager.resolveBrandRef({ domain: 'spark.example', brand_id: 'spark' });
+
+      expect(result).toMatchObject({ canonical_id: 'nova#spark', canonical_domain: 'spark.example' });
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not treat a brand_id as matching canonical_domain', async () => {
+      mockedSafeFetch.mockResolvedValue(portfolioResponse({
+        version: '1.0',
+        id: 'acme',
+        names: [{ en: 'Acme' }],
+      }));
+
+      expect(await manager.resolveBrandRef({ domain: 'acme.example', brand_id: 'acme.example' })).toBeNull();
+      expect(await manager.resolveBrandRef({ domain: 'acme.example', brand_id: 'acme' })).toMatchObject({
+        canonical_id: 'acme',
+        canonical_domain: 'acme.example',
+      });
+    });
+
+    it('leaves the Brand Canonical Document path on the requested domain', async () => {
+      mockedSafeFetch.mockResolvedValueOnce(portfolioResponse({
+        version: '1.0',
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        properties: [{ type: 'website', identifier: 'leaf.example' }],
+      }));
+
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        canonical_id: 'leaf',
+        canonical_domain: 'leaf.example',
+        relationship_trust: 'standalone',
+      });
+    });
+  });
+
   describe('brand_manifest construction', () => {
     it('populates brand_manifest from flat brand fields (master-brand fallback)', async () => {
       const mockBrandJson = {
