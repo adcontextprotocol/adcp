@@ -43,8 +43,16 @@
       "sha256": "10978798514254bdea822bf6453bed2555bd5a0183e3839f916dde19a6031ecc"
     },
     {
+      "file": "rc0-docs-reserved-word-enums.md",
+      "sha256": "4d49677189ada6131bf7037cac23e9ad45b3dd9370c55adee221b60801f2c41f"
+    },
+    {
       "file": "refresh-3-3-release-docs-rc0.md",
       "sha256": "4a24b8c1b6c164ac6bc9402877c7d11c05c4fda20f57d4be69aed83f9e244642"
+    },
+    {
+      "file": "reserved-word-enum-replacements.md",
+      "sha256": "155587b2d54590e750562b8cc3481f2614ec4b61367018c802261d28b87d57b3"
     },
     {
       "file": "social-distribution-identifiers.md",
