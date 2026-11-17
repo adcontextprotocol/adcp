@@ -1,0 +1,35 @@
+{
+  "name": "Single signer: buyer agent at https://buyer-7k3q.com sends create_media_buy over MCP",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#profile-rules",
+  "signing_profile": "web-bot-auth",
+  "reference_now": 1790841610,
+  "request": {
+    "method": "POST",
+    "url": "https://seller-7k3q.com/mcp/",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:",
+      "Signature-Agent": "sig1=\"https://buyer-7k3q.com\"",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;nonce=\"Mn-ZM8SnGESx0-rmyYMuTkJFerfbwEii2C0qNkDP8ugpcuv0pcrt6Da2ifr-6MTmfVeZhnFymLeAofeXJbFaxA\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+      "Signature": "sig1=:ihPGBC7XQPM6WkIYhYQvFHgwTpbssvuQzkb0FfwkuebREyF32sXhiRxXbXWRZMp0O//C4I2g1a2Kui56ffEfBQ==:"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"create_media_buy\",\"arguments\":{\"idempotency_key\":\"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96\",\"account\":{\"account_id\":\"acc_42\"},\"proposal_id\":\"prop_7\",\"total_budget\":{\"amount\":25000,\"currency\":\"USD\"}}}}"
+  },
+  "directories": {
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    }
+  },
+  "expected_signature_base": {
+    "sig1": "\"@method\": POST\n\"@target-uri\": https://seller-7k3q.com/mcp/\n\"@authority\": seller-7k3q.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:\n\"signature-agent\";key=\"sig1\": \"https://buyer-7k3q.com\"\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;nonce=\"Mn-ZM8SnGESx0-rmyYMuTkJFerfbwEii2C0qNkDP8ugpcuv0pcrt6Da2ifr-6MTmfVeZhnFymLeAofeXJbFaxA\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\""
+  },
+  "expected_outcome": {
+    "success": true,
+    "identities": {
+      "sig1": "https://buyer-7k3q.com"
+    }
+  },
+  "$comment": "The Signature-Agent member sig1 names an origin, so the verifier fetches https://buyer-7k3q.com/.well-known/http-message-signatures-directory, selects the key whose kid equals keyid, and attributes the request to that origin. Ed25519 is deterministic, so an implementation signing with the published seed reproduces the Signature value byte for byte."
+}
