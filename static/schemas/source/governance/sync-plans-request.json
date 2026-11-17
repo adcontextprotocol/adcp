@@ -68,7 +68,7 @@
               "reallocation_threshold": {
                 "type": "number",
                 "minimum": 0,
-                "description": "Amount above which budget reallocations require human escalation. The orchestrator can reallocate spend across sellers, channels, or purchase types up to this threshold per change without asking a human. Set equal to `total` for effectively unlimited reallocation; set to 0 to require approval for every reallocation. Separate from `plan.human_review_required`, which governs decisions affecting data subjects (targeting, creative, delivery) under GDPR Art 22 / EU AI Act Annex III. Denominated in `budget.currency`."
+                "description": "Amount above which budget reallocations require human escalation. The orchestrator can reallocate spend across sellers, channels, or purchase types up to this threshold per change without asking a human. Set to 0 to require approval for every reallocation. For unlimited reallocation use `reallocation_unlimited`; a threshold equal to `total` has the same effect only until `total` changes. Separate from `plan.human_review_required`, which governs decisions affecting data subjects (targeting, creative, delivery) under GDPR Art 22 / EU AI Act Annex III. Denominated in `budget.currency`."
               },
               "reallocation_unlimited": {
                 "type": "boolean",

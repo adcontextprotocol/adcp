@@ -93,7 +93,9 @@ When `purchase_type` is omitted, the governance agent assumes `media_buy`.
 |-------|---------|
 | `0` | Every reallocation requires human approval |
 | positive number below `budget.total` | Agent may reallocate up to this amount without escalation; larger moves escalate for human review |
-| equal to `budget.total` (or greater) | Agent may reallocate freely within the plan's total budget |
+| equal to `budget.total` (or greater) | Agent may reallocate freely within the plan's total budget, until `budget.total` changes. For a deliberate full-autonomy declaration, use `budget.reallocation_unlimited: true` |
+
+With `budget.reallocation_unlimited: true` and no threshold, the agent may reallocate freely within the plan's total budget, and the declaration does not tighten when `budget.total` changes.
 
 ### Budget allocations
 
@@ -884,7 +886,7 @@ This means:
 
 Two outcomes do not depend on mode. Plans with `human_review_required: true` escalate in every mode. A failed `approved_sellers` or `delegations` evaluation is `denied` in every mode, including: an intent check whose target is not in `approved_sellers`, an execution check by a caller that is not the audience preserved from the approved intent or that has since been removed from `approved_sellers`, an execution check whose original intent was made by a buyer that no longer holds a current delegation, an intent check by a buyer-side caller that can access the plan but is neither its owner nor a current delegate, and an intent check by a delegate that acts outside the `authority`, `budget_limit` or `markets` of its delegation.
 
-Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent MAY include mode information in its audit logs or `get_plan_audit_logs` response for post-hoc analysis, but callers MUST NOT branch behavior based on mode — they act on the status they receive.
+Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent SHOULD record the mode in force on each check entry of its `get_plan_audit_logs` response (`entries[].mode`) for post-hoc analysis; outcome entries carry no mode. Callers MUST NOT branch behavior based on mode — they act on the status they receive.
 
 See the [safety model](/docs/governance/campaign/safety-model) for the crawl-walk-run adoption path.
 
