@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { installConductorSupertestLoopback } from '../setup/revenue-tracking-env.js';
+import { installConductorSupertestLoopback } from '../setup/conductor-supertest-loopback.js';
 
 type PatchableSupertestPrototype = typeof request.Test.prototype & {
   __adcpConductorLoopbackPatched?: true;
