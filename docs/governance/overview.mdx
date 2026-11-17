@@ -237,7 +237,7 @@ Every decision, every approval, every outcome — structured, timestamped, attri
 
 ## Crawl, walk, run
 
-Jordan didn't start with full enforcement. She configured the governance agent to start in audit mode — it evaluated every check fully and returned `approved` with the findings attached for her to review. Two outcomes did not wait for enforce mode: a plan that requires human review still escalated, and an unapproved seller or an unauthorized caller was still denied. After two weeks she reviewed the logs, tuned policies to reduce false positives, and moved to advisory. In advisory mode, the governance agent returned real `denied` statuses but Jordan's team treated them as non-blocking. When she trusted the system, she switched to enforce.
+Jordan didn't start with full enforcement. She configured the governance agent to start in audit mode — it evaluated every check fully and returned `approved` with the findings attached for her to review. Two outcomes did not wait for enforce mode: a plan that requires human review still escalated, and an unapproved seller or a caller outside the plan's delegations was still denied. After two weeks she reviewed the logs, tuned policies to reduce false positives, and moved to advisory. In advisory mode, the governance agent returned `approved` with prominent findings, and Jordan's team reviewed them. When she trusted the system, she switched to enforce.
 
 The callers (orchestrator, sellers) never changed their code. They always acted on the status they received. The mode was entirely the governance agent's internal configuration.
 
