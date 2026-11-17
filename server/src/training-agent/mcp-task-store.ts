@@ -6,7 +6,7 @@ import type {
   TaskStore,
 } from '@modelcontextprotocol/sdk/experimental/tasks/interfaces.js';
 import type { Request, RequestId, Result, Task } from '@modelcontextprotocol/sdk/types.js';
-import { PostgresTaskStore } from '@adcp/sdk';
+import { PostgresTaskStore } from '@adcp/sdk/server';
 import { getPool, isDatabaseInitialized } from '../db/client.js';
 
 export type TrainingTaskStore = InMemoryTaskStore | PostgresTaskStore;

@@ -1,5 +1,5 @@
 import { isIP } from 'node:net';
-import { canonicalizeAgentUrl } from '@adcp/sdk';
+import { canonicalizeAgentUrl } from '@adcp/sdk/discovery';
 
 export function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

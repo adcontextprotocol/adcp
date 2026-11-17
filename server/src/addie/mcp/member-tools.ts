@@ -82,7 +82,7 @@ import {
   type StoryboardStepResult,
 } from '@adcp/sdk/testing';
 import { getCachedComplianceStoryboardById } from '../../compliance/storyboard-cache.js';
-import { AuthenticationRequiredError } from '@adcp/sdk';
+import { AuthenticationRequiredError } from '@adcp/sdk/errors';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { AccountRequiredError, UnsupportedBuyingModeError } from '@adcp/sdk';
+import { AccountRequiredError, UnsupportedBuyingModeError } from '@adcp/sdk/errors';
 
 const sdkMocks = vi.hoisted(() => ({
   getAdcpCapabilities: vi.fn(),

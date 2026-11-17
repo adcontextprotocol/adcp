@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 
 /**
  * Hash the business payload authorized by an intent token.

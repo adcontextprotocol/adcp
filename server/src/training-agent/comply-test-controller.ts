@@ -17,7 +17,7 @@ import {
   createSeedFixtureCache,
   enforceMapCap,
   handleTestControllerRequest,
-} from '@adcp/sdk';
+} from '@adcp/sdk/server';
 import type { TestControllerStore } from '@adcp/sdk';
 import type { WebhookAuthentication, WebhookEmitResult } from '@adcp/sdk/server';
 import type { BrandReference } from '@adcp/sdk';

@@ -18,7 +18,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { SessionState, AccountRef, BrandRef, CreativeState, MediaBuyState, PackageState } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
-import { cleanupExpiredTasks } from '@adcp/sdk';
+import { cleanupExpiredTasks } from '@adcp/sdk/server';
 import {
   InMemoryStateStore,
   PostgresStateStore,

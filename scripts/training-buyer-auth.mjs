@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { startWebOAuthFlow, completeWebOAuthFlow, createNonInteractiveOAuthProvider } from '@adcp/sdk/auth';
 import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import { callMCPToolWithOAuth } from '@adcp/sdk/advanced';
-import { ssrfSafeFetch } from '@adcp/sdk';
+import { ssrfSafeFetch } from '@adcp/sdk/net';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const agentId = 'training-gcs-buyer';

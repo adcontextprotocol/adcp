@@ -16,7 +16,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { ProtocolClient, unwrapProtocolResponse } from '@adcp/sdk';
+import { ProtocolClient } from '@adcp/sdk/advanced';
+import { unwrapProtocolResponse } from '@adcp/sdk/utils';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch } from '../utils/url-security.js';
 import { createLogger } from '../logger.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { extractAdcpErrorInfo } from '@adcp/sdk';
+import { extractAdcpErrorInfo } from '@adcp/sdk/errors';
 import {
   ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
   AddieTransientTransportError,

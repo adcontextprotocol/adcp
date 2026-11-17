@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LIBRARY_VERSION } from '@adcp/sdk';
+import { LIBRARY_VERSION } from '@adcp/sdk/version';
 
 const mocks = vi.hoisted(() => ({
   getAgentsDueForCheck: vi.fn(),

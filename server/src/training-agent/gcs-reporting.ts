@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { Storage } from '@google-cloud/storage';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import { AdcpError, type NotificationSubscriptionConfigInput, type ResolveContext } from '@adcp/sdk/server';
 import { reportingManagedDeliveryBindingV1 } from '@adcp/sdk/reporting/ledger';
 import { reportingSchedulerErrorMessage, type ReliableReportingConfigurationInputV1 } from '@adcp/sdk/reporting/service';

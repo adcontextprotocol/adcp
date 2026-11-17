@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthenticationRequiredError } from '@adcp/sdk';
+import { AuthenticationRequiredError } from '@adcp/sdk/errors';
 import { createNonInteractiveOAuthProvider, OAuthError } from '@adcp/sdk/auth';
 import { testCapabilityDiscovery } from '@adcp/sdk/testing';
 import { adaptAuthForSdk, agentConfigAuthFields, type SdkAuth } from '../../src/services/sdk-auth-adapter.js';

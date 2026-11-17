@@ -8,7 +8,8 @@
 
 import { servesReleaseBefore, type TrainingContext, type ToolArgs } from './types.js';
 import { createHash } from 'node:crypto';
-import { canonicalize, enforceMapCap } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
+import { enforceMapCap } from '@adcp/sdk/server';
 import { getSandboxBrands } from '@adcp/sdk/testing';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
