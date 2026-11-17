@@ -28,7 +28,7 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Unique identifier for this plan.",
+            "description": "Identifier for this plan, unique per owner principal. Two principals may use the same `plan_id`; neither can read, change or detect the other's plan.",
             "x-entity": "governance_plan"
           },
           "brand": {
