@@ -5,11 +5,16 @@ import { runMigrations } from "./db/migrate.js";
 import { getDatabaseConfig } from "./config.js";
 import { initializeAddieBolt } from "./addie/index.js";
 import { logger } from "./logger.js";
+import { preloadDeferredModules } from "./utils/deferred-modules.js";
 
 // Validate environment variables before starting server
 validateEnvironment();
 
 async function main() {
+  // Modules load these packages on first use so tests that never call them
+  // skip the cost; the server still loads them all before it starts.
+  await preloadDeferredModules();
+
   // Run migrations on startup if RUN_MIGRATIONS is set
   if (process.env.RUN_MIGRATIONS === 'true') {
     logger.info('RUN_MIGRATIONS=true, running database migrations');

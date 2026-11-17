@@ -23,8 +23,6 @@ import {
   createGoogleDocsReader,
 } from '../mcp/google-docs.js';
 import { isLLMConfigured, complete } from '../../utils/llm.js';
-import { PDFParse } from 'pdf-parse';
-import mammoth from 'mammoth';
 import yauzl from 'yauzl';
 import { refreshWorkingGroupDocs } from '../mcp/docs-indexer.js';
 import type { CommitteeDocument, DocumentIndexStatus } from '../../types.js';
@@ -165,6 +163,7 @@ async function parsePdfContent(buffer: Buffer): Promise<{
   status: DocumentIndexStatus;
 }> {
   try {
+    const { PDFParse } = await import('pdf-parse');
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
 
     // Extract text
@@ -373,6 +372,7 @@ async function parseDocxContent(buffer: Buffer): Promise<{
   status: DocumentIndexStatus;
 }> {
   try {
+    const { default: mammoth } = await import('mammoth');
     const result = await mammoth.extractRawText({ buffer });
     const content = result.value?.trim() || '';
 
@@ -1048,6 +1048,7 @@ export const _testing = {
   extractTextFromSlideXml,
   parseSharedStrings,
   parseSheetXml,
+  parsePdfContent,
   parsePptxContent,
   parseXlsxContent,
   parseDocxContent,

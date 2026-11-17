@@ -1,7 +1,7 @@
 import { respondToAdminAuthorizationError } from './auth/admin-authorization-response.js';
 import express from "express";
 import cookieParser from "cookie-parser";
-import DOMPurify from "isomorphic-dompurify";
+import { getDOMPurify } from "./utils/deferred-modules.js";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
 import { restoreClientIp } from "./middleware/client-ip.js";
@@ -646,7 +646,7 @@ function renderArticleMarkdown(markdown: string | null, cacheKey: string): strin
   articleMarkdownCache.delete(cacheKey);
 
   const rendered = articleMarkdown.parse(markdown, { async: false }) as string;
-  const sanitized = DOMPurify.sanitize(rendered, ARTICLE_MARKDOWN_SANITIZE_CONFIG);
+  const sanitized = getDOMPurify().sanitize(rendered, ARTICLE_MARKDOWN_SANITIZE_CONFIG);
   if (articleMarkdownCache.size >= ARTICLE_MARKDOWN_CACHE_MAX_ENTRIES) {
     const oldestKey = articleMarkdownCache.keys().next().value;
     if (oldestKey) articleMarkdownCache.delete(oldestKey);

@@ -10,7 +10,7 @@ import type { SlackBlockMessage } from '../../slack/types.js';
 import { escapeHtml, trackLink, formatDate, renderEmailShell } from '../email-layout.js';
 import { isSectionHidden, getCustomSections, getPastedContent } from '../config.js';
 import { markdownToEmailHtml as renderMarkdownToEmailHtml } from '../../utils/markdown.js';
-import DOMPurify from 'isomorphic-dompurify';
+import { getDOMPurify } from '../../utils/deferred-modules.js';
 import { BUILD_PALETTE } from './index.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
@@ -29,7 +29,7 @@ type SanitizedFragment = {
 
 function markdownToTrackedEmailHtml(md: string, trackingId: string, tagPrefix = 'pasted_body'): string {
   let linkIndex = 0;
-  const dom = DOMPurify.sanitize(renderMarkdownToEmailHtml(md), {
+  const dom = getDOMPurify().sanitize(renderMarkdownToEmailHtml(md), {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li', 'code', 'pre', 'h1', 'h2', 'h3'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,

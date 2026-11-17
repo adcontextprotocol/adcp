@@ -6,7 +6,7 @@
  */
 
 import { getCustomSections, getPastedContent, type NewsletterConfig, type SectionDescriptor, type ItemOperations } from '../config.js';
-import DOMPurify from 'isomorphic-dompurify';
+import { getDOMPurify } from '../../utils/deferred-modules.js';
 import { registerNewsletter } from '../registry.js';
 import { escapeHtml } from '../email-layout.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
@@ -147,7 +147,7 @@ const promptDB: NewsletterEditionDB = {
 // ─── Markdown builder ──────────────────────────────────────────────────
 
 function htmlToMarkdown(html: string): string {
-  const dom = DOMPurify.sanitize(html, {
+  const dom = getDOMPurify().sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'a', 'strong', 'em', 'li'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,

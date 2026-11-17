@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import * as zlib from 'zlib';
 import { _testing } from '../../src/addie/jobs/committee-document-indexer.js';
+import { buildMinimalPdf } from '../fixtures/minimal-pdf.js';
 
 const {
   decodeXmlEntities,
   extractTextFromSlideXml,
   parseSharedStrings,
   parseSheetXml,
+  parsePdfContent,
   parsePptxContent,
   parseXlsxContent,
   parseDocxContent,
@@ -500,5 +502,23 @@ describe('parseDocxContent', () => {
   it('returns error for invalid buffer', async () => {
     const result = await parseDocxContent(Buffer.from('not a docx'));
     expect(result.status).toBe('error');
+  });
+});
+
+// Guards the pdf-parse path across the change that loads pdf-parse on first
+// use: parsePdfContent catches every parser error, so a load or destructuring
+// mistake would otherwise surface only as status 'error' on real uploads.
+describe('parsePdfContent', () => {
+  it('extracts the text of a valid PDF', async () => {
+    const result = await parsePdfContent(buildMinimalPdf({ text: 'Working group charter, draft 2' }));
+    expect(result.status).toBe('success');
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain('Working group charter, draft 2');
+  });
+
+  it('reports a corrupt PDF as an error without content', async () => {
+    const result = await parsePdfContent(Buffer.from('%PDF-1.7\nnot really a pdf'));
+    expect(result).toMatchObject({ status: 'error', content: '', assets: [] });
+    expect(result.error).toEqual(expect.any(String));
   });
 });

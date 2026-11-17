@@ -9,7 +9,7 @@ import { respondToAdminAuthorizationError } from '../auth/admin-authorization-re
 
 import { Router, type Request, type Response } from "express";
 import { parse as parseCsvLib } from "csv-parse/sync";
-import DOMPurify from "isomorphic-dompurify";
+import { getDOMPurify } from "../utils/deferred-modules.js";
 import { createLogger } from "../logger.js";
 import { isUuid } from "../utils/uuid.js";
 import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth.js";
@@ -480,7 +480,7 @@ export function createEventsRouter(): {
         if (updates.recap_html.length > 100_000) {
           return res.status(400).json({ error: 'Recap too large', message: 'Recap content must be under 100KB' });
         }
-        updates.recap_html = DOMPurify.sanitize(updates.recap_html, {
+        updates.recap_html = getDOMPurify().sanitize(updates.recap_html, {
           ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'pre', 'code'],
           ALLOWED_ATTR: ['href', 'target', 'rel'],
         });

@@ -15,6 +15,7 @@ import {
   BrandBookImportError,
   detectDocumentType,
   extractPptx,
+  importBrandBook,
   parsePptxTheme,
   prepareCandidates,
   proposeBrandFields,
@@ -23,6 +24,7 @@ import {
   type BrandBookProposal,
   type CandidateImage,
 } from '../../src/services/brand-book-import.js';
+import { buildMinimalPdf } from '../fixtures/minimal-pdf.js';
 
 /** Minimal stored ZIP, enough for yauzl to read a fake .pptx. */
 function zip(files: Record<string, string | Buffer>): Buffer {
@@ -234,5 +236,38 @@ describe('proposeBrandFields', () => {
       candidates: [],
       domain: 'acme.example',
     })).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+// Guards the pdf-parse path across the change that defers loading pdf-parse to
+// first use: extractPdfImages swallows parser errors and returns no images, so
+// only a PDF that really carries an image shows the parser ran.
+describe('importBrandBook with a PDF upload', () => {
+  beforeEach(() => {
+    mocks.parse.mockReset();
+    process.env.ANTHROPIC_API_KEY = 'test-key';
+  });
+
+  it('extracts the embedded image as a logo candidate and maps the proposal onto it', async () => {
+    mocks.parse.mockResolvedValue({
+      stop_reason: 'end_turn',
+      parsed_output: proposal({
+        logos: [{ candidate_id: 'c1', variant: 'primary', background: 'light-bg', orientation: 'square', usage: null }],
+      }),
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const pdf = buildMinimalPdf({ text: 'Acme brand guide', image: { width: 64, height: 64 } });
+
+    const result = await importBrandBook(sourceFromUpload(pdf), 'acme.example');
+
+    expect(result.source).toEqual({ type: 'pdf' });
+    expect(result.candidates).toEqual([
+      { id: 'c1', data_url: expect.stringMatching(/^data:image\/png;base64,/), width: 64, height: 64, page: 1 },
+    ]);
+    expect(result.logos).toEqual([expect.objectContaining({ candidate_id: 'c1', variant: 'primary' })]);
+    const content = mocks.parse.mock.calls[0][0].messages[0].content;
+    expect(content[0]).toMatchObject({ type: 'document', source: { media_type: 'application/pdf', data: pdf.toString('base64') } });
+    expect(content[1]).toMatchObject({ type: 'text', text: 'Candidate image c1 (page 1), 64x64:' });
+    expect(content[2]).toMatchObject({ type: 'image', source: { media_type: 'image/png' } });
   });
 });
