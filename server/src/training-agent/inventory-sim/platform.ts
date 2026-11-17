@@ -18,7 +18,7 @@ import {
   type BookingTargeting,
   type ForecastResult,
   type Installment,
-  type InventorySimulation,
+  InventorySimulation,
   type SeasonSeed,
   type SeedProduct,
 } from './engine/index.js';
@@ -116,6 +116,11 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       channels: channels as never,
       pricingModels: ['cpm'] as const,
       supportedBillings: ['agent', 'operator'] as const,
+      // An inventory agent is read as a wholesale catalogue by the storefront
+      // in front of it, as well as briefed directly.
+      buyingModes: ['brief', 'wholesale'] as const,
+      // A storefront calls with its own credential, not a per-buyer operator.
+      requireOperatorAuth: false,
       // The router lists the scenarios (tenants/inventory.ts).
       compliance_testing: {},
       config: { strict: false },
@@ -315,13 +320,18 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const budgetMax = (filters.budget_range as { max?: unknown } | undefined)?.max;
       const budget = typeof budgetMax === 'number' && budgetMax > 0 ? budgetMax : undefined;
       const channels = Array.isArray(filters.channels) ? new Set(filters.channels as string[]) : undefined;
+      // With an account, forecasts net out the caller's own bookings, an
+      // account-specific overlay. Without one the seller MUST answer with the
+      // public card, so forecast against an empty market: the same for every
+      // caller at the same simulated time.
+      const scoped = req.account !== undefined && req.account !== null;
+      const sim = scoped ? market.sim : InventorySimulation.create(this.profile.seed, market.nowMs);
       const products = this.products
         .filter(product => filters.delivery_type === undefined || product.delivery_type === filters.delivery_type)
         .filter(product => !channels || product.placement_ids.some(id => channels.has(ADCP_CHANNEL[this.profile.seed.placements.find(p => p.placement_id === id)!.channel])))
-        .map(product => this.wireProduct(product, market.sim, market.nowMs, { startMs, endMs }, targeting, budget));
+        .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget));
       market.save();
-      // Forecasts net out the caller's own bookings, so the card is per caller.
-      return { products, cache_scope: 'account' } as never;
+      return { products, cache_scope: scoped ? 'account' : 'public' } as never;
     },
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
