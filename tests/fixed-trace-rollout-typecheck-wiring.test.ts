@@ -40,6 +40,7 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
     // This is deliberately the production compiler command, without the root
     // script wrapper. It succeeds for the current source, which demonstrates
     // why the independent root manifest assertion is necessary.
+    // lint-allow-test-spawn-tooling: the production compiler run is what this check demonstrates
     const compiler = spawnSync(
       process.platform === "win32" ? "npx.cmd" : "npx",
       ["tsc", "--project", "server/tsconfig.json", "--noEmit", "--pretty", "false"],

@@ -13,7 +13,9 @@ const path = require('node:path');
 // they would route `git add` into the caller's index. Every GIT_* variable is
 // dropped, and global and system config are ignored so caller hooks, signing
 // and templates cannot run. HOME and the parent environment are left alone.
-function fixtureEnv() {
+// Pass { identity: false } when the code under test sets its own commit
+// identity: an author/committer in the environment would override it.
+function fixtureEnv({ identity = true } = {}) {
   const env = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith('GIT_')) env[key] = value;
@@ -23,10 +25,12 @@ function fixtureEnv() {
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: os.devNull,
     GIT_TERMINAL_PROMPT: '0',
-    GIT_AUTHOR_NAME: 't',
-    GIT_AUTHOR_EMAIL: 't@example.com',
-    GIT_COMMITTER_NAME: 't',
-    GIT_COMMITTER_EMAIL: 't@example.com',
+    ...(identity ? {
+      GIT_AUTHOR_NAME: 't',
+      GIT_AUTHOR_EMAIL: 't@example.com',
+      GIT_COMMITTER_NAME: 't',
+      GIT_COMMITTER_EMAIL: 't@example.com',
+    } : {}),
   };
 }
 

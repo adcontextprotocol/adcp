@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeAll, describe, it, expect, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, it, expect, vi } from 'vitest';
 import YAML from 'yaml';
 import {
   createGitLedger,
@@ -12,6 +12,7 @@ import {
   recordSignatureWithRetry,
 } from '../scripts/ipr/check-and-record.mjs';
 import { SIGNATURES_PATH, parseSignatures, writeSignatures } from '../scripts/ipr/signatures.mjs';
+import gitObjectFixture from './helpers/git-object-fixture.cjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const eventRepo = { owner: 'adcontextprotocol', repo: 'adcp' };
@@ -160,12 +161,23 @@ describe('handleIssueComment (signature-write path)', () => {
 describe('recording a signature when another repo pushed first', () => {
   const tmpRoots = [];
 
+  const callerEnv = { ...process.env };
+
   beforeAll(() => {
-    // Inside a git hook, GIT_DIR and friends would point every git call
-    // (including the script's) at the enclosing repository.
-    for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY']) {
-      delete process.env[key];
-    }
+    // Every git call here, the script's included, inherits process.env. Inside
+    // a git hook, GIT_DIR and friends would point it at the enclosing
+    // repository, and caller global/system config (hooks path, signing) would
+    // run on every call. Use the fixture environment: no GIT_* variables, no
+    // global or system config. The script sets its own commit identity, so the
+    // fixture identity is left out.
+    const isolated = gitObjectFixture.fixtureEnv({ identity: false });
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, isolated);
+  });
+
+  afterAll(() => {
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, callerEnv);
   });
 
   afterEach(() => {
@@ -228,6 +240,34 @@ describe('recording a signature when another repo pushed first', () => {
       },
     };
   }
+
+  // The script's git inherits process.env (scripts/ipr/check-and-record.mjs
+  // git()). These real-git tests must see only the fixture repository's own
+  // configuration, the way CI does: no caller global/system config, hooks
+  // path, identity or GIT_* routing, which would also make each git call fork
+  // the caller's hook shims.
+  it('runs the script-style git against repo-local configuration only', () => {
+    const env = setupRemote();
+    const listed = execFileSync('git', ['config', '--list', '--show-origin'], {
+      cwd: env.runA,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+    });
+    const fixtureRoot = fs.realpathSync(env.runA);
+    const outsideFixture = listed
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.split('\t', 1)[0])
+      .filter((origin) => {
+        if (!origin.startsWith('file:')) return true;
+        const file = path.resolve(env.runA, origin.slice('file:'.length));
+        const real = fs.existsSync(file) ? fs.realpathSync(file) : file;
+        return !(real === fixtureRoot || real.startsWith(`${fixtureRoot}${path.sep}`));
+      });
+    expect([...new Set(outsideFixture)], 'git config origins outside the fixture repository').toEqual([]);
+    const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('GIT_')));
+    expect(gitEnv).toEqual({ GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull, GIT_TERMINAL_PROMPT: '0' });
+  });
 
   it('re-applies the signature on the new head instead of rebasing a conflicting append', async () => {
     const env = setupRemote();

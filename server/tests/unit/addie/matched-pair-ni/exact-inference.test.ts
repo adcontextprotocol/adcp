@@ -1,9 +1,21 @@
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  POISONED_WORKER_POISONS,
+  POISONED_WORKER_TASKS,
+  removeProbeFiles,
+  runHangProbe,
+  runPoisonedWorkerCase,
+  runRealmProbe,
+  terminateLiveWorkers,
+  TERMINATION_BOUND_MS,
+} from './realm-probe.mjs';
+import { childLaunchesSince, childLaunchMark, typeScriptToolingIn, type ChildLaunch } from '../../../helpers/child-process-launches.js';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
 import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
 import { interval, intervalDividePositive, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
@@ -21,42 +33,87 @@ import {
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
 import { abs, add, choose, compare, decimal, display, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
 
+// Pass-through recorder: every launch runs for real; tests read how many
+// child processes a check started and with which executable and argv.
+vi.mock('node:child_process', async (importOriginal) =>
+  (await import('../../../helpers/child-process-launches.js')).recordChildProcessLaunches(await importOriginal()));
+
+const describeLaunch = (launch: ChildLaunch): string =>
+  [launch.api, launch.command, ...launch.args].map((part) => (part.length > 60 ? `${part.slice(0, 57)}...` : part)).join(' ');
+
+/** Source-realm probes run in Worker realms of this process: no child process. */
+function expectNoChildProcessSince(mark: number): void {
+  expect(childLaunchesSince(mark).map(describeLaunch), 'source-realm probes must not launch child processes').toEqual([]);
+}
+
+/** Emitted-JS probes run in exactly one plain-node child: no tsx, npx or tsc. */
+function expectOnePlainNodeChildSince(mark: number): void {
+  const launches = childLaunchesSince(mark);
+  expect(launches.map(describeLaunch), 'emitted-JS probes must run in exactly one child process').toHaveLength(1);
+  expect(launches[0]!.command, 'the emitted-JS child must be plain node (process.execPath)').toBe(process.execPath);
+  expect(typeScriptToolingIn(launches[0]!), 'the emitted-JS child argv and NODE_OPTIONS must not name tsx, npx or tsc').toEqual([]);
+}
+
+/** Shapes returned by realm-probe.mjs. */
+type RealmProbeResult = { readonly code: number | null; readonly timedOut: boolean; readonly error?: string; readonly stderr: string };
+type PoisonedWorkerOutcome = { readonly pass: boolean; readonly expected: string; readonly ok?: boolean; readonly events: readonly string[]; readonly error?: string };
+const REALM_PROBE_PATH = fileURLToPath(new URL('./realm-probe.mjs', import.meta.url));
+
 describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   const margin = parseMatchedPairNiDecimal('0.10');
   const alpha = parseMatchedPairNiDecimal('0.05');
 
-  function expectsHostileConstructorToTerminate(expression: string): void {
-    const moduleUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval',
-      `import { canonicalRational, decimal, rational } from ${JSON.stringify(moduleUrl)}; try { ${expression}; process.exit(2); } catch { process.exit(0); }`,
-    ], { cwd: process.cwd(), encoding: 'utf8', timeout: 2_000 });
-    expect(result.error).toBeUndefined();
-    expect(result.signal).toBeNull();
-    expect(result.status).toBe(0);
+  /** Every probe below runs in a fresh Worker realm; this loader makes it the TypeScript source realm. */
+  const TSX = ['--import', 'tsx'] as const;
+  /** A probe-internal hang guard, kept below the probe's own termination bound. */
+  const INNER_HANG_GUARD_MS = TERMINATION_BOUND_MS - 5_000;
+
+  // A failed or timed-out probe test must not leave spinning realms behind.
+  let emittedChild: ReturnType<typeof spawn> | undefined;
+  afterEach(async () => {
+    emittedChild?.kill('SIGKILL');
+    emittedChild = undefined;
+    await terminateLiveWorkers();
+  });
+  afterAll(() => { removeProbeFiles(); });
+
+  /** Same claim as a child process exiting 0 with no spawn error or signal. */
+  function expectProbeToExitZero(result: RealmProbeResult, label = ''): void {
+    expect(result.error, `${label}${result.stderr}`).toBeUndefined();
+    expect(result.timedOut, `${label}probe did not terminate within ${TERMINATION_BOUND_MS} ms`).toBe(false);
+    expect(result.code, `${label}${result.stderr}`).toBe(0);
   }
 
-  function expectsPoisonedPrototypeToTerminate(source: string): void {
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.signal).toBeNull();
-    expect(result.status).toBe(0);
+  async function expectsHostileConstructorToTerminate(expression: string): Promise<void> {
+    const moduleUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
+    expectProbeToExitZero(await runRealmProbe(
+      `import { canonicalRational, decimal, rational } from ${JSON.stringify(moduleUrl)}; try { ${expression}; process.exit(2); } catch { process.exit(0); }`,
+      { execArgv: TSX },
+    ));
+  }
+
+  async function expectsPoisonedPrototypeToTerminate(source: string): Promise<void> {
+    expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
   }
 
   /** `tsx` resolves TypeScript imports before engine evaluation. Its loader is
    * outside the engine closure, so pre-evaluation poisoning is explicitly not
-   * a supported source-entry condition (unlike emitted JavaScript). */
-  function expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee(): void {
+   * a supported source-entry condition (unlike emitted JavaScript). The
+   * poisoned `map` records that it was entered before it spins, so the probe
+   * shows a real non-terminating loop, not merely a slow start. */
+  async function expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee(): Promise<void> {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval',
-      `Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true }); await import(${JSON.stringify(engineUrl)}); process.exit(2);`,
-    ], { cwd: process.cwd(), encoding: 'utf8', timeout: 1_500 });
-    expect(result.error?.code).toBe('ETIMEDOUT');
-    expect(result.signal).toBe('SIGTERM');
+    const result = await runHangProbe(
+      `import { workerData } from 'node:worker_threads'; const entered = workerData.entered;
+      Object.defineProperty(Array.prototype, 'map', { value() { Atomics.store(entered, 0, 1); for (;;) {} }, configurable: true }); await import(${JSON.stringify(engineUrl)}); process.exit(2);`,
+      { execArgv: TSX },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.loopEntered, 'the poisoned Array.prototype.map loop was entered').toBe(true);
+    expect(result.exitedBeforeTermination, `the realm must still be spinning; it exited ${String(result.exitCode)}`).toBe(false);
   }
 
-  function expectsAlgebraicPoisonMatrixToTerminate(algebraicUrl: string, rationalUrl: string, loader: readonly string[]): void {
+  function algebraicPoisonCases(algebraicUrl: string, rationalUrl: string): Array<{ name: string; source: string }> {
     const calls = [
       'sturmSequence([ONE, ONE])',
       'isolateInteriorRoots([ZERO, ONE], ZERO, ONE, 24)',
@@ -66,20 +123,25 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })",
       "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })",
     ];
+    const cases: Array<{ name: string; source: string }> = [];
     for (let poisonIndex = 0; poisonIndex < poisons.length; poisonIndex++) for (let callIndex = 0; callIndex < calls.length; callIndex++) {
-      const source = `import { sturmSequence, isolateInteriorRoots, maximizePolynomial } from ${JSON.stringify(algebraicUrl)};
+      cases.push({
+        name: `algebraic poison ${poisonIndex} call ${callIndex}`,
+        source: `import { sturmSequence, isolateInteriorRoots, maximizePolynomial } from ${JSON.stringify(algebraicUrl)};
         import { ONE, ZERO, negate, rational } from ${JSON.stringify(rationalUrl)};
-        ${poisons[poisonIndex]!}; ${calls[callIndex]!}; process.exit(0);`;
-      const result = spawnSync(process.execPath, [...loader, '--input-type=module', '--eval', source], {
-        cwd: process.cwd(), encoding: 'utf8', timeout: 2_000,
+        ${poisons[poisonIndex]!}; ${calls[callIndex]!}; process.exit(0);`,
       });
-      expect(result.error).toBeUndefined();
-      expect(result.signal).toBeNull();
-      expect(result.status, result.stderr).toBe(0);
+    }
+    return cases;
+  }
+
+  async function expectsAlgebraicPoisonMatrixToTerminate(algebraicUrl: string, rationalUrl: string, loader: readonly string[]): Promise<void> {
+    for (const testCase of algebraicPoisonCases(algebraicUrl, rationalUrl)) {
+      expectProbeToExitZero(await runRealmProbe(testCase.source, { execArgv: loader }), `${testCase.name}: `);
     }
   }
 
-  function expectsWorkerInternalsToBeUnimportable(): void {
+  async function expectsWorkerInternalsToBeUnimportable(): Promise<void> {
     const algebraicUrl = new URL('../../../../src/addie/eval/matched-pair-ni/algebraic.ts', import.meta.url).href;
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
     const moduleProbe = `import * as algebraic from ${JSON.stringify(algebraicUrl)}; import * as engine from ${JSON.stringify(engineUrl)};
@@ -91,35 +153,27 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const source = `${moduleProbe}
       import { Worker } from 'node:worker_threads';
       const worker = new Worker(${JSON.stringify(workerProbe)}, { eval: true, type: 'module', execArgv: ['--import', 'tsx'] });
-      const timer = setTimeout(() => process.exit(3), 2_000);
+      const timer = setTimeout(() => process.exit(3), ${INNER_HANG_GUARD_MS});
       worker.once('message', (forbidden) => { clearTimeout(timer); process.exit(forbidden ? 2 : 0); });
       worker.once('error', () => { clearTimeout(timer); process.exit(3); });`;
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.signal).toBeNull();
-    expect(result.status).toBe(0);
+    expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
   }
 
-  function expectsMarkerOnlyWorkerToBeDenied(): void {
+  async function expectsMarkerOnlyWorkerToBeDenied(): Promise<void> {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
     const source = `import { Worker } from 'node:worker_threads';
       const worker = new Worker(new URL(${JSON.stringify(engineUrl)}), { workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', payload: { counts: { n11: 1, n10: 0, n01: 0, n00: 0 }, margin: { numerator: 0n, denominator: 1n }, alpha: { numerator: 1n, denominator: 20n } } }, execArgv: ['--import', 'tsx'] });
-      const timer = setTimeout(() => process.exit(3), 2_000);
+      const timer = setTimeout(() => process.exit(3), ${INNER_HANG_GUARD_MS});
       worker.once('message', () => { clearTimeout(timer); process.exit(2); });
       worker.once('exit', () => { clearTimeout(timer); process.exit(0); });`;
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.signal).toBeNull();
-    expect(result.status).toBe(0);
+    expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
   }
 
   /** A caller can create its own port/marker; the intrinsic preflight, not
-   * that marker, must make recreated expensive activation conservative. */
-  function expectsRecreatedWorkerToPreflightCostlyTasks(): void {
+   * that marker, must make recreated expensive activation conservative. The
+   * 1.5 s window opens at the worker's ready message, so loader start-up is
+   * outside it and only the preflighted computation is inside. */
+  async function expectsRecreatedWorkerToPreflightCostlyTasks(): Promise<void> {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
     const source = `import { MessageChannel, Worker } from 'node:worker_threads';
       const run = (margin) => new Promise((resolve, reject) => {
@@ -129,19 +183,18 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
             payload: { counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin, alpha: { numerator: 1n, denominator: 20n } } },
           transferList: [channel.port2], execArgv: ['--import', 'tsx'],
         });
-        const timer = setTimeout(() => reject(new Error('worker timed out')), 1_500);
-        channel.port1.once('message', () => channel.port1.postMessage('exact_matched_pair_ni_authorized'));
-        worker.once('message', (message) => { clearTimeout(timer); worker.terminate(); resolve(message?.ok === true && message.value?.diagnostic?.indeterminate?.reason === 'complexity_ceiling'); });
+        let settled = false;
+        let timer;
+        channel.port1.once('message', () => {
+          if (!settled) timer = setTimeout(() => reject(new Error('worker timed out')), 1_500);
+          channel.port1.postMessage('exact_matched_pair_ni_authorized');
+        });
+        worker.once('message', (message) => { settled = true; clearTimeout(timer); worker.terminate(); resolve(message?.ok === true && message.value?.diagnostic?.indeterminate?.reason === 'complexity_ceiling'); });
         worker.once('error', reject);
       });
       if (!await run({ numerator: 32767n, denominator: 32768n })) process.exit(2);
       if (!await run({ numerator: 1n, denominator: 1n << 255n })) process.exit(2);`;
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.signal).toBeNull();
-    expect(result.status).toBe(0);
+    expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
   }
 
   /**
@@ -150,67 +203,59 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
    * Array poison must complete because the core does not invoke Array helpers
    * or the iterator. Each named non-Array intrinsic must instead settle with
    * the worker's conservative `{ ok: false }` response before core telemetry.
+   * The matrix itself is POISONED_WORKER_TASKS x POISONED_WORKER_POISONS in
+   * realm-probe.mjs.
    */
-  function expectsPoisonedRecreatedWorkerMatrix(engineUrl: string, workerLoader: readonly string[], sourceResolution = false): void {
-    const tasks = [
-      { task: 'restricted_score', payload: `{ counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
-      { task: 'null_size', payload: `{ n: 4, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
-    ];
-    const poisons = [
-      { source: "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })", expected: 'normal_completion' },
-      { source: "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })", expected: 'normal_completion' },
-      { source: "Object.defineProperty(RegExp.prototype, 'test', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(String.prototype, 'startsWith', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(String.prototype, 'indexOf', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(String.prototype, 'slice', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(String.prototype, 'endsWith', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(Map.prototype, 'get', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(Map.prototype, 'set', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(Map.prototype, 'has', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(WeakSet.prototype, 'add', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-      { source: "Object.defineProperty(WeakSet.prototype, 'has', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-    ];
-    for (let poisonIndex = 0; poisonIndex < poisons.length; poisonIndex++) for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
-      const poison = poisons[poisonIndex]!;
-      const task = tasks[taskIndex]!;
-      const directory = mkdtempSync(join(tmpdir(), 'matched-ni-poisoned-worker-'));
-      const preload = join(directory, sourceResolution ? 'entry.mjs' : 'poison.mjs');
-      if (sourceResolution) {
-        writeFileSync(preload, `import ${JSON.stringify(engineUrl)}; import { workerData } from 'node:worker_threads'; workerData.authorizationPort.postMessage('import_complete'); ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
-      } else {
-        writeFileSync(preload, `import { workerData } from 'node:worker_threads'; ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
-      }
-      const source = `import { MessageChannel, Worker } from 'node:worker_threads';
-        const channel = new MessageChannel();
-        const worker = new Worker(new URL(${JSON.stringify(sourceResolution ? pathToFileURL(preload).href : engineUrl)}), { workerData: { exactMatchedPairNiWorker: true, task: ${JSON.stringify(task.task)}, authorizationPort: channel.port2, payload: ${task.payload}, trace: true }, transferList: [channel.port2], execArgv: ${sourceResolution ? JSON.stringify(workerLoader) : `[...${JSON.stringify(workerLoader)}, '--import', ${JSON.stringify(pathToFileURL(preload).href)}]`} });
-        const events = [];
-        const result = await new Promise((resolve, reject) => { let ready = false; let poisonAck = false; let imported = !${sourceResolution}; const timer = setTimeout(() => reject(new Error(\`timeout after \${events.join(',')}\`)), 2_000); channel.port1.on('message', (message) => { events.push(String(message)); ready ||= message === 'exact_matched_pair_ni_ready'; poisonAck ||= message === 'poison_ack'; imported ||= message === 'import_complete'; if (ready && poisonAck && imported) { events.push('authorized'); channel.port1.postMessage('exact_matched_pair_ni_authorized'); } }); worker.once('message', (message) => { clearTimeout(timer); resolve(message); }); worker.once('error', reject); worker.once('exit', (code) => reject(new Error(\`worker exited \${code}; events=\${events.join(',')}\`))); });
-        await worker.terminate();
-        const poisonAt = events.indexOf('poison_ack'); const startAt = events.indexOf('core_start'); const resultAt = events.indexOf('core_complete');
-        process.exit(${poison.expected === 'normal_completion'}
-          ? (result?.ok === true && poisonAt >= 0 && startAt > poisonAt && resultAt > startAt && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2)
-          : (result?.ok === false && poisonAt >= 0 && startAt === -1 && resultAt === -1 && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2));`;
-      try {
-        const result = spawnSync(process.execPath, [...workerLoader, '--input-type=module', '--eval', source], {
-          cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
-        });
-        expect(result.error).toBeUndefined();
-        expect(result.signal).toBeNull();
-        expect(result.status, result.stderr).toBe(0);
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
-      }
+  function poisonedRecreatedWorkerCases(engineUrl: string, workerLoader: readonly string[], sourceResolution = false) {
+    const cases: Array<{ name: string; kind: 'poisoned_worker'; engineUrl: string; workerLoader: readonly string[]; sourceResolution: boolean; taskIndex: number; poisonIndex: number }> = [];
+    for (let poisonIndex = 0; poisonIndex < POISONED_WORKER_POISONS.length; poisonIndex++) for (let taskIndex = 0; taskIndex < POISONED_WORKER_TASKS.length; taskIndex++) {
+      cases.push({ name: `${POISONED_WORKER_TASKS[taskIndex]!.task} under ${POISONED_WORKER_POISONS[poisonIndex]!.source}`, kind: 'poisoned_worker', engineUrl, workerLoader, sourceResolution, taskIndex, poisonIndex });
+    }
+    return cases;
+  }
+
+  function expectPoisonedWorkerCase(name: string, outcome: PoisonedWorkerOutcome): void {
+    expect(outcome.pass, `${name}: expected ${outcome.expected}, got ok=${String(outcome.ok)} events=${outcome.events.join(',')} error=${String(outcome.error)}`).toBe(true);
+  }
+
+  async function expectsPoisonedRecreatedWorkerMatrix(engineUrl: string, workerLoader: readonly string[], sourceResolution = false): Promise<void> {
+    for (const testCase of poisonedRecreatedWorkerCases(engineUrl, workerLoader, sourceResolution)) {
+      expectPoisonedWorkerCase(testCase.name, await runPoisonedWorkerCase(testCase));
     }
   }
 
-  function expectsBuiltPathToRetainRootAndWorkerBounds(): void {
+  /**
+   * Emits the engine closure the way the production build does: the same
+   * compiler and server/tsconfig.json options, file by file. The closure
+   * imports only its siblings and Node built-ins, which is what makes
+   * per-file emit identical to the project build's emit for these files.
+   */
+  function emitEngineClosure(outputRoot: string): string {
+    const sourceDirectory = resolve('server/src/addie/eval/matched-pair-ni');
+    const tsconfigPath = resolve('server/tsconfig.json');
+    const config = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+    expect(config.error).toBeUndefined();
+    const { options } = ts.parseJsonConfigFileContent(config.config, ts.sys, dirname(tsconfigPath));
+    const outputDirectory = join(outputRoot, 'addie/eval/matched-pair-ni');
+    mkdirSync(outputDirectory, { recursive: true });
+    const sources = readdirSync(sourceDirectory).filter((file) => file.endsWith('.ts'));
+    expect(sources.sort()).toEqual(['admission.ts', 'algebraic.ts', 'certificates.ts', 'engine.ts', 'polynomial.ts', 'rational.ts']);
+    for (const file of sources) {
+      const source = readFileSync(join(sourceDirectory, file), 'utf8');
+      const specifiers = ts.preProcessFile(source, true, true).importedFiles.map((imported) => imported.fileName);
+      expect(specifiers.filter((specifier) => !specifier.startsWith('./') && !specifier.startsWith('node:')), `${file} imports outside the closure`).toEqual([]);
+      const emitted = ts.transpileModule(source, { compilerOptions: options, fileName: join(sourceDirectory, file), reportDiagnostics: true });
+      expect(emitted.diagnostics ?? [], `${file} transpile diagnostics`).toEqual([]);
+      writeFileSync(join(outputDirectory, file.replace(/\.ts$/, '.js')), emitted.outputText);
+    }
+    return outputDirectory;
+  }
+
+  async function expectsBuiltPathToRetainRootAndWorkerBounds(): Promise<void> {
     const output = mkdtempSync(join(tmpdir(), 'matched-ni-built-'));
     try {
-      const compilation = spawnSync('npx', ['tsc', '--project', 'server/tsconfig.json', '--outDir', output, '--noEmit', 'false'], {
-        cwd: process.cwd(), encoding: 'utf8', timeout: 20_000,
-      });
-      expect(compilation.error).toBeUndefined();
-      expect(compilation.status).toBe(0);
+      emitEngineClosure(output);
+      const base = `file://${output}/addie/eval/matched-pair-ni/`;
       const probe = `import { MessageChannel, Worker } from 'node:worker_threads';
         const base = \`file://\${process.env.MATCHED_NI_BUILD_DIR}/addie/eval/matched-pair-ni/\`;
         const { isolateInteriorRoots } = await import(\`\${base}algebraic.js\`);
@@ -221,27 +266,48 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
         if (!isolateInteriorRoots(value, ZERO, ONE, 24).unresolved || !isolateInteriorRoots(polynomial([rational(1n << 513n), ONE]), ZERO, ONE, 24).unresolved) process.exit(2);
         const channel = new MessageChannel();
         const worker = new Worker(new URL(\`\${base}engine.js\`), { workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', authorizationPort: channel.port2, payload: { counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin: { numerator: 32767n, denominator: 32768n }, alpha: { numerator: 1n, denominator: 20n } } }, transferList: [channel.port2], execArgv: [] });
-        const reply = await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('timeout')), 1_500); channel.port1.once('message', () => channel.port1.postMessage('exact_matched_pair_ni_authorized')); worker.once('message', (message) => { clearTimeout(timer); resolve(message); }); worker.once('error', reject); });
+        const reply = await new Promise((resolve, reject) => { let settled = false; let timer; channel.port1.once('message', () => { if (!settled) timer = setTimeout(() => reject(new Error('timeout')), 1_500); channel.port1.postMessage('exact_matched_pair_ni_authorized'); }); worker.once('message', (message) => { settled = true; clearTimeout(timer); resolve(message); }); worker.once('error', reject); });
         await worker.terminate();
         process.exit(reply?.ok === true && reply.value?.diagnostic?.indeterminate?.reason === 'complexity_ceiling' ? 0 : 2);`;
-      const result = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
-        cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
-        env: { ...process.env, MATCHED_NI_BUILD_DIR: output },
+      const cases = [
+        { name: 'emitted root and worker bounds', kind: 'probe', source: probe, execArgv: [] },
+        ...algebraicPoisonCases(`${base}algebraic.js`, `${base}rational.js`).map((testCase) => ({ ...testCase, kind: 'probe', execArgv: [] })),
+        ...poisonedRecreatedWorkerCases(`${base}engine.js`, []),
+      ];
+      const casesPath = join(output, 'cases.json');
+      writeFileSync(casesPath, JSON.stringify(cases));
+      // One plain-node process (no TypeScript loader anywhere in it) runs
+      // every emitted-JS case, each in its own fresh Worker realm.
+      const child = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolveChild) => {
+        const process_ = spawn(process.execPath, [REALM_PROBE_PATH, casesPath], {
+          cwd: process.cwd(), env: { ...process.env, MATCHED_NI_BUILD_DIR: output }, stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        emittedChild = process_;
+        let stdout = '';
+        let stderr = '';
+        process_.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+        process_.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+        process_.once('error', (error) => resolveChild({ status: null, stdout, stderr: `${stderr}${String(error)}` }));
+        process_.once('close', (status) => resolveChild({ status, stdout, stderr }));
       });
-      expect(result.error).toBeUndefined();
-      expect(result.signal).toBeNull();
-      expect(result.status).toBe(0);
-      expectsAlgebraicPoisonMatrixToTerminate(
-        `file://${output}/addie/eval/matched-pair-ni/algebraic.js`,
-        `file://${output}/addie/eval/matched-pair-ni/rational.js`, [],
-      );
-      expectsPoisonedRecreatedWorkerMatrix(`file://${output}/addie/eval/matched-pair-ni/engine.js`, []);
+      const outcomes = new Map(child.stdout.trim().split('\n').filter(Boolean).map((line) => {
+        const outcome = JSON.parse(line) as { name: string } & RealmProbeResult & PoisonedWorkerOutcome;
+        return [outcome.name, outcome] as const;
+      }));
+      // The child stops after the first failing case, so check in order.
+      for (const testCase of cases) {
+        const outcome = outcomes.get(testCase.name);
+        expect(outcome, `${testCase.name}: no result (child status ${String(child.status)}) ${child.stderr}`).toBeDefined();
+        if (testCase.kind === 'poisoned_worker') expectPoisonedWorkerCase(testCase.name, outcome!);
+        else expectProbeToExitZero(outcome!, `${testCase.name}: `);
+      }
+      expect(child.status, child.stderr).toBe(0);
     } finally {
       rmSync(output, { recursive: true, force: true });
     }
   }
 
-  function expectsRootIsolationToTerminate(): void {
+  async function expectsRootIsolationToTerminate(): Promise<void> {
     const algebraicUrl = new URL('../../../../src/addie/eval/matched-pair-ni/algebraic.ts', import.meta.url).href;
     const polynomialUrl = new URL('../../../../src/addie/eval/matched-pair-ni/polynomial.ts', import.meta.url).href;
     const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
@@ -252,12 +318,18 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       for (let index = 1; index <= 25; index++) value = polynomialMultiply(value, [negate(rational(index, 26)), ONE]);
       if (!isolateInteriorRoots(value, ZERO, ONE, 24).unresolved) process.exit(2);
       process.exit(isolateInteriorRoots(polynomial([rational(1n << 513n), ONE]), ZERO, ONE, 24).unresolved ? 0 : 2);`;
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 5_000,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.signal).toBeNull();
-    expect(result.status).toBe(0);
+    expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
+  }
+
+  /** :278 and :608 compute the same n=25 request; share one computation, created lazily inside a test body. */
+  let sharedN25: { readonly input: Parameters<typeof restrictedScoreEM>[0]; readonly outcome: ReturnType<typeof restrictedScoreEM> } | undefined;
+  function restrictedScoreEMShared(input: { counts: { n11: number; n10: number; n01: number; n00: number }; margin: ReturnType<typeof rational>; alpha: ReturnType<typeof rational> }): ReturnType<typeof restrictedScoreEM> {
+    const same = sharedN25 !== undefined
+      && (['n11', 'n10', 'n01', 'n00'] as const).every((cell) => (sharedN25!.input as typeof input).counts[cell] === input.counts[cell])
+      && compare((sharedN25.input as typeof input).margin, input.margin) === 0
+      && compare((sharedN25.input as typeof input).alpha, input.alpha) === 0;
+    if (!same) sharedN25 = { input, outcome: restrictedScoreEM(input) };
+    return sharedN25!.outcome;
   }
 
   function expectsColdWorkerFixtureToBeDeterminate(): void {
@@ -284,7 +356,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const fixtureMargin = parseMatchedPairNiDecimal(fixture.margin);
     const reported = decimal(fixture.reported_p_value);
     const fourDecimalHalfUnit = decimal('0.00005');
-    const outcome = await restrictedScoreEM({
+    const outcome = await restrictedScoreEMShared({
       counts: {
         n11: fixture.counts.n - fixture.counts.t, n10: fixture.counts.x,
         n01: fixture.counts.t - fixture.counts.x, n00: 0,
@@ -352,67 +424,83 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => interval(new Proxy({ numerator: 1n, denominator: 2n }, {}), ONE)).toThrow(/Proxy/);
   });
 
-  it('does not export worker-only expensive cores to direct imports', () => {
-    expectsWorkerInternalsToBeUnimportable();
-    expectsMarkerOnlyWorkerToBeDenied();
-    expectsRecreatedWorkerToPreflightCostlyTasks();
-  });
+  it('does not export worker-only expensive cores to direct imports', async () => {
+    const launches = childLaunchMark();
+    await expectsWorkerInternalsToBeUnimportable();
+    await expectsMarkerOnlyWorkerToBeDenied();
+    await expectsRecreatedWorkerToPreflightCostlyTasks();
+    expectNoChildProcessSince(launches);
+  }, 60_000);
 
-  it('terminates hostile scalar constructors without property access or coercion', () => {
-    expectsHostileConstructorToTerminate('decimal({ get length() { for (;;) {} } })');
-    expectsHostileConstructorToTerminate('rational({ [Symbol.toPrimitive]() { for (;;) {} } })');
-    expectsHostileConstructorToTerminate('canonicalRational({ numerator: 1n, denominator: 2n }, { [Symbol.toPrimitive]() { for (;;) {} } })');
-  }, 5_000);
+  it('terminates hostile scalar constructors without property access or coercion', async () => {
+    const launches = childLaunchMark();
+    await expectsHostileConstructorToTerminate('decimal({ get length() { for (;;) {} } })');
+    await expectsHostileConstructorToTerminate('rational({ [Symbol.toPrimitive]() { for (;;) {} } })');
+    await expectsHostileConstructorToTerminate('canonicalRational({ numerator: 1n, denominator: 2n }, { [Symbol.toPrimitive]() { for (;;) {} } })');
+    expectNoChildProcessSince(launches);
+  }, 30_000);
 
-  it('never dispatches descriptor snapshots through poisoned prototype setters', () => {
+  it('never dispatches descriptor snapshots through poisoned prototype setters', async () => {
+    const launches = childLaunchMark();
     const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
-    expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
+    await expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
       Object.defineProperty(Object.prototype, 'numerator', { set() { for (;;) {} }, configurable: true });
       process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
-    expectsPoisonedPrototypeToTerminate(`import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
+    await expectsPoisonedPrototypeToTerminate(`import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
       Object.defineProperty(Object.prototype, 'counts', { set() { for (;;) {} }, configurable: true });
       const outcome = await restrictedScoreEM({ counts: { n11: 1, n10: 1, n01: 0, n00: 0 }, margin: d('0.10'), alpha: d('0.05') });
       process.exit(outcome.admission.admitted ? 2 : 0);`);
-  }, 7_000);
+    expectNoChildProcessSince(launches);
+  }, 30_000);
 
-  it('does not invoke poisoned Array prototype map or iterator after snapshotting', () => {
+  it('does not invoke poisoned Array prototype map or iterator after snapshotting', async () => {
+    const launches = childLaunchMark();
     const polynomialUrl = new URL('../../../../src/addie/eval/matched-pair-ni/polynomial.ts', import.meta.url).href;
     const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
-    expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
+    await expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
       Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true });
       process.exit(degree(polynomial([ONE, ZERO])) === 0 ? 0 : 2);`);
-    expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
+    await expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
       Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
       process.exit(degree(polynomial([ONE, ZERO])) === 0 ? 0 : 2);`);
-    expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
+    await expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
       Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
       process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
-  }, 7_000);
+    expectNoChildProcessSince(launches);
+  }, 30_000);
 
-  it('keeps all exported algebraic root helpers off poisoned Array prototypes in source and emitted builds', () => {
-    expectsAlgebraicPoisonMatrixToTerminate(
+  it('keeps all exported algebraic root helpers off poisoned Array prototypes in source and emitted builds', async () => {
+    const launches = childLaunchMark();
+    await expectsAlgebraicPoisonMatrixToTerminate(
       new URL('../../../../src/addie/eval/matched-pair-ni/algebraic.ts', import.meta.url).href,
       new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href,
       ['--import', 'tsx'],
     );
-  }, 20_000);
+    expectNoChildProcessSince(launches);
+  }, 30_000);
 
-  it('keeps post-loader/pre-core TypeScript worker realms bounded under mutable intrinsic poisoning', () => {
-    expectsPoisonedRecreatedWorkerMatrix(
+  it('keeps post-loader/pre-core TypeScript worker realms bounded under mutable intrinsic poisoning', async () => {
+    const launches = childLaunchMark();
+    await expectsPoisonedRecreatedWorkerMatrix(
       new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href,
       ['--import', 'tsx'],
       true,
     );
+    expectNoChildProcessSince(launches);
   }, 90_000);
 
-  it('does not claim TypeScript source pre-evaluation isolation from the external tsx loader', () => {
-    expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee();
-  }, 5_000);
-
-  it('keeps emitted JavaScript workers bounded under pre-evaluation mutable-intrinsic poisoning', () => {
-    expectsBuiltPathToRetainRootAndWorkerBounds();
+  it('does not claim TypeScript source pre-evaluation isolation from the external tsx loader', async () => {
+    const launches = childLaunchMark();
+    await expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee();
+    expectNoChildProcessSince(launches);
   }, 30_000);
+
+  it('keeps emitted JavaScript workers bounded under pre-evaluation mutable-intrinsic poisoning', async () => {
+    const launches = childLaunchMark();
+    await expectsBuiltPathToRetainRootAndWorkerBounds();
+    expectOnePlainNodeChildSince(launches);
+  }, 90_000);
 
   it('divides signed intervals outward over a strictly positive divisor', () => {
     expect(intervalDividePositive(interval(rational(-2), rational(-1)), interval(ONE, rational(2)))).toEqual(interval(rational(-2), rational(-1, 2)));
@@ -423,9 +511,11 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => intervalDividePositive(interval(ONE, ONE), interval(rational(-1), ONE))).toThrow(/positive/);
   });
 
-  it('returns unresolved before the killable root-isolation process deadline', () => {
-    expectsRootIsolationToTerminate();
-  }, 6_000);
+  it('returns unresolved before the killable root-isolation process deadline', async () => {
+    const launches = childLaunchMark();
+    await expectsRootIsolationToTerminate();
+    expectNoChildProcessSince(launches);
+  }, 30_000);
 
   it('snapshots aliases into immutable values before certification', () => {
     const shared = { numerator: 1n, denominator: 2n };
@@ -606,7 +696,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   });
 
   it('rehydrates worker evidence into immutable canonical diagnostic values', async () => {
-    const diagnostic = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin, alpha });
+    const diagnostic = await restrictedScoreEMShared({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin, alpha });
     expect(Object.isFrozen(diagnostic)).toBe(true);
     expect(Object.isFrozen(diagnostic.admission)).toBe(true);
     expect(Object.isFrozen(diagnostic.diagnostic)).toBe(true);
