@@ -19,7 +19,7 @@ import type {
   PreparedModelInvocation,
 } from './model-provider.js';
 import { UnexpectedModelIdentityError } from './model-provider.js';
-import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
+import { assertPlainJson, isDeepFrozenJsonData, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const OPENAI_ROUTER_MODEL = 'gpt-5.6-luna';
@@ -93,16 +93,68 @@ function textOnly(content: ModelMessageContent[], label: string): string {
 }
 
 function toOpenAITool(tool: ModelRequest['tools'][number]): FunctionTool {
+  // Both callers structuredClone the whole projected request, so parameters
+  // can reference the source schema here without sharing it with the output.
   return {
     type: 'function',
     name: tool.name,
     description: tool.description,
-    parameters: structuredClone(tool.inputSchema) as Record<string, unknown>,
+    parameters: tool.inputSchema as Record<string, unknown>,
     // Addie's canonical schemas intentionally allow optional properties that
     // do not satisfy OpenAI's strict-schema subset. Runtime validation and the
     // common tool executor remain authoritative.
     strict: false,
   };
+}
+
+// Wire projections of tools proven deep-frozen JSON data. Such a tool can
+// never change, so its projection is computed and frozen once; every request
+// that offers the tool shares that immutable projection instead of cloning
+// the tool's schema again on every dispatch.
+const frozenToolProjections = new WeakMap<object, FunctionTool>();
+
+function frozenOpenAITool(tool: ModelRequest['tools'][number]): FunctionTool | undefined {
+  const cached = frozenToolProjections.get(tool);
+  if (cached) return cached;
+  if (!isDeepFrozenJsonData(tool)) return undefined;
+  const projected = deepFreeze(structuredClone(toOpenAITool(tool)));
+  frozenToolProjections.set(tool, projected);
+  return projected;
+}
+
+/**
+ * The projected request as a detached, deep-frozen value. When every tool is
+ * proven deep-frozen JSON data, everything but the tools is cloned and the
+ * shared frozen tool projections are assigned to the existing `tools` key (so
+ * key order, and with it every serialization, is unchanged). Otherwise the
+ * whole request is cloned, as before.
+ */
+function detachedOpenAIRequest(
+  projected: ResponseCreateParamsNonStreaming,
+  request: ModelRequest,
+): Readonly<Record<string, unknown>> {
+  const tools = frozenOpenAITools(request.tools);
+  if (!tools) {
+    return deepFreeze(structuredClone(projected)) as unknown as Readonly<Record<string, unknown>>;
+  }
+  const detached: ResponseCreateParamsNonStreaming = structuredClone({ ...projected, tools: [] });
+  detached.tools = tools as FunctionTool[];
+  return deepFreeze(detached) as unknown as Readonly<Record<string, unknown>>;
+}
+
+// A tool list that is itself proven deep-frozen JSON data maps to one frozen
+// array of shared projections, reused by every request that offers it.
+const frozenToolListProjections = new WeakMap<object, readonly FunctionTool[]>();
+
+function frozenOpenAITools(tools: ModelRequest['tools']): readonly FunctionTool[] | undefined {
+  if (tools.length === 0) return undefined;
+  const cachedList = frozenToolListProjections.get(tools);
+  if (cachedList) return cachedList;
+  const projected = tools.map(frozenOpenAITool);
+  if (projected.some((tool) => tool === undefined)) return undefined;
+  const list = Object.freeze(projected as FunctionTool[]);
+  if (isDeepFrozenJsonData(tools)) frozenToolListProjections.set(tools, list);
+  return list;
 }
 
 function parseToolInput(value: string, name: string): JsonObject {
@@ -327,9 +379,10 @@ export class OpenAIResponsesProvider implements ModelProvider {
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
-    const providerRequest = (
-      deepFreeze(structuredClone(toOpenAIRequest(request, this.directFullSuiteScope)))
-    ) as unknown as Readonly<Record<string, unknown>>;
+    const providerRequest = detachedOpenAIRequest(
+      toOpenAIRequest(request, this.directFullSuiteScope),
+      request,
+    );
     return deepFreeze({
       provider: this.id,
       model: request.model,
@@ -373,9 +426,8 @@ export class OpenAIResponsesProvider implements ModelProvider {
 export function prepareOpenAIResponsesEvaluationRequest(
   request: ModelRequest,
 ): Readonly<Record<string, unknown>> {
-  return deepFreeze(structuredClone(toOpenAIRequest(
-      request,
-      true,
-      OPENAI_RESPONSES_CAPABILITIES,
-    ))) as unknown as Readonly<Record<string, unknown>>;
+  return detachedOpenAIRequest(
+    toOpenAIRequest(request, true, OPENAI_RESPONSES_CAPABILITIES),
+    request,
+  );
 }

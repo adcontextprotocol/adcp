@@ -1,4 +1,9 @@
-import Ajv, { type ValidateFunction } from 'ajv';
+import type { ValidateFunction } from 'ajv';
+import {
+  compileToolInputSchema,
+  isCacheableToolRegistration,
+  newToolSchemaAjv,
+} from '../model-providers/tool-schema-validator.js';
 import type { AddieTool } from '../types.js';
 import { buildModelToolDefinitions } from '../tool-wire-shape.js';
 import {
@@ -153,7 +158,15 @@ function registerTools(
   definitions: readonly AddieTool[],
   environment?: FixedTraceEvaluatorToolEnvironment,
 ): Map<string, RegisteredTool> {
-  const ajv = new Ajv({ allErrors: false, strict: false });
+  // Every trace, arm, preflight and identity check registers the same tool
+  // catalog. Identity-free JSON schemas share process-wide compiled
+  // validators; any other registration compiles in its own fresh instance,
+  // exactly as before.
+  const shared = isCacheableToolRegistration(definitions, 'input_schema');
+  let own: ReturnType<typeof newToolSchemaAjv> | undefined;
+  const compile = (schema: AddieTool['input_schema']): ValidateFunction => (shared
+    ? compileToolInputSchema(schema, 'tool_loop')
+    : (own ??= newToolSchemaAjv('tool_loop')).compile(schema));
   if (environment) {
     const evaluatorTools = new Map(environment.tools.map((tool) => [tool.definition.name, tool]));
     if (evaluatorTools.size !== environment.tools.length) {
@@ -171,7 +184,7 @@ function registerTools(
       const definition = deepFreeze(structuredClone(sourceDefinition));
       let validate: ValidateFunction;
       try {
-        validate = ajv.compile(definition.input_schema);
+        validate = compile(definition.input_schema);
       } catch {
         throw new FixedTraceToolLoopBoundaryError('tool_schema_invalid');
       }
@@ -204,7 +217,7 @@ function registerTools(
     const definition = deepFreeze(structuredClone(sourceDefinition));
     let validate: ValidateFunction;
     try {
-      validate = ajv.compile(definition.input_schema);
+      validate = compile(definition.input_schema);
     } catch {
       throw new FixedTraceToolLoopBoundaryError('tool_schema_invalid');
     }

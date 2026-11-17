@@ -68,6 +68,10 @@ import {
   type GoogleGenerateContentTransport,
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import type { AddieTool } from '../../../src/addie/types.js';
+import {
+  resetToolSchemaValidatorCacheForTests,
+  toolSchemaValidatorStatsForTests,
+} from '../../../src/addie/model-providers/tool-schema-validator.js';
 
 const HASH = createHash('sha256').update('fixed-trace-runner-test').digest('hex');
 
@@ -2067,28 +2071,66 @@ describe('fixed trace artifact runner', () => {
   });
 
   it('preflights fixture schemas once per complete identity, not per provider dispatch', async () => {
+    resetToolSchemaValidatorCacheForTests();
+    expect(toolSchemaValidatorStatsForTests()).toEqual({ lookups: 0, compiles: 0 });
     const expandedTrace = expandedFixtureTrace('preflight-compilation-count');
     expandedTrace.category = 'knowledge';
-    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
-    const generation = new ScriptedProvider([
-      response([{
-        type: 'tool_call', id: 'preflight-tool', name: 'expanded_fixture_tool', input: { query: 'fixture' },
-      }], 'tool_calls'),
-      response([{ type: 'text', text: 'Synthetic fixture response.' }]),
-    ]);
+    const providers = () => ({
+      router: new ScriptedProvider([routeResponse('respond', ['knowledge'])]),
+      generation: new ScriptedProvider([
+        response([{
+          type: 'tool_call', id: 'preflight-tool', name: 'expanded_fixture_tool', input: { query: 'fixture' },
+        }], 'tool_calls'),
+        response([{ type: 'text', text: 'Synthetic fixture response.' }]),
+      ]),
+    });
     const compile = vi.spyOn(Ajv.prototype, 'compile');
+    try {
+      const first = providers();
+      await runFixedTraceSuite(config(first.router, first.generation, {
+        traceSuite: [expandedTrace],
+        toolDefinitions: [tool('expanded_fixture_tool')],
+      }));
 
-    await runFixedTraceSuite(config(router, generation, {
-      traceSuite: [expandedTrace],
-      toolDefinitions: [tool('expanded_fixture_tool')],
-    }));
+      // On a cold validator cache, runner preflight compiles the schema once and
+      // the actual loop registration reuses it: exactly two lookups. Router plus
+      // two generation dispatches must not multiply this work; a per-dispatch
+      // preflight would raise the lookup count even though compiles stay cached.
+      expect(compile).toHaveBeenCalledTimes(1);
+      expect(toolSchemaValidatorStatsForTests()).toEqual({ lookups: 2, compiles: 1 });
+      expect(first.router.respondCalls).toHaveLength(1);
+      expect(first.generation.respondCalls).toHaveLength(2);
 
-    // One compilation at runner preflight and one at actual loop registration.
-    // Router plus two generation dispatches must not multiply this work.
-    expect(compile).toHaveBeenCalledTimes(2);
-    expect(router.respondCalls).toHaveLength(1);
-    expect(generation.respondCalls).toHaveLength(2);
-    compile.mockRestore();
+      // A second identical run (a new config, so preflight runs again) reuses
+      // the cached validator: +2 lookups, +0 compiles.
+      const second = providers();
+      await runFixedTraceSuite(config(second.router, second.generation, {
+        traceSuite: [expandedTrace],
+        toolDefinitions: [tool('expanded_fixture_tool')],
+      }));
+      expect(compile).toHaveBeenCalledTimes(1);
+      expect(toolSchemaValidatorStatsForTests()).toEqual({ lookups: 4, compiles: 1 });
+      expect(second.router.respondCalls).toHaveLength(1);
+      expect(second.generation.respondCalls).toHaveLength(2);
+
+      // A changed nested schema is a new validator: exactly +1 compile.
+      const changed = structuredClone(tool('expanded_fixture_tool'));
+      changed.input_schema = {
+        ...changed.input_schema,
+        properties: { ...changed.input_schema.properties, query: { type: 'string', maxLength: 200 } },
+      };
+      const third = providers();
+      await runFixedTraceSuite(config(third.router, third.generation, {
+        traceSuite: [expandedTrace],
+        toolDefinitions: [changed],
+      }));
+      expect(compile).toHaveBeenCalledTimes(2);
+      expect(toolSchemaValidatorStatsForTests()).toEqual({ lookups: 6, compiles: 2 });
+      expect(third.router.respondCalls).toHaveLength(1);
+      expect(third.generation.respondCalls).toHaveLength(2);
+    } finally {
+      compile.mockRestore();
+    }
   });
 
   it('aborts deterministic provider preparation rather than scoring it as provider evidence', async () => {

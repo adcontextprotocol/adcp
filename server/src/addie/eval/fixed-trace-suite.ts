@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepFrozenJsonData } from '../model-providers/capabilities.js';
 import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
 import {
   fixedTraceArchitectureArm,
@@ -2177,7 +2178,37 @@ function rawStringLeaves(value: unknown): string[] {
   return [];
 }
 
+// Each predicate below is a pure function of its string argument over frozen
+// module constants, so its result is memoized by the string itself (the key
+// is the whole input). Corpus validation re-checks the same leaves for every
+// suite variant. At the bound a memo stops inserting; nothing is evicted.
+const IDENTITY_LEAKAGE_MEMO_LIMIT = 50_000;
+const identityValueLeakageMemo = new Map<string, boolean>();
+const identityKeyLeakageMemo = new Map<string, boolean>();
+
+function memoizedLeakage(memo: Map<string, boolean>, value: string, compute: (value: string) => boolean): boolean {
+  const known = memo.get(value);
+  if (known !== undefined) return known;
+  const result = compute(value);
+  if (memo.size < IDENTITY_LEAKAGE_MEMO_LIMIT) memo.set(value, result);
+  return result;
+}
+
+const PROTECTED_IDENTITY_SKELETONS = [
+  'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
+] as const;
+// The 'u' flag alone keeps RegExp.prototype.test stateless (no g or y), so
+// these can be shared across calls.
+const PROTECTED_VALUE_SKELETON_PATTERNS = PROTECTED_IDENTITY_SKELETONS
+  .map((identity) => new RegExp([...identity].join('[\\p{P}\\p{Z}\\p{C}_]*'), 'u'));
+const PROTECTED_KEY_SKELETON_PATTERNS = PROTECTED_IDENTITY_SKELETONS
+  .map((identity) => new RegExp([...identity].join('_*'), 'u'));
+
 function identityValueLeakage(value: string): boolean {
+  return memoizedLeakage(identityValueLeakageMemo, value, computeIdentityValueLeakage);
+}
+
+function computeIdentityValueLeakage(value: string): boolean {
   const allowedDomains = FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST.allowedDomains;
   const canonical = canonicalFixedTraceText(value);
   const normalized = canonical.text;
@@ -2198,9 +2229,7 @@ function identityValueLeakage(value: string): boolean {
   // punctuation, or controls. This catches punctuation and zero-width
   // evasions (Br.i.an O Kelley) after the narrow confusable fold, without
   // joining arbitrary prose fragments into a synthetic identity.
-  const hasProtectedSkeleton = [
-    'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
-  ].some((identity) => new RegExp([...identity].join('[\\p{P}\\p{Z}\\p{C}_]*'), 'u').test(debracketedDomain));
+  const hasProtectedSkeleton = PROTECTED_VALUE_SKELETON_PATTERNS.some((pattern) => pattern.test(debracketedDomain));
   const hasUnapprovedOpaqueIdentity = [...debracketedDomain.matchAll(/\b(?:org|user)[_.-][a-z0-9]+(?:[_.-][a-z0-9]+)*\b/gi)]
     .some((match) => !FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST.allowedOpaqueIdentifiers.includes(match[0]
       .toLowerCase().replace(/[ .-]+/g, '_')));
@@ -2212,15 +2241,17 @@ function identityValueLeakage(value: string): boolean {
 }
 
 function identityKeyLeakage(key: string): boolean {
+  return memoizedLeakage(identityKeyLeakageMemo, key, computeIdentityKeyLeakage);
+}
+
+function computeIdentityKeyLeakage(key: string): boolean {
   // Canonical snake-case schema field names such as org_id and user_id are
   // structure, not production identities. Keep the allowance narrow and
   // still reject protected compact spellings inside otherwise valid keys.
   if (/^[a-z][a-z0-9_]{0,63}$/.test(key)) {
     const canonical = canonicalFixedTraceText(key);
     const normalizedWords = ` ${canonical.text.replace(/[^a-z0-9_]+/g, ' ').trim()} `;
-    const protectedSkeleton = [
-      'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
-    ].some((identity) => new RegExp([...identity].join('_*'), 'u').test(canonical.text));
+    const protectedSkeleton = PROTECTED_KEY_SKELETON_PATTERNS.some((pattern) => pattern.test(canonical.text));
     return FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST.deniedIdentityTokens
       .some((token) => normalizedWords.includes(` ${token} `))
       || protectedSkeleton || /\b[uw]\d{9,}\b/i.test(canonical.compact);
@@ -2521,13 +2552,23 @@ export function fixedTraceCorpusValidationReport(
   });
 }
 
+// Fingerprints of suites proven deep-frozen JSON data, keyed by the suite
+// array. Such a suite can never change, so its fingerprint is computed once;
+// any other suite (for example a mutable copy a caller edits between checks)
+// is hashed afresh on every call.
+const frozenSuiteSha256 = new WeakMap<object, string>();
+
 export function fixedTraceSuiteSha256(
   suite: ReadonlyArray<FixedTraceCase> = FIXED_TRACE_SUITE,
 ): string {
   // Deterministic public integrity fingerprint only; it does not authenticate
   // caller-owned JSON. This foundation's serialized summaries remain
   // diagnostic-only pending the evaluator-owned coordinator and raw ledger.
-  return createHash('sha256').update(canonicalJson({ version: FIXED_TRACE_SUITE_VERSION, suite }), 'utf8').digest('hex');
+  const known = frozenSuiteSha256.get(suite);
+  if (known !== undefined) return known;
+  const digest = createHash('sha256').update(canonicalJson({ version: FIXED_TRACE_SUITE_VERSION, suite }), 'utf8').digest('hex');
+  if (isDeepFrozenJsonData(suite)) frozenSuiteSha256.set(suite, digest);
+  return digest;
 }
 
 if (fixedTraceSuiteSha256(FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE)

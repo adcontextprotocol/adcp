@@ -1,5 +1,3 @@
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import { createHash } from 'node:crypto';
 import { ADMIN_TOOLS } from '../mcp/admin-tools.js';
 import { BILLING_TOOLS } from '../mcp/billing-tools.js';
@@ -12,6 +10,11 @@ import { MEETING_TOOLS } from '../mcp/meeting-tools.js';
 import { MEMBER_TOOLS } from '../mcp/member-tools.js';
 import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
 import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
+import {
+  compileToolInputSchema,
+  isCacheableToolRegistration,
+  newToolSchemaAjv,
+} from '../model-providers/tool-schema-validator.js';
 import type { AddieTool } from '../types.js';
 import type { FixedTraceCorpusCase } from './fixed-trace-suite.js';
 import {
@@ -424,8 +427,14 @@ export function validateFixedTraceCorpusToolContracts(
   suite = detachedSuite.snapshot;
   try {
   const definitions = canonicalDefinitions(suite);
-  const ajv = new Ajv({ allErrors: true, strict: false });
-  addFormats(ajv);
+  // Identity-free JSON schemas share process-wide compiled validators across
+  // audits; otherwise one fresh instance serves this audit, as before.
+  const definitionsList = [...definitions.values()];
+  const shared = isCacheableToolRegistration(definitionsList, 'input_schema');
+  let own: ReturnType<typeof newToolSchemaAjv> | undefined;
+  const compile = (schema: AddieTool['input_schema']): (input: unknown) => boolean => (shared
+    ? compileToolInputSchema(schema, 'corpus_contract')
+    : (own ??= newToolSchemaAjv('corpus_contract')).compile(schema));
 
   for (const trace of suite.filter((candidate) => candidate.toolContract)) {
     const contract = trace.toolContract;
@@ -463,7 +472,7 @@ export function validateFixedTraceCorpusToolContracts(
         failures.push(`missing_canonical_tool:${trace.id}:${call.name}`);
         continue;
       }
-      const validate = ajv.compile(definition.input_schema);
+      const validate = compile(definition.input_schema);
       if (!validate(call.input)) failures.push(`invalid_contract_input:${trace.id}:${call.name}:${index}`);
       if (call.execution === 'blocked') {
         if (call.policyDisposition !== 'blocked') failures.push(`blocked_disposition_mismatch:${trace.id}:${index}`);
