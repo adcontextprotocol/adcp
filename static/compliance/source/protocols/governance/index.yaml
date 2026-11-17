@@ -13,6 +13,7 @@ required_tools:
 requires_scenarios:
   - governance/failed_outcome_audit_persistence
   - governance/budget_periods
+  - governance/human_review_downgrade
 
 narrative: |
   The buyer's governance agent denies a media buy because it exceeds the agent's spending

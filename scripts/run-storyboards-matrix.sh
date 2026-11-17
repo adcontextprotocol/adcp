@@ -342,6 +342,7 @@ REQUIRED_EXACT_CURRENT_SALES=(
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
   "governance/budget_periods:7:0"
+  "governance/human_review_downgrade:4:0"
 )
 REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_signals"
