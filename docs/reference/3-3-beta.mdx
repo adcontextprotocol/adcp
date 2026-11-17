@@ -32,7 +32,7 @@ GA follows the first release candidate that meets every one of the GA criteria i
 
 Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1), and the [closed-schema triage](#closed-schema-triage-before-rc-0) removes further beta fields before rc.0.
 
-`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 through 17.0.0-beta.23 and Python `adcp` 10.0.0b13 through 10.0.0b16 support beta.5. `@adcp/sdk` 17.0.0-beta.24 and later and Python `adcp` 10.0.0b17 and later support beta.6. No published SDK supports rc.0 yet: rc.0 is SDK-backed once new SDK prereleases bundle it ([SDK guidance](#sdk-guidance)).
+`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 through 17.0.0-beta.23 and Python `adcp` 10.0.0b13 through 10.0.0b16 support beta.5. `@adcp/sdk` 17.0.0-beta.24 through 17.0.0-beta.28 and Python `adcp` 10.0.0b17 through 10.0.0b19 support beta.6. `@adcp/sdk` 17.0.0-beta.29 and Python `adcp` 10.0.0b20 support rc.0, so rc.0 is SDK-backed ([SDK guidance](#sdk-guidance)).
 
 ## Know which version string to use
 
@@ -78,13 +78,13 @@ Useful tests are:
 
 ## Try the preview on the public test agent
 
-The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.6` as an opt-in preview alongside its stable releases. The preview moves to rc.0 once an `@adcp/sdk` prerelease that negotiates rc.0 publishes, which is expected within days of the cut; until then, this section describes the beta.6 preview. It lists `"3.3-beta.6"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
+The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-rc.0` as an opt-in preview alongside its stable releases. It lists `"3.3-rc.0"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
 
 | Request | Served |
 |---|---|
-| `adcp_version: "3.3-beta.6"` | The preview. Responses echo `"3.3-beta.6"` and validate against the published `3.3.0-beta.6` schemas. |
+| `adcp_version: "3.3-rc.0"` | The preview. Responses echo `"3.3-rc.0"` and validate against the published `3.3.0-rc.0` schemas. |
 | `adcp_version: "3.2"`, `"3.3"`, or a later release | 3.2. A release pin never resolves onto a prerelease. |
-| Any other 3.3 prerelease, such as `"3.3-rc.0"` or the earlier preview `"3.3-beta.5"` | Never the preview. Prerelease pins match exactly. |
+| Any other 3.3 prerelease, such as `"3.3-rc.1"` or the earlier preview `"3.3-beta.6"` | Never the preview. Prerelease pins match exactly. |
 | `adcp_major_version` alone, or no version | The route's stable default, never the preview. |
 
 ```bash
@@ -92,7 +92,7 @@ curl -s https://test-agent.adcontextprotocol.org/sales/mcp \
   -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.6"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-rc.0"}}}'
 ```
 
 At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the training agent implements:
@@ -105,6 +105,8 @@ At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the traini
 - the collection catalog (`media_buy.collection_catalog`): `list_collections`, and the `collection_card.*` and `collection_catalog.bulk_change` webhooks registered through `sync_accounts`;
 - the `seed_collection` controller scenario, which changes the caller's cards (a sample, a removal, a follower sweep) so the card webhooks fire;
 - inventory holds ([Hold policy](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental)): `hold_policy` on products and drafts (`media_buy.hold_policy`), committed proposals with `hold_placed_at`, ranked holds with `hold_rank` (`media_buy.hold_ranking`), per-installment `holds` (`media_buy.installment_holds`), `extend_hold` (`media_buy.hold_extension`), and the `force_hold_unavailable` controller scenario.
+
+The agent does not implement `media_buy.installment_refinement` or `media_buy.installment_creative_assignment`. It refuses `installment_refs` on any assignment operation with `UNSUPPORTED_FEATURE` ([#8986](https://github.com/adcontextprotocol/adcp/pull/8986)), as a seller without the feature must. `creative.assignment_operations` lists `assign`, `unassign`, and `replace` on `/sales` and `/mcp`; the creative-only routes list none and refuse every operation ([#8997](https://github.com/adcontextprotocol/adcp/pull/8997)).
 
 At the same pin, `/brand/mcp` returns `collections` on `get_brand_identity` for the creators (`brand.collection_links`).
 
@@ -122,7 +124,7 @@ Other products take the default: a hold that never contends.
 
 `tools/list` includes `request_account` and `list_collections` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it).
 
-With `@adcp/sdk`, use 17.0.0-beta.24 or later, which negotiates exactly `3.3-beta.6`; with Python, use `adcp` 10.0.0b17 or later. Earlier 17.0.0 betas negotiate an older beta, so they settle on 3.2 with the test agent.
+With `@adcp/sdk`, use 17.0.0-beta.29 or later, which negotiates exactly `3.3-rc.0`; with Python, use `adcp` 10.0.0b20 or later. Earlier 17.0.0 betas negotiate an older beta, so they settle on 3.2 with the test agent.
 
 <Warning>
 **The preview is experimental and can change without notice.** It follows the 3.3 prerelease that the current `@adcp/sdk` prerelease negotiates, so it can trail the latest published checkpoint, and it moves when the SDK does. Once it moves, the old pin is no longer served. AAO can also switch the preview off, after which the agent serves only its stable releases. Use it to try 3.3 surfaces, not as a stable integration target.
@@ -148,11 +150,11 @@ SDK maintainers should report protocol ambiguities against the [AdCP repository]
 
 ## SDK guidance
 
-**rc.0.** TypeScript and Python prereleases that adopt `3.3.0-rc.0` follow within days of the cut; see [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk). GA needs SDK support for the latest release candidate. Until a row there names rc.0, test rc.0 from its signed bundle and keep SDK-backed testing on beta.6.
+**rc.0.** `@adcp/sdk` 17.0.0-beta.29 and Python `adcp` 10.0.0b20 bundle `3.3.0-rc.0` ([Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk)). GA needs SDK support for the latest release candidate.
 
-**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, 17.0.0-beta.11 through 17.0.0-beta.17 bundle `3.3.0-beta.3`, 17.0.0-beta.18 through 17.0.0-beta.20 bundle `3.3.0-beta.4`, 17.0.0-beta.21 through 17.0.0-beta.23 bundle `3.3.0-beta.5`, and 17.0.0-beta.24 and later bundle `3.3.0-beta.6`. Each negotiates only its own prerelease, so a buyer and seller on different checkpoints settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
+**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, 17.0.0-beta.11 through 17.0.0-beta.17 bundle `3.3.0-beta.3`, 17.0.0-beta.18 through 17.0.0-beta.20 bundle `3.3.0-beta.4`, 17.0.0-beta.21 through 17.0.0-beta.23 bundle `3.3.0-beta.5`, 17.0.0-beta.24 through 17.0.0-beta.28 bundle `3.3.0-beta.6`, and 17.0.0-beta.29 and later bundle `3.3.0-rc.0`. Each negotiates only its own prerelease, so a buyer and seller on different checkpoints settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
 
-**Python.** `adcp` **10.0.0b17**, a PyPI prerelease (`pip install --pre "adcp==10.0.0b17"`), adopts the signed `3.3.0-beta.6` bundle and negotiates only `3.3-beta.6`; 10.0.0b13 through 10.0.0b16 adopt `3.3.0-beta.5`, and 10.0.0b12 adopts `3.3.0-beta.4`. 10.0.0b15 reads the `input` member of an [AdCP A2A profile](/docs/building/by-layer/L0/a2a-profile-extension) invocation, so a Python seller answers `@adcp/sdk` buyers over A2A 1.0, and it refuses `parameters` on an activated invocation. Keep production-line work on the 3.2 line: `adcp` 9.6.2 (AdCP 3.2.7) reads `input` too, and refuses only an activated invocation that carries both members.
+**Python.** `adcp` **10.0.0b20**, a PyPI prerelease (`pip install --pre "adcp==10.0.0b20"`), adopts the signed `3.3.0-rc.0` bundle and negotiates only `3.3-rc.0`; 10.0.0b17 through 10.0.0b19 adopt `3.3.0-beta.6`, 10.0.0b13 through 10.0.0b16 adopt `3.3.0-beta.5`, and 10.0.0b12 adopts `3.3.0-beta.4`. 10.0.0b15 reads the `input` member of an [AdCP A2A profile](/docs/building/by-layer/L0/a2a-profile-extension) invocation, so a Python seller answers `@adcp/sdk` buyers over A2A 1.0, and it refuses `parameters` on an activated invocation. Keep production-line work on the 3.2 line: `adcp` 9.6.2 (AdCP 3.2.7) reads `input` too, and refuses only an activated invocation that carries both members.
 
 **Go and Java.** Neither supports 3.3. No Go or Java release bundles a 3.3 prerelease, so test 3.3 from those languages through raw-wire calls against the signed bundle, and check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases) for any later support statement.
 
