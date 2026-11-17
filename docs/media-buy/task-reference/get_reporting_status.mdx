@@ -610,7 +610,7 @@ and fills it with codes, never display names:
 | `postal_area` | A code in one of the offering's `dimension_systems.postal_area` systems, such as US ZIP `10001`. |
 
 These are the values `geo_code` carries in a delivery report's `by_geo` rows, so a
-breakdown reads the same whether it arrives through `get_media_buy_delivery` or a
+breakdown reads the same whether it arrives through [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) or a
 reporting feed. A definition may add a `geo_name` dimension beside them for display;
 it is non-authoritative, and no selector matches on it. A native geography
 dimension that does not follow the rule is listed in `unmapped_dimensions`, not
