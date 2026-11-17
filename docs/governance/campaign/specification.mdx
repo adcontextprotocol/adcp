@@ -877,7 +877,7 @@ The seller stores these endpoints and presents the credentials when calling `che
 
 ### Governance modes
 
-Governance mode (audit, advisory, enforce) is an internal implementation detail of the governance agent, not a protocol-level field. The caller sends `check_governance` and acts on the verdict without needing to know what mode produced it. Intent checks may return `approved`, `denied`, or `conditions`; execution checks return `approved` or `denied`.
+Governance mode (audit, advisory, enforce) is configuration of the governance agent. No request carries it, and it is not a plan field. The caller sends `check_governance` and acts on the verdict; it does not need to know which mode produced it. Intent checks may return `approved`, `denied`, or `conditions`; execution checks return `approved` or `denied`.
 
 This means:
 - A governance agent in audit mode internally returns `approved` with findings attached, with the two exceptions below
@@ -886,7 +886,7 @@ This means:
 
 Two outcomes do not depend on mode. Plans with `human_review_required: true` escalate in every mode. A failed `approved_sellers` or `delegations` evaluation is `denied` in every mode, including: an intent check whose target is not in `approved_sellers`, an execution check by a caller that is not the audience preserved from the approved intent or that has since been removed from `approved_sellers`, an execution check whose original intent was made by a buyer that no longer holds a current delegation, an intent check by a buyer-side caller that can access the plan but is neither its owner nor a current delegate, and an intent check by a delegate that acts outside the `authority`, `budget_limit` or `markets` of its delegation.
 
-Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent SHOULD record the mode in force on each check entry of its `get_plan_audit_logs` response (`entries[].mode`) for post-hoc analysis; outcome entries carry no mode. Callers MUST NOT branch behavior based on mode — they act on the status they receive.
+Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent MAY report the mode in force on the `check_governance` response (`mode`), and SHOULD record it on each check entry of its `get_plan_audit_logs` response (`entries[].mode`) for post-hoc analysis; outcome entries carry no mode. Callers MUST NOT branch behavior based on mode — they act on the status they receive.
 
 See the [safety model](/docs/governance/campaign/safety-model) for the crawl-walk-run adoption path.
 
