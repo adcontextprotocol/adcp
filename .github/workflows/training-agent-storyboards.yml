@@ -444,6 +444,7 @@ jobs:
           requirements=(
             "governance/failed_outcome_audit_persistence:4:0"
             "governance/budget_periods:7:0"
+            "governance/human_review_downgrade:4:0"
           )
           for requirement in "${requirements[@]}"; do
             storyboard_id="${requirement%%:*}"

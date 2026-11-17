@@ -1,0 +1,180 @@
+id: governance/human_review_downgrade
+version: "1.0.0"
+introduced_in: "3.4"
+title: "Governance requires human_override to lower human review on a re-sync"
+category: campaign_governance
+summary: "Verifies that a re-sync cannot take a plan out of human review without a human_override artifact: lowering the flag by omitting it or by sending false is rejected with VALIDATION_ERROR and leaves the plan unchanged, and the same re-sync carrying human_override succeeds."
+track: campaign_governance
+default_agent: governance
+
+required_tools:
+  - sync_plans
+
+narrative: |
+  A buyer registers a housing campaign. The plan declares the fair_housing
+  policy category and omits human_review_required, so the governance agent
+  derives it as true and escalates every action on the plan.
+
+  The buyer then narrows the campaign and re-syncs the plan without the
+  category. With no triggering policy left, the flag would now derive as
+  false. The stored plan required human review, so lowering it is a
+  downgrade and needs a human_override artifact. The re-sync that omits the
+  flag is rejected with VALIDATION_ERROR. A second re-sync that sends
+  human_review_required false is rejected the same way, which also shows the
+  first rejection left the plan unchanged.
+
+  Finally the buyer re-syncs with a human_override naming the reason and the
+  approver, and the governance agent accepts the sync.
+
+agent:
+  interaction_model: governance_agent
+  capabilities:
+    - campaign_governance
+  examples:
+    - "Buyer governance agent that enforces human review for regulated campaigns"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The caller can synchronize a plan that requires human review and re-sync the same plan."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: register_plan
+    title: "Register a plan that requires human review"
+    steps:
+      - id: sync_regulated_plan
+        title: "Create a fair_housing plan with the flag omitted"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#human_review_downgrade_plan"
+          plans:
+            - plan_id: "human-review-downgrade-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Promote rental listings in a new residential development."
+              budget:
+                total: 25000
+                currency: "USD"
+                reallocation_threshold: 5000
+              flight:
+                start: "2099-01-01T00:00:00Z"
+                end: "2099-03-31T23:59:59Z"
+              countries: ["US"]
+              policy_categories: ["fair_housing"]
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json"
+          - check: field_value
+            path: "plans[0].plan_id"
+            value: "human-review-downgrade-plan"
+            description: "The plan is accepted; fair_housing makes the governance agent derive human review as required"
+
+  - id: downgrade_without_override
+    title: "Lowering human review without human_override is rejected"
+    steps:
+      - id: resync_omits_flag
+        title: "Re-sync without the category and without the flag"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#human_review_downgrade_omit"
+          plans:
+            - plan_id: "human-review-downgrade-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Promote rental listings in a new residential development."
+              budget:
+                total: 25000
+                currency: "USD"
+                reallocation_threshold: 5000
+              flight:
+                start: "2099-01-01T00:00:00Z"
+                end: "2099-03-31T23:59:59Z"
+              countries: ["US"]
+        validations:
+          - check: error_code
+            value: "VALIDATION_ERROR"
+            description: "The stored plan required human review and the re-sync would derive it as not required; an omitted flag is a downgrade and needs human_override"
+
+      - id: resync_sends_false
+        title: "Re-sync without the category and with human_review_required false"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#human_review_downgrade_false"
+          plans:
+            - plan_id: "human-review-downgrade-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Promote rental listings in a new residential development."
+              budget:
+                total: 25000
+                currency: "USD"
+                reallocation_threshold: 5000
+              flight:
+                start: "2099-01-01T00:00:00Z"
+                end: "2099-03-31T23:59:59Z"
+              countries: ["US"]
+              human_review_required: false
+        validations:
+          - check: error_code
+            value: "VALIDATION_ERROR"
+            description: "An explicit false is the same downgrade; the rejection also shows the previous rejected sync left the stored plan requiring human review"
+
+  - id: downgrade_with_override
+    title: "Lowering human review with human_override succeeds"
+    steps:
+      - id: resync_with_override
+        title: "Re-sync with human_review_required false and a human_override"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#human_review_downgrade_override"
+          plans:
+            - plan_id: "human-review-downgrade-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Promote rental listings in a new residential development."
+              budget:
+                total: 25000
+                currency: "USD"
+                reallocation_threshold: 5000
+              flight:
+                start: "2099-01-01T00:00:00Z"
+                end: "2099-03-31T23:59:59Z"
+              countries: ["US"]
+              human_review_required: false
+              human_override:
+                reason: "Campaign narrowed to brand awareness; no housing offers or eligibility decisions remain."
+                approver: "legal@acmeoutdoor.example"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json"
+          - check: field_value
+            path: "plans[0].plan_id"
+            value: "human-review-downgrade-plan"
+            description: "The downgrade is accepted once it carries a human_override with a reason and an approver"
+          - check: field_value
+            path: "plans[0].status"
+            value: "active"
+            description: "The re-synced plan is active"

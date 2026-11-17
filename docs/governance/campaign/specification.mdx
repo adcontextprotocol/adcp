@@ -164,6 +164,16 @@ This field is distinct from `budget.reallocation_threshold`:
 
 Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and rejects a caller-supplied `false` when a triggering policy is present.
 
+A [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) that would change a stored plan from human review required to not required MUST carry a `human_override` object on that plan. Without it, the governance agent MUST reject the sync with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) and leave the plan unchanged. The rule follows the stored state, not the request:
+
+- It applies whether the re-sync sends `false` or omits the flag. An omitted flag is derived, so a stored `true` that the re-sync derives as `false` is a downgrade.
+- It applies whether the stored `true` was set by the caller or derived from the plan's policies.
+- A re-sync that keeps the flag `true` or raises it needs no `human_override`, and neither does a sync of a plan whose stored state does not require human review.
+
+`human_override` carries a non-empty `reason` and an `approver`, both required, and an optional `approved_at` timestamp. A governance agent MAY apply stricter checks, such as a minimum `reason` length, a freshness window on `approved_at`, or requiring `approver` to be an email address or an identity it can authenticate. It rejects a `human_override` that fails them with the same `VALIDATION_ERROR`. `human_override` never permits `false` while a triggering policy or policy category is present; that rejection is unchanged.
+
+The governance agent stores `human_override` with the plan and keeps it when a later re-sync omits it. The [`plan_hash`](#canonicalization) preimage is still the plan as supplied, so a re-sync that omits `human_override` changes `plan_hash` and invalidates the plan's outstanding `governance_context` tokens. That fails safe, but a buyer SHOULD resend the same `human_override` on later re-syncs while the flag stays lowered.
+
 ### Spend-commit invocation
 
 Buyer-side governance invocation is enforceable, not advisory. When a governance agent is configured on the plan, the buyer agent MUST invoke [`check_governance`](/docs/governance/campaign/tasks/check_governance) before sending any spend-commit request to a seller — full stop — producing an **intent-phase** `governance_context` token to attach to that request. The governance agent decides internally whether to auto-approve, apply conditions, deny, or escalate to human review per the plan's `budget.reallocation_threshold` and `human_review_required` fields. No dollar figures, no baseline arithmetic, no operator-declared floors appear in the invocation rule — those auto-approve fast-paths belong inside the governance agent's own policy, not in the buyer's decision about whether to call at all.

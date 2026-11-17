@@ -61,7 +61,7 @@ When a campaign plan declares any of the following, the governance agent MUST se
 
 If any Annex III category resolves but `brand.data_subject_contestation` is missing, the governance agent MUST emit a critical finding — Art 22(3) cannot be discharged without a contact point.
 
-This is enforced by the policy framework, not by the buyer. A buyer cannot opt out of human review by omitting the flag — if the resolved policies require it, the governance agent sets it. A buyer who previously declared `human_review_required: true` cannot downgrade it on re-sync without an explicit `human_override` artifact (reason + approver).
+This is enforced by the policy framework, not by the buyer. A buyer cannot opt out of human review by omitting the flag — if the resolved policies require it, the governance agent sets it. A re-sync cannot lower a plan that required human review, whether the buyer declared the flag or the governance agent derived it, unless it carries a `human_override` artifact naming a reason and an approver. The [campaign governance specification](/docs/governance/campaign/specification#human-review-required) states the rule normatively.
 
 ### `reallocation_threshold` vs. `human_review_required`
 

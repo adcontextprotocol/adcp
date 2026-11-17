@@ -108,3 +108,55 @@ test('a default-materializing consumer leaves an omitted flag omitted on a regul
     assert.equal('human_review_required' in instance.plans[0], false, name);
   }
 });
+
+// #9068: human_override is the artifact a re-sync carries to lower the flag
+// from true to false. Its shape is normative; the downgrade rule is in
+// docs/governance/campaign/specification.mdx#human-review-required.
+const OVERRIDE = {
+  reason: 'Campaign scope narrowed to brand awareness; no housing offers remain.',
+  approver: 'legal@acme.example',
+};
+
+test('human_override is declared on the plan item with reason and approver required', () => {
+  const field = planItem().properties.human_override;
+  assert.equal(field.type, 'object');
+  assert.deepEqual([...field.required].sort(), ['approver', 'reason']);
+  assert.equal(field.properties.reason.type, 'string');
+  assert.equal(field.properties.reason.minLength, 1);
+  assert.equal(field.properties.approver.type, 'string');
+  assert.equal(field.properties.approved_at.format, 'date-time');
+  assert.equal(field.additionalProperties, true);
+  assert.equal(field['x-added-in'], '3.4.0');
+  assert.match(field.description, /VALIDATION_ERROR/);
+  assert.match(field.description, /plan_hash/);
+});
+
+test('a plan with a well-formed human_override validates', async () => {
+  const validate = await compile();
+  assert.equal(validate(request({ human_override: OVERRIDE })), true, errors(validate));
+  assert.equal(
+    validate(request({ human_review_required: false, human_override: { ...OVERRIDE, approved_at: '2026-10-01T09:30:00Z' } })),
+    true,
+    errors(validate),
+  );
+  assert.equal(
+    validate(request({ human_override: { ...OVERRIDE, ticket: 'LEGAL-1234' } })),
+    true,
+    `extra members stay open: ${errors(validate)}`,
+  );
+});
+
+test('human_override shapes that 3.2.11 accepted and the declaration narrows are rejected', async () => {
+  const validate = await compile();
+  const rejected = {
+    'a string': 'approved by legal',
+    'a reason-only object': { reason: OVERRIDE.reason },
+    'an approver-only object': { approver: OVERRIDE.approver },
+    'an empty reason': { ...OVERRIDE, reason: '' },
+    'a non-string approver': { ...OVERRIDE, approver: 42 },
+    'an approved_at that is not a date-time': { ...OVERRIDE, approved_at: 'yesterday' },
+  };
+  for (const [name, value] of Object.entries(rejected)) {
+    assert.equal(validate(request({ human_override: value })), false, name);
+  }
+});
