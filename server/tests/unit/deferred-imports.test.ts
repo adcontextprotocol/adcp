@@ -1,12 +1,20 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 // Load probe for heavy dependencies that most callers never use. Each probe
-// runs in a fresh `node --import tsx` process with a resolve hook that records
-// every module URL Node resolves (static imports, import() and require() of
-// ESM all pass through it), so the test sees exactly what evaluating a module
-// costs, independent of vitest's module cache and of other test files.
+// runs in a fresh `node --import tsx/esm` process with a resolve hook that
+// records every module URL Node resolves (static imports, import() and
+// require() of ESM all pass through it), so the test sees exactly what
+// evaluating a module costs, independent of vitest's module cache and of
+// other test files.
+//
+// tsx/esm registers only tsx's ESM loader: TypeScript sources are compiled as
+// they are imported, and require() is Node's own, as in production (the
+// image runs the compiled server with plain node). The full `tsx` loader also
+// installs a CommonJS hook that recompiles every ES module package reached
+// through require(esm) with esbuild, which the deferred getters do for
+// isomorphic-dompurify and linkedom; that is test-only work.
 
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const OUTPUT_PREFIX = 'DEFERRED_IMPORT_PROBE ';
@@ -34,12 +42,20 @@ type ProbeResult = {
   output?: unknown;
 };
 
+/** Probe processes still running; a test that times out leaves its probe here. */
+const running = new Set<ChildProcess>();
+afterEach(() => {
+  for (const child of running) child.kill('SIGKILL');
+  running.clear();
+});
+
 /**
  * Import `modulePath` (repo-relative) in a fresh process, then optionally run
  * `use`, the source of an async function `(mod) => output` evaluated in the
- * child after the import snapshot is taken.
+ * child after the import snapshot is taken. The child runs asynchronously, so
+ * the test's own timeout bounds it.
  */
-function probe(modulePath: string, options: { use?: string; env?: Record<string, string | undefined> } = {}): ProbeResult {
+async function probe(modulePath: string, options: { use?: string; env?: Record<string, string | undefined> } = {}): Promise<ProbeResult> {
   const moduleUrl = new URL(modulePath, `file://${REPO_ROOT}`).href;
   const script = `
     import { registerHooks } from 'node:module';
@@ -71,12 +87,20 @@ function probe(modulePath: string, options: { use?: string; env?: Record<string,
   `;
   const env: Record<string, string | undefined> = { ...process.env, NODE_ENV: 'test', LOG_LEVEL: 'silent', ...options.env };
   for (const [key, value] of Object.entries(env)) if (value === undefined) delete env[key];
-  const child = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', script], {
-    cwd: REPO_ROOT,
-    env,
-    encoding: 'utf8',
-    timeout: 60_000,
-    maxBuffer: 8 * 1024 * 1024,
+  const child = await new Promise<{ error?: Error; status: number | null; stdout: string; stderr: string }>((resolve) => {
+    const process_ = spawn(process.execPath, ['--import', 'tsx/esm', '--input-type=module', '--eval', script], {
+      cwd: REPO_ROOT,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    running.add(process_);
+    let stdout = '';
+    let stderr = '';
+    let error: Error | undefined;
+    process_.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+    process_.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+    process_.once('error', (cause) => { error = cause; });
+    process_.once('close', (status) => { running.delete(process_); resolve({ error, status, stdout, stderr }); });
   });
   expect(child.error, `${child.stdout}\n${child.stderr}`).toBeUndefined();
   expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0);
@@ -85,7 +109,6 @@ function probe(modulePath: string, options: { use?: string; env?: Record<string,
   return JSON.parse(line!.slice(OUTPUT_PREFIX.length)) as ProbeResult;
 }
 
-const PROBE_TIMEOUT = 90_000;
 
 describe('importing a module does not evaluate heavy dependencies it uses only on some paths', () => {
   // One module per test so a regression names the module that reintroduced
@@ -101,16 +124,16 @@ describe('importing a module does not evaluate heavy dependencies it uses only o
     'server/src/training-agent/plan-hash.ts',
   ];
 
-  it.each(LEAF_MODULES)('%s', (modulePath) => {
-    const result = probe(modulePath);
+  it.each(LEAF_MODULES)('%s', async (modulePath) => {
+    const result = await probe(modulePath);
     expect(result.importError).toBeUndefined();
     expect(result.atImport, `heavy packages evaluated by importing ${modulePath}`).toEqual([]);
-  }, PROBE_TIMEOUT);
+  });
 });
 
 describe('first use loads a deferred dependency and behaves as before', () => {
-  it('renderLegalMarkdown loads DOMPurify (and its jsdom window) and sanitizes', () => {
-    const result = probe('server/src/legal-markdown.ts', {
+  it('renderLegalMarkdown loads DOMPurify (and its jsdom window) and sanitizes', async () => {
+    const result = await probe('server/src/legal-markdown.ts', {
       use: `async (mod) => mod.renderLegalMarkdown(
         '# Terms\\n\\n[ok](https://example.com) [bad](javascript:alert(1)) <img src=x onerror=alert(1)>'
       )`,
@@ -120,10 +143,10 @@ describe('first use loads a deferred dependency and behaves as before', () => {
     expect(result.output).toBe('<h1>Terms</h1>\n<p><a href="https://example.com">ok</a> <a>bad</a> </p>\n');
     expect(result.afterUse).toEqual(expect.arrayContaining(['isomorphic-dompurify', 'jsdom']));
     expect(result.atImport, 'loaded before first use').toEqual([]);
-  }, PROBE_TIMEOUT);
+  });
 
-  it('validateInlineVastDocument loads linkedom and parses the document', () => {
-    const result = probe('server/src/training-agent/vast-document-validation.ts', {
+  it('validateInlineVastDocument loads linkedom and parses the document', async () => {
+    const result = await probe('server/src/training-agent/vast-document-validation.ts', {
       use: `async (mod) => [
         mod.validateInlineVastDocument({
           xml: '<VAST version="3.0"><Ad><InLine><Creatives><Creative><Linear><MediaFiles><MediaFile>https://cdn.example/a.mp4</MediaFile></MediaFiles></Linear></Creative></Creatives></InLine></Ad></VAST>',
@@ -149,10 +172,10 @@ describe('first use loads a deferred dependency and behaves as before', () => {
       }),
     ]);
     expect(result.atImport, 'loaded before first use').toEqual([]);
-  }, PROBE_TIMEOUT);
+  });
 
-  it('preloadDeferredModules() loads all five deferred packages (production boot parity)', () => {
-    const result = probe('server/src/utils/deferred-modules.ts', {
+  it('preloadDeferredModules() loads all five deferred packages (production boot parity)', async () => {
+    const result = await probe('server/src/utils/deferred-modules.ts', {
       use: 'async (mod) => { await mod.preloadDeferredModules(); return "preloaded"; }',
     });
     expect(result.importError, 'server/src/utils/deferred-modules.ts must exist and import cleanly').toBeUndefined();
@@ -160,7 +183,7 @@ describe('first use loads a deferred dependency and behaves as before', () => {
     expect(result.atImport, 'the helper itself must not load what it defers').toEqual([]);
     expect(result.output).toBe('preloaded');
     expect(result.afterUse).toEqual(expect.arrayContaining(DEFERRED_FIVE));
-  }, PROBE_TIMEOUT);
+  });
 });
 
 describe('server unit setup file', () => {
@@ -170,20 +193,20 @@ describe('server unit setup file', () => {
     return { patched: supertest.Test.prototype.__adcpConductorLoopbackPatched === true };
   }`;
 
-  it('does not load Supertest outside Conductor', () => {
-    const result = probe(SETUP_FILE, { env: { CONDUCTOR_IS_LOCAL: undefined }, use: readPatchState });
+  it('does not load Supertest outside Conductor', async () => {
+    const result = await probe(SETUP_FILE, { env: { CONDUCTOR_IS_LOCAL: undefined }, use: readPatchState });
     expect(result.importError).toBeUndefined();
     expect(result.useError).toBeUndefined();
     expect(result.atImport).not.toContain('supertest');
     expect(result.output).toEqual({ patched: false });
-  }, PROBE_TIMEOUT);
+  });
 
-  it('loads Supertest and installs the loopback patch when CONDUCTOR_IS_LOCAL=1', () => {
-    const result = probe(SETUP_FILE, { env: { CONDUCTOR_IS_LOCAL: '1' }, use: readPatchState });
+  it('loads Supertest and installs the loopback patch when CONDUCTOR_IS_LOCAL=1', async () => {
+    const result = await probe(SETUP_FILE, { env: { CONDUCTOR_IS_LOCAL: '1' }, use: readPatchState });
     expect(result.importError).toBeUndefined();
     expect(result.useError).toBeUndefined();
     expect(result.atImport).toContain('supertest');
     expect(result.output).toEqual({ patched: true });
-  }, PROBE_TIMEOUT);
+  });
 });
 
