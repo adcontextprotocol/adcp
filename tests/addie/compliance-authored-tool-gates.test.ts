@@ -14,6 +14,7 @@ import {
   complianceResultToDbInput,
   deriveStoryboardStatuses,
 } from '../../server/src/addie/services/compliance-testing.js';
+import { resolveHostedComplianceVersion } from '../../server/src/services/hosted-compliance-version.js';
 
 // Hosted classification must use the exact edited metadata, rather than the
 // immutable released cache whose defect this patch fixes. Only that cache
@@ -30,6 +31,11 @@ const { buildTo } = require('../../scripts/build-compliance.cjs');
 const { canonicalizePublishedSchemaUris } = require('../../scripts/build-schemas.cjs');
 const { BUILT_DIR, builtSchemaFiles, ensureBuiltSchemas, readBuiltSchema } = require('../../scripts/built-schemas.cjs');
 const { version } = require('../../package.json');
+// Hosted grading resolves pinned metadata only for published versions, and
+// package.json can name a candidate superseded without publication (3.3.0-rc.1)
+// until the next Version Packages cut. Grade as the channel's newest published
+// version instead.
+const hostedVersion = resolveHostedComplianceVersion(version.replace(/^(\d+\.\d+)\.0-(beta|rc)\.\d+$/, '$1-$2'));
 const sourceDir = path.resolve('static/compliance/source');
 const url = 'https://agent.example/mcp';
 let bundleDir: string;
@@ -125,7 +131,7 @@ async function execute(storyboard: Storyboard, tools = allTools, raw = capabilit
 
 function hosted(storyboard: Storyboard, result: StoryboardResult, tools: string[]) {
   const run = {
-    agent_url: url, adcp_version: version, agent_profile: { tools },
+    agent_url: url, adcp_version: hostedVersion, agent_profile: { tools },
     overall_status: 'failing',
     tracks: [{ track: 'media_buy', status: 'fail', duration_ms: 0, skipped_scenarios: [], observations: [],
       scenarios: result.phases.map(phase => ({
