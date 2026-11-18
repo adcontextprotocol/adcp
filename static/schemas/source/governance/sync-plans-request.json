@@ -28,7 +28,7 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Unique identifier for this plan.",
+            "description": "Identifier for this plan, unique per owner principal. Two principals may use the same `plan_id`; neither can read, change or detect the other's plan.",
             "x-entity": "governance_plan"
           },
           "brand": {
@@ -68,7 +68,7 @@
               "reallocation_threshold": {
                 "type": "number",
                 "minimum": 0,
-                "description": "Amount above which budget reallocations require human escalation. The orchestrator can reallocate spend across sellers, channels, or purchase types up to this threshold per change without asking a human. Set equal to `total` for effectively unlimited reallocation; set to 0 to require approval for every reallocation. Separate from `plan.human_review_required`, which governs decisions affecting data subjects (targeting, creative, delivery) under GDPR Art 22 / EU AI Act Annex III. Denominated in `budget.currency`."
+                "description": "Amount above which budget reallocations require human escalation. The orchestrator can reallocate spend across sellers, channels, or purchase types up to this threshold per change without asking a human. Set to 0 to require approval for every reallocation. For unlimited reallocation use `reallocation_unlimited`; a threshold equal to `total` has the same effect only until `total` changes. Separate from `plan.human_review_required`, which governs decisions affecting data subjects (targeting, creative, delivery) under GDPR Art 22 / EU AI Act Annex III. Denominated in `budget.currency`."
               },
               "reallocation_unlimited": {
                 "type": "boolean",
@@ -380,7 +380,7 @@
                 "expires_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "When this delegation expires. After expiration, the governance agent denies actions from this agent."
+                  "description": "When this delegation expires. After expiration this agent is no longer a current delegate. Its intent re-check that presents a `consultation_context` issued for the plan, and an execution check on an action it proposed, are `denied` with a `delegation_authority` finding. Any other check from this agent returns `PLAN_NOT_FOUND`, as for a plan that does not exist."
                 }
               },
               "required": [

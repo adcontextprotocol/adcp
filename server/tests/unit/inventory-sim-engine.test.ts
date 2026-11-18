@@ -236,6 +236,28 @@ describe('simulation', () => {
     expect(sim.booking('g').delivered.spend).toBe(2000);
   });
 
+  it('bills spend from cumulative impressions, so daily rounding never drifts the total', () => {
+    const seed = scarceSeed();
+    seed.products[0].rate_cpm = 14;
+    const sim = InventorySimulation.create(seed, now);
+    sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 10_000, impression_goal: 180_000 }, now);
+    sim.book({ booking_id: 'n', product_id: 'banner_auction', ...flight, budget: 1_000_000, bid_cpm: 3.333 }, now);
+    sim.advanceTo(at('2027-01-15T06:00:00Z'));
+    sim.update('n', { bid_cpm: 2.777 }, at('2027-01-15T06:00:00Z'));
+    sim.advanceTo(at('2027-01-31T00:00:00Z'));
+    const g = sim.booking('g');
+    expect(g.delivered.impressions).toBe(180_000);
+    expect(g.delivered.spend).toBe(2520);
+    for (const booking of [g, sim.booking('n')]) {
+      const daily = booking.days.reduce((sum, day) => sum + Math.round(day.spend * 100), 0);
+      expect(daily).toBe(Math.round(booking.delivered.spend * 100));
+    }
+    const n = sim.booking('n');
+    const before = n.days.filter(day => day.date < '2027-01-15').reduce((sum, day) => sum + day.impressions, 0);
+    const after = n.delivered.impressions - before;
+    expect(n.delivered.spend).toBe(Math.round(((before * 3.333) / 1000 + (after * 2.777) / 1000) * 100) / 100);
+  });
+
   it('gives non-guaranteed bookings only what guarantees leave, first-price', () => {
     const sim = InventorySimulation.create(scarceSeed(), now);
     sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 10_000, impression_goal: 150_000 }, now);

@@ -249,6 +249,10 @@ export interface Booking {
   cpm: number;
   budget: number;
   delivered: DeliveryMetrics;
+  /** Unrounded spend to date. Each day's spend is the change in its rounded
+   * value, so daily rounding never drifts the total. Absent in states saved
+   * before it existed; `delivered.spend` stands in. */
+  spend_exact?: number;
   days: BookingDay[];
 }
 

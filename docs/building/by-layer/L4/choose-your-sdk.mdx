@@ -37,21 +37,24 @@ Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. T
 
 SDK 16 removes AdCP 2 support and moves Reliable Reporting storage out of `@adcp/sdk` into `@adcp/reporting-storage`; follow the [reporting storage package migration](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-reporting-storage-package.md) if you import storage from `@adcp/sdk/reporting/*`. SDK 15 tightens OAuth issuer binding and provider/storage defaults. Before upgrading an existing integration, follow the [SDK 15 OAuth migration and owner recovery guide](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/docs/migration-oauth-issuer-bindings.md).
 
-### AdCP 3.3 beta support
+### AdCP 3.3 prerelease support
 
-Production stays on the 3.2 line and the packages above. For development and staging against the [3.3 beta](/docs/reference/3-3-beta):
+Production stays on the 3.2 line and the packages above. For development and staging against the [3.3 prerelease](/docs/reference/3-3-beta):
 
 | SDK | Package | AdCP bundle | Roles and transports | Known limits |
 |---|---|---|---|---|
-| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.28` (npm `beta` dist-tag) | Signed `3.3.0-beta.6`; also bundles stable 3.2.8, 3.1.31 and 3.0.25. Earlier 3.3 betas require a matching external schema root | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. Use a Reliable Reporting storage release whose `@adcp/sdk` peer range matches this SDK. |
-| **`adcp`** (Python) | `10.0.0b17` (PyPI prerelease) | Signed `3.3.0-beta.6` | Buyer client and seller server, MCP and A2A | Negotiates only `3.3-beta.6`. Install the exact prerelease with `pip install --pre "adcp==10.0.0b17"`; for Reliable Reporting storage, use an `adcp-reporting-storage` prerelease whose `adcp` requirement matches this SDK. |
+| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.29` (npm `beta` dist-tag) | Signed `3.3.0-rc.0`; also bundles stable 3.2.8, 3.1.31 and 3.0.25. Earlier 3.3 betas require a matching external schema root | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. Use a Reliable Reporting storage release whose `@adcp/sdk` peer range matches this SDK. |
+| **`adcp`** (Python) | `10.0.0b20` (PyPI prerelease) | Signed `3.3.0-rc.0` | Buyer client and seller server, MCP and A2A | Negotiates only `3.3-rc.0`. Install the exact prerelease with `pip install --pre "adcp==10.0.0b20"`; for Reliable Reporting storage, use an `adcp-reporting-storage` prerelease whose `adcp` requirement matches this SDK. |
+| Go, Java | — | No 3.3 prerelease | — | Not supported for 3.3. Test from these languages through raw-wire calls against the signed bundle. |
+
+`@adcp/sdk` 17.0.0-beta.29 and Python `adcp` 10.0.0b20 bundle `3.3.0-rc.0`. Each negotiates only its own prerelease, so a buyer on rc.0 and a seller on beta.6 settle on a stable release.
 
 ```bash
-npm install @adcp/sdk@17.0.0-beta.28
-node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-beta.6
+npm install @adcp/sdk@17.0.0-beta.29
+node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-rc.0
 ```
 
-This `@adcp/sdk` prerelease negotiates only the `3.3-beta.6` preview. A peer still on `3.3-beta.5` settles on a shared stable release instead, so upgrade both sides together to keep exercising 3.3 preview features.
+This `@adcp/sdk` prerelease negotiates only the `3.3-rc.0` preview. A peer still on `3.3-beta.6` settles on a shared stable release instead, so upgrade both sides together to keep exercising 3.3 preview features.
 
 SDK 17 is a major release. Before upgrading from 16, read the [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md). It changes the HTML-markup legacy formats (`display_html`, `display_WxH_html`) from `html5` to `display_tag` with inline-markup delivery ([#8339](https://github.com/adcontextprotocol/adcp/issues/8339)). It also fails closed on unresolved account references on 3.3 routes. A 3.3 seller must advertise the exact beta it serves in `supported_versions` before an SDK 17 buyer sends that pin.
 

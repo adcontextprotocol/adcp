@@ -354,8 +354,14 @@ export class InventorySimulation {
       conversions += count * rates.click_rate * rates.conversion_rate;
       cells.push([cell, count]);
     }
-    let spend = roundMoney((impressions * booking.cpm) / 1000);
-    if (booking.kind === 'share_of_voice') spend = Math.min(spend, roundMoney(Math.max(0, booking.budget - booking.delivered.spend)));
+    // Spend is the change in rounded cumulative spend, so the total is
+    // always exact: 180,000 impressions at $14 CPM come to $2,520.00 however
+    // they split across days, and a bid change mid-flight is priced from then.
+    const exactBefore = booking.spend_exact ?? booking.delivered.spend;
+    let exactAfter = exactBefore + (impressions * booking.cpm) / 1000;
+    if (booking.kind === 'share_of_voice') exactAfter = Math.min(exactAfter, Math.max(exactBefore, booking.budget));
+    booking.spend_exact = exactAfter;
+    const spend = roundMoney(roundMoney(exactAfter) - booking.delivered.spend);
     const record: BookingDay = {
       day,
       date: this.traffic.calendar.dateOf(day),

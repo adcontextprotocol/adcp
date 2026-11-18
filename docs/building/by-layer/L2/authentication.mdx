@@ -5,17 +5,19 @@ description: "AdCP authentication guide: public vs authenticated operations, sta
 ---
 
 
-AdCP uses a tiered authentication model where capability discovery is public, catalog discovery may be public, and protected reads and mutations require authentication.
+AdCP uses a tiered authentication model where capability discovery should be public, catalog discovery may be public, and protected reads and mutations require authentication.
 
 ## When Authentication is Required
 
 ### Public Operations (No Authentication Required)
 
-This operation works without credentials to bootstrap discovery:
+A seller SHOULD serve this operation without credentials, so that a buyer can discover it before holding a key:
 
 - **`get_adcp_capabilities`** - Discover agent capabilities, portfolio, and supported features
 
-**Rationale**: Publishers want potential buyers to discover their capabilities before establishing a business relationship.
+**Rationale**: Publishers want potential buyers to discover their capabilities before establishing a business relationship. Buyers probe anonymously first, so a seller that requires credentials for capabilities can't be discovered by a buyer that doesn't have them yet.
+
+Anonymous capability discovery is a SHOULD in 3.3 and becomes a MUST in 4.0. Making it a MUST in a 3.x minor would add a new obligation on sellers. On MCP, a gateway or auth layer in front of the agent also has to let the transport's discovery methods through without credentials; see [Let MCP discovery through without credentials](/docs/building/by-layer/L0/mcp-guide#let-mcp-discovery-through-without-credentials).
 
 Product and signal discovery are seller-variable. Read `media_buy.anonymous_discovery` before calling `list_products` or `get_products` in discovery mode, and read `signals.anonymous_discovery` before calling `get_signals`. `true` means the call may succeed anonymously; `false` means credentials are required; absence means unspecified legacy behavior and the caller handles `AUTH_MISSING` if an anonymous probe is rejected.
 

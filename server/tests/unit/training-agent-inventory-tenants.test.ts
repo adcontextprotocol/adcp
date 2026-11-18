@@ -82,6 +82,11 @@ describe('inventory tenants', () => {
       const capabilities = await call(tenant, 'get_adcp_capabilities', {});
       expect(capabilities.supported_protocols).toContain('media_buy');
       expect(capabilities.specialisms).toEqual(expect.arrayContaining(['sales-guaranteed', 'sales-non-guaranteed']));
+      // A storefront reads an inventory agent as a wholesale catalogue, with
+      // its own credential rather than a per-buyer operator.
+      expect(capabilities.media_buy.buying_modes).toEqual(expect.arrayContaining(['brief', 'wholesale']));
+      // false is the schema default, so the SDK may omit it.
+      expect(capabilities.account.require_operator_auth ?? false).toBe(false);
     });
 
     it('returns products with forecasts for the requested flight', async () => {
@@ -157,6 +162,20 @@ describe('inventory tenants', () => {
       const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [guaranteed.media_buy_id] });
       expectCanonical('get_media_buy_delivery', delivery);
       expect(delivery.media_buy_deliveries[0].totals.impressions).toBe(0);
+    });
+
+    it('answers an account-less wholesale read with the public card', async () => {
+      const filters = { start_date: day(start), end_date: day(new Date(end.getTime() - DAY_MS)), delivery_type: 'guaranteed' };
+      const hero = (result: Structured) => result.products.find((product: Structured) => product.product_id === 'sports_hero_guaranteed')
+        .forecast.points[0].metrics.impressions.mid as number;
+      const open = await call(tenant, 'get_products', { buying_mode: 'wholesale', filters });
+      expectCanonical('get_products', open);
+      expect(open.cache_scope).toBe('public');
+      const scoped = await call(tenant, 'get_products', { buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters });
+      expect(scoped.cache_scope).toBe('account');
+      // The earlier test booked 100,000 hero impressions in this caller's
+      // market; only the account-scoped forecast nets them out.
+      expect(hero(open) - hero(scoped)).toBeGreaterThan(95_000);
     });
 
     it('refuses an unknown product and a wrong pricing option', async () => {
@@ -296,6 +315,11 @@ describe('inventory tenants', () => {
     const episode = (result: Structured, id: string) => result.products
       .find((product: Structured) => product.product_id === 'morning_brief_midroll')
       .installments.find((installment: Structured) => installment.installment_id === id);
+
+    it('declares only the guaranteed specialism it sells', async () => {
+      const capabilities = await call(tenant, 'get_adcp_capabilities', {}, CONTENT_TOKEN);
+      expect(capabilities.specialisms).toEqual(['sales-guaranteed']);
+    });
 
     it('sells episode sponsorships, cancels a seeded episode, and delivers listens as they build', async () => {
       await clock({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
