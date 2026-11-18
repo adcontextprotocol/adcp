@@ -95,7 +95,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 
 ## Withdrawn from 3.3, planned for 4.0
 
-Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` and the term objects inside it are held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). A buyer must not be bound by terms it cannot read: `terms_digest` covers every member of `commercial_terms`, including members under the open schemas inside it, and a party that cannot interpret every member must not accept the terms ([Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently)). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it. The decision is in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
+Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` and the term objects inside it are held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). A buyer must not be bound by terms it cannot read: `terms_digest` covers every member of `commercial_terms`, including members under the open schemas inside it, and a party that cannot interpret every member must not accept the terms ([Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently)). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it. A fourth, `metric_id` on performance standards, waits for 4.0 because it changes how a signed performance standard is read. The decision is in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
 
 ### Definition pins (published in beta.0 and beta.1, removed after beta.1)
 
@@ -118,9 +118,13 @@ A seller no longer pins definitions, re-verifies pins at finalize, or fails `acc
 
 **The request side returns in rc.0, under a new feature id.** Experimental `media_buy.installment_refinement` ([#8974](https://github.com/adcontextprotocol/adcp/pull/8974)) brings back `installment_changes` on `refine_proposals` (`core/installment-change-set.json`), `unsatisfied_installment_changes` on its result rows, and the `installment_changes` value of `supported_dimensions`, on schemas that are now open. The seller answers a selection with a product whose `installments[]` is exactly the chosen set, so `terms_digest` binds the `product_id` as before and every 3.x buyer reads the purchase the way it already does. `purchases[].installments[]` stays planned for 4.0 ([Adopt by capability](#installment-selection-and-per-installment-creatives-experimental)).
 
+### Performance standard `metric_id` (published in beta.1 through rc.0, removed after rc.0)
+
+[#8436](https://github.com/adcontextprotocol/adcp/pull/8436) added an optional `metric_id` to `core/performance-standard.json`, `core/canonical-performance-standard.json`, and the `required_performance_standards` entries of `core/product-offer-filters.json`, naming which of the vendor's metrics an `ivt`, `brand_safety`, or `attention_score` standard is judged against. All three are removed, with the rule that a standard without it is not judged from `vendor_metric_values`. The canonical standard is part of the purchase that `terms_digest` signs, and `metric_id` changes which vendor value decides it, so a 3.2 buyer would read the same signed standard differently. The three schemas return to their 3.2 form. Stop sending and emitting the field. Which of the vendor's metrics a standard is judged on stays between the parties, as in 3.2, until 4.0 ([check](/docs/reference/migration/v4-compatibility#performance_standard_metric_id_required_in_4_0)).
+
 ### Where the designs are kept
 
-The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) and in the merge commits of #7960, #8101, and #8246.
+The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) and in the merge commits of #7960, #8101, #8246, and #8436.
 
 ## Closed-schema triage: what stays in 3.3
 
@@ -132,7 +136,7 @@ On 2026-11-09 the working group decided that 3.x opens the schemas that were clo
 
 Only the fields below change between beta.5 and rc.0 because of the triage, and each change first shipped in beta.6. The three features withdrawn after beta.1 stay withdrawn ([above](#withdrawn-from-3-3-planned-for-4-0)).
 
-**In review, not in rc.0.** [#8854](https://github.com/adcontextprotocol/adcp/pull/8854) makes two of the triage's changes: it withdraws `metric_id` from `core/canonical-performance-standard.json`, `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json`, and it restores `evaluator` as a deprecated `x-entity-types` value. It has not merged, so rc.0's schemas still carry `metric_id` in those three places and still lack `evaluator`. Don't build on `metric_id`: the triage decided it leaves 3.3.
+**After rc.0.** [#8854](https://github.com/adcontextprotocol/adcp/pull/8854) makes two of the triage's changes: it withdraws `metric_id` from `core/canonical-performance-standard.json`, `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json`, and it restores `evaluator` as a deprecated `x-entity-types` value. rc.0's schemas still carry `metric_id` in those three places and still lack `evaluator`. Don't build on `metric_id`: the triage decided it leaves 3.3.
 
 ### Stays in 3.3
 
@@ -159,13 +163,13 @@ Only the fields below change between beta.5 and rc.0 because of the triage, and 
 | `artifact_webhook.signing_profile` | `create_media_buy` | No other task |
 | `start_requires_all_creatives_approved` | Packages on `create_media_buy` and `update_media_buy` | `control_media_buy` package controls (`media_buy.features.creative_start_policy`) |
 | `target_audiences` | Packages on `create_media_buy` and `update_media_buy` | Purchases, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)) |
-| `metric_id` | `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json` | Performance standards, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)). Still in the rc.0 schemas: the withdrawal, [#8854](https://github.com/adcontextprotocol/adcp/pull/8854), is in review. |
+| `metric_id` | `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json` | Performance standards, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)). Still in the rc.0 schemas; [#8854](https://github.com/adcontextprotocol/adcp/pull/8854) withdraws it after rc.0. |
 
 ### Leaves 3.3: held closed until 4.0
 
 | Field | Why it waits |
 |---|---|
-| `metric_id` on `core/canonical-performance-standard.json` | The canonical performance standard is one of the commercial terms held closed until 4.0. Still in the rc.0 schema: the withdrawal, [#8854](https://github.com/adcontextprotocol/adcp/pull/8854), is in review. |
+| `metric_id` on `core/canonical-performance-standard.json` | The canonical performance standard is one of the commercial terms held closed until 4.0. Still in the rc.0 schema; [#8854](https://github.com/adcontextprotocol/adcp/pull/8854) withdraws it after rc.0. |
 | `price_adjustments` (`media_buy.price_adjustments`) | Its 3.3 home is the legacy `get_products` pricing option, a deprecated surface, and `canonical-pricing-option` is held closed until 4.0. The whole experiment waits for 4.0. |
 | `counting_mechanisms` on `measurement_terms` (`media_buy.measurement_provenance`) | `measurement_terms` sits on deprecated tasks, and the canonical measurement terms are held closed until 4.0. `vendor_metric_provenance[]` on delivery metrics stays in 3.3. |
 | `target_audiences` on purchases | A purchase records its terms in `product-purchase.json`, which is held closed until 4.0. |
@@ -723,7 +727,7 @@ These change generated types or bundle shape without changing what a conformant 
 - **New error codes and shapes (beta.4 and beta.5).** `SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY` (recovery `correctable`) for a managed-delivery offering without `account_id` in its primary keys (#8718); `budget_field`, `basis`, `constraint`, and `related_field` on `BUDGET_TOO_LOW` details (#8710); `SetAccountTimezoneResult` on the controller response (#8717); and `core/match-key.json` with `enums/match-key-use.json` (#8446).
 
 - **Opened schemas ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), rc.0).** `additionalProperties` goes from `false` to `true` at 744 of the 859 closed locations, and nothing else in those schemas changes. Generated types change: json-schema-to-typescript gives an opened object an index signature, Pydantic models stop forbidding extra fields, and Zod validators accept unknown keys where the schema opened. Where closure also rejected a specific field, the opened schema names it in `not: { anyOf: [{ required: [...] }] }`, so a validator keeps that rejection. Code that relied on a type or validation error for any other unknown key needs its own check. See [Schemas are open by default](#schemas-are-open-by-default).
-- **Withdrawn and moved beta fields (rc.0).** Regenerate to drop the fields the [closed-schema triage](#closed-schema-triage-what-stays-in-3-3) removes and to pick up the ones that change home, such as `execution_readiness` on `list_products`. `metric_id` on performance standards stays in the rc.0 schemas until [#8854](https://github.com/adcontextprotocol/adcp/pull/8854) merges.
+- **Withdrawn and moved beta fields (rc.0).** Regenerate to drop the fields the [closed-schema triage](#closed-schema-triage-what-stays-in-3-3) removes and to pick up the ones that change home, such as `execution_readiness` on `list_products`. `metric_id` on performance standards stays in the rc.0 schemas and is withdrawn after rc.0 ([#8854](https://github.com/adcontextprotocol/adcp/pull/8854)).
 
 ## Adopt by capability
 
@@ -925,7 +929,7 @@ Each is optional and experimental: a seller that emits it lists the feature id i
 
 ### Experimental creative evaluator drops `evaluator_id`
 
-Applies only to sellers and buyers that use the experimental `creative.evaluator` surface (`build_creative.evaluator`). The `evaluator_id` source form is removed from `core/evaluator-spec.json`, and the `evaluator` entity is removed from `x-entity-types`. The evaluator object stays the request primitive, with two source forms: inline `exemplars` or an external `agent_url`. A seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `list_evaluators` follow-on that existed only to resolve `evaluator_id` is withdrawn.
+Applies only to sellers and buyers that use the experimental `creative.evaluator` surface (`build_creative.evaluator`). The `evaluator_id` source form is removed from `core/evaluator-spec.json`. The `evaluator` value stays in `x-entity-types`, deprecated, because existing values are never removed or renamed; no 3.3 field carries it. The evaluator object stays the request primitive, with two source forms: inline `exemplars` or an external `agent_url`. A seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `list_evaluators` follow-on that existed only to resolve `evaluator_id` is withdrawn.
 
 | Before (3.1 and 3.2) | After (3.3) |
 |---|---|
