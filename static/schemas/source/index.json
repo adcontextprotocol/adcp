@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.3.0-rc.0",
+  "adcp_version": "3.3.0-rc.1",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -336,6 +336,10 @@
         "delivery-metrics": {
           "$ref": "/schemas/core/delivery-metrics.json",
           "description": "Standard delivery metrics for reporting"
+        },
+        "impression-basis-breakdown-entry": {
+          "$ref": "/schemas/core/impression-basis-breakdown-entry.json",
+          "description": "Experimental. The plays of a DOOH row or forecast point estimated on one impression basis tier, and the impressions they produced"
         },
         "delivery-metric-aggregate": {
           "$ref": "/schemas/core/delivery-metric-aggregate.json",
@@ -1621,6 +1625,10 @@
         "delivery-projection-basis": {
           "$ref": "/schemas/enums/delivery-projection-basis.json",
           "description": "Class of method behind a delivery projection (trailing_daily_avg, trailing_hourly_avg, platform_model, seller_defined)"
+        },
+        "impression-estimation-basis": {
+          "$ref": "/schemas/enums/impression-estimation-basis.json",
+          "description": "Methodology tier of a DOOH audience figure (currency_measured, seller_modeled, sensor_measured, hybrid)"
         },
         "forecast-method": {
           "$ref": "/schemas/enums/forecast-method.json",
@@ -3194,5 +3202,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.3.0-rc.0"
+  "published_version": "3.3.0-rc.1"
 }

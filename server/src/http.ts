@@ -25,6 +25,7 @@ import type { ComplianceRefreshQueue } from "./services/compliance-refresh-queue
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { inferDiagnosticAgentType } from "./lib/diagnostic-agent-type-inference.js";
+import { hasA2AAgentCard } from "./lib/a2a-agent-card.js";
 import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
@@ -35,7 +36,7 @@ import { closeDatabase, getPool, healthCheck, type HealthCheckDiagnostics } from
 import { ComplianceDatabase } from "./db/compliance-db.js";
 import { ComplianceRefreshRequestsDatabase } from "./db/compliance-refresh-requests-db.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
-import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
@@ -105,7 +106,7 @@ import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createSecretariatAdminRouter } from "./routes/secretariat-admin.js";
-import { createAddieChatRouter, isWebChatReady } from "./routes/addie-chat.js";
+import { createAddieChatRouter, isWebChatReady, webChatReadiness } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
@@ -816,6 +817,11 @@ let consecutiveDbHealthFailures = 0;
 let dbHealthAlerted = false;
 const HEALTH_DB_ALERT_THRESHOLD = 3;
 const HEALTH_DB_SLOW_LOG_MS = 1000;
+/** How often an unchanged /ready failure is logged again. Fly hides probe
+ * bodies, so this log is how a stuck deploy names its blocker. */
+const READY_BLOCKED_LOG_INTERVAL_MS = 60_000;
+let lastReadyBlockers = '';
+let lastReadyBlockedLogAt = 0;
 
 /**
  * Validate slug format and check against reserved keywords
@@ -3088,11 +3094,15 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
+      let reportingError: string | null = null;
       if (req.path === '/ready') {
         try {
           const reporting = getTrainingGcsReporting();
           if (reporting) checks.reporting = await reporting.probe();
-        } catch { checks.reporting = false; }
+        } catch (reportingErr) {
+          checks.reporting = false;
+          reportingError = reportingErr instanceof Error ? reportingErr.message : String(reportingErr);
+        }
       }
 
       // A listening socket and a reachable database do not mean a new web
@@ -3103,6 +3113,30 @@ export class HTTPServer {
       const ready = checks.database && (req.path !== '/ready'
         || (checks.reporting !== false && (!chatRequired || checks.chat)));
       const status = ready ? "ok" : "unavailable";
+      if (req.path === '/ready') {
+        const blockers = [
+          ...(!checks.database ? ['database'] : []),
+          ...(checks.reporting === false ? ['reporting'] : []),
+          ...(chatRequired && !checks.chat ? ['chat'] : []),
+        ];
+        const key = blockers.join(',');
+        const now = Date.now();
+        if (blockers.length > 0 && (key !== lastReadyBlockers || now - lastReadyBlockedLogAt >= READY_BLOCKED_LOG_INTERVAL_MS)) {
+          logger.warn({
+            blockers,
+            checks,
+            ...(dbError && { dbError }),
+            ...(reportingError && { reportingError }),
+            ...(blockers.includes('chat') && { chat: webChatReadiness() }),
+            uptimeSec: Math.round(process.uptime()),
+            heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1048576),
+          }, 'Readiness probe failing');
+          lastReadyBlockedLogAt = now;
+        } else if (blockers.length === 0 && lastReadyBlockers !== '') {
+          logger.info({ uptimeSec: Math.round(process.uptime()) }, 'Readiness probe passing');
+        }
+        lastReadyBlockers = key;
+      }
       const body: Record<string, unknown> = {
         status,
         checks,
@@ -9898,20 +9932,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         // Detect protocols - check if both MCP and A2A are available
         const protocols: string[] = [agentInfo.protocol];
-        try {
-          // Check for A2A agent card if we detected MCP
-          if (agentInfo.protocol === 'mcp') {
-            const a2aUrl = new URL('/.well-known/agent.json', url).toString();
-            const a2aResponse = await sdkSafeFetch(a2aUrl, {
-              headers: { 'Accept': 'application/json' },
-              signal: AbortSignal.timeout(3000),
-            });
-            if (a2aResponse.ok) {
-              protocols.push('a2a');
-            }
-          }
-        } catch {
-          // Ignore A2A check failures
+        if (agentInfo.protocol === 'mcp' && await hasA2AAgentCard(url)) {
+          protocols.push('a2a');
         }
 
         // Fetch type-specific stats
