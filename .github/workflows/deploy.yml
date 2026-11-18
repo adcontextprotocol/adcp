@@ -295,12 +295,14 @@ jobs:
               # this script from the deploy's own errexit toggle further down.
               set +o errexit
               while [ ! -f "$live/stop" ]; do
-                if machines=$(flyctl machines list -a adcp-docs --json 2>/dev/null); then
+                # Every API call is bounded, so a hung call cannot outlive the
+                # rollout; stop_capture also kills the loop outright.
+                if machines=$(timeout 30 flyctl machines list -a adcp-docs --json 2>/dev/null); then
                   for id in $(echo "$machines" | jq -r '.[].id'); do
                     grep -qx "$id" "$live/before-ids.txt" && continue
                     echo "$machines" | jq --arg id "$id" '.[] | select(.id == $id) | {id, name, state, region, image_ref, created_at, updated_at, checks, events}' \
                       > "$live/green-$id.json.tmp" && mv "$live/green-$id.json.tmp" "$live/green-$id.json"
-                    flyctl machine status -d "$id" -a adcp-docs > "$live/green-$id-status.tmp" 2>&1 \
+                    timeout 30 flyctl machine status -d "$id" -a adcp-docs > "$live/green-$id-status.tmp" 2>&1 \
                       && mv "$live/green-$id-status.tmp" "$live/green-$id-status.txt"
                   done
                 fi
@@ -314,7 +316,10 @@ jobs:
           stop_capture() {
             touch "$live/stop"
             if [ -n "$logs_pid" ]; then kill "$logs_pid" 2>/dev/null || true; fi
-            if [ -n "$watch_pid" ]; then wait "$watch_pid" 2>/dev/null || true; fi
+            # Kill rather than wait for the watcher: its last good snapshots are
+            # already on disk (each is moved into place whole), and waiting on
+            # an in-flight API call must never hold up the step.
+            if [ -n "$watch_pid" ]; then kill "$watch_pid" 2>/dev/null || true; wait "$watch_pid" 2>/dev/null || true; fi
           }
           trap stop_capture EXIT
 
