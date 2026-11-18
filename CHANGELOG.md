@@ -1,5 +1,52 @@
 # Changelog
 
+## 3.3.0-rc.1
+
+### Minor Changes
+
+- 61a1638: Add the experimental DOOH impression basis (`media_buy.dooh_impression_basis`, RFC #7253). A DOOH `impressions` figure is `plays × audience multiplier`, and the new `enums/impression-estimation-basis.json` says where the multiplier comes from: `currency_measured`, `seller_modeled`, `sensor_measured` or `hybrid`.
+  
+  - Delivery: `dooh_metrics` carries `impression_basis`, `audience_multiplier` and `basis_metric`, the `vendor_metric_values[]` row a sensor audience comes from. A row mixing tiers reports `impression_basis_breakdown[]` instead: at least two entries with distinct tiers, summing exactly to the row, and no row-level tier or multiplier. `venue_breakdown[]` rows may carry the tier and `plays`, one per screen that played the spot, and no multiplier: a venue's audience per play is its `impressions / plays`.
+  - Forecast: forecast points, canonical ones included, carry `impression_basis`, `audience_multiplier` and `impression_basis_breakdown[]`, outside `metrics`. A breakdown includes the fallback the seller expects.
+  - Discovery: `dooh_placement_attributes` carries the planned tier and multiplier.
+  
+  `impressions` is authoritative and the multiplier is `impressions / plays`, rounded. `hybrid` is a seller model calibrated by sensors on the seller's own screens, never a published currency nor a mix of tiers. All fields are optional. `ooh_metrics.estimation_basis` is unchanged.
+- 954eb9d: Campaign governance (experimental `governance.campaign`): settle the rules the specification contradicted or left undefined (adcp#8733, PR 2 of 3). These are normative decisions of the Governance working group. No wire field, enum member or `plan_hash` rule changes. This is a change within the 3.3 pre-release.
+  
+  - **Budget cut below committed spend.** A `sync_plans` that reduces `budget.total` (or a period `amount`) below the amount already committed is rejected with `VALIDATION_ERROR` and leaves the plan unchanged. Before, the specification said the sync was accepted and flagged on the next check, while the task page said it was rejected.
+  - **Unapproved seller or undelegated caller on `check_governance`.** A failed `approved_sellers` or `delegations` evaluation for an authenticated caller is returned as a `denied` verdict with a finding and a `check_id`, so the attempt can be audited. This holds in every governance mode. A plan is accessible to its owner principal, to a current delegate, and to a caller that presents a `governance_context` or `consultation_context` issued for that plan. Any other caller receives `PLAN_NOT_FOUND`, the same response as for an unknown `plan_id`, and writes no audit entry. Before, the task page listed `PERMISSION_DENIED` for these cases. `check_governance` still returns `PERMISSION_DENIED` when the caller is unauthenticated or its authenticated identity does not match `caller`. Callers that branch on the error code for the authority cases must also handle the verdict.
+  - **Human review in every mode.** Audit and advisory mode no longer describe an agent that always returns `approved`: plans with `human_review_required: true` escalate in every mode, and a failed `approved_sellers` or `delegations` evaluation is `denied` in every mode.
+  - **`plan_id` namespace.** A `plan_id` is unique per owner principal. Two principals may use the same `plan_id`, and a `sync_plans` never reads, changes or reveals another principal's plan.
+  - **`execute_only`.** A pre-approved action is one whose opaque action binding already holds an approved intent check in the plan's lifecycle. An `execute_only` delegate may act only on such an action, which includes `accept_proposal` for it. The governance agent MUST deny an intent check from an `execute_only` delegate that would create a new binding or increase committed spend.
+  - **Regions-restricted plans.** An action with no geographic targeting, or with country-level targeting only, is outside a regions-restricted plan: an intent check returns `conditions` naming the region constraint, and an execution check returns `denied`.
+  - **Unresolvable registry policy ID.** `sync_plans` returns `REFERENCE_NOT_FOUND` when a registry policy ID in `policy_ids` cannot be resolved.
+  - **Three re-call rule.** "The same action" means re-checks that carry the same `consultation_context`.
+  - **Explicit `human_review_required: false`.** The `sync_plans` error table states that it is rejected with `VALIDATION_ERROR` on a plan that requires human review.
+  
+  Training agent: `sync_plans` now rejects a `budget.total` reduced below committed spend, and `check_governance` returns the `denied` verdict for an authenticated execution caller that is not the audience preserved from the approved intent, and for a buyer-side caller whose delegation has ended. It no longer approves a failed `approved_sellers` or `delegations` evaluation in advisory or audit mode. For a plan that does not exist or that the caller cannot access, `check_governance` now returns the `PLAN_NOT_FOUND` error; it returned a `denied` verdict with a `plan_lookup` finding.
+- 3a3bf1e: Withdraw `metric_id` from performance standards and restore the `evaluator` value of `x-entity-types` as deprecated (adcp#8501, entries 6 and 26). A minor release doesn't change what a signed term means or remove an existing enum value (DR-0036).
+  
+  **`metric_id` on performance standards (#8436, `3.3.0-beta.1` through `3.3.0-rc.0`).** Removed from `core/canonical-performance-standard.json`, `core/performance-standard.json` and the `required_performance_standards` entries of `core/product-offer-filters.json`, with the guard that kept it off `viewability` and `completion_rate`. The three schemas and the `performance-standard-metric` description return to their 3.2.8 form. The field selects which vendor value decides a signed performance standard, so a 3.2 buyer would read the same standard differently. It is planned for 4.0 as `performance_standard_metric_id_required_in_4_0` in the 4.0 compatibility registry, which keeps the design.
+  
+  **`evaluator` in `x-entity-types`.** Restored with its definition and listed in `x-deprecated-enum-values`. The 3.2.8 versioning page says "Existing values are never removed or renamed." The removal of the experimental `evaluator_id` source form (#8045) stands, so no 3.3 field carries the value.
+  
+  These are beta-to-beta changes, not changes to a stable release: 3.2.8 has no `metric_id` on performance standards. The betas are immutable, so a seller or SDK built from a beta bundle stops sending and emitting the field. `scripts/lint-additive-minor-baseline.json` drops the two rows these entries covered and is now empty.
+
+### Patch Changes
+
+- d24319d: Campaign governance (experimental `governance.campaign`): follow-up errata found during the coherence sweep (adcp#8733, PR 4). Each edit follows a rule that is already stated elsewhere in the specification or schemas. No schema property, enum member or `plan_hash` rule changes.
+  
+  - **Human-review trigger list.** The trust page, known limitations and the FAQ name all five schema triggers: `fair_housing`, `fair_lending`, `fair_employment` and `pharmaceutical_advertising` in `policy_categories`, and `eu_ai_act_annex_iii` in `policy_ids`. The FAQ no longer describes 3.0 in the future tense, and says that an omitted flag is accepted from 3.3.
+  - **Who sets the flag.** The `requires_human_review` descriptions in `policy-category-definition.json` and `policy-entry.json` say the governance agent sets `plan.human_review_required`, as the specification does. The category description no longer says that a policy can override the category's setting: a policy adds the requirement and cannot remove it.
+  - **Reallocation fields.** `budget.reallocation_threshold` is no longer documented as always required. The schema requires exactly one of `reallocation_threshold` or `reallocation_unlimited: true`, and the `sync_plans` field table now lists both. The reallocation table and the `reallocation_threshold` description point to `reallocation_unlimited: true` for unlimited reallocation, because a threshold equal to `total` tightens when `total` changes.
+  - **Overview page.** Advisory mode is described as returning `approved` with findings, and the "Execute" step and the image description no longer say budget is reserved.
+  - **Audit logs.** The audit-trail page and the `entries[].mode` description no longer refer to a closed issue or to mode as a plan property. The `entries[].mode` description no longer mentions a `governed_actions[].mode` field that does not exist. The specification and the audit-trail page now state the same strength as the schema: a governance agent SHOULD record the mode on check entries, and outcome entries carry none.
+  - **Mode on the response.** The specification no longer says that governance mode is "not a protocol-level field". The `check_governance` response has carried an optional `mode` property since 3.1, and the task page documents it. The specification now says that mode is agent configuration, that no request carries it, and that the agent may report it on the response. Callers still MUST NOT branch on it.
+  - **Delegation expiry.** The `delegations[].expires_at` description said that the governance agent denies an expired delegate's actions. It now follows the plan-access rule: a re-check that presents a context issued for the plan, and an execution check on an action the agent proposed, are `denied`, and any other check from that agent returns `PLAN_NOT_FOUND`.
+  
+  Training agent: the `mode` property on its `sync_plans` tool is described as a sandbox test control. Its behaviour is unchanged.
+- c925886: Docs: `@adcp/sdk` 17.0.0-beta.29 and Python `adcp` 10.0.0b20 bundle `3.3.0-rc.0`, and the public test agent's opt-in 3.3 preview moves to `3.3-rc.0`. Choose your SDK, the 3.3 prerelease page, the release notes, Versions, and the quickstart name the new versions and pin. `@adcp/sdk` 17.0.0-beta.24 through 17.0.0-beta.28 and Python `adcp` 10.0.0b17 through 10.0.0b19 support beta.6. The training agent's hosted preview is `3.3-rc.0`, validated against the published `3.3.0-rc.0` schemas.
+
 ## 3.3.0-rc.0
 
 ### Minor Changes

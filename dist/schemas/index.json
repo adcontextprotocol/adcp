@@ -26,6 +26,14 @@
   },
   "versions": [
     {
+      "version": "3.3.0-rc.1",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": false,
+      "path": "/schemas/3.3.0-rc.1/",
+      "index": "/schemas/3.3.0-rc.1/index.json"
+    },
+    {
       "version": "3.3.0-rc.0",
       "stability": "rc",
       "prerelease": true,
