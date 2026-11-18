@@ -272,31 +272,49 @@ jobs:
           # redacted lines, status and events.
           live=/tmp/fly-live
           mkdir -p "$live"
-          flyctl machines list -a adcp-docs --json | jq -r '.[].id' > "$live/before-ids.txt" || true
-          timeout 2400 flyctl logs -a adcp-docs > "$live/logs-raw.txt" 2>&1 &
-          logs_pid=$!
-          (
-            # Spelled `+o errexit` on purpose: deploy-workflow.test.ts slices
-            # this script from the deploy's own errexit toggle further down.
-            set +o errexit
-            while [ ! -f "$live/stop" ]; do
-              if machines=$(flyctl machines list -a adcp-docs --json 2>/dev/null); then
-                for id in $(echo "$machines" | jq -r '.[].id'); do
-                  grep -qx "$id" "$live/before-ids.txt" && continue
-                  echo "$machines" | jq --arg id "$id" '.[] | select(.id == $id) | {id, name, state, region, image_ref, created_at, updated_at, checks, events}' \
-                    > "$live/green-$id.json.tmp" && mv "$live/green-$id.json.tmp" "$live/green-$id.json"
-                  flyctl machine status -d "$id" -a adcp-docs > "$live/green-$id-status.tmp" 2>&1 \
-                    && mv "$live/green-$id-status.tmp" "$live/green-$id-status.txt"
-                done
-              fi
-              sleep 15
-            done
-          ) &
-          watch_pid=$!
+          logs_pid=""
+          watch_pid=""
+          # Fail closed: every machine not in this list is treated as green and
+          # its log lines are uploaded on failure, so an empty list would sweep
+          # in the serving fleet's request logs. Without a non-empty list,
+          # capture nothing.
+          before_listed=false
+          for attempt in 1 2 3; do
+            if ids=$(flyctl machines list -a adcp-docs --json | jq -er '.[].id') && [ -n "$ids" ]; then
+              printf '%s\n' "$ids" > "$live/before-ids.txt"
+              before_listed=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$before_listed" = true ]; then
+            timeout 2400 flyctl logs -a adcp-docs > "$live/logs-raw.txt" 2>&1 &
+            logs_pid=$!
+            (
+              # Spelled `+o errexit` on purpose: deploy-workflow.test.ts slices
+              # this script from the deploy's own errexit toggle further down.
+              set +o errexit
+              while [ ! -f "$live/stop" ]; do
+                if machines=$(flyctl machines list -a adcp-docs --json 2>/dev/null); then
+                  for id in $(echo "$machines" | jq -r '.[].id'); do
+                    grep -qx "$id" "$live/before-ids.txt" && continue
+                    echo "$machines" | jq --arg id "$id" '.[] | select(.id == $id) | {id, name, state, region, image_ref, created_at, updated_at, checks, events}' \
+                      > "$live/green-$id.json.tmp" && mv "$live/green-$id.json.tmp" "$live/green-$id.json"
+                    flyctl machine status -d "$id" -a adcp-docs > "$live/green-$id-status.tmp" 2>&1 \
+                      && mv "$live/green-$id-status.tmp" "$live/green-$id-status.txt"
+                  done
+                fi
+                sleep 15
+              done
+            ) &
+            watch_pid=$!
+          else
+            echo "::warning::Could not list the machines running before the deploy; skipping green-machine capture so serving machines are never mistaken for green ones."
+          fi
           stop_capture() {
             touch "$live/stop"
-            kill "$logs_pid" 2>/dev/null || true
-            wait "$watch_pid" 2>/dev/null || true
+            if [ -n "$logs_pid" ]; then kill "$logs_pid" 2>/dev/null || true; fi
+            if [ -n "$watch_pid" ]; then wait "$watch_pid" 2>/dev/null || true; fi
           }
           trap stop_capture EXIT
 
