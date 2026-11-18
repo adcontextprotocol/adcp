@@ -202,23 +202,65 @@ function schemaDiscoveryAliasTargets(repoRoot) {
   return targets;
 }
 
+function releaseDirectories(rootPath) {
+  if (!existsSync(rootPath)) return [];
+  return readdirSync(rootPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && semver.valid(entry.name) !== null)
+    .map((entry) => entry.name);
+}
+
+// A prerelease X.Y.0-(beta|rc).N is superseded once X.Y has gone GA. Any
+// stable X.Y.z release artifact proves that: 3.2.0 itself shipped package-only,
+// so the 3.2 line's first bundled stable release is 3.2.1. Compliance and
+// stable docs snapshots are never pruned, so repeating image preparation
+// derives the same answer.
+function gaReleasedLines(repoRoot) {
+  const lines = new Set();
+  for (const tree of ["schemas", "compliance", "docs"]) {
+    for (const version of releaseDirectories(join(repoRoot, "dist", tree))) {
+      const parsed = semver.parse(version);
+      if (parsed.prerelease.length === 0) lines.add(`${parsed.major}.${parsed.minor}`);
+    }
+  }
+  return lines;
+}
+
+function isGaSupersededPrerelease(version, gaLines) {
+  const match = version.match(/^(\d+)\.(\d+)\.0-(?:beta|rc)\.\d+$/);
+  return match !== null && gaLines.has(`${match[1]}.${match[2]}`);
+}
+
 function runtimeArtifactManifest(repoRoot = resolve(__dirname, "..")) {
   const published = publishedComplianceVersions(repoRoot);
   const docs = docsSnapshotVersions(repoRoot);
   const schemaAliases = schemaDiscoveryAliasTargets(repoRoot);
   const trainingSchemas = retainedTrainingSchemaVersions(repoRoot);
+  const schemaVersions = new Set([
+    ...published,
+    ...docs,
+    ...schemaAliases,
+    ...trainingSchemas,
+  ]);
+
+  // Docs snapshots are read at runtime only by Addie's docs index, and only
+  // the docs.json versions. The docs site itself is served by Mintlify from
+  // git, so every other snapshot is image weight. Drop GA-superseded
+  // prerelease snapshots unless a runtime anchor (docs.json, hosted grading,
+  // a schema alias or a training checkpoint) names that version.
+  const gaLines = gaReleasedLines(repoRoot);
+  const docsSnapshots = new Set(
+    releaseDirectories(join(repoRoot, "dist", "docs")).filter((version) =>
+      schemaVersions.has(version) || !isGaSupersededPrerelease(version, gaLines)),
+  );
+  for (const version of docs) docsSnapshots.add(version);
 
   return {
     published,
     docs,
+    docsSnapshots,
     schemaAliases,
     trainingSchemas,
-    schemaVersions: new Set([
-      ...published,
-      ...docs,
-      ...schemaAliases,
-      ...trainingSchemas,
-    ]),
+    schemaVersions,
   };
 }
 
@@ -282,20 +324,21 @@ function rewriteSchemaDiscovery(repoRoot, keep) {
   writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
 }
 
-function verifyPrunedTree(repoRoot, manifest) {
-  verifyRequiredArtifacts(repoRoot, manifest);
-  const actual = new Set(
-    readdirSync(join(repoRoot, "dist", "schemas"), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && semver.valid(entry.name) !== null)
-      .map((entry) => entry.name),
-  );
-  const unexpected = [...actual].filter((version) => !manifest.schemaVersions.has(version));
-  const missing = [...manifest.schemaVersions].filter((version) => !actual.has(version));
+function verifyReleaseClosure(rootPath, expected, label) {
+  const actual = new Set(releaseDirectories(rootPath));
+  const unexpected = [...actual].filter((version) => !expected.has(version));
+  const missing = [...expected].filter((version) => !actual.has(version));
   if (unexpected.length || missing.length) {
     throw new Error(
-      `Runtime schema closure mismatch; missing=${missing.join(",") || "none"} unexpected=${unexpected.join(",") || "none"}`,
+      `Runtime ${label} closure mismatch; missing=${missing.join(",") || "none"} unexpected=${unexpected.join(",") || "none"}`,
     );
   }
+}
+
+function verifyPrunedTree(repoRoot, manifest) {
+  verifyRequiredArtifacts(repoRoot, manifest);
+  verifyReleaseClosure(join(repoRoot, "dist", "schemas"), manifest.schemaVersions, "schema");
+  verifyReleaseClosure(join(repoRoot, "dist", "docs"), manifest.docsSnapshots, "docs");
 
   const schemaIndex = readJson(join(repoRoot, "dist", "schemas", "index.json"));
   const indexed = new Set(schemaIndex.versions.map((entry) => entry.version));
@@ -326,6 +369,10 @@ function pruneRuntimeArtifacts(repoRoot = resolve(__dirname, ".."), verifiedProt
     join(repoRoot, "dist", "schemas"),
     manifest.schemaVersions,
   );
+  const docsRemoved = pruneVersionDirectories(
+    join(repoRoot, "dist", "docs"),
+    manifest.docsSnapshots,
+  );
   rewriteSchemaDiscovery(repoRoot, manifest.schemaVersions);
   verifyPrunedTree(repoRoot, manifest);
   if (protocolFiles.length) {
@@ -333,7 +380,7 @@ function pruneRuntimeArtifacts(repoRoot = resolve(__dirname, ".."), verifiedProt
       `${JSON.stringify({ schema_version: 1, files: protocolFiles }, null, 2)}\n`);
     for (const name of verifiedProtocolFiles) rmSync(join(repoRoot, "dist", "protocol", name));
   }
-  return { manifest, schemasRemoved, protocolFilesOffloaded: verifiedProtocolFiles };
+  return { manifest, schemasRemoved, docsRemoved, protocolFilesOffloaded: verifiedProtocolFiles };
 }
 
 async function run() {
@@ -346,8 +393,11 @@ async function run() {
   const result = pruneRuntimeArtifacts(repoRoot, verified);
   console.log(
     `Runtime artifact closure retained ${result.manifest.schemaVersions.size} schema releases; ` +
-      `pruned ${result.schemasRemoved.length}; offloaded ${verified.length} CDN-verified protocol archives. ` +
-      "Compliance, docs, latest.tgz, archives not yet in R2 and all sidecars were left intact.",
+      `pruned ${result.schemasRemoved.length}; retained ${result.manifest.docsSnapshots.size} docs snapshots; ` +
+      `pruned ${result.docsRemoved.length} GA-superseded prerelease snapshots ` +
+      `(${result.docsRemoved.join(", ") || "none"}); ` +
+      `offloaded ${verified.length} CDN-verified protocol archives. ` +
+      "Compliance, latest.tgz, archives not yet in R2 and all sidecars were left intact.",
   );
 }
 

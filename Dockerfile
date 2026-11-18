@@ -22,9 +22,12 @@ RUN node scripts/deduplicate-runtime-artifacts.cjs
 
 # Historical releases remain immutable in git and in the public R2 artifact
 # CDN. Fly retains every compliance bundle, configured docs snapshot and required
-# schema bundle. Versioned protocol tarball bodies are offloaded only after byte
-# verification against the CDN; a required release's archive that R2 does not
-# list yet stays local, and every sidecar plus a discovery inventory stays local.
+# schema bundle. Docs snapshots of prereleases whose line has gone GA are dropped
+# unless a runtime anchor names them: Mintlify serves the docs site from git, and
+# Addie indexes only the docs.json versions. Versioned protocol tarball bodies
+# are offloaded only after byte verification against the CDN; a required
+# release's archive that R2 does not list yet stays local, and every sidecar
+# plus a discovery inventory stays local.
 # Prune only the builder copy, never Git records.
 FROM builder AS runtime-artifacts
 RUN node scripts/prune-runtime-artifacts.cjs --offload-protocol \

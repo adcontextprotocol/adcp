@@ -15,6 +15,7 @@ const {
   pruneRuntimeArtifacts,
   retainedTrainingSchemaVersions,
   runtimeArtifactManifest,
+  verifyPrunedTree,
   verifyRequiredArtifacts,
   protocolOffloadCandidates,
   verifyProtocolOffloads,
@@ -112,6 +113,125 @@ test("runtime closure includes every published hosted compliance bundle and pair
     );
   }
   for (const version of manifest.trainingSchemas) assert.ok(manifest.schemaVersions.has(version));
+  for (const version of manifest.docs) assert.ok(manifest.docsSnapshots.has(version));
+  // A superseded prerelease that hosted grading or the training agent names
+  // keeps its docs snapshot along with its schemas and compliance bundle.
+  for (const version of manifest.schemaVersions) {
+    if (existsSync(join(repoRoot, "dist", "docs", version))) {
+      assert.ok(manifest.docsSnapshots.has(version), `runtime anchor ${version} lost its docs snapshot`);
+    }
+  }
+});
+
+function writeDocsSnapshot(root, version) {
+  mkdirSync(join(root, "dist", "docs", version), { recursive: true });
+  writeFileSync(join(root, "dist", "docs", version, "intro.mdx"), `docs:${version}\n`);
+}
+
+function publish(root, version) {
+  const manifestPath = join(root, "static", "compliance", "published-versions.json");
+  const manifest = JSON.parse(readFileSync(manifestPath));
+  manifest.published_versions.push(version);
+  writeJson(manifestPath, manifest);
+  writeArtifact(root, "schemas", version);
+  writeArtifact(root, "compliance", version);
+  const indexPath = join(root, "dist", "schemas", "index.json");
+  const index = JSON.parse(readFileSync(indexPath));
+  index.versions.push({ version });
+  writeJson(indexPath, index);
+}
+
+test("GA-superseded prerelease docs snapshots leave the image unless a runtime anchor names them", () => {
+  const root = fixture();
+  try {
+    // 3.1 is GA (3.1.1, 3.1.2): its unanchored prereleases are superseded.
+    // 3.1.0-beta.1 is a training checkpoint and 3.1.0-rc.1 is hosted for grading.
+    // 3.2 has no stable release yet, so every 3.2 prerelease stays.
+    publish(root, "3.1.0-rc.1");
+    for (const version of ["3.1.0-beta.1", "3.1.0-beta.2", "3.1.0-rc.1", "3.1.0-rc.3",
+      "3.1.1", "3.2.0-beta.0", "3.2.0-rc.0"]) {
+      writeDocsSnapshot(root, version);
+    }
+    const complianceBefore = readFileSync(
+      join(root, "dist", "compliance", "3.1.0-beta.2", "index.json"),
+    );
+
+    const result = pruneRuntimeArtifacts(root);
+
+    assert.deepEqual(result.docsRemoved, ["3.1.0-beta.2", "3.1.0-rc.3"]);
+    assert.deepEqual(result.schemasRemoved, ["3.1.0-beta.2"]);
+    for (const version of ["3.1.0-beta.1", "3.1.0-rc.1", "3.1.1", "3.1.2", "3.2.0-beta.0", "3.2.0-rc.0"]) {
+      assert.ok(existsSync(join(root, "dist", "docs", version, "intro.mdx")), `docs ${version} pruned`);
+    }
+    assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.1", "index.json")));
+    assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-rc.1", "index.json")));
+    assert.ok(existsSync(join(root, "dist", "compliance", "3.1.0-rc.1", "index.json")));
+    // Compliance bundles are never pruned, superseded or not.
+    assert.deepEqual(
+      readFileSync(join(root, "dist", "compliance", "3.1.0-beta.2", "index.json")),
+      complianceBefore,
+    );
+
+    // Repeated image preparation removes nothing more.
+    const again = pruneRuntimeArtifacts(root);
+    assert.deepEqual(again.docsRemoved, []);
+    assert.deepEqual([...again.manifest.docsSnapshots].sort(),
+      ["3.1.0-beta.1", "3.1.0-rc.1", "3.1.1", "3.1.2", "3.2.0-beta.0", "3.2.0-rc.0"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a configured docs version is kept even when its prerelease is GA-superseded", () => {
+  const root = fixture();
+  try {
+    writeJson(join(root, "docs.json"), {
+      navigation: {
+        versions: [
+          { version: "3.1", default: true, groups: ["dist/docs/3.1.2/intro"] },
+          { version: "3.1-beta", groups: ["dist/docs/3.1.0-beta.2/intro"] },
+        ],
+      },
+    });
+    writeDocsSnapshot(root, "3.1.0-beta.2");
+    const result = pruneRuntimeArtifacts(root);
+    assert.deepEqual(result.docsRemoved, []);
+    assert.deepEqual(result.schemasRemoved, []);
+    assert.ok(existsSync(join(root, "dist", "docs", "3.1.0-beta.2", "intro.mdx")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("any stable patch marks its line GA, even without an X.Y.0 artifact", () => {
+  const root = fixture();
+  try {
+    // 3.2.0 shipped package-only; the line's first bundled stable is 3.2.1.
+    for (const version of ["3.2.0-beta.0", "3.2.0-rc.0", "3.3.0-beta.0"]) writeDocsSnapshot(root, version);
+    writeArtifact(root, "compliance", "3.2.1");
+    // Only X.Y.0 prereleases are in scope; a patch prerelease is left alone.
+    writeDocsSnapshot(root, "3.1.3-rc.1");
+    const result = pruneRuntimeArtifacts(root);
+    assert.deepEqual(result.docsRemoved, ["3.2.0-beta.0", "3.2.0-rc.0"]);
+    assert.ok(existsSync(join(root, "dist", "docs", "3.3.0-beta.0", "intro.mdx")));
+    assert.ok(existsSync(join(root, "dist", "docs", "3.1.3-rc.1", "intro.mdx")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the pruned-tree check fails closed if a superseded docs snapshot survives", () => {
+  const root = fixture();
+  try {
+    pruneRuntimeArtifacts(root);
+    writeDocsSnapshot(root, "3.1.0-rc.3");
+    assert.throws(
+      () => verifyPrunedTree(root, runtimeArtifactManifest(root)),
+      /Runtime docs closure mismatch; missing=none unexpected=3\.1\.0-rc\.3/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("runtime pruning removes only unrequired build-stage versions", () => {
