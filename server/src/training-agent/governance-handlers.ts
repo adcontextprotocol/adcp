@@ -2527,15 +2527,17 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       }
     }
 
-    // On a regions-restricted plan, a purchase or modification must state
-    // region-level delivery inside the plan's regions: none, or country-level
-    // only, delivers country-wide and is denied. A delivery check reports on a
-    // commitment already authorized, so only the regions it states are compared.
+    // On a regions-restricted plan, a purchase must state region-level
+    // delivery inside the plan's regions: none, or country-level only, delivers
+    // country-wide and is denied. A modification that states no regions keeps
+    // the buy's existing geography, as at intent, and a delivery check reports
+    // on a commitment already authorized, so for both only the regions stated
+    // are compared.
     if (plan.regions?.length) {
       const planRegionSet = new Set(plan.regions);
       const pdRegions = stringList(plannedDelivery.geo?.regions) ?? [];
       const outside = pdRegions.filter(region => !planRegionSet.has(region));
-      if (pdRegions.length === 0 && phase !== 'delivery') {
+      if (pdRegions.length === 0 && phase === 'purchase') {
         findings.push({
           categoryId: 'geo_compliance',
           severity: 'critical',

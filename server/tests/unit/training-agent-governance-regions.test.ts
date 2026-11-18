@@ -175,6 +175,46 @@ describe('check_governance plan regions', () => {
     });
   });
 
+  it('approves a modification execution check that leaves geography unchanged, but not one that names an outside region', async () => {
+    await runWithSessionContext(async () => {
+      await sync();
+      const update = () => handleCheckGovernance({
+        plan_id: PLAN.plan_id,
+        caller: OWNER,
+        target_agent: SELLER,
+        tool: 'update_media_buy',
+        payload: { media_buy_id: 'mb_regions', end_time: '2027-06-30T23:59:59Z' },
+        proposed_commitment: { amount: 0, currency: 'USD' },
+      }, OWNER_CTX) as Promise<Result>;
+      const modification = (governanceContext: string, geo?: Record<string, unknown>) => handleCheckGovernance({
+        caller: SELLER,
+        governance_context: governanceContext,
+        phase: 'modification',
+        execution_commitment: { amount: 0, currency: 'USD' },
+        planned_delivery: {
+          media_buy_id: 'mb_regions',
+          end_time: '2027-06-30T23:59:59Z',
+          currency: 'USD',
+          ...(geo && { geo }),
+        },
+      }, SELLER_CTX) as Promise<Result>;
+
+      const unchanged = await update();
+      expect(unchanged.verdict, JSON.stringify(unchanged)).toBe('approved');
+      const unchangedExecution = await modification(unchanged.governance_context);
+      expect(unchangedExecution.verdict, JSON.stringify(unchangedExecution)).toBe('approved');
+
+      const widened = await update();
+      const widenedExecution = await modification(widened.governance_context, { regions: ['US-NY'] });
+      expect(widenedExecution.verdict, JSON.stringify(widenedExecution)).toBe('denied');
+      expect(widenedExecution.findings).toContainEqual(expect.objectContaining({
+        category_id: 'geo_compliance',
+        severity: 'critical',
+        explanation: expect.stringContaining('US-NY'),
+      }));
+    });
+  });
+
   it('approves an execution check that delivers inside the plan regions', async () => {
     await runWithSessionContext(async () => {
       await sync();
