@@ -166,8 +166,41 @@ export class AuthorizationIndex {
     return byDomain;
   }
 
+  /**
+   * The entries authorizing `agentUrl` for one known publisher domain, in
+   * insertion order. Scoped gather for the hot path: unlike
+   * `matchingByDomain`, this never materializes or sorts the agent's
+   * entries for other publishers (Ladon review on #9070).
+   */
+  private matchingForDomain(agentUrl: string, publisherDomain: string): AuthorizationEntry[] {
+    const matched: AuthorizationEntry[] = [];
+    for (const key of this.candidateKeys(agentUrl)) {
+      const entries = this.primary.get(key)?.get(publisherDomain);
+      if (!entries) continue;
+      for (const entry of entries) {
+        if (agentUrlAuthorizedBy(entry.agent_url, agentUrl)) matched.push(entry);
+      }
+    }
+    matched.sort((a, b) => (this.entryOrder.get(a) ?? 0) - (this.entryOrder.get(b) ?? 0));
+    return matched;
+  }
+
+  /** Whether any entry in the candidate buckets authorizes `agentUrl`. */
+  private hasAnyMatch(agentUrl: string): boolean {
+    for (const key of this.candidateKeys(agentUrl)) {
+      const bucket = this.primary.get(key);
+      if (!bucket) continue;
+      for (const entries of bucket.values()) {
+        for (const entry of entries) {
+          if (agentUrlAuthorizedBy(entry.agent_url, agentUrl)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   private matchingEntries(agentUrl: string, publisherDomain: string): AuthorizationEntry[] {
-    return this.matchingByDomain(agentUrl).get(publisherDomain) ?? [];
+    return this.matchingForDomain(agentUrl, publisherDomain);
   }
 
   private removeFromReverse(agentUrl: string, publisherDomain: string): void {
@@ -280,9 +313,9 @@ export class AuthorizationIndex {
       publisherDomain = this.propertyIndex.getDomainForRid(query.property_rid);
     }
 
-    const byDomain = this.matchingByDomain(query.agent_url);
-
     if (!publisherDomain) {
+      // No known domain: the gather across domains is unavoidable here.
+      const byDomain = this.matchingByDomain(query.agent_url);
       // Try to find the agent in any domain
       if (byDomain.size === 0) {
         return { authorized: false, reason: 'agent not found in authorization index' };
@@ -296,12 +329,13 @@ export class AuthorizationIndex {
       return { authorized: false, reason: 'cannot resolve property to publisher domain' };
     }
 
-    if (byDomain.size === 0) {
-      return { authorized: false, reason: 'agent not found in authorization index' };
-    }
-
-    const entries = byDomain.get(publisherDomain);
-    if (!entries || entries.length === 0) {
+    // Known domain: scope the gather to it instead of materializing the
+    // agent's entries for every publisher on this hot path.
+    const entries = this.matchingForDomain(query.agent_url, publisherDomain);
+    if (entries.length === 0) {
+      if (!this.hasAnyMatch(query.agent_url)) {
+        return { authorized: false, reason: 'agent not found in authorization index' };
+      }
       return { authorized: false, reason: `agent not authorized for publisher ${publisherDomain}` };
     }
 
