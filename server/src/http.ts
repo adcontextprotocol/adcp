@@ -144,6 +144,7 @@ import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { createDigestRouter } from "./routes/digest.js";
 import { getBuildCoverImage } from "./db/build-db.js";
+import { coverCacheControl } from "./newsletters/cover.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
@@ -2152,7 +2153,7 @@ export class HTTPServer {
         if (!imageData) return res.status(404).send('No cover image');
         res.set('Content-Type', 'image/png');
         res.set('Content-Length', String(imageData.length));
-        res.set('Cache-Control', 'public, max-age=604800');
+        res.set('Cache-Control', coverCacheControl(imageData, req.query.v));
         res.send(imageData);
       } catch (error) {
         res.status(500).send('Failed to serve cover image');

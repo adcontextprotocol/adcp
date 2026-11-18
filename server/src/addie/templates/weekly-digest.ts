@@ -7,7 +7,8 @@ import {
   sanitizeSlackLine,
   sanitizeSlackLinkLabel,
 } from '../../utils/slack-escape.js';
-import { getCustomSections, getPastedContent, isSectionHidden } from '../../newsletters/config.js';
+import { getCustomSections, getPastedContent } from '../../newsletters/config.js';
+import { getVisiblePromptContent, splitParagraphs } from '../../newsletters/the-prompt/edition-rules.js';
 import { markdownToEmailHtml as renderMarkdownToEmailHtml } from '../../utils/markdown.js';
 import { pickNudge } from '../services/digest-nudge.js';
 import DOMPurify from 'isomorphic-dompurify';
@@ -208,17 +209,15 @@ function appendCustomSectionsSlack(
  * (adcp#8326).
  *
  * Everything the renderer composes itself — headlines, names, labels,
- * bullets, and the one-paragraph fields (`openingTake`,
- * `specInsight.body`) that the email render already collapses into a single
- * `<p>` — is flattened with `sanitizeSlackLine`. Only author-written
- * markdown bodies (the editor's note, pasted content, custom sections) keep
- * their line breaks, because there the line structure *is* the formatting;
- * those go through `escapeSlackMrkdwnPreserveLinks`.
- *
- * The email render puts `openingTake` and `specInsight.body` in a single
- * `<p>`, where HTML collapses newlines anyway, so flattening them for Slack
- * matches what email already shows; the plain-text render is the one surface
- * that keeps their line breaks.
+ * bullets, and the one-paragraph field `specInsight.body` — is flattened
+ * with `sanitizeSlackLine`. The opening take is split into paragraphs on
+ * blank lines (as the email and web renders do) and each paragraph becomes
+ * its own section, flattened with `sanitizeSlackLine`, so a paragraph break
+ * survives but a model-written line can still never forge a line of its
+ * own. Only author-written markdown bodies (the editor's note, pasted
+ * content, custom sections) keep their single line breaks, because there
+ * the line structure *is* the formatting; those go through
+ * `escapeSlackMrkdwnPreserveLinks`.
  */
 const DIGEST_LINE_MAX = 400;
 /**
@@ -235,6 +234,8 @@ const DIGEST_PARAGRAPH_MAX = 2_800;
  * tail of a long editor's note.
  */
 const DIGEST_BODY_MAX = 200_000;
+/** Most Slack sections the opening take may use (Slack caps a message at 50 blocks). */
+const OPENING_TAKE_SLACK_PARAGRAPHS = 5;
 
 /**
  * Render a Slack link only when the destination is a plain http(s) URL.
@@ -340,6 +341,23 @@ function appendSlackMrkdwnSections(blocks: SlackBlock[], mrkdwn: string, maxLeng
 
 export type DigestSegment = 'website_only' | 'slack_only' | 'both' | 'active';
 
+export interface DigestRenderOptions {
+  /**
+   * Date printed in the header (YYYY-MM-DD): the send date. Defaults to
+   * `editionDate`, which stays the key for every URL in the edition.
+   */
+  displayDate?: string;
+}
+
+/** Render free text as one escaped `<p>` per paragraph; single line breaks become `<br>`. */
+function paragraphsToEmailHtml(text: string, style: string): string {
+  return splitParagraphs(text)
+    .map((p) => `<p style="${style}">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
+    .join('\n    ');
+}
+
+const OPENING_TAKE_STYLE = 'font-size: 15px; color: #333; line-height: 1.6;';
+
 // ─── Email HTML Rendering ───────────────────────────────────────────────
 
 /**
@@ -355,7 +373,10 @@ export function renderDigestEmail(
   userWorkingGroupNames?: string[],
   personaCluster?: PersonaCluster,
   recipient?: DigestEmailRecipient | null,
+  options: DigestRenderOptions = {},
 ): { html: string; text: string } {
+  content = getVisiblePromptContent(content);
+  const displayDate = options.displayDate ?? editionDate;
   const t = (linkTag: string, url: string) => trackLink(trackingId, linkTag, url);
   const viewInBrowserUrl = t('view_browser', `${BASE_URL}/perspectives/the-prompt-${editionDate}`);
   const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : '';
@@ -364,7 +385,7 @@ export function renderDigestEmail(
   if (pasted) {
     const html = `
   <div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
-    ${escapeHtml(content.openingTake)}
+    ${escapeHtml(content.openingTake.replace(/\s+/g, ' ').trim())}
   </div>
   <div style="max-width: 560px; margin: 0 auto;">
     <p style="font-size: 12px; color: #888; text-align: center; margin-bottom: 24px;">
@@ -373,15 +394,15 @@ export function renderDigestEmail(
 
     ${content.coverImageUrl ? `
     <div style="margin-bottom: 16px; border-radius: 8px; overflow: hidden;">
-      <img src="${escapeHtml(content.coverImageUrl)}" alt="The Prompt — ${escapeHtml(formatDate(editionDate))}" style="width: 100%; height: auto; display: block;">
+      <img src="${escapeHtml(content.coverImageUrl)}" alt="The Prompt — ${escapeHtml(formatDate(displayDate))}" style="width: 100%; height: auto; display: block;">
     </div>
     ` : ''}
     <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
-    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(displayDate)}</p>
 
     ${greeting ? `<p style="font-size: 15px; color: #333; margin-bottom: 0;">${greeting}</p>` : ''}
 
-    <p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.openingTake)}</p>
+    ${paragraphsToEmailHtml(content.openingTake, OPENING_TAKE_STYLE)}
 
     ${content.editorsNote ? `
     <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
@@ -412,13 +433,13 @@ export function renderDigestEmail(
 
     ${renderCta(segment, trackingId)}
   </div>`.trim();
-    const text = renderDigestText(content, editionDate, segment, firstName, userWorkingGroupNames);
+    const text = renderDigestText(content, editionDate, segment, firstName, userWorkingGroupNames, displayDate);
     return { html, text };
   }
 
   const html = `
   <div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
-    ${escapeHtml(content.openingTake)}
+    ${escapeHtml(content.openingTake.replace(/\s+/g, ' ').trim())}
   </div>
   <div style="max-width: 560px; margin: 0 auto;">
     <!-- View in browser -->
@@ -429,13 +450,13 @@ export function renderDigestEmail(
     <!-- Header -->
     ${content.coverImageUrl ? `
     <div style="margin-bottom: 16px; border-radius: 8px; overflow: hidden;">
-      <img src="${escapeHtml(content.coverImageUrl)}" alt="The Prompt — ${escapeHtml(formatDate(editionDate))}" style="width: 100%; height: auto; display: block;">
+      <img src="${escapeHtml(content.coverImageUrl)}" alt="The Prompt — ${escapeHtml(formatDate(displayDate))}" style="width: 100%; height: auto; display: block;">
     </div>
     <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
-    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(displayDate)}</p>
     ` : `
     <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
-    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(displayDate)}</p>
     `}
 
     ${greeting ? `<p style="font-size: 15px; color: #333; margin-bottom: 0;">${greeting}</p>` : ''}
@@ -447,7 +468,7 @@ export function renderDigestEmail(
     ` : ''}
 
     <!-- Opening Take -->
-    <p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.openingTake)}</p>
+    ${paragraphsToEmailHtml(content.openingTake, OPENING_TAKE_STYLE)}
 
     <!-- Personalized Nudge -->
     ${(() => {
@@ -531,7 +552,7 @@ export function renderDigestEmail(
     ${renderInsiderHtml(content.fromTheInside, userWorkingGroupNames, t, segment)}
 
     <!-- Spec Insight -->
-    ${content.specInsight && !isSectionHidden(content, 'specInsight') ? `
+    ${content.specInsight ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Something worth thinking about</h2>
     <div style="background: #f0f4ff; border-left: 3px solid #2563eb; padding: 16px; border-radius: 4px; margin: 0 0 8px 0;">
       <p style="font-size: 15px; font-weight: 600; color: #1a1a2e; margin: 0 0 8px 0;">${escapeHtml(content.specInsight.title)}</p>
@@ -566,7 +587,7 @@ export function renderDigestEmail(
 
     ${content.newMembers.length > 0 ? `
     <p style="font-size: 14px; color: #555; margin: 0 0 16px 0;">
-      Welcome to ${content.newMembers.map((m) => `<strong>${escapeHtml(m.name)}</strong>`).join(', ')} who joined this week.
+      Welcome to ${content.newMembers.map((m) => `<strong>${escapeHtml(m.name)}</strong>`).join(', ')} who joined since the last edition.
     </p>
     ` : ''}
 
@@ -606,7 +627,7 @@ export function renderDigestEmail(
     </p>
   </div>`.trim();
 
-  const text = renderDigestText(content, editionDate, segment, firstName, userWorkingGroupNames);
+  const text = renderDigestText(content, editionDate, segment, firstName, userWorkingGroupNames, displayDate);
 
   return { html, text };
 }
@@ -643,20 +664,20 @@ function renderInsiderHtml(
       return `
       <div style="margin-bottom: 16px;${borderStyle}">
         <p style="font-size: 14px; margin: 0;">
-          <strong>${escapeHtml(group.name)}</strong>: ${escapeHtml(group.summary.slice(0, 200))}
+          <strong>${escapeHtml(group.name)}</strong>: ${escapeHtml(group.summary)}
           ${group.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(group.nextMeeting)}</span>` : ''}
         </p>
         ${group.meetingRecaps.length > 0 ? group.meetingRecaps.map((recap) => `
         <div style="margin: 8px 0 4px 0; padding: 8px 12px; background: #f8f9fa; border-radius: 4px;">
           <p style="font-size: 13px; color: #333; margin: 0;">
             <strong>${escapeHtml(recap.title)}</strong> (${escapeHtml(recap.date)})
-            ${recap.summary ? `<br><span style="color: #555;">${escapeHtml(recap.summary.slice(0, 150))}</span>` : ''}
+            ${recap.summary ? `<br><span style="color: #555;">${escapeHtml(recap.summary)}</span>` : ''}
           </p>
         </div>
         `).join('') : ''}
         ${group.activeThreads.length > 0 && segment !== 'website_only' ? group.activeThreads.map((thread) => `
         <p style="font-size: 13px; color: #555; margin: 4px 0;">
-          ${thread.starter ? `${escapeHtml(thread.starter)}: ` : ''}"${escapeHtml(thread.summary.slice(0, 100))}" · ${thread.replyCount} replies
+          ${thread.starter ? `${escapeHtml(thread.starter)}: ` : ''}"${escapeHtml(thread.summary)}" · ${thread.replyCount} replies
           <a href="${t(`thread_${i}`, thread.threadUrl)}" style="color: #2563eb;">Join →</a>
         </p>
         `).join('') : ''}
@@ -667,7 +688,7 @@ function renderInsiderHtml(
     return `
     <div style="margin-bottom: 12px;${borderStyle}">
       <p style="font-size: 14px; margin: 0;">
-        <strong>${escapeHtml(group.name)}</strong>: ${escapeHtml(group.summary.slice(0, 150))}
+        <strong>${escapeHtml(group.name)}</strong>: ${escapeHtml(group.summary)}
         ${group.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(group.nextMeeting)}</span>` : ''}
       </p>
     </div>`;
@@ -724,10 +745,11 @@ function renderDigestText(
   segment: DigestSegment,
   firstName?: string,
   userWorkingGroupNames?: string[],
+  displayDate: string = editionDate,
 ): string {
   const lines: string[] = [
     `The Prompt — from Addie`,
-    formatDate(editionDate),
+    formatDate(displayDate),
     '',
   ];
   if (firstName) lines.push(`Hi ${firstName},`, '');
@@ -758,7 +780,7 @@ function renderDigestText(
   appendCustomSectionsText(lines, content, 'before');
 
   if (content.newMembers.length > 0) {
-    lines.push(`Welcome to ${content.newMembers.map((m) => m.name).join(', ')} who joined this week.`, '');
+    lines.push(`Welcome to ${content.newMembers.map((m) => m.name).join(', ')} who joined since the last edition.`, '');
   }
 
   if (content.whatToWatch.length > 0) {
@@ -793,15 +815,15 @@ function renderDigestText(
     const userWGs = new Set(userWorkingGroupNames || []);
     lines.push('--- FROM THE INSIDE ---', '');
     for (const group of content.fromTheInside) {
-      lines.push(`* ${group.name}: ${group.summary.slice(0, 150)}`);
+      lines.push(`* ${group.name}: ${group.summary}`);
       if (group.nextMeeting) lines.push(`  Next: ${group.nextMeeting}`);
       if (userWGs.has(group.name)) {
         for (const recap of group.meetingRecaps) {
-          lines.push(`  - ${recap.title} (${recap.date})${recap.summary ? `: ${recap.summary.slice(0, 100)}` : ''}`);
+          lines.push(`  - ${recap.title} (${recap.date})${recap.summary ? `: ${recap.summary}` : ''}`);
         }
         for (const thread of group.activeThreads) {
           if (segment !== 'website_only') {
-            lines.push(`  - "${thread.summary.slice(0, 80)}" (${thread.replyCount} replies) ${thread.threadUrl}`);
+            lines.push(`  - "${thread.summary}" (${thread.replyCount} replies) ${thread.threadUrl}`);
           }
         }
       }
@@ -856,13 +878,18 @@ function renderDigestText(
 /**
  * Render The Prompt as a Slack Block Kit message
  */
-export function renderDigestSlack(content: DigestContent, editionDate: string): SlackBlockMessage {
+export function renderDigestSlack(
+  content: DigestContent,
+  editionDate: string,
+  displayDate: string = editionDate,
+): SlackBlockMessage {
+  content = getVisiblePromptContent(content);
   const webUrl = `${BASE_URL}/perspectives/the-prompt-${editionDate}`;
   const blocks: SlackBlock[] = [];
 
   blocks.push({
     type: 'header',
-    text: { type: 'plain_text', text: `The Prompt — ${formatDate(editionDate)}` },
+    text: { type: 'plain_text', text: `The Prompt — ${formatDate(displayDate)}` },
   });
 
   // Cover image
@@ -870,15 +897,24 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({
       type: 'image',
       image_url: content.coverImageUrl,
-      alt_text: `The Prompt cover — ${formatDate(editionDate)}`,
+      alt_text: `The Prompt cover — ${formatDate(displayDate)}`,
     });
   }
 
-  // Opening take
-  blocks.push({
-    type: 'section',
-    text: { type: 'mrkdwn', text: sanitizeSlackLine(content.openingTake, DIGEST_PARAGRAPH_MAX) },
-  });
+  // Opening take — one section per paragraph, each flattened to one line.
+  // Slack rejects a message over 50 blocks, so paragraphs past the cap are
+  // folded into the last section.
+  const takeParagraphs = splitParagraphs(content.openingTake);
+  if (takeParagraphs.length > OPENING_TAKE_SLACK_PARAGRAPHS) {
+    const rest = takeParagraphs.splice(OPENING_TAKE_SLACK_PARAGRAPHS - 1);
+    takeParagraphs.push(rest.join(' '));
+  }
+  for (const paragraph of takeParagraphs) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: sanitizeSlackLine(paragraph, DIGEST_PARAGRAPH_MAX) },
+    });
+  }
 
   // Editor's note
   if (content.editorsNote) {
@@ -906,7 +942,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
       text: { type: 'mrkdwn', text: `<${webUrl}|Read the full Prompt>` },
     });
 
-    const fallbackText = `The Prompt — ${formatDate(editionDate)}: ${sanitizeSlackLine(content.openingTake, DIGEST_LINE_MAX)}`;
+    const fallbackText = `The Prompt — ${formatDate(displayDate)}: ${sanitizeSlackLine(content.openingTake, DIGEST_LINE_MAX)}`;
     return { text: fallbackText, blocks };
   }
 
@@ -952,7 +988,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     const insiderText = content.fromTheInside
       .map((g) => {
         const meeting = g.nextMeeting ? `\n>    _Next: ${sanitizeSlackLine(g.nextMeeting, DIGEST_LINE_MAX)}_` : '';
-        return `> *${sanitizeSlackLine(g.name, DIGEST_LINE_MAX)}*: ${sanitizeSlackLine(g.summary.slice(0, 150), DIGEST_LINE_MAX)}${meeting}`;
+        return `> *${sanitizeSlackLine(g.name, DIGEST_LINE_MAX)}*: ${sanitizeSlackLine(g.summary, DIGEST_LINE_MAX)}${meeting}`;
       })
       .join('\n\n');
     blocks.push({ type: 'divider' });
@@ -1004,7 +1040,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     text: { type: 'mrkdwn', text: `<${webUrl}|Read the full Prompt>` },
   });
 
-  const fallbackText = `The Prompt — ${formatDate(editionDate)}: ${sanitizeSlackLine(content.openingTake, DIGEST_LINE_MAX)}`;
+  const fallbackText = `The Prompt — ${formatDate(displayDate)}: ${sanitizeSlackLine(content.openingTake, DIGEST_LINE_MAX)}`;
   return { text: fallbackText, blocks };
 }
 
@@ -1013,21 +1049,25 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
 /**
  * Render The Prompt for the Slack review message in the Editorial channel
  */
-export function renderDigestReview(content: DigestContent, editionDate: string): SlackBlockMessage {
-  const slackMessage = renderDigestSlack(content, editionDate);
+export function renderDigestReview(
+  content: DigestContent,
+  editionDate: string,
+  displayDate: string = editionDate,
+): SlackBlockMessage {
+  const slackMessage = renderDigestSlack(content, editionDate, displayDate);
   const blocks: SlackBlock[] = slackMessage.blocks || [];
 
   blocks.unshift({
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*The Prompt — Draft for ${formatDate(editionDate)}*\n:white_check_mark: Approve for 10am ET delivery · :arrows_counterclockwise: Regenerate from scratch\nReply in thread to edit — e.g. "remove the first article", "editor's note: Don't miss our March town hall", or ask for any changes.`,
+      text: `*The Prompt — Draft for ${formatDate(displayDate)}*\n:white_check_mark: Approve for 10am ET delivery · :arrows_counterclockwise: Regenerate (keeps your edits)\nReply in thread to edit — e.g. "remove the first article", "editor's note: Don't miss our March town hall", or ask for any changes.`,
     },
   });
   blocks.splice(1, 0, { type: 'divider' });
 
   return {
-    text: `The Prompt draft ready for review — ${formatDate(editionDate)}`,
+    text: `The Prompt draft ready for review — ${formatDate(displayDate)}`,
     blocks,
   };
 }
@@ -1037,15 +1077,19 @@ export function renderDigestReview(content: DigestContent, editionDate: string):
 /**
  * Render The Prompt as a full web-viewable HTML page
  */
-export function renderDigestWebPage(content: DigestContent, editionDate: string): string {
-  const { html: innerHtml } = renderDigestEmail(content, 'web', editionDate, 'both');
+export function renderDigestWebPage(
+  content: DigestContent,
+  editionDate: string,
+  displayDate: string = editionDate,
+): string {
+  const { html: innerHtml } = renderDigestEmail(content, 'web', editionDate, 'both', undefined, undefined, undefined, undefined, { displayDate });
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Prompt — ${formatDate(editionDate)} | AgenticAdvertising.org</title>
+  <title>The Prompt — ${formatDate(displayDate)} | AgenticAdvertising.org</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;

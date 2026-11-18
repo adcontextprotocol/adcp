@@ -11,6 +11,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { MeetingsDatabase } from '../../db/meetings-db.js';
 import { getChannelHistory, getThreadReplies, resolveSlackUserDisplayName } from '../../slack/client.js';
 import { query } from '../../db/client.js';
+import { truncateAtWord } from '../../utils/truncate.js';
 import type { WgDigestContent, WgDigestThread, WgDigestMeetingRecap } from '../../db/wg-digest-db.js';
 
 const logger = createLogger('wg-digest-builder');
@@ -35,13 +36,6 @@ function cleanSlackMarkup(text: string): string {
     .trim();
 }
 
-/** Truncate text at the nearest word boundary before maxLen, adding ellipsis. */
-export function truncateAtWord(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  const truncated = text.slice(0, maxLen);
-  const lastSpace = truncated.lastIndexOf(' ');
-  return (lastSpace > maxLen * 0.5 ? truncated.slice(0, lastSpace) : truncated) + '…';
-}
 
 /** Strip leading markdown headings (e.g. "## Group Name\n") from summary text. */
 function stripLeadingHeading(text: string): string {

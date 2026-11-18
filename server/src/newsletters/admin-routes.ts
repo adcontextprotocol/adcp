@@ -10,11 +10,14 @@ import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import type { NewsletterConfig, CustomSection } from './config.js';
+import type { NewsletterConfig, CustomSection, NewsletterRecipient } from './config.js';
 import { generateCoverForEdition } from './cover.js';
 import { sendNewsletter } from './send-pipeline.js';
 import { sendMarketingEmail } from '../notifications/email.js';
 import { query } from '../db/client.js';
+import { markFieldEdited, preserveEditorState } from './editor-state.js';
+import { renderEditionForRecipient } from './recipient-render.js';
+import { plannedSendDate } from './send-date.js';
 
 const logger = createLogger('newsletter-admin');
 const ET_TIME_ZONE = 'America/New_York';
@@ -209,26 +212,11 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
       if (!edition || edition.id !== id) return res.status(404).json({ error: 'Edition not found' });
       if (edition.status !== 'draft') return res.status(400).json({ error: 'Can only regenerate draft editions' });
 
-      const content = await config.buildContent();
+      const fresh = await config.buildContent();
 
-      // Preserve editorial additions
-      const old = edition.content as Record<string, unknown>;
-      const next = content as Record<string, unknown>;
-      if (old.editorsNote) next.editorsNote = old.editorsNote;
-      if (old.emailSubject) next.emailSubject = old.emailSubject;
-      if (old.customSections) next.customSections = old.customSections;
-      if (old.hiddenSections) next.hiddenSections = old.hiddenSections;
-      if (old.dismissedIds) {
-        next.dismissedIds = old.dismissedIds;
-        // Filter dismissed items out of the new candidate pool
-        const dismissed = new Set(old.dismissedIds as string[]);
-        const pool = next.candidatePool as Record<string, Array<{ id: string }>> | undefined;
-        if (pool) {
-          for (const key of Object.keys(pool)) {
-            pool[key] = pool[key].filter(item => !dismissed.has(item.id));
-          }
-        }
-      }
+      // Rebuild only machine-generated content: everything the editor wrote,
+      // chose, hid or removed carries over (same rules as Slack "regenerate").
+      const content = preserveEditorState(edition.content, fresh);
 
       const updated = await config.db.updateContent(id, content);
       if (!updated) return res.status(500).json({ error: 'Failed to update edition' });
@@ -281,7 +269,7 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
         return res.status(400).json({ error: 'Value too long (max 10000 characters)' });
       }
 
-      const content = edition.content as Record<string, unknown>;
+      const content = markFieldEdited(edition.content as Record<string, unknown>, field);
       content[field] = value != null ? String(value) : undefined;
 
       const updated = await config.db.updateContent(id, content);
@@ -411,7 +399,35 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
 
       const editionDate = new Date(edition.edition_date).toISOString().split('T')[0];
       const subject = config.generateSubject(edition.content);
-      const { html, text } = config.renderEmail(edition.content, 'test', editionDate, 'both', undefined);
+
+      // Render exactly as the requesting admin would receive the real send:
+      // same recipient record, working groups, persona and segment.
+      const userId = req.user?.id;
+      let recipient: NewsletterRecipient | null = null;
+      if (userId && config.db.getRecipientByUserId) {
+        recipient = await config.db.getRecipientByUserId(userId);
+      }
+      if (!recipient) {
+        recipient = {
+          workos_user_id: userId || 'admin',
+          email: req.user?.email || email,
+          first_name: req.user?.firstName || null,
+          has_slack: true,
+          persona: null,
+          journey_stage: null,
+        };
+      }
+      const userWorkingGroups = userId
+        ? (await config.db.getUserWorkingGroupMap()).get(userId)
+        : undefined;
+      const { html, text } = renderEditionForRecipient(config, {
+        content: edition.content,
+        editionDate,
+        trackingId: 'test',
+        recipient,
+        userWorkingGroups,
+        displayDate: plannedSendDate(editionDate),
+      });
 
       await sendMarketingEmail({
         to: email,
@@ -756,10 +772,15 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
       if (!body || typeof body !== 'string') return res.status(400).json({ error: 'body is required' });
       if (body.length > 50000) return res.status(400).json({ error: 'Content too long (max 50000 characters)' });
 
-      const content = edition.content as Record<string, unknown>;
+      const editedFields: string[] = [];
+      if (statusLine) editedFields.push('statusLine');
+      if ((edition.content as Record<string, unknown>).openingTake !== undefined && statusLine) {
+        editedFields.push('openingTake');
+      }
+      const content = markFieldEdited(edition.content as Record<string, unknown>, ...editedFields);
       content.pastedContent = body;
       if (statusLine) content.statusLine = statusLine;
-      if ((content as Record<string, unknown>).openingTake !== undefined && statusLine) {
+      if (content.openingTake !== undefined && statusLine) {
         content.openingTake = statusLine;
       }
       if (emailSubject) content.emailSubject = emailSubject;
@@ -789,6 +810,12 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
 
       const content = edition.content as Record<string, unknown>;
       delete content.pastedContent;
+      // Pasting marked the status line / opening take as edited; clearing the
+      // paste hands them back to the generator on the next regenerate.
+      if (Array.isArray(content.editedFields)) {
+        content.editedFields = (content.editedFields as string[])
+          .filter((f) => f !== 'statusLine' && f !== 'openingTake');
+      }
 
       const updated = await config.db.updateContent(id, content);
       if (!updated) return res.status(500).json({ error: 'Failed to update edition' });

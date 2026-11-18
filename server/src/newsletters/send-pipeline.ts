@@ -7,13 +7,14 @@
 
 import { createLogger } from '../logger.js';
 import type { NewsletterConfig, EditionRecord, SendStats } from './config.js';
-import { getPersonaCluster } from '../db/digest-db.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../notifications/email.js';
 import { proposeContentForUser, type ContentUser } from '../routes/content.js';
 import { generateIllustration } from '../services/illustration-generator.js';
 import { createIllustration, approveIllustration } from '../db/illustration-db.js';
 import { withNewsletterSendLock } from './send-lock.js';
+import { renderEditionForRecipient, recipientSegment } from './recipient-render.js';
+import { etDateString } from './send-date.js';
 
 const logger = createLogger('newsletter-send');
 
@@ -51,6 +52,8 @@ async function deliverNewsletter(
 ): Promise<{ sent: number; outcome: 'delivered' | 'failed' }> {
   const content = edition.content;
   const editionDate = edition.edition_date.toISOString().split('T')[0];
+  // The header shows the day the edition actually goes out, not the draft date.
+  const displayDate = etDateString(new Date());
   const subject = config.generateSubject(content);
   const bySegment: Record<string, number> = {};
   const stats: SendStats = { email_count: 0, slack_count: 0, by_segment: bySegment };
@@ -58,7 +61,7 @@ async function deliverNewsletter(
   // Post to Slack announcements
   const announcementChannel = process.env[config.announcementChannelEnvVar];
   if (announcementChannel) {
-    const slackMessage = config.renderSlack(content, editionDate);
+    const slackMessage = config.renderSlack(content, editionDate, displayDate);
     const slackResult = await sendChannelMessage(announcementChannel, slackMessage);
     if (slackResult.ok) stats.slack_count = 1;
   }
@@ -69,15 +72,16 @@ async function deliverNewsletter(
   const emailBatch: TrackedBatchMarketingEmail[] = [];
 
   for (const recipient of recipients) {
-    const segment = recipient.has_slack ? 'both' : 'website_only';
+    const segment = recipientSegment(recipient);
     const userWGs = userWGMap.get(recipient.workos_user_id);
-    const cluster = getPersonaCluster(recipient.persona);
 
     emailBatch.push({
       to: recipient.email,
       subject,
       render: (trackingId: string) => {
-        const { html, text } = config.renderEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs, cluster, recipient);
+        const { html, text } = renderEditionForRecipient(config, {
+          content, editionDate, trackingId, recipient, userWorkingGroups: userWGs, displayDate,
+        });
         return { htmlContent: html, textContent: text };
       },
       category: config.emailCategory,

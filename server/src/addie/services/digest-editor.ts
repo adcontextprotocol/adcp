@@ -2,6 +2,7 @@ import { createLogger } from '../../logger.js';
 import { complete, isLLMConfigured } from '../../utils/llm.js';
 import type { DigestContent, DigestEditEntry } from '../../db/digest-db.js';
 import { buildDigestContent } from './digest-builder.js';
+import { markFieldEdited, markItemEdited, preserveEditorState, recordDismissedUrl } from '../../newsletters/editor-state.js';
 
 const logger = createLogger('digest-editor');
 
@@ -57,7 +58,8 @@ export async function applyDigestEdit(
 }
 
 /**
- * Regenerate the entire digest from scratch, preserving editor's note and edit history.
+ * Regenerate the machine-generated content, keeping everything an editor
+ * owns (see `preserveEditorState`). Same rules as the admin "Regenerate".
  */
 async function regenerateDigest(
   current: DigestContent,
@@ -73,19 +75,13 @@ async function regenerateDigest(
     return { content: current, summary: 'Regeneration failed — try again later.' };
   }
 
-  // Preserve editorial additions
   const content = addEditEntry(
-    {
-      ...fresh,
-      editorsNote: current.editorsNote,
-      emailSubject: current.emailSubject,
-      editHistory: current.editHistory,
-    },
+    preserveEditorState(current, fresh),
     editorName,
     'Regenerated all content',
   );
 
-  return { content, summary: 'Regenerated the full digest with fresh content. Editor\'s note and subject line preserved.' };
+  return { content, summary: 'Regenerated the digest with fresh content. Your edits, custom and hidden sections, removed items and the cover were kept.' };
 }
 
 /**
@@ -164,7 +160,7 @@ async function executeEdit(
       const idx = typeof edit.index === 'number' ? edit.index : -1;
       if (idx >= 0 && idx < updated.whatToWatch.length) {
         const removed = updated.whatToWatch.splice(idx, 1)[0];
-        const content = addEditEntry(updated, editorName, `Removed article: ${removed.title}`);
+        const content = addEditEntry(recordDismissedUrl(updated, removed.url), editorName, `Removed article: ${removed.title}`);
         return { content, summary: `Removed "${removed.title}" from Worth your time.` };
       }
       return { content: current, summary: `Article index ${idx} is out of range (${current.whatToWatch.length} articles).` };
@@ -183,7 +179,7 @@ async function executeEdit(
         operationName: 'prompt-edit-opening-take',
       });
       updated.openingTake = takeResult.text;
-      const content = addEditEntry(updated, editorName, `Updated opening take`);
+      const content = addEditEntry(markFieldEdited(updated, 'openingTake'), editorName, `Updated opening take`);
       return { content, summary: `Updated the opening take based on your guidance.` };
     }
 
@@ -229,7 +225,7 @@ async function executeEdit(
       const text = typeof edit.text === 'string' ? edit.text.slice(0, MAX_TEXT_LENGTH) : '';
       if (!text) return { content: current, summary: 'No text provided.' };
       if (idx >= 0 && idx < updated.whatToWatch.length) {
-        updated.whatToWatch[idx] = { ...updated.whatToWatch[idx], whyItMatters: text };
+        updated.whatToWatch[idx] = markItemEdited({ ...updated.whatToWatch[idx], whyItMatters: text }, editorName);
         const content = addEditEntry(updated, editorName, `Updated take for: ${updated.whatToWatch[idx].title}`);
         return { content, summary: `Updated take for "${updated.whatToWatch[idx].title}".` };
       }
