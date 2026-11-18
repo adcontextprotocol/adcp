@@ -266,9 +266,10 @@ jobs:
           # A green machine that never passes /ready is deleted when Fly rolls
           # back, taking its boot output and events with it, and the forensics
           # step below only runs afterwards. Stream app logs for the whole
-          # rollout, and keep the latest status and events of every machine
-          # that did not exist before the deploy. The forensics step filters
-          # and uploads them if the job fails.
+          # rollout (kept on the runner only), and keep the latest status and
+          # events of every machine that did not exist before the deploy. If
+          # the job fails, the forensics step uploads only the green machines'
+          # redacted lines, status and events.
           live=/tmp/fly-live
           mkdir -p "$live"
           flyctl machines list -a adcp-docs --json | jq -r '.[].id' > "$live/before-ids.txt" || true
@@ -593,13 +594,14 @@ jobs:
             | tail -500 \
             | grep -v -iE "$redact" \
             > /tmp/forensics/fly-logs-tail.txt || true
-          # The rollout as the Deploy step recorded it: app logs streamed for
-          # the whole deploy, and the last status, checks and events of each
-          # green machine before a rollback deleted it. Same redaction.
+          # The rollout as the Deploy step recorded it: the last status,
+          # checks and events of each green machine before a rollback deleted
+          # it, and that machine's own log lines. Only green machines' lines
+          # are kept: they are boot output from machines that serve no traffic
+          # until they pass /ready, while the stream also carries the serving
+          # fleet's request logs, which the diagnosis does not need. Same
+          # redaction, capped per machine.
           live=/tmp/fly-live
-          if [ -s "$live/logs-raw.txt" ]; then
-            grep -v -iE "$redact" "$live/logs-raw.txt" | tail -20000 > /tmp/forensics/fly-logs-deploy.txt || true
-          fi
           for f in "$live"/green-*.json "$live"/green-*-status.txt; do
             [ -f "$f" ] || continue
             grep -v -iE "$redact" "$f" > "/tmp/forensics/$(basename "$f")" || true
@@ -607,14 +609,16 @@ jobs:
           for f in "$live"/green-*.json; do
             [ -f "$f" ] || continue
             id=$(basename "$f" .json); id=${id#green-}
-            grep -F "[$id]" /tmp/forensics/fly-logs-deploy.txt > "/tmp/forensics/fly-logs-green-$id.txt" 2>/dev/null || true
+            grep -F "[$id]" "$live/logs-raw.txt" 2>/dev/null \
+              | grep -v -iE "$redact" \
+              | tail -3000 > "/tmp/forensics/fly-logs-green-$id.txt" || true
           done
           # Capture the deploy-outcome we computed so the artifact is
           # self-describing in 30 days.
           echo "deploy_outcome=${{ steps.deploy.outputs.deploy_outcome }}" > /tmp/forensics/summary.txt
           echo "github_sha=${{ github.event.workflow_run.head_sha }}" >> /tmp/forensics/summary.txt
           echo "github_run_id=${{ github.run_id }}" >> /tmp/forensics/summary.txt
-          echo "note=fly-logs-*.txt and green-* files filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only." >> /tmp/forensics/summary.txt
+          echo "note=fly-logs-*.txt and green-* files filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only. fly-logs-green-<id>.txt holds only that green machine's lines (last 3000)." >> /tmp/forensics/summary.txt
           echo "green_machines=$(ls "$live"/green-*.json 2>/dev/null | sed -E 's#.*/green-##; s#\.json##' | tr '\n' ' ')" >> /tmp/forensics/summary.txt
           ls -la /tmp/forensics/
 
