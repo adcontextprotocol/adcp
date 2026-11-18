@@ -816,7 +816,7 @@ export const GOVERNANCE_TOOLS = [
                   required: ['policy'],
                 },
               },
-              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Governance enforcement mode. Defaults to enforce.' },
+              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Training-agent test control, not an AdCP sync_plans field: sets the governance mode this sandbox applies to the plan. Production governance agents configure mode out of band. Defaults to enforce.' },
               approved_sellers: { type: ['array', 'null'], description: 'Seller allowlist. null = unrestricted, [] = deny all, [...urls] = only listed sellers.' },
               delegations: {
                 type: 'array',
@@ -2651,7 +2651,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     findings.push({
       categoryId: 'human_review_override',
       severity: 'info',
-      explanation: `plan.mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
+      explanation: `governance mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
     });
   }
 
