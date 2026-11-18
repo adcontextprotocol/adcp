@@ -106,7 +106,7 @@ import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createSecretariatAdminRouter } from "./routes/secretariat-admin.js";
-import { createAddieChatRouter, isWebChatReady } from "./routes/addie-chat.js";
+import { createAddieChatRouter, isWebChatReady, webChatReadiness } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
@@ -817,6 +817,11 @@ let consecutiveDbHealthFailures = 0;
 let dbHealthAlerted = false;
 const HEALTH_DB_ALERT_THRESHOLD = 3;
 const HEALTH_DB_SLOW_LOG_MS = 1000;
+/** How often an unchanged /ready failure is logged again. Fly hides probe
+ * bodies, so this log is how a stuck deploy names its blocker. */
+const READY_BLOCKED_LOG_INTERVAL_MS = 60_000;
+let lastReadyBlockers = '';
+let lastReadyBlockedLogAt = 0;
 
 /**
  * Validate slug format and check against reserved keywords
@@ -3089,11 +3094,15 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
+      let reportingError: string | null = null;
       if (req.path === '/ready') {
         try {
           const reporting = getTrainingGcsReporting();
           if (reporting) checks.reporting = await reporting.probe();
-        } catch { checks.reporting = false; }
+        } catch (reportingErr) {
+          checks.reporting = false;
+          reportingError = reportingErr instanceof Error ? reportingErr.message : String(reportingErr);
+        }
       }
 
       // A listening socket and a reachable database do not mean a new web
@@ -3104,6 +3113,30 @@ export class HTTPServer {
       const ready = checks.database && (req.path !== '/ready'
         || (checks.reporting !== false && (!chatRequired || checks.chat)));
       const status = ready ? "ok" : "unavailable";
+      if (req.path === '/ready') {
+        const blockers = [
+          ...(!checks.database ? ['database'] : []),
+          ...(checks.reporting === false ? ['reporting'] : []),
+          ...(chatRequired && !checks.chat ? ['chat'] : []),
+        ];
+        const key = blockers.join(',');
+        const now = Date.now();
+        if (blockers.length > 0 && (key !== lastReadyBlockers || now - lastReadyBlockedLogAt >= READY_BLOCKED_LOG_INTERVAL_MS)) {
+          logger.warn({
+            blockers,
+            checks,
+            ...(dbError && { dbError }),
+            ...(reportingError && { reportingError }),
+            ...(blockers.includes('chat') && { chat: webChatReadiness() }),
+            uptimeSec: Math.round(process.uptime()),
+            heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1048576),
+          }, 'Readiness probe failing');
+          lastReadyBlockedLogAt = now;
+        } else if (blockers.length === 0 && lastReadyBlockers !== '') {
+          logger.info({ uptimeSec: Math.round(process.uptime()) }, 'Readiness probe passing');
+        }
+        lastReadyBlockers = key;
+      }
       const body: Record<string, unknown> = {
         status,
         checks,
