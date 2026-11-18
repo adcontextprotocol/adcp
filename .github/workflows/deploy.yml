@@ -262,6 +262,41 @@ jobs:
           before_release_version=$(flyctl releases --json | jq -er 'map(.Version) | max // 0')
           echo "Fly release before deployment: v${before_release_version}"
 
+          # Record what the new (green) machines do while the rollout runs.
+          # A green machine that never passes /ready is deleted when Fly rolls
+          # back, taking its boot output and events with it, and the forensics
+          # step below only runs afterwards. Stream app logs for the whole
+          # rollout, and keep the latest status and events of every machine
+          # that did not exist before the deploy. The forensics step filters
+          # and uploads them if the job fails.
+          live=/tmp/fly-live
+          mkdir -p "$live"
+          flyctl machines list -a adcp-docs --json | jq -r '.[].id' > "$live/before-ids.txt" || true
+          timeout 2400 flyctl logs -a adcp-docs > "$live/logs-raw.txt" 2>&1 &
+          logs_pid=$!
+          (
+            set +e
+            while [ ! -f "$live/stop" ]; do
+              if machines=$(flyctl machines list -a adcp-docs --json 2>/dev/null); then
+                for id in $(echo "$machines" | jq -r '.[].id'); do
+                  grep -qx "$id" "$live/before-ids.txt" && continue
+                  echo "$machines" | jq --arg id "$id" '.[] | select(.id == $id) | {id, name, state, region, image_ref, created_at, updated_at, checks, events}' \
+                    > "$live/green-$id.json.tmp" && mv "$live/green-$id.json.tmp" "$live/green-$id.json"
+                  flyctl machine status -d "$id" -a adcp-docs > "$live/green-$id-status.tmp" 2>&1 \
+                    && mv "$live/green-$id-status.tmp" "$live/green-$id-status.txt"
+                done
+              fi
+              sleep 15
+            done
+          ) &
+          watch_pid=$!
+          stop_capture() {
+            touch "$live/stop"
+            kill "$logs_pid" 2>/dev/null || true
+            wait "$watch_pid" 2>/dev/null || true
+          }
+          trap stop_capture EXIT
+
           set +e
           # Keep the serving web fleet intact until every replacement passes
           # /ready. Update the singleton worker separately to avoid overlapping
@@ -553,16 +588,34 @@ jobs:
           # shapes before persisting. This is best-effort — anything truly
           # secret-shaped that doesn't match these patterns will still slip
           # through, but most known leakage shapes are covered.
+          redact='authorization|bearer |authn=|secret|password|api[-_]?key|sk-[a-z0-9]|wos_[a-z0-9]|fly_[a-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ'
           flyctl logs -a adcp-docs --no-tail 2>&1 \
             | tail -500 \
-            | grep -v -iE 'authorization|bearer |authn=|secret|password|api[-_]?key|sk-[a-z0-9]|wos_[a-z0-9]|fly_[a-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ' \
+            | grep -v -iE "$redact" \
             > /tmp/forensics/fly-logs-tail.txt || true
+          # The rollout as the Deploy step recorded it: app logs streamed for
+          # the whole deploy, and the last status, checks and events of each
+          # green machine before a rollback deleted it. Same redaction.
+          live=/tmp/fly-live
+          if [ -s "$live/logs-raw.txt" ]; then
+            grep -v -iE "$redact" "$live/logs-raw.txt" | tail -20000 > /tmp/forensics/fly-logs-deploy.txt || true
+          fi
+          for f in "$live"/green-*.json "$live"/green-*-status.txt; do
+            [ -f "$f" ] || continue
+            grep -v -iE "$redact" "$f" > "/tmp/forensics/$(basename "$f")" || true
+          done
+          for f in "$live"/green-*.json; do
+            [ -f "$f" ] || continue
+            id=$(basename "$f" .json); id=${id#green-}
+            grep -F "[$id]" /tmp/forensics/fly-logs-deploy.txt > "/tmp/forensics/fly-logs-green-$id.txt" 2>/dev/null || true
+          done
           # Capture the deploy-outcome we computed so the artifact is
           # self-describing in 30 days.
           echo "deploy_outcome=${{ steps.deploy.outputs.deploy_outcome }}" > /tmp/forensics/summary.txt
           echo "github_sha=${{ github.event.workflow_run.head_sha }}" >> /tmp/forensics/summary.txt
           echo "github_run_id=${{ github.run_id }}" >> /tmp/forensics/summary.txt
-          echo "note=fly-logs-tail.txt filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only." >> /tmp/forensics/summary.txt
+          echo "note=fly-logs-*.txt and green-* files filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only." >> /tmp/forensics/summary.txt
+          echo "green_machines=$(ls "$live"/green-*.json 2>/dev/null | sed -E 's#.*/green-##; s#\.json##' | tr '\n' ' ')" >> /tmp/forensics/summary.txt
           ls -la /tmp/forensics/
 
       - name: Upload Fly forensics
