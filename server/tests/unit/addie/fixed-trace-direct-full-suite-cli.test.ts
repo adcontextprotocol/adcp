@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -73,6 +73,9 @@ async function runInProcess(argv: readonly string[]) {
 
 interface CliResult { readonly status: number | null; readonly stdout: string; readonly stderr: string }
 
+/** Entrypoint children still running; afterAll stops any a failed or skipped test left behind. */
+const runningChildren = new Set<ChildProcess>();
+
 /** The manual entrypoint under this checkout's tsx with no provider credential in its environment. */
 function runEntryChild(arguments_: readonly string[]): Promise<CliResult> {
   // Settles, never rejects: the promise starts in beforeAll and a test awaits it.
@@ -80,12 +83,13 @@ function runEntryChild(arguments_: readonly string[]): Promise<CliResult> {
     const child = spawn(process.execPath, [tsx, 'server/tests/manual/fixed-trace-direct-full-suite-eval.ts', ...arguments_], {
       cwd: root, env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' }, stdio: ['ignore', 'pipe', 'pipe'],
     });
+    runningChildren.add(child);
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
     child.once('error', (error) => resolveResult({ status: null, stdout, stderr: `${stderr}${String(error)}` }));
-    child.once('close', (status) => resolveResult({ status, stdout, stderr }));
+    child.once('close', (status) => { runningChildren.delete(child); resolveResult({ status, stdout, stderr }); });
   });
 }
 
@@ -122,9 +126,12 @@ describe('fixed-trace direct full-suite CLI', () => {
     ]);
   });
   afterAll(async () => {
+    // The tests await both children; one still running here belongs to a test
+    // that failed early or was filtered out, so stop it instead of waiting.
+    for (const child of runningChildren) child.kill('SIGKILL');
     await Promise.all([validateChild, ceilingChild]);
     for (const paths of Object.values(childPaths)) rmSync(paths.directory, { recursive: true, force: true });
-  }, 30_000);
+  });
 
   it.each([PROCESS_CELL])('keeps validate-only provider-free and stdout to one exact JSON line for %s', async (cell) => {
     const result = await validateChild;
@@ -187,7 +194,7 @@ describe('fixed-trace direct full-suite main() in-process', () => {
     } finally {
       rmSync(paths.directory, { recursive: true, force: true });
     }
-  }, 20_000);
+  });
 
   it('in-process: rejects an impossible whole-cell cap without an io record, any write, or consuming selector or output', async () => {
     const paths = uniquePaths();
@@ -206,5 +213,5 @@ describe('fixed-trace direct full-suite main() in-process', () => {
     } finally {
       rmSync(paths.directory, { recursive: true, force: true });
     }
-  }, 20_000);
+  });
 });

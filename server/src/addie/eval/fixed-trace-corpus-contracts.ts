@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
-import { ADMIN_TOOLS } from '../mcp/admin-tools.js';
-import { BILLING_TOOLS } from '../mcp/billing-tools.js';
-import { BRAND_CANONICAL_TOOLS } from '../mcp/brand-canonical-tools.js';
-import { COMMITTEE_LEADER_TOOLS } from '../mcp/committee-leader-tools.js';
-import { DIRECTORY_TOOLS } from '../mcp/directory-tools.js';
-import { ILLUSTRATION_TOOLS } from '../mcp/illustration-tools.js';
-import { KNOWLEDGE_TOOLS } from '../mcp/knowledge-search.js';
-import { MEETING_TOOLS } from '../mcp/meeting-tools.js';
-import { MEMBER_TOOLS } from '../mcp/member-tools.js';
-import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
-import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
+import { ADMIN_TOOLS } from '../mcp/admin-tool-definitions.js';
+import { BILLING_TOOLS } from '../mcp/billing-tool-definitions.js';
+import { BRAND_CANONICAL_TOOLS } from '../mcp/brand-canonical-tool-definitions.js';
+import { COMMITTEE_LEADER_TOOLS } from '../mcp/committee-leader-tool-definitions.js';
+import { DIRECTORY_TOOLS } from '../mcp/directory-tool-definitions.js';
+import { ILLUSTRATION_TOOLS } from '../mcp/illustration-tool-definitions.js';
+import { KNOWLEDGE_TOOLS } from '../mcp/knowledge-search-tool-definitions.js';
+import { MEETING_TOOLS } from '../mcp/meeting-tool-definitions.js';
+import { MEMBER_TOOLS } from '../mcp/member-tool-definitions.js';
+import { PROPERTY_TOOLS } from '../mcp/property-tool-definitions.js';
+import { SI_HOST_TOOLS } from '../mcp/si-host-tool-definitions.js';
 import {
   compileToolInputSchema,
   isCacheableToolRegistration,
