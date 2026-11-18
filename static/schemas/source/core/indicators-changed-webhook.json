@@ -149,7 +149,7 @@
     },
     "spec": "specs/relationship-scoped-indicators.md#webhook-contract"
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Creative fatigue changed for one assignment",

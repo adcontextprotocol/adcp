@@ -149,7 +149,7 @@ Periods are optional and additive. A plan without them behaves exactly as before
 
 ### Human review required
 
-`human_review_required` is a plan-level boolean (default `false`) that mandates human oversight of every action on the plan, independent of budget reallocation autonomy.
+`human_review_required` is an optional plan-level boolean that mandates human oversight of every action on the plan, independent of budget reallocation autonomy. When a plan omits it, the governance agent derives the value from the plan's resolved policies and policy categories.
 
 The governance agent sets `human_review_required: true` automatically when any resolved policy or policy_category on the plan carries `requires_human_review: true`. This includes regulated verticals such as `fair_housing`, `fair_lending`, `fair_employment`, and `pharmaceutical_advertising`, and the `eu_ai_act_annex_iii` policy covering decisions in Annex III use cases.
 
@@ -162,7 +162,7 @@ This field is distinct from `budget.reallocation_threshold`:
 | `budget.reallocation_threshold` | Operational | Controls agent autonomy for budget reallocation within the plan |
 | `human_review_required` | Regulatory | Mandates human review of decisions affecting individuals (e.g., GDPR Art 22, EU AI Act Annex III) |
 
-Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and overrides a caller-supplied `false` when a triggering policy is present.
+Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and rejects a caller-supplied `false` when a triggering policy is present.
 
 ### Spend-commit invocation
 
@@ -212,7 +212,7 @@ Applicability is resolved from the commercial account, not from token presence. 
 
 For any task declared with `signed_context`, the service commits only after verifying the approved context. Media-buy tasks may additionally declare `online_execution_check`; those services follow **prepare → check → commit** by computing `planned_delivery` without externally committing it, calling `check_governance`, and committing atomically only after `approved`. Execution checks return `approved` or `denied`. Other roles do not claim online execution checking until AdCP defines a prepared-result contract for that role; they MUST NOT invent `planned_delivery` or `media_buy_id` values.
 
-Identity is role-specific. On the buyer's intent check, `caller` is the authenticated buyer-side principal and is evaluated against `delegations`; `approved_sellers` is evaluated against the target service that becomes the token `aud`, never against that buyer. Every later execution check resolves that original intent by its opaque action binding before evaluating delegation—the immediately prior check's caller may be the seller. On an execution check, the authenticated `caller` MUST equal the audience preserved from the approved intent, and that seller identity is evaluated against `approved_sellers`. The execution commitment may narrow the approved intent but MUST use the same currency and MUST NOT exceed the intent's `authorized_commitment`. For `update_media_buy`, the seller computes `max(0, new committed total − authoritative current total)` atomically with its revision check and write, enforces the signed intent ceiling, and reports that value as `execution_commitment`; the governance agent never infers a delta by reading seller state or subtracting from the seller's post-update total. A buyer/seller delta mismatch fails closed and requires a fresh intent.
+Identity is role-specific. On the buyer's intent check, `caller` is the authenticated buyer-side principal and is evaluated against `delegations`; `approved_sellers` is evaluated against the target service that becomes the token `aud`, never against that buyer. Every later execution check resolves that original intent by its opaque action binding before evaluating delegation—the immediately prior check's caller may be the seller. On an execution check, the authenticated `caller` MUST equal the audience preserved from the approved intent, and that seller identity is evaluated against `approved_sellers`. A failed `delegations` or `approved_sellers` evaluation for an authenticated caller, including an execution check whose authenticated caller is not that preserved audience, is returned as a `denied` verdict with a finding and a `check_id`, never as an error, in every governance mode. A failed `delegations` or `approved_sellers` evaluation is never `PERMISSION_DENIED`; that error is for authentication and credential failures, such as an unauthenticated caller or an authenticated identity that does not match `caller`. A plan is accessible to a caller that is its owner principal, that is named in a `delegations` entry that has not expired, or that presents a `governance_context` or `consultation_context` the governance agent issued for that plan. For any other caller `check_governance` returns `PLAN_NOT_FOUND`, exactly as for a `plan_id` that does not exist, and the attempt writes no audit entry: the `denied` verdict for a failed `delegations` evaluation is for a caller that can access the plan. The governance agent verifies a presented `governance_context`, and its match with `plan_id`, before it resolves plan access. A context that fails verification or was issued for another plan is `PERMISSION_DENIED`, whether or not `plan_id` exists. Because a `plan_id` is unique per owner principal, a caller can access more than one plan with the same ID; the governance agent MUST then reject the check with `VALIDATION_ERROR` and MUST NOT evaluate it against either plan. The execution commitment may narrow the approved intent but MUST use the same currency and MUST NOT exceed the intent's `authorized_commitment`. For `update_media_buy`, the seller computes `max(0, new committed total − authoritative current total)` atomically with its revision check and write, enforces the signed intent ceiling, and reports that value as `execution_commitment`; the governance agent never infers a delta by reading seller state or subtracting from the seller's post-update total. A buyer/seller delta mismatch fails closed and requires a fresh intent.
 
 Sellers MUST persist the accepted intent token and any lifecycle tokens they subsequently hold, keyed at minimum by `jti` with `iss`, `aud`, the opaque action binding in `sub`, `phase`, decision outcome, and the timestamp of acceptance. They MUST NOT treat `sub` as a plan identifier. Retention follows the seller's regulatory retention period. Without seller-side retention, the audit log is single-sourced from the governance agent; independent reconciliation between seller records and `get_plan_audit_logs` is the cross-check that catches a compromised or misbehaving governance agent.
 
@@ -337,7 +337,7 @@ Authority levels:
 | `execute_only` | Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget |
 | `propose_only` | Can propose actions for governance review but cannot execute without explicit approval |
 
-The governance agent resolves the authenticated transport credential to an agent URL and requires the request's `caller` assertion to match it. For a non-owner caller, it then compares that resolved URL with the delegation's `agent_url`. It MUST NOT authorize from the body assertion alone. Matching is exact and case-sensitive after normalization per RFC 3986. Every call fails closed when the credential has no agent-URL mapping. An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels.
+The governance agent resolves the authenticated transport credential to an agent URL and requires the request's `caller` assertion to match it. For a non-owner caller, it then compares that resolved URL with the delegation's `agent_url`. It MUST NOT authorize from the body assertion alone. Matching is exact and case-sensitive after normalization per RFC 3986. Every call fails closed when the credential has no agent-URL mapping. An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels. A pre-approved action is one whose opaque action binding already holds an approved intent check in this plan's lifecycle: an `execute_only` delegate MAY act only on such an action, which includes `accept_proposal` for it. The governance agent MUST deny an intent check from an `execute_only` delegate that would create a new binding or increase committed spend.
 
 The authenticated buyer principal that synchronized the plan is its owner and
 always retains full authority. Delegations add explicitly scoped non-owner
@@ -397,7 +397,7 @@ Governance thresholds (`reallocation_threshold`, `human_review_required` trigger
 
 Governance agents MUST aggregate committed spend across all of the following when evaluating any threshold:
 
-- All plans attributable to the same `(buyer_agent, seller_agent, account_id)` tuple — fragmentation across plans on the same account does not reset the aggregate. Delegated sub-agents (see [Delegations](#delegations)) share the delegating buyer's aggregate: the `buyer_agent` element of the key is the delegating principal, not the sub-agent's `agent_url`. A delegation does NOT mint a fresh per-agent aggregation window, because otherwise the delegation surface itself reopens the fragmentation hole (\$999,900 split across 100 sub-agents, each getting their own \$9,999 budget).
+- All plans attributable to the same `(owner_principal, seller_agent)` tuple — fragmentation across plans owned by the same principal does not reset the aggregate. `owner_principal` is a defined term, not a wire field: the authenticated buyer principal that synchronized the plan (see [Delegations](#delegations)). Delegated sub-agents share the delegating buyer's aggregate: the `owner_principal` element of the key is the delegating principal, not the sub-agent's `agent_url`. A delegation does NOT mint a fresh per-agent aggregation window, because otherwise the delegation surface itself reopens the fragmentation hole (\$999,900 split across 100 sub-agents, each getting their own \$9,999 budget).
 - Every [spend-commit task](#spend-commit-tasks) — fragmentation across task surfaces does not reset the aggregate. The spend-commit task inventory is the single authoritative list; new spend-commit tasks added there join the aggregate automatically, without a separate edit in this section.
 - The trailing window declared via the `governance.aggregation_window_days` capability (see [get_adcp_capabilities](#governance-aggregation-capability) below). The window slides with wall-clock time, not plan boundaries.
 
@@ -418,7 +418,7 @@ then evaluates `aggregate` against each applicable threshold. The current incomi
 
 When an individual commit would be below a threshold in isolation but pushes the trailing-window aggregate above the threshold, the governance agent MUST apply the threshold's consequence (human review escalation, denial, or conditions) to that commit. Governance agents MAY expose an `aggregate_committed` field on `get_plan_audit_logs` responses so auditors can reconstruct the fragmentation-defense decision without re-deriving it from the full outcome stream. The field's shape (units, currency, window-boundary reporting) is governance-agent-specific in 3.x and will be standardized in a later revision; implementers exposing it SHOULD document their shape alongside their `get_plan_audit_logs` response.
 
-Governance agents MAY evaluate narrower aggregation scopes additionally (per-brand, per-campaign) but MUST NOT evaluate any scope *broader* than the declared window without operator sign-off. "Broader" covers **both** dimensions: a longer trailing window (time) and a wider key tuple (e.g., collapsing across `account_id` so two accounts share an aggregate). A silently-widened scope in either dimension is as surprising to the operator as a silently-narrowed one.
+Governance agents MAY evaluate narrower aggregation scopes additionally (per-brand, per-campaign) but MUST NOT evaluate any scope *broader* than the declared window without operator sign-off. "Broader" covers **both** dimensions: a longer trailing window (time) and a wider key tuple (e.g., collapsing across `owner_principal` so two buyer principals share an aggregate). A silently-widened scope in either dimension is as surprising to the operator as a silently-narrowed one.
 
 #### Composition with `reallocation_threshold`
 
@@ -426,7 +426,7 @@ A reallocation is itself a spend-commit: `update_media_buy` carries an increment
 
 #### Conformance example
 
-Agent declares `aggregation_window_days: 30`. Plan sets a `human_review_required` trigger at \$10,000 committed spend (keyed on `(buyer_agent, seller_agent, account_id)`).
+Agent declares `aggregation_window_days: 30`. Plan sets a `human_review_required` trigger at \$10,000 committed spend (keyed on `(owner_principal, seller_agent)`).
 
 | # | Prior 30-day aggregate | Incoming commit | Post-aggregate | Expected outcome |
 |---|-----------------------|-----------------|----------------|-------------------|
@@ -484,7 +484,7 @@ Policies are declared directly on the plan via `policy_ids` and `custom_policies
 **`custom_policies` are additive only.** Governance agents MUST pin registry-sourced policy text as system-level instructions and MUST NOT permit `custom_policies` (or the plan's `objectives` field) to relax, override, or disable registry-sourced policies. Custom policies may add tighter restrictions — they cannot lower enforcement levels or exempt categories. A `custom_policies` entry that contradicts a registry policy is evaluated alongside it, not instead of it; the stricter constraint governs.
 </Warning>
 
-The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject governed actions targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects actions not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
+The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject governed actions targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects actions not explicitly targeting Massachusetts, even if they are otherwise compliant. An action with no geographic targeting, or with country-level targeting only, is treated as targeting the whole country and is outside a regions-restricted plan: an intent check returns `conditions` naming the region constraint, and an execution check returns `denied`. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 
 The resolved policy set is what the governance agent evaluates during [`check_governance`](/docs/governance/campaign/tasks/check_governance). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
 
@@ -564,7 +564,7 @@ This prevents a compromised or mistaken orchestrator from restoring headroom by 
 
 An execution check approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
 
-Budget checks are point-in-time: `check_governance` validates against the current committed total but does not reserve budget. If multiple agents execute concurrently against the same plan, two checks could both pass and the combined outcomes could exceed the authorized budget. The governance agent detects overspend at outcome reporting time and returns a `budget_authority` finding. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
+Budget checks are point-in-time: `check_governance` validates against the current committed total but does not reserve budget. (Where this section says governance *reserves* an amount, it means the amount the ledger commits when an outcome is reported, not a hold placed by a check.) If multiple agents execute concurrently against the same plan, two checks could both pass and the combined outcomes could exceed the authorized budget. The governance agent detects overspend at outcome reporting time and returns a `budget_authority` finding. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
 
 ### Drift detection
 
@@ -575,8 +575,8 @@ The audit log includes `drift_metrics` that surface aggregate governance trends 
   "summary": {
     "checks_performed": 847,
     "drift_metrics": {
-      "human_review_rate": 0.03,
-      "human_review_rate_trend": "declining",
+      "escalation_rate": 0.03,
+      "escalation_rate_trend": "declining",
       "auto_approval_rate": 0.91,
       "human_override_rate": 0.02,
       "mean_confidence": 0.88
@@ -585,39 +585,41 @@ The audit log includes `drift_metrics` that surface aggregate governance trends 
 }
 ```
 
-These metrics detect oversight drift -- the gradual migration of control away from humans. A declining human review rate may indicate the governance agent is well-calibrated, or it may indicate that oversight is eroding. Surfacing the trend lets the organization make that judgment.
+These metrics detect oversight drift -- the gradual migration of control away from humans. A declining escalation rate may indicate the governance agent is well-calibrated, or it may indicate that oversight is eroding. Surfacing the trend lets the organization make that judgment.
 
 | Metric | What it measures |
 |--------|-----------------|
-| `human_review_rate` | Fraction of checks that required internal human review |
-| `human_review_rate_trend` | Direction over the plan's lifetime (`increasing`, `stable`, `declining`) |
+| `escalation_rate` | Fraction of checks that were escalated for human review |
+| `escalation_rate_trend` | Direction over the plan's lifetime (`increasing`, `stable`, `declining`) |
 | `auto_approval_rate` | Fraction of checks approved without human intervention |
-| `human_override_rate` | Fraction of human reviews where the human overrode the governance agent |
+| `human_override_rate` | Fraction of escalations where the human overrode the governance agent's recommendation |
 | `mean_confidence` | Average confidence score across findings (when confidence is reported) |
+
+The escalations themselves are listed in `summary.escalations[]` with their resolutions, and `summary.statuses.human_reviewed` counts the checks that went through human review.
 
 Organizations can set thresholds on drift metrics. When a metric crosses its threshold, the governance agent SHOULD include a finding (severity `warning`) on the next governance check:
 
 ```json
 {
   "drift_metrics": {
-    "human_review_rate": 0.01,
-    "human_review_rate_trend": "declining",
+    "escalation_rate": 0.01,
+    "escalation_rate_trend": "declining",
     "auto_approval_rate": 0.97,
     "thresholds": {
-      "human_review_rate_min": 0.02,
+      "escalation_rate_min": 0.02,
       "auto_approval_rate_max": 0.95
     }
   }
 }
 ```
 
-In this example, both thresholds are breached -- the human review rate (0.01) is below the minimum (0.02) and the auto-approval rate (0.97) exceeds the maximum (0.95). This could indicate that the governance agent is approving too broadly, or that policies are well-calibrated for a low-risk campaign. The threshold breach surfaces the question; the organization decides the answer.
+In this example, both thresholds are breached -- the escalation rate (0.01) is below the minimum (0.02) and the auto-approval rate (0.97) exceeds the maximum (0.95). This could indicate that the governance agent is approving too broadly, or that policies are well-calibrated for a low-risk campaign. The threshold breach surfaces the question; the organization decides the answer.
 
-Organizations set only the thresholds relevant to their concern. A `human_review_rate_min` catches oversight erosion; a `human_review_rate_max` catches policy miscalibration. A `human_override_rate_max` catches a governance agent whose recommendations are consistently wrong. All threshold fields are optional.
+Organizations set only the thresholds relevant to their concern. An `escalation_rate_min` catches oversight erosion; an `escalation_rate_max` catches policy miscalibration. A `human_override_rate_max` catches a governance agent whose recommendations are consistently wrong. All threshold fields are optional.
 
 ### Plan amendments
 
-Calling `sync_plans` with an existing `plan_id` updates the plan (upsert). The governance agent increments `plan_version` and applies the new parameters immediately. Active media buys that were approved under the previous plan version are not automatically re-validated -- the governance agent evaluates them against the updated plan on the next `check_governance` call (e.g., the next delivery check). If an amendment reduces the budget below the currently committed amount, the governance agent flags this as a finding on the next governance check.
+Calling `sync_plans` with an existing `plan_id` updates the plan (upsert). The governance agent increments `plan_version` and applies the new parameters immediately. Active media buys that were approved under the previous plan version are not automatically re-validated -- the governance agent evaluates them against the updated plan on the next `check_governance` call (e.g., the next delivery check). A sync that reduces `budget.total` (or a period `amount`) below the amount already committed is rejected with `VALIDATION_ERROR` and leaves the plan unchanged.
 
 ## Validation logic
 
@@ -876,9 +878,11 @@ The seller stores these endpoints and presents the credentials when calling `che
 Governance mode (audit, advisory, enforce) is an internal implementation detail of the governance agent, not a protocol-level field. The caller sends `check_governance` and acts on the verdict without needing to know what mode produced it. Intent checks may return `approved`, `denied`, or `conditions`; execution checks return `approved` or `denied`.
 
 This means:
-- A governance agent in audit mode internally always returns `approved` with findings attached
-- A governance agent in advisory mode returns `approved` with prominent findings and recommended corrections
+- A governance agent in audit mode internally returns `approved` with findings attached, with the two exceptions below
+- A governance agent in advisory mode returns `approved` with prominent findings and recommended corrections, with the same two exceptions
 - A governance agent in enforce mode returns `denied` and expects the caller to stop
+
+Two outcomes do not depend on mode. Plans with `human_review_required: true` escalate in every mode. A failed `approved_sellers` or `delegations` evaluation is `denied` in every mode, including: an intent check whose target is not in `approved_sellers`, an execution check by a caller that is not the audience preserved from the approved intent or that has since been removed from `approved_sellers`, an execution check whose original intent was made by a buyer that no longer holds a current delegation, an intent check by a buyer-side caller that can access the plan but is neither its owner nor a current delegate, and an intent check by a delegate that acts outside the `authority`, `budget_limit` or `markets` of its delegation.
 
 Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent MAY include mode information in its audit logs or `get_plan_audit_logs` response for post-hoc analysis, but callers MUST NOT branch behavior based on mode — they act on the status they receive.
 
@@ -914,7 +918,7 @@ What the claim delivers:
 
 `plan_hash = base64url_no_pad(SHA-256(JCS(plan_payload)))` where:
 
-- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](/docs/building/by-layer/L1/security#payload-equivalence). Governance agents and auditor verifiers SHOULD use the same library implementations listed there. JCS sorts object keys lexicographically by code point (caller key order in the `sync_plans` request does not affect the hash) and preserves the distinction between an omitted optional field and an explicit `null` (these produce different hashes). Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls.
+- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](/docs/building/by-layer/L1/security#payload-equivalence). Governance agents and auditor verifiers SHOULD use the same library implementations listed there. JCS sorts object keys lexicographically by code point (caller key order in the `sync_plans` request does not affect the hash) and preserves the distinction between an omitted optional field and an explicit `null` (these produce different hashes). Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls. Schema `default` annotations are never applied to the preimage: a field the buyer omitted stays omitted, and a value the governance agent derives for itself, such as `human_review_required`, is not written into it.
 - `plan_payload` is **one element of the `plans[]` array as supplied on `sync_plans`** — a single plan object, not the `sync_plans` request envelope and not the `plans` wrapper array. The preimage is the current plan-revision state at the time of attestation, i.e., the plan object the governance agent just evaluated. Implementations constructing the preimage start from the plan-revision object and remove the closed set of bookkeeping fields listed below.
 - `base64url_no_pad` follows RFC 4648 §5 with trailing `=` padding stripped — consistent with `jti` and other base64url values in the JWS profile. Governance agents MUST emit the unpadded form. Verifiers (governance agents re-verifying their own tokens, auditors, buyer-side compliance tooling) MUST compare by base64url-decoding both sides to the raw 32-byte SHA-256 digest and comparing bytes — NOT by string equality of the encoded form — so padding, case, or alphabet variation is rejected as a decode failure rather than producing a false non-match. A `plan_hash` that does not decode to exactly 32 bytes MUST be rejected.
 
@@ -929,7 +933,7 @@ Closed list — governance agents MUST NOT extend or shrink it; any addition is 
 - `committedBudget` — derived from downstream `check_governance` / `report_plan_outcome` activity
 - `committedByType` — derived from the same activity
 
-None of these appear in the `sync_plans` request schema (`additionalProperties: false` on the plan item); they exist only on the governance agent's persisted plan state. The list is stated explicitly so an implementer naively hashing their internal state struct strips the right fields. Implementations that discover additional GA-internal fields on their persisted plan state beyond this list MUST treat those fields as **IN the preimage** until the profile version bumps — fail-safe toward inclusion, not exclusion. The "anything that looks like bookkeeping → strip" shortcut silently diverges every implementation that guesses differently; the safe default is "if it is not on the closed list, it is part of the hash."
+None of these is a `sync_plans` request field; they exist only on the governance agent's persisted plan state. The list is stated explicitly so an implementer naively hashing their internal state struct strips the right fields. Implementations that discover additional GA-internal fields on their persisted plan state beyond this list MUST treat those fields as **IN the preimage** until the profile version bumps — fail-safe toward inclusion, not exclusion. The "anything that looks like bookkeeping → strip" shortcut silently diverges every implementation that guesses differently; the safe default is "if it is not on the closed list, it is part of the hash."
 
 All other fields — including `ext`, `custom_policies`, `objectives`, `delegations`, `human_override`, and every field declared in the `sync_plans` plan-item schema — are IN the preimage. Caller guidance:
 
@@ -1132,7 +1136,7 @@ The `next_check` field signals that the governance agent expects delivery report
   "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
     {
-      "category_id": "strategic_alignment",
+      "category_id": "geo_compliance",
       "severity": "critical",
       "explanation": "Geo targeting includes CA but plan only authorizes US.",
       "details": {

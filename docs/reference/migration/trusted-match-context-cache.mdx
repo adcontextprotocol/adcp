@@ -1,0 +1,105 @@
+---
+title: "Trusted Match privacy and context-cache security"
+sidebarTitle: Trusted Match cache security
+description: "Migrate Context Match caches to AdCP 3.3 evaluation namespaces while preserving the 3.1.22 privacy protections."
+"og:title": "AdCP — Trusted Match privacy and cache security migration"
+---
+
+<Warning>
+AdCP 3.3 adds the `cache_namespace` conformance contract. The experimental
+breaking/security notice published September 13, 2026 had an October 25,
+2026 notice floor, which has passed. The contract did not ship in 3.2 and is
+not retroactive conformance for 3.1 or 3.2. Published release artifacts remain
+unchanged.
+</Warning>
+
+Version 3.1.22 already shipped two emergency privacy/security corrections:
+
+- [#7396](https://github.com/adcontextprotocol/adcp/pull/7396) prohibited
+  Context Match embeddings derived from non-public content attributable to
+  one user or session, including through an intermediate summary. Keywords
+  and summaries require documented privacy reduction.
+- [#7397](https://github.com/adcontextprotocol/adcp/pull/7397) replaced
+  placement-only response caching with `{provider_id, context_hash}`.
+
+Those emergency protections remain in force. The new evaluation namespace
+extends the request partition rather than replacing it.
+
+## Immediate safe operation
+
+An affected implementation MUST bypass or disable cache lookup,
+in-flight request coalescing, and insertion until both of these controls are
+implemented:
+
+1. Request partitioning by the RFC 8785 JCS/SHA-256 `context_hash`.
+2. A trusted `cache_namespace` for result-affecting security and provider
+   configuration contexts, with the lifecycle and warm-hit authorization
+   controls in the [TMP caching contract](/docs/trusted-match/specification#caching).
+
+The router-owned inputs include authenticated principal or tenant,
+authorization and entitlement revision, active-package generation, endpoint
+replacement, provider configuration, and targeting/rules generations.
+Bypass caching when the required trusted context or generation cannot be
+established, or generation change and invalidation cannot be coordinated.
+Never accept a namespace supplied by the caller.
+
+## Cache-key migration
+
+For AdCP 3.3, partition each provider's cache by:
+
+```text
+{provider_id, cache_namespace, context_hash}
+```
+
+Hash the validated provider-forwarded request after removing only `$schema`
+and `request_id`; preserve array order and every response-affecting input.
+Use RFC 8785 JCS and SHA-256. `provider_id` stays the stable registration
+identity, not a rotating generation.
+
+Select the namespace from trusted authentication, authorization, deployment,
+and provider-configuration state. It must not contain raw principal or tenant
+identifiers, derive from credentials, or incorporate viewer identity, user
+tokens, or Identity Match state. Treat namespace mappings, hashes, and cached
+responses as sensitive request data; keep them out of logs, metric labels,
+and traces.
+
+Capture one evaluation context for lookup, coalescing, outbound endpoint and
+authentication selection, provider evaluation, and insertion. Do not relabel
+an old in-flight result into a new namespace, insert it after its context
+changes, or reuse a generation while old entries or work survive. Authenticate
+and authorize the current publisher principal and property before lookup and
+again before returning a warm hit.
+
+## Provider-owned model changes
+
+A model change that can affect output is a targeting-configuration change
+under the existing `cache_ttl: 0` SHOULD. Providers SHOULD lower their
+advertised `cache_ttl` ahead of a planned model deployment that affects output.
+Routers are not required to observe internal provider deployments.
+
+A warm entry cached before the change may still be served until its TTL
+expires: at most the `cache_ttl` advertised for that entry, 5 minutes by
+default and at most 86400 seconds. A later `cache_ttl: 0` cannot evict an
+already-cached entry. Lowering TTL ahead of deployment keeps this stale window
+short; it does not retroactively shorten an older entry's TTL.
+
+## Validation cases
+
+These cases are router conformance requirements, not a claim that this
+specification repository implements a router cache.
+
+| Warm-cache case | Required outcome |
+|---|---|
+| Same provider and request under two different evaluation namespaces | The second namespace cannot reach the first namespace's entry or in-flight work. |
+| Changed request or private data | Recompute the request hash; a changed artifact, signals, geo or package subset cannot reuse the old request's entry. Single-user private derivatives remain prohibited. |
+| Changed authorization or entitlement | Authenticate and authorize under current policy on every lookup and warm return; rotate the trusted namespace when the evaluation context changes. A revoked caller cannot receive a warm result. |
+| Required trusted namespace cannot be established | Bypass lookup, coalescing and insertion rather than reuse a prior namespace. |
+| Internal provider model deployment | Follow the provider TTL policy; an older warm entry may survive only until its original TTL expires. |
+
+## Single-user context migration
+
+Do not forward embeddings derived directly or indirectly from non-public
+single-user content. Apply aggregation, thresholding or another documented
+privacy-reduction method to keywords and summaries, and remove or reprocess
+stored single-user derivatives before using them in new requests. Neither
+namespace isolation nor hashing makes prohibited private context safe.

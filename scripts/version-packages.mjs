@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Select the one exceptional 3.2 beta -> rc.0 versioning path, otherwise
+ * Select the exceptional final-beta -> rc.0 versioning path when a reviewed
+ * .changeset/rc-promotion.json marker is present (promote-release-candidate.mjs
+ * derives the line from package.json), otherwise
  * delegate to Changesets. A reviewed withdrawn-release marker lets the
  * pre-exit cut skip a permanently withdrawn version number. Artifact
  * generation and signing remain in the package `version` script so every path

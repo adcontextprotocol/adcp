@@ -8,6 +8,7 @@ import type {
 } from '@adcp/sdk/testing';
 import { isComplianceVersionSupported } from '@adcp/sdk/testing';
 import { advertisesStableBadgeLine, SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
+import { prereleaseDiscoveryEnvelope } from '../compliance/prerelease-discovery-envelope.js';
 
 export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
 // Lines graded by hosted compliance, newest first. Each line is tried as its
@@ -698,9 +699,13 @@ export function withHostedComplianceRunOptions<T extends Partial<ComplyOptions> 
   defaultApiKey?: string,
 ): (T extends undefined ? ComplyOptions : NonNullable<T> & ComplyOptions) {
   const input = withHostedAuthTestKit(options, defaultAuthProbeTask, defaultApiKey) as Partial<ComplyOptions>;
-  return withHostedComplianceOptions(input, target) as T extends undefined
-    ? ComplyOptions
-    : NonNullable<T> & ComplyOptions;
+  const resolved = withHostedComplianceOptions(input, target);
+  const versionEnvelope = input.versionEnvelope
+    ?? prereleaseDiscoveryEnvelope(input.wireAdcpVersion ?? resolved.hostedStableLineAlias ?? resolved.version);
+  return {
+    ...resolved,
+    ...(versionEnvelope && { versionEnvelope }),
+  } as T extends undefined ? ComplyOptions : NonNullable<T> & ComplyOptions;
 }
 
 export function withHostedStoryboardRunOptions<T extends Partial<StoryboardRunOptions> | undefined>(
@@ -713,6 +718,8 @@ export function withHostedStoryboardRunOptions<T extends Partial<StoryboardRunOp
   const version = resolveHostedComplianceVersion(input.adcpVersion ?? target.version);
   assertHostedArtifacts(version);
   const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
+  const versionEnvelope = input.versionEnvelope
+    ?? prereleaseDiscoveryEnvelope(input.wireAdcpVersion ?? hostedStableLineAlias ?? version);
 
   return {
     ...input,
@@ -722,6 +729,7 @@ export function withHostedStoryboardRunOptions<T extends Partial<StoryboardRunOp
     // comply() does (withHostedComplianceOptions).
     servedReleaseSchemaRoots: input.servedReleaseSchemaRoots ?? hostedServedReleaseSchemaRoots(version),
     ...(hostedStableLineAlias && { wireAdcpVersion: hostedStableLineAlias }),
+    ...(versionEnvelope && { versionEnvelope }),
   } as T extends undefined ? StoryboardRunOptions : NonNullable<T> & StoryboardRunOptions;
 }
 
@@ -735,11 +743,14 @@ export function withHostedTestOptions<T extends Partial<TestOptions> | undefined
   const version = resolveHostedComplianceVersion(input.adcpVersion ?? target.version);
   assertHostedArtifacts(version);
   const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
+  const versionEnvelope = input.versionEnvelope
+    ?? prereleaseDiscoveryEnvelope(input.wireAdcpVersion ?? hostedStableLineAlias ?? version);
 
   return {
     ...input,
     adcpVersion: version,
     schemaRoot: input.schemaRoot ?? hostedSchemaRootForVersion(version, target),
     ...(hostedStableLineAlias && { wireAdcpVersion: hostedStableLineAlias }),
+    ...(versionEnvelope && { versionEnvelope }),
   } as T extends undefined ? TestOptions : NonNullable<T> & TestOptions;
 }

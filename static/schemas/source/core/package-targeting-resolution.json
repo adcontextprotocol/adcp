@@ -12,5 +12,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["demographics"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

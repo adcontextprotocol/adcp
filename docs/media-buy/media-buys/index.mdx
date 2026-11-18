@@ -72,7 +72,8 @@ the current seller snapshot through [`get_media_buys`](/docs/media-buy/task-refe
 
 The [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review) allows approved assignments to start while others remain
 in review. A package may instead require every assignment approved before
-first release for serving with `start_requires_all_creatives_approved: true` (AdCP 3.3).
+first release for serving with `start_requires_all_creatives_approved: true`, set
+through [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) (AdCP 3.3).
 
 ## State machine
 
@@ -120,7 +121,8 @@ when that task completes. See [Task lifecycle](/docs/building/by-layer/L3/task-l
 Compact purchase calls do not carry creative bodies. Use
 [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to create or
 update library assets, then use `assignment_operations` to assign, unassign, or
-replace package creatives.
+replace package creatives. Send only the operations the seller lists in
+[`creative.assignment_operations`](/docs/creative/task-reference/sync_creatives#which-operations-a-seller-accepts).
 
 ```json
 {

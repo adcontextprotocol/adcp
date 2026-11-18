@@ -77,7 +77,7 @@
           }
         },
         "required": ["agent_url"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     }
   },

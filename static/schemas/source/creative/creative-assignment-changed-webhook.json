@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/creative-assignment-changed-webhook.json",
   "title": "Creative Assignment Changed Webhook",
-  "description": "Optional account-anchored invalidation fired by a seller that can detect when a package–creative assignment is added, removed, or its aggregate/scoped approval outcome changes. Registered through sync_accounts notification_configs with event_types: [\"creative.assignment_changed\"]. Receivers verify signing, dedupe, and reread get_media_buys; a creative-library seller may also expose a bounded list_creatives reverse projection, but the webhook does not replace the authoritative relationship snapshot.",
+  "description": "Optional account-anchored invalidation fired by a seller that can detect when a package–creative assignment is added, removed, its aggregate/scoped approval outcome changes, or (from AdCP 3.4) required adjacent code affects assignment delivery. Registered through sync_accounts notification_configs with event_types: [\"creative.assignment_changed\"]. Receivers verify signing, dedupe, and reread get_media_buys; a creative-library seller may also expose a bounded list_creatives reverse projection, but the webhook does not replace the authoritative relationship snapshot.",
   "type": "object",
   "properties": {
     "idempotency_key": {
@@ -50,10 +50,12 @@
     },
     "change_kind": {
       "type": "string",
+      "description": "adjacent_code_changed (added in 3.4) invalidates required-code delivery state: entry to or exit from pending, omission, or a change that blocks or releases the assignment. Ordinary configuration edits and optional-code changes do not fire it. Publish the updated assignment snapshot before firing; approval_status remains creative review.",
       "enum": [
         "assigned",
         "unassigned",
-        "approval_changed"
+        "approval_changed",
+        "adjacent_code_changed"
       ]
     },
     "observed_at": {
@@ -77,7 +79,7 @@
     "change_kind",
     "observed_at"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Assignment approval changed",

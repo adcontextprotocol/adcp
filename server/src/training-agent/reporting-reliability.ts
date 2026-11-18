@@ -2849,8 +2849,7 @@ const MAX_RETAINED_CONSUMER_STATUSES = 1_000;
 /**
  * Inert human escalation path. It is display metadata for an operator, never
  * an AdCP endpoint: nothing in this module or the tenant router dereferences
- * it, and the published URL is constrained to the hardened public-origin shape
- * so never-dereference is true by construction.
+ * it.
  */
 export const TRAINING_REPORTING_OPERATIONS_CONTACT = {
   url: 'https://reporting-ops.example.org/reporting-issues',

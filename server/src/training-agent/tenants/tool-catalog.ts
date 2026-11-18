@@ -127,6 +127,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   list_content_standards: ['governance'],
   get_content_standards: ['governance'],
   calibrate_content: ['governance'],
+  get_creative_features: ['governance'],
 
   // brand
   search_brands: ['brand'],

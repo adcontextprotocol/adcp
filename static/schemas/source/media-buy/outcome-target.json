@@ -20,7 +20,7 @@
             }
           },
           "required": ["kind", "metric"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "type": "object",
@@ -43,12 +43,12 @@
             "required": ["event_type"]
           },
           "then": { "required": ["custom_event_name"] },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "type": "object",
           "x-added-in": "3.3.0",
-          "description": "Plan against a vendor-measured outcome, such as store visits. The (vendor, metric_id) pair is the key optimization goals and delivery's vendor_metric_values[] use. The forecast carries the flight total in points' vendor_metric_values[] with the vendor's declared unit, not in metrics, and the proposal binds the goal and a vendor reporting commitment on every purchase.",
+          "description": "Plan against a vendor-measured outcome, such as store visits. The (vendor, metric_id) pair is the key optimization goals and delivery's vendor_metric_values[] use. The forecast carries the flight total in points' vendor_metric_values[] with the vendor's declared unit, not in metrics, and the proposal binds the goal and a vendor reporting commitment on every purchase. Rejects `metric`, which belongs to the metric goal, and `target`, the deprecated target shape.",
           "properties": {
             "kind": { "type": "string", "const": "vendor_metric" },
             "vendor": {
@@ -61,7 +61,8 @@
             }
           },
           "required": ["kind", "vendor", "metric_id"],
-          "additionalProperties": false
+          "additionalProperties": true,
+          "not": { "anyOf": [{ "required": ["target"] }, { "required": ["metric"] }] }
         }
       ]
     },
@@ -76,5 +77,5 @@
   },
   "required": ["goal"],
   "anyOf": [{ "required": ["volume"] }, { "required": ["cost_per"] }],
-  "additionalProperties": false
+  "additionalProperties": true
 }

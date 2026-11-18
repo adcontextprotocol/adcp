@@ -103,7 +103,6 @@ export type AdcpSpecialism =
   | 'collection-lists'
   | 'content-standards'
   | 'creative-ad-server'
-  | 'creative-addon'
   | 'creative-generative'
   | 'creative-template'
   | 'creative-transformers'
@@ -139,7 +138,6 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'collection-lists',
   'content-standards',
   'creative-ad-server',
-  'creative-addon',
   'creative-generative',
   'creative-template',
   'creative-transformers',

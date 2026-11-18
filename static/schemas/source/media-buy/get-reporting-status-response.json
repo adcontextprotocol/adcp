@@ -66,7 +66,7 @@
               "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
             },
             "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "uniqueItems": true
         },
@@ -82,7 +82,7 @@
           "then": { "required": ["media_buy_ids"], "properties": { "media_buy_ids": {} } }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "health": { "$ref": "/schemas/enums/reporting-health.json" },
     "coverage": { "$ref": "/schemas/core/reporting-coverage.json", "description": "Aggregated effective coverage for the exact selected scope. This remains independent of reporting health and finality so a fresh covered subset cannot look like complete campaign reporting." },
@@ -100,7 +100,7 @@
         "consumer_status_pending": { "type": "integer", "minimum": 0, "description": "Obligations in this scope whose elapsed expected period has passed its consumer-status deadline — expected_at plus automated_recovery_window_seconds — without a current consumer status from the authenticated caller. A chain with any unsuperseded leaf counts as current whatever that leaf says; only an empty chain is pending. Because it counts obligations, a period the seller omitted entirely has no obligation and is not counted here — the buyer's independently derived denominator, not this field, remains the authority on omitted periods. It is a visibility count over the caller's own silence, never a health input: it MUST NOT change health, any other count, or seller-advertised reliability_statistics, and it overlaps the health counts rather than partitioning them. Required when the seller advertises consumer_status_task." }
       },
       "required": ["total", "waiting", "healthy", "delayed", "action_required", "complete"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
     "periods": { "type": "array", "items": { "$ref": "/schemas/core/reporting-obligation.json" } },
@@ -151,6 +151,7 @@
       "required": ["status"],
       "oneOf": [
         {
+      "description": "Every unknown or unauthorized identifier returns this one shape: its message and error are constants, its error objects are closed, and it names no ledger snapshot, ledger time or account.",
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {

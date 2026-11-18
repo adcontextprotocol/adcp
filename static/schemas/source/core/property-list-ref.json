@@ -25,5 +25,5 @@
     "agent_url",
     "list_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

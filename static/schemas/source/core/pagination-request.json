@@ -17,5 +17,5 @@
       "description": "Opaque cursor from a previous response to fetch the next page"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

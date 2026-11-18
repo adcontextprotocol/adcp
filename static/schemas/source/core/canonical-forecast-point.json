@@ -31,7 +31,7 @@
         "viewed_seconds": { "$ref": "/schemas/core/forecast-range.json" },
         "standard": { "$ref": "/schemas/enums/viewability-standard.json" }
       },
-      "additionalProperties": false,
+      "additionalProperties": true,
       "anyOf": [
         {
           "not": {
@@ -52,5 +52,5 @@
     }
   },
   "required": ["metrics"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

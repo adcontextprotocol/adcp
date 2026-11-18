@@ -57,35 +57,36 @@ describe('ComplianceDatabase.getLastKnownSupportedVersions', () => {
     await expect(db.getLastKnownSupportedVersions('https://agent.example/mcp')).resolves.toEqual([]);
   });
 
-  it('defers an inconclusive check only while its future heartbeat lock is still held', async () => {
+  it('records the skip reason and releases the heartbeat lock, leaving a later requeue due', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 } as never);
 
-    await expect(db.deferComplianceCheckAfterInconclusiveTarget('https://agent.example/mcp'))
+    await expect(db.deferComplianceCheckAfterInconclusiveTarget('https://agent.example/mcp', 'pre_target_error'))
       .resolves.toBe(true);
 
-    expect(mockedQuery).toHaveBeenCalledWith(
-      expect.stringMatching(/SET next_compliance_check_at = NOW\(\)[\s\S]*next_compliance_check_at > NOW\(\)/),
-      ['https://agent.example/mcp', false],
-    );
+    const [sql, params] = mockedQuery.mock.calls[0] ?? [];
+    expect(params).toEqual(['https://agent.example/mcp', false, 'pre_target_error']);
+    expect(sql).toMatch(/compliance_lock_until = NULL[\s\S]*last_heartbeat_attempt_at = NOW\(\)[\s\S]*last_heartbeat_skip_reason = \$3/);
+    expect(sql).toMatch(/CASE WHEN COALESCE\(requeued_at > heartbeat_started_at, FALSE\)\s+THEN next_compliance_check_at/);
+    expect(sql).not.toContain('last_heartbeat_success_at');
   });
 
   it('uses bounded exponential backoff after repeated target failures', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 } as never);
 
     await expect(db.deferComplianceCheckAfterInconclusiveTarget(
-      'https://agent.example/mcp', { exponentialBackoff: true },
+      'https://agent.example/mcp', 'target_unconfirmed', { exponentialBackoff: true },
     )).resolves.toBe(true);
 
     expect(mockedQuery).toHaveBeenCalledWith(
       expect.stringContaining('LEAST(48, check_interval_hours * (1 << LEAST(compliance_inconclusive_streak, 3)))'),
-      ['https://agent.example/mcp', true],
+      ['https://agent.example/mcp', true, 'target_unconfirmed'],
     );
   });
 
-  it('preserves a concurrent completed run when the heartbeat lock is no longer current', async () => {
+  it('reports false when the agent has no registry metadata row', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
 
-    await expect(db.deferComplianceCheckAfterInconclusiveTarget('https://agent.example/mcp'))
+    await expect(db.deferComplianceCheckAfterInconclusiveTarget('https://agent.example/mcp', 'execution_fence_lost'))
       .resolves.toBe(false);
   });
 });

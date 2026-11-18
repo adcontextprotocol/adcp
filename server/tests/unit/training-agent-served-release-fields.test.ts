@@ -6,6 +6,7 @@ import {
   omitFieldsAddedAfterRelease,
   propertiesAddedAfterRelease,
   servedReleaseEnum,
+  undeclaredMembers,
 } from '../../src/training-agent/served-release-fields.js';
 
 const CAPABILITIES = 'protocol/get-adcp-capabilities-response.json';
@@ -13,7 +14,7 @@ const CAPABILITIES = 'protocol/get-adcp-capabilities-response.json';
 describe('served-release field gate (#8487)', () => {
   beforeAll(() => ensureCreative33SchemaBundle());
 
-  it('withholds the 3.3 canonical-product fields from 3.2, and only fields 3.2 lacks', () => {
+  it('withholds canonical-product fields added after the served release', () => {
     const withheld = propertiesAddedAfterRelease('core/canonical-product.json', '3.2');
     expect(withheld).toContain('installments');
     const bundled = getSchemaDocumentByRef('core/canonical-product.json', '3.2');
@@ -22,7 +23,10 @@ describe('served-release field gate (#8487)', () => {
       { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
     expect(threeTwo?.additionalProperties).toBe(true);
     for (const field of withheld) expect(threeTwo?.properties, field).not.toHaveProperty(field);
-    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3-beta.1')).toEqual(new Set());
+    // Adjacent-code disclosure starts in 3.4, including for 3.3 prerelease callers.
+    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3-beta.1')).toEqual(new Set(['adjacent_code']));
+    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3')).toEqual(new Set(['adjacent_code']));
+    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.4')).toEqual(new Set());
   });
 
   it('finds 3.3 fields under objects 3.2 leaves open, and leaves undeclared keys alone', () => {
@@ -66,5 +70,29 @@ describe('served-release field gate (#8487)', () => {
     expect(servedReleaseEnum('enums/specialism.json', '3.2-rc.0')).not.toContain('sales-fixed-rate');
     // No bundle at all leaves the caller's list as is.
     expect(servedReleaseEnum('enums/specialism.json', '4.0')).toBeNull();
+  });
+});
+
+describe('undeclared members in commercial terms', () => {
+  const PURCHASE = 'media-buy/product-purchase-input.json';
+  const purchase = {
+    product_id: 'p1',
+    pricing_option_id: 'cpm',
+    format_option_refs: [{ scope: 'product', format_option_id: 'f1' }],
+    budget: 1000,
+  };
+
+  it('finds a member no declaration covers under an open schema', () => {
+    expect(undeclaredMembers(purchase, PURCHASE)).toEqual([]);
+    const withMember = {
+      ...purchase,
+      format_option_refs: [{ scope: 'product', format_option_id: 'f1', adcp_compliance_undefined_member: 0.6 }],
+    };
+    expect(undeclaredMembers(withMember, PURCHASE)).toEqual([['format_option_refs', '0', 'adcp_compliance_undefined_member']]);
+  });
+
+  it('counts ext members as uninterpreted and context members as opaque', () => {
+    expect(undeclaredMembers({ ...purchase, ext: { acme: { weight: 2 } } }, PURCHASE)).toEqual([['ext', 'acme']]);
+    expect(undeclaredMembers({ ...purchase, context: { trace_id: 't1' } }, PURCHASE)).toEqual([]);
   });
 });

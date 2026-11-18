@@ -69,7 +69,7 @@
                 "then": { "required": ["demographic"] }
               }
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "uniqueItems": true
@@ -100,7 +100,7 @@
           }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "demographic_systems": {
       "type": "array",
@@ -121,5 +121,5 @@
     { "required": ["age"] },
     { "required": ["demographic_systems"] }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -42,5 +42,5 @@
     }
   },
   "required": ["product_id", "format_option"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

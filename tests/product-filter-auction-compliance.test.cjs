@@ -10,7 +10,7 @@ const { runCatalogReportingStoryboard: runStoryboard } = require('../server/src/
 const source = path.join(__dirname, '..', 'static', 'compliance', 'source',
   'protocols', 'media-buy', 'scenarios', 'product_filter_behavior.yaml');
 
-async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliveryIn, injectGuaranteedSeed = false, extraMatching = false, ignoreChannels = false } = {}) {
+async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliveryIn, injectGuaranteedSeed = false, extraMatching = false, ignoreChannels = false, operatorFee = false } = {}) {
   const storyboard = YAML.parse(fs.readFileSync(source, 'utf8'));
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
@@ -71,7 +71,7 @@ async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliver
         if (request.buying_mode !== ignoreDeliveryIn && request.filters.delivery_type !== product.delivery_type) return false;
         return true;
       });
-      const data = { products, context: request.context };
+      const data = { products: operatorFee ? products.map(withOperatorFee) : products, context: request.context };
       responses.push(structuredClone(data));
       return { success: true, data };
     },
@@ -84,6 +84,18 @@ async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliver
     _client: client,
   });
   return { result, seeds, requests, responses };
+}
+
+// A seller echoing a buying platform's breakdown into its own pricing.
+function withOperatorFee(product) {
+  return {
+    ...product,
+    pricing_options: product.pricing_options.map(option => ({
+      ...option,
+      eligible_adjustments: ['discount', 'operator_fee'],
+      price_breakdown: { list_price: 10, adjustments: [{ kind: 'operator_fee', name: 'agency_fee', rate: 0.1 }] },
+    })),
+  };
 }
 
 function failures(result) {
@@ -154,4 +166,18 @@ test('a rejected guaranteed seed remains a setup failure rather than a false cap
   assert.ok(seeds.some(seed => seed.params.fixture?.delivery_type === 'guaranteed'));
   assert.ok(failures(result).some(step => step.phase_id === '__controller_seeding__'));
   assert.equal(requests.length, 0, 'dependent reads do not run after the rejected seed');
+});
+
+test('seller-authored operator_fee is graded as an advisory failure without failing the step', async () => {
+  const { result } = await runFilters({ operatorFee: true });
+  const brief = result.phases.flatMap(phase => phase.steps).find(step => step.step_id === 'get_filtered_brief_products');
+  const operatorFeeChecks = brief.validations.filter(check => check.check === 'field_excludes' && /eligible_adjustments|price_breakdown/.test(check.path));
+  assert.equal(operatorFeeChecks.length, 2);
+  for (const check of operatorFeeChecks) {
+    assert.equal(check.passed, false, check.path);
+    assert.equal(check.severity, check.severity_promoted_from_advisory ? 'required' : 'advisory');
+  }
+  // Once the runner reaches expires_after_version the checks are required and fail the run.
+  const promoted = operatorFeeChecks.some(check => check.severity_promoted_from_advisory);
+  assert.equal(result.overall_passed, !promoted, JSON.stringify(failures(result)));
 });

@@ -41,7 +41,7 @@
         "max": { "type": "number" }
       },
       "minProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "taxonomy": {
       "type": "object",
@@ -52,7 +52,7 @@
         "value_id": { "type": "string", "minLength": 1 }
       },
       "required": ["system"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "label": {
       "type": "string",
@@ -90,11 +90,11 @@
               "max": { "type": "integer", "minimum": 0 }
             },
             "minProperties": 1,
-            "additionalProperties": false
+            "additionalProperties": true
           }
         }
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -327,6 +327,7 @@
           </div>
           <div class="actions">
             <button class="btn btn-secondary" onclick="openResearchModal()">Research Brand</button>
+            <button class="btn btn-secondary" onclick="openCleanupModal()">Clean up enrichment</button>
             <button class="btn btn-primary" onclick="openCreateModal()">Create Hosted Brand</button>
           </div>
         </div>
@@ -446,6 +447,40 @@
         <button class="btn btn-secondary" onclick="closeResearchModal()">Cancel</button>
         <button class="btn btn-primary" id="researchBtn" onclick="researchBrand()">Research</button>
         <button class="btn btn-primary" id="saveResearchBtn" onclick="saveResearchedBrand()" style="display: none;">Save to Registry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Enrichment Cleanup Modal (adcp#9024) -->
+  <div id="cleanupModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Clean up enrichment records</h2>
+        <button class="modal-close" onclick="closeCleanupModal()">&times;</button>
+      </div>
+      <div id="cleanupError" class="error-message" style="display: none;"></div>
+      <div id="cleanupSuccess" class="success-message" style="display: none;"></div>
+
+      <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary); font-size: var(--text-sm);">
+        Removes Brandfetch enrichment records saved under a reserved name or a subdomain, or the enriched records you list.
+        Records held by an organization, edited by a person, or published with brand.json are never removed.
+        Preview first; nothing is deleted until you confirm.
+      </p>
+
+      <div class="form-group">
+        <label for="cleanupDomains">Domains to remove (optional, one per line)</label>
+        <textarea id="cleanupDomains" placeholder="Leave empty to find enriched records under reserved names and subdomains"></textarea>
+      </div>
+
+      <div id="cleanupResults" class="research-results" style="display: none;">
+        <h4 id="cleanupSummary"></h4>
+        <div id="cleanupList" style="max-height: 300px; overflow-y: auto; font-family: var(--font-mono); font-size: var(--text-xs);"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeCleanupModal()">Cancel</button>
+        <button class="btn btn-primary" id="cleanupPreviewBtn" onclick="previewCleanup()">Preview</button>
+        <button class="btn btn-danger" id="cleanupApplyBtn" onclick="applyCleanup()" style="display: none;">Delete records</button>
       </div>
     </div>
   </div>
@@ -1170,6 +1205,126 @@
       const div = document.createElement('div');
       div.textContent = String(str);
       return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // Enrichment cleanup (adcp#9024)
+    let cleanupPreviewInput = null;
+    // What the last preview offered to delete; Delete sends exactly this.
+    let cleanupPreviewed = null;
+
+    function cleanupDomainsFromInput(text) {
+      return text.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
+    }
+
+    function openCleanupModal() {
+      document.getElementById('cleanupModal').style.display = 'block';
+      document.getElementById('cleanupError').style.display = 'none';
+      document.getElementById('cleanupSuccess').style.display = 'none';
+      document.getElementById('cleanupResults').style.display = 'none';
+      document.getElementById('cleanupApplyBtn').style.display = 'none';
+      cleanupPreviewInput = null;
+      cleanupPreviewed = null;
+    }
+
+    function closeCleanupModal() {
+      document.getElementById('cleanupModal').style.display = 'none';
+    }
+
+    function showCleanupMessage(id, message) {
+      const el = document.getElementById(id);
+      el.textContent = message;
+      el.style.display = 'block';
+    }
+
+    function renderCleanupRows(title, rows, describe) {
+      const list = document.getElementById('cleanupList');
+      if (rows.length === 0) return;
+      const heading = document.createElement('div');
+      heading.style.fontWeight = 'bold';
+      heading.style.margin = 'var(--space-2) 0 var(--space-1)';
+      heading.textContent = `${title} (${rows.length})`;
+      list.appendChild(heading);
+      for (const row of rows) {
+        const line = document.createElement('div');
+        line.textContent = describe(row);
+        list.appendChild(line);
+      }
+    }
+
+    async function postCleanup(body) {
+      const response = await fetch('/api/admin/brand-registry/enrichment-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || data.error || 'Cleanup request failed');
+      return data;
+    }
+
+    async function previewCleanup() {
+      const input = document.getElementById('cleanupDomains').value;
+      const domains = cleanupDomainsFromInput(input);
+      const btn = document.getElementById('cleanupPreviewBtn');
+      btn.disabled = true;
+      document.getElementById('cleanupError').style.display = 'none';
+      document.getElementById('cleanupSuccess').style.display = 'none';
+      document.getElementById('cleanupApplyBtn').style.display = 'none';
+      try {
+        const data = await postCleanup({ dry_run: true, ...(domains.length ? { domains } : {}) });
+        document.getElementById('cleanupList').replaceChildren();
+        document.getElementById('cleanupSummary').textContent = data.total_candidates > data.candidates.length
+          ? `${data.total_candidates} records match; the first ${data.candidates.length} would be removed in this batch`
+          : `${data.candidates.length} records would be removed`;
+        renderCleanupRows('Would remove', data.candidates, (c) => `${c.domain}  ${c.brand_name || ''}  [${c.reason}]`);
+        renderCleanupRows('Kept', data.skipped, (s) => `${s.domain}  [${s.reason}]`);
+        document.getElementById('cleanupResults').style.display = 'block';
+        cleanupPreviewInput = input;
+        cleanupPreviewed = { mode: data.mode, domains: data.candidates.map((c) => c.domain) };
+        if (data.candidates.length > 0) {
+          const applyBtn = document.getElementById('cleanupApplyBtn');
+          applyBtn.textContent = `Delete ${data.candidates.length} records`;
+          applyBtn.style.display = 'inline-block';
+        }
+      } catch (error) {
+        showCleanupMessage('cleanupError', error.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function applyCleanup() {
+      const input = document.getElementById('cleanupDomains').value;
+      if (input !== cleanupPreviewInput || !cleanupPreviewed || cleanupPreviewed.domains.length === 0) {
+        showCleanupMessage('cleanupError', 'The domain list changed since the preview. Preview again before deleting.');
+        document.getElementById('cleanupApplyBtn').style.display = 'none';
+        return;
+      }
+      if (!confirm(`Delete the ${cleanupPreviewed.domains.length} records listed in the preview? This cannot be undone from this page.`)) return;
+      const btn = document.getElementById('cleanupApplyBtn');
+      btn.disabled = true;
+      try {
+        const data = await postCleanup({
+          dry_run: false,
+          confirm: true,
+          mode: cleanupPreviewed.mode,
+          domains: cleanupPreviewed.domains,
+        });
+        document.getElementById('cleanupList').replaceChildren();
+        document.getElementById('cleanupSummary').textContent = `Removed ${data.deleted.length} of ${cleanupPreviewed.domains.length} previewed records`;
+        renderCleanupRows('Removed', data.deleted, (c) => `${c.domain}  ${c.brand_name || ''}  [${c.reason}]`);
+        renderCleanupRows('Kept', data.skipped, (s) => `${s.domain}  [${s.reason}]`);
+        renderCleanupRows('Failed', data.failed, (f) => `${f.domain}  [${f.error}]`);
+        showCleanupMessage('cleanupSuccess', `Removed ${data.deleted.length} records.`);
+        btn.style.display = 'none';
+        cleanupPreviewInput = null;
+        cleanupPreviewed = null;
+        loadBrands();
+      } catch (error) {
+        showCleanupMessage('cleanupError', error.message);
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     // Populate search from URL param (used by domain health "Review in Brands" links)

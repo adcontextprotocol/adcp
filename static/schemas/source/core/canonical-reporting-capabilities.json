@@ -28,7 +28,7 @@
           "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" }
         },
         "required": ["vendor", "metric_id"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "supports_creative_breakdown": { "type": "boolean" },
@@ -43,6 +43,14 @@
     "supports_property_breakdown": { "type": "boolean" },
     "supports_collection_breakdown": { "type": "boolean" },
     "supports_installment_breakdown": { "type": "boolean" },
+    "available_installment_statuses": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "items": { "$ref": "/schemas/enums/installment-status.json" },
+      "uniqueItems": true,
+      "description": "Installment lifecycle statuses this product reports in by_installment. Meaningful only with supports_installment_breakdown: true. Absent, or an empty array, means by_installment carries delivery rows only, with no installment_status, as in AdCP 3.2. When present, a status that is not listed is not reported, so the absence of such rows proves nothing and a buyer MUST NOT read it as nothing scheduled, postponed, or cancelled. 'published', 'aired', and 'live' are delivery statuses and need not be listed. Sellers MUST NOT emit this field to callers pinned below AdCP 3.3, or to callers with no declared pin."
+    },
     "supports_collection_property_breakdown": { "type": "boolean" },
     "supports_installment_property_breakdown": { "type": "boolean" },
     "supports_placement_property_breakdown": { "type": "boolean" },
@@ -52,5 +60,5 @@
     "measurement_windows": { "type": "array", "items": { "$ref": "/schemas/core/measurement-window.json" }, "minItems": 1, "uniqueItems": true }
   },
   "required": ["available_reporting_frequencies", "expected_delay_minutes", "timezone", "supports_webhooks", "available_metrics", "date_range_support"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

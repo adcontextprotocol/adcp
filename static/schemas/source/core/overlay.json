@@ -34,7 +34,7 @@
         }
       },
       "minProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "bounds": {
       "type": "object",
@@ -65,9 +65,9 @@
         }
       },
       "required": ["x", "y", "width", "height", "unit"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "required": ["id", "bounds"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

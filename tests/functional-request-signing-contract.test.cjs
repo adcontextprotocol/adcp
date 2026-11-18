@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -14,13 +15,24 @@ const contractPath = path.join(
   ROOT,
   'static/compliance/source/test-kits/signed-requests-runner.yaml'
 );
-const keysPath = path.join(
-  ROOT,
-  'static/compliance/source/test-vectors/request-signing/keys.json'
-);
+const vectorsDir = path.join(ROOT, 'static/compliance/source/test-vectors/request-signing');
+const keysPath = path.join(vectorsDir, 'keys.json');
 
 function loadContract() {
   return yaml.load(fs.readFileSync(contractPath, 'utf8'));
+}
+
+function listVectorFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) return listVectorFiles(entryPath);
+    return entry.name.endsWith('.json') && entry.name !== 'keys.json' ? [entryPath] : [];
+  });
+}
+
+function readSignatureKeyids(vectorPath) {
+  const text = fs.readFileSync(vectorPath, 'utf8');
+  return [...text.matchAll(/keyid=\\"([^"\\]+)\\"/g)].map(match => match[1]);
 }
 
 test('installed SDK beta.12 parses the source functional-dispatch contract', () => {
@@ -29,7 +41,7 @@ test('installed SDK beta.12 parses the source functional-dispatch contract', () 
   });
 
   assert.ok(contract, 'SDK must load the source runner contract');
-  assert.equal(contract.functional_dispatch.signing_keyid, 'test-ed25519-2026');
+  assert.equal(contract.functional_dispatch.signing_keyid, 'test-functional-2026');
   assert.equal(contract.functional_dispatch.operation_selection.sign_required_for, true);
   assert.equal(contract.functional_dispatch.operation_selection.sign_supported_for, true);
   assert.deepEqual(contract.functional_dispatch.bootstrap_operations_unsigned, [
@@ -37,13 +49,13 @@ test('installed SDK beta.12 parses the source functional-dispatch contract', () 
   ]);
 });
 
-test('functional dispatch reuses a non-revoked request-signing test key', () => {
+test('functional dispatch signs with a declared non-revoked request-signing test key', () => {
   const contract = loadContract();
   const keyset = JSON.parse(fs.readFileSync(keysPath, 'utf8'));
   const dispatch = contract.functional_dispatch;
 
   assert.equal(contract.endpoint_scope, 'sandbox');
-  assert.equal(dispatch.signing_keyid, 'test-ed25519-2026');
+  assert.equal(dispatch.signing_keyid, 'test-functional-2026');
   assert.equal(dispatch.signer_agent_url, 'https://compliance-runner.example');
   assert.equal(dispatch.operation_selection.capability_path, 'request_signing');
   assert.equal(dispatch.operation_selection.sign_required_for, true);
@@ -63,11 +75,34 @@ test('functional dispatch reuses a non-revoked request-signing test key', () => 
   assert.equal(key.crv, 'Ed25519');
   assert.equal(key.adcp_use, 'request-signing');
   assert.ok(key._private_d_for_test_only, 'runner needs the published test-only private scalar');
+  const { _private_d_for_test_only: d, ...publicJwk } = key;
+  const derivedPublic = crypto
+    .createPublicKey(crypto.createPrivateKey({ key: { ...publicJwk, d }, format: 'jwk' }))
+    .export({ format: 'jwk' });
+  assert.equal(derivedPublic.x, key.x, 'published private scalar must match the published public key');
   assert.notEqual(
     dispatch.signing_keyid,
     contract.stateful_vector_contract.revocation.pre_revoked_keyid,
     'functional requests must not use the pre-revoked negative-vector key'
   );
+});
+
+test('functional dispatch keyid is not shared with any conformance vector', () => {
+  const dispatchKeyid = loadContract().functional_dispatch.signing_keyid;
+  const vectorFiles = listVectorFiles(vectorsDir);
+  const rateAbuseVectors = vectorFiles.filter(file => path.basename(file) === '020-rate-abuse.json');
+
+  assert.equal(rateAbuseVectors.length, 2, 'root and profile-3.2 rate-abuse vectors must both exist');
+  for (const vectorPath of rateAbuseVectors) {
+    assert.deepEqual([...new Set(readSignatureKeyids(vectorPath))], ['test-ed25519-2026']);
+  }
+  for (const vectorPath of vectorFiles) {
+    assert.ok(
+      !fs.readFileSync(vectorPath, 'utf8').includes(dispatchKeyid),
+      `${path.relative(vectorsDir, vectorPath)} must not use the functional-dispatch keyid; ` +
+        'functional traffic would share its per-keyid replay-cache budget'
+    );
+  }
 });
 
 test('functional signing contract remains sandbox-only and preserves seller verification', () => {

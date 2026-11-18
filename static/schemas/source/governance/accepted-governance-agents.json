@@ -18,7 +18,7 @@
               "agent_url": { "type": "string", "format": "uri", "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$", "maxLength": 2048, "description": "Exact canonical agent endpoint without userinfo, query, or fragment. Redirect targets, DNS aliases, and URLs asserted by the candidate do not satisfy this matcher." }
             },
             "required": ["kind", "agent_url"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -35,7 +35,7 @@
               "max_age_seconds": { "type": "integer", "minimum": 0, "description": "Maximum age of the registry evidence at binding time. Zero requires a fresh result. Evidence is pinned to the accepted binding; later registry drift does not silently revoke an existing binding." }
             },
             "required": ["kind", "registry", "role", "adcp_version", "verification_modes", "max_age_seconds"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -43,5 +43,5 @@
     }
   },
   "required": ["any_of"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -44,7 +44,7 @@
         "scope",
         "metric_id"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -86,7 +86,7 @@
         "vendor",
         "metric_id"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

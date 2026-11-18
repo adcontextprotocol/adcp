@@ -13,5 +13,5 @@
     "match_type": { "$ref": "/schemas/enums/match-type.json" }
   },
   "required": ["keyword", "match_type"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

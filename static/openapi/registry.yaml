@@ -137,10 +137,11 @@ components:
         brand_manifest:
           type: object
           additionalProperties: {}
+          description: "Stored or origin brand manifest. Each logo object in `logos[]` (and in `brands[].logos[]`) carries `background`, the brand.json field naming the background the logo is drawn for: `light-bg` (dark ink), `dark-bg` (light ink) or `transparent-bg`. A declared `background` in that enum is returned as published; any other declared value is treated as undeclared and is never returned. Otherwise it comes from a `light-bg` or `dark-bg` tag, then a `transparent-bg` tag, and for AgenticAdvertising.org-hosted logos from the luminance of the rendered logo (`light-bg` or `dark-bg`). It is absent when none of these is known."
         brand:
           type: object
           additionalProperties: {}
-          description: Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.
+          description: Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization. Logos in `brand.logos[]` carry `background` on the same rules as `brand_manifest.logos[]`.
         source:
           type: string
           enum:
@@ -556,7 +557,7 @@ components:
           type: array
           items:
             type: string
-          description: Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches spec-exactly with the slash significant — so a client answering "which publishers authorize this agent" must query once per spelling here and merge the results.
+          description: Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches with adagents.json agent URL matching, where the slash is significant for an entry with a path — so a client answering "which publishers authorize this agent" must query once per spelling here and merge the results. Publishers that authorize the agent's bare origin are returned for every spelling.
         publisher_domains:
           type: array
           items:
@@ -4636,6 +4637,8 @@ components:
                 items:
                   $ref: "#/components/schemas/StoryboardSkippedStep"
                 description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers.
+              verdict_explanation:
+                $ref: "#/components/schemas/StoryboardVerdictExplanation"
               last_tested_at:
                 type:
                   - string
@@ -4660,6 +4663,7 @@ components:
               - first_failure_message
               - first_failure_validations
               - skipped_steps
+              - verdict_explanation
               - last_tested_at
               - last_passed_at
           description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
@@ -4860,6 +4864,86 @@ components:
         - blocked_by_step_id
         - blocked_by_step_title
         - blocked_by_reason
+    StoryboardVerdictExplanation:
+      type:
+        - object
+        - "null"
+      properties:
+        reason:
+          type: string
+          description: "Runner verdict_reason: step_failed, assertion_failed, controller_prerequisite_unmet, required_phase_not_executed, no_executed_steps, fixture_error, coverage_unverified, runner_error, or unexplained. runner_error is not an agent failure."
+        detail:
+          type:
+            - string
+            - "null"
+          description: One-line redacted runner explanation. May echo agent-supplied values.
+        contributing:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryboardVerdictContributor"
+          description: Up to 10 steps, assertions, phases or requirements behind the verdict.
+      required:
+        - reason
+        - detail
+        - contributing
+      description: Why the storyboard failed when no counted step did (adcp#8576). Populated only for owners and operators; null for other callers and for passing or step-level verdicts.
+    StoryboardVerdictContributor:
+      type: object
+      properties:
+        kind:
+          type:
+            - string
+            - "null"
+          description: step, assertion, phase or requirement.
+        id:
+          type:
+            - string
+            - "null"
+          description: Step id, assertion id, phase id, or requirement name.
+        reason:
+          type:
+            - string
+            - "null"
+          description: The verdict reason this row supports.
+        status:
+          type:
+            - string
+            - "null"
+          description: failed, skipped, or not_passed.
+        phase_id:
+          type:
+            - string
+            - "null"
+        pass_index:
+          type:
+            - integer
+            - "null"
+          description: 1-based pass index in multi-pass runs.
+        skip_reason:
+          type:
+            - string
+            - "null"
+          description: Runner skip reason, when the step was skipped.
+        requirement:
+          type:
+            - string
+            - "null"
+          description: Unmet requirement named by the skip, e.g. controller.
+        message:
+          type:
+            - string
+            - "null"
+          description: Redacted runner text. May echo agent-supplied values.
+      required:
+        - kind
+        - id
+        - reason
+        - status
+        - phase_id
+        - pass_index
+        - skip_reason
+        - requirement
+        - message
     PublicComplianceNotice:
       type: object
       properties:
@@ -5582,11 +5666,16 @@ components:
                 incomplete_bundle_count:
                   type: integer
                   minimum: 0
+                incomplete_bundle_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: "Relevant bundles, as kind:id, that keep Strict Spec partial because their evidence is incomplete: an untested or partially covered storyboard, including runner and test-kit gaps."
                 not_applicable_universal_bundle_ids:
                   type: array
                   items:
                     type: string
-                  description: Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.
+                  description: "Universal bundles left partial only because the agent does not offer the surface: it advertises none of the tools for a surface it does not declare, or it does not advertise request signing for signed_requests. They do not count as incomplete."
                 relevant_failure_count:
                   type: integer
                   minimum: 0
@@ -5708,6 +5797,8 @@ components:
           items:
             $ref: "#/components/schemas/StoryboardSkippedStep"
           description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers.
+        verdict_explanation:
+          $ref: "#/components/schemas/StoryboardVerdictExplanation"
         last_tested_at:
           type:
             - string
@@ -5731,6 +5822,7 @@ components:
         - first_failed_step_task
         - first_failure_message
         - skipped_steps
+        - verdict_explanation
         - last_tested_at
         - last_passed_at
     ComplianceRun:
@@ -6938,6 +7030,209 @@ paths:
                 $ref: "#/components/schemas/Error"
         "503":
           description: Too much resolution work is already queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /assets/brands/{domain}/{logoId}.{ext}:
+    get:
+      operationId: getBrandLogoAsset
+      summary: Get brand logo
+      description: |-
+        Download an approved AgenticAdvertising.org-hosted brand logo. This is the URL form that `brand_manifest.logos[].url` uses. When `ext` does not match the stored type, the response is a 301 to the canonical extension, keeping `format` and `w`.
+
+        Add `?format=png&w=<width>` for a PNG rendition, for clients that cannot draw SVG. Renditions are rasterised from the stored, sanitised logo only; the endpoint never fetches a remote URL.
+      tags:
+        - Brand Resolution
+      parameters:
+        - schema:
+            type: string
+            example: acmecorp.com
+          required: true
+          name: domain
+          in: path
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: logoId
+          in: path
+        - schema:
+            type: string
+            example: svg
+          required: true
+          name: ext
+          in: path
+        - schema:
+            type: string
+            enum:
+              - png
+            description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          required: false
+          description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          name: format
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "64"
+              - "128"
+              - "256"
+              - "512"
+              - "1024"
+            description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+            example: "512"
+          required: false
+          description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+          name: w
+          in: query
+      responses:
+        "200":
+          description: "The logo, or its PNG rendition. Served with `Cache-Control: public, max-age=2592000`: a logo id names immutable bytes, so a changed logo gets a new id and URL."
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "301":
+          description: Redirect to the URL with the stored type's extension
+        "400":
+          description: Invalid domain, logo id, `format` or `w`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No approved logo with this id for this domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: The stored logo type (for example ICO) has no PNG rendition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The stored logo could not be rendered as PNG
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too many renditions are already being rendered; retry after the `Retry-After` interval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /logos/brands/{domain}/{logoId}:
+    get:
+      operationId: getBrandLogoLegacy
+      summary: Get brand logo (legacy URL)
+      description: Legacy form of the brand logo URL, without an extension. Accepts the same `format` and `w` rendition parameters as `/assets/brands/{domain}/{logoId}.{ext}`.
+      tags:
+        - Brand Resolution
+      parameters:
+        - schema:
+            type: string
+            example: acmecorp.com
+          required: true
+          name: domain
+          in: path
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: logoId
+          in: path
+        - schema:
+            type: string
+            enum:
+              - png
+            description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          required: false
+          description: Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.
+          name: format
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "64"
+              - "128"
+              - "256"
+              - "512"
+              - "1024"
+            description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+            example: "512"
+          required: false
+          description: Rendition width in pixels; requires `format=png`. Defaults to 512. Height follows the logo's aspect ratio, capped at four times the width.
+          name: w
+          in: query
+      responses:
+        "200":
+          description: "The logo, or its PNG rendition. Served with `Cache-Control: public, max-age=2592000`: a logo id names immutable bytes, so a changed logo gets a new id and URL."
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid domain, logo id, `format` or `w`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No approved logo with this id for this domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: The stored logo type (for example ICO) has no PNG rendition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The stored logo could not be rendered as PNG
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too many renditions are already being rendered; retry after the `Retry-After` interval
           content:
             application/json:
               schema:
@@ -8393,7 +8688,7 @@ paths:
     get:
       operationId: getAgentDomains
       summary: Agent domain lookup
-      description: Get all publisher domains associated with an agent.
+      description: "Get all publisher domains whose adagents.json authorizes an agent. `agentUrl` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule: an origin-only `authorized_agents[].url` (`https://agent.example.com`) authorizes every agent URL at that origin, and an entry with a path matches that canonical URL only, with a non-root trailing slash significant."
       tags:
         - Authorization Lookups
       parameters:
@@ -8431,7 +8726,7 @@ paths:
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
 
-        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
+        `agent_url` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule, after [AdCP URL canonicalization](/docs/reference/url-canonicalization) of both sides. A publisher whose `authorized_agents[].url` is **origin-only** (`https://a.example` or `https://a.example/`) authorizes every agent URL with that canonical origin (same scheme, host and port), so it is returned for `https://a.example/mcp` and `https://a.example/a2a` alike (DR-0023, AdCP 3.3). An entry **with a path** matches that canonical URL only, and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two trailing-slash spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
@@ -8537,6 +8832,7 @@ paths:
                           description: Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.
                         signing_keys_pinned:
                           type: boolean
+                          description: "Scope-agnostic summary: true only when every in-window authorized_agents entry that matches the agent carries signing_keys. Verifiers compute the pin per message scope, so a pin can apply where this reads false."
                         status:
                           type: string
                           enum:
@@ -8586,7 +8882,7 @@ paths:
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
 
-        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
+        `agent_url` is matched with the [adagents.json agent URL matching](/docs/governance/property/adagents#agent-url-matching) rule, after [AdCP URL canonicalization](/docs/reference/url-canonicalization) of both sides. A publisher whose `authorized_agents[].url` is **origin-only** (`https://a.example` or `https://a.example/`) authorizes every agent URL with that canonical origin (same scheme, host and port), so it is returned for `https://a.example/mcp` and `https://a.example/a2a` alike (DR-0023, AdCP 3.3). An entry **with a path** matches that canonical URL only, and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two trailing-slash spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
@@ -8692,6 +8988,7 @@ paths:
                           description: Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.
                         signing_keys_pinned:
                           type: boolean
+                          description: "Scope-agnostic summary: true only when every in-window authorized_agents entry that matches the agent carries signing_keys. Verifiers compute the pin per message scope, so a pin can apply where this reads false."
                         status:
                           type: string
                           enum:
@@ -11398,9 +11695,9 @@ paths:
       parameters:
         - schema:
             type: string
-            description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
+            description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not. Returns the rows whose `agent_url` authorizes it under adagents.json agent URL matching: rows for the same canonical URL, plus rows whose `agent_url` is origin-only (`https://agent.example.com`) for the same canonical origin, which authorize every path at that origin."
           required: true
-          description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
+          description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not. Returns the rows whose `agent_url` authorizes it under adagents.json agent URL matching: rows for the same canonical URL, plus rows whose `agent_url` is origin-only (`https://agent.example.com`) for the same canonical origin, which authorize every path at that origin."
           name: agent_url
           in: query
         - schema:
@@ -11499,7 +11796,7 @@ paths:
                             - "null"
                           items:
                             $ref: "#/components/schemas/SigningKey"
-                          description: Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).
+                          description: "Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx). This is one entry's pin. Rows from the same publisher combine per message scope: among the rows that authorize that scope, the publisher pins the agent only if every one carries keys, and the pin is the union of their keys (docs/governance/property/adagents.mdx#agent-url-matching)."
                         collections:
                           type:
                             - array
@@ -15308,6 +15605,8 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/StoryboardSkippedStep"
+                      verdict_explanation:
+                        $ref: "#/components/schemas/StoryboardVerdictExplanation"
                     required:
                       - storyboard_id
                       - status
@@ -15321,6 +15620,7 @@ paths:
                       - first_failure_message
                       - first_failure_validations
                       - skipped_steps
+                      - verdict_explanation
                     description: Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status.
                   phases: {}
                   summary: {}

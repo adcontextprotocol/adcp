@@ -609,6 +609,26 @@
       "pullRequestNo": 8832,
       "comment_id": 6733793150,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8832#issuecomment-6733793150"
+    },
+    {
+      "name": "Synaeve",
+      "id": 354527336,
+      "created_at": "2026-11-09T16:31:05Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 8855,
+      "comment_id": 6745402922,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8855#issuecomment-6745402922"
+    },
+    {
+      "name": "lukasz-pubx",
+      "id": 215680673,
+      "created_at": "2026-11-11T18:51:05Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 8931,
+      "comment_id": 6804487152,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8931#issuecomment-6804487152"
     }
   ]
 }

@@ -50,6 +50,7 @@ import { buildCreativeTenantConfig } from './creative.js';
 import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
 import { buildSiTenantConfig } from './si.js';
+import { INVENTORY_TENANT_IDS, buildInventoryTenantConfig } from './inventory.js';
 import { createLogger } from '../../logger.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION, TRAINING_AGENT_HOSTED_PREVIEW } from '../candidate-version.js';
@@ -329,6 +330,10 @@ export function createRegistryHolder(options: {
           { id: 'creative-builder', taskRegistry: pickTaskRegistry('creative-builder'), cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
           { id: 'brand', taskRegistry: pickTaskRegistry('brand'), cfg: buildBrandTenantConfig(hostBase, options) },
           { id: 'si', taskRegistry: pickTaskRegistry('si'), cfg: buildSiTenantConfig(hostBase, options) },
+          // Inventory tenants serve only the current wire, never the 3.0 compat route.
+          ...(options.storyboardCompat?.version === '3.0' ? [] : INVENTORY_TENANT_IDS.map(id => (
+            { id, taskRegistry: pickTaskRegistry(id), cfg: buildInventoryTenantConfig(id, hostBase, options), optional: true }
+          ))),
         ].filter(({ id }) => !options.tenantIds || options.tenantIds.includes(id));
         const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator
@@ -336,7 +341,7 @@ export function createRegistryHolder(options: {
         // would race the background validation and see 'pending' (refused
         // traffic) for the first ~10ms.
         await Promise.all(
-          configs.map(async ({ id, taskRegistry, cfg }) => {
+          configs.map(async ({ id, taskRegistry, cfg, ...entry }) => {
             const start = Date.now();
             try {
               await reg.register(cfg.tenantId, {
@@ -358,6 +363,9 @@ export function createRegistryHolder(options: {
                 },
                 'Tenant register failed',
               );
+              // An inventory tenant (#9025) that fails to register stays
+              // down without taking the other tenants with it.
+              if ('optional' in entry && entry.optional) return;
               throw err;
             }
           }),

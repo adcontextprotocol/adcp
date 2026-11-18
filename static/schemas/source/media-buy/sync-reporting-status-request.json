@@ -41,5 +41,5 @@
     "partial_results": "Each status is independent. One failed result does not roll back successfully recorded statuses; retries use the same status IDs and content.",
     "buyer_duty": "When the seller advertises consumer_status_task, a buyer using that Reliable Reporting configuration MUST automate this task: report a failed consumption promptly after its bounded retry/give-up window expires, report each later state change, and post a current status for every elapsed expected period no later than that period's expected_at plus the seller's advertised automated_recovery_window_seconds. That deadline, not scope close, is the buyer's duty; a still-retrying buyer posts revision_missing or unreadable by the deadline and supersedes it later rather than staying silent. A buyer MUST also have a current status for every elapsed expected period before closing that reporting scope. Until the field becomes required Core in the next eligible minor, its absence means the buyer retains status locally and does not infer a reverse endpoint. Seller production health never depends on receiving buyer status, and missing buyer feedback never excuses a seller obligation: a missed deadline is counted in the seller's obligation_counts.consumer_status_pending and creates no issue and no health change."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

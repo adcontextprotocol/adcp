@@ -43,6 +43,23 @@ const creativeScenariosPath = path.join(
   'scenarios'
 );
 
+const PROVENANCE_AUDIT_SCENARIO = 'query_provenance_audit_observations';
+const PROVENANCE_CARVEOUT_CODE = 'OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED';
+const PROVENANCE_DIRECTED_CREATIVE_ID = 'acme_provenance_audit_directed_001';
+const PROVENANCE_REJECTION_CODE = 'PROVENANCE_CLAIM_CONTRADICTED';
+const ASYNC_LIFECYCLE_TASK_ID = 'task_async_media_buy_lifecycle_q3';
+const FORCE_SUBMITTED_SCENARIO = 'force_create_media_buy_arm';
+const FORCE_COMPLETION_SCENARIO = 'force_task_completion';
+const GOVERNANCE_BINDING_CAPABILITIES = {
+  adcp: {
+    governance_enforcement: {
+      accepted_governance_agents: {
+        any_of: [{ kind: 'agent_url', agent_url: 'https://test-agent.adcontextprotocol.org/' }],
+      },
+    },
+  },
+};
+
 function loadMediaBuyStoryboard(name) {
   const candidates = [
     path.join(mediaBuyScenariosPath, `${name}.yaml`),
@@ -432,6 +449,77 @@ test('runStoryboard skips a not_contains-gated phase when the array contains the
   assert.equal(result.skipped_count, 1);
   assert.equal(result.phases[0].steps[0].skip_reason, 'not_applicable');
   assert.match(result.phases[0].steps[0].error, /must not contain "operator"/);
+});
+
+test('audience_buy_flow runs the member push only for sellers that accept inline pushes', async () => {
+  // adcp#8998: from 3.3 a seller can declare audience_targeting without
+  // inline member push (adcp#8996). Its push, positive buy and delivery
+  // phases grade not_applicable; setup and the unbound-audience rejection
+  // still run. Needs any_of and object-subset contains (adcp-client#3711).
+  const source = loadMediaBuyStoryboard('audience_buy_flow');
+  const storyboard = {
+    ...source,
+    prerequisites: undefined,
+    fixtures: undefined,
+    phases: source.phases.map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({ ...step, validations: [] })),
+    })),
+  };
+  const tools = ['get_adcp_capabilities', 'sync_accounts', ...storyboard.required_tools];
+  const gated = ['audience_binding', 'create_buy_with_audience', 'delivery_check'];
+  const run = async methods => {
+    const calls = [];
+    const result = await runStoryboard('https://seller.example/mcp', storyboard, {
+      protocol: 'mcp',
+      _profile: {
+        name: 'Audience seller',
+        tools,
+        raw_capabilities: {
+          media_buy: {
+            audience_targeting: {
+              supported_identifier_types: ['hashed_email'],
+              ...(methods === undefined ? {} : { supported_activation_methods: methods }),
+            },
+          },
+        },
+      },
+      agentTools: tools,
+      _client: {
+        async executeTask(name) {
+          calls.push(name);
+          return {
+            success: true,
+            data: {
+              accounts: [{ account_id: 'acct-1', status: 'active' }],
+              products: [],
+              audiences: [{ audience_id: 'acmeoutdoor-loyal-customers', action: 'created' }],
+              media_buy_id: 'mb-1',
+              success: true,
+            },
+          };
+        },
+      },
+    });
+    const skippedPhases = result.phases
+      .filter(phase => phase.steps.every(step => step.skipped && step.skip?.reason === 'not_applicable'))
+      .map(phase => phase.phase_id);
+    return { calls, skippedPhases };
+  };
+
+  const noPush = await run([
+    { pattern: 'tmp_identity_match', buyer_agent: { agent_url: 'https://buyer.example/a2a' } },
+    { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
+  ]);
+  assert.deepEqual(noPush.skippedPhases, gated);
+  assert.ok(!noPush.calls.includes('sync_audiences'), 'no member push is sent to a no-push seller');
+  assert.ok(noPush.calls.includes('create_media_buy'), 'the unbound-audience rejection still runs');
+
+  for (const methods of [undefined, [{ pattern: 'sync_audiences' }, { pattern: 'dataset_query', vendor: { domain: 'd.example' } }]]) {
+    const push = await run(methods);
+    assert.deepEqual(push.skippedPhases, [], JSON.stringify(methods));
+    assert.ok(push.calls.includes('sync_audiences'));
+  }
 });
 
 test('runStoryboard structurally matches object-valued governance task gates', async () => {
@@ -1393,8 +1481,8 @@ test('measurement acceptance is split from the universal rejection scenario', as
 });
 
 test('storyboard capability gates use the schema shape the runner evaluates', () => {
-  // requires_capability is a single predicate; compound AND gates belong in
-  // requires_all_capabilities. A malformed gate (e.g. `requires_capability:
+  // requires_capability is a single predicate or an any_of group; compound
+  // AND gates belong in requires_all_capabilities. A malformed gate (e.g. `requires_capability:
   // { all: [...] }`) crashes the runner before any step executes.
   const sourceRoot = path.join(__dirname, '..', 'static', 'compliance', 'source');
   const matchers = ['equals', 'contains', 'not_contains', 'present'];
@@ -1402,6 +1490,18 @@ test('storyboard capability gates use the schema shape the runner evaluates', ()
   const checkPredicate = (predicate, where) => {
     if (!predicate || typeof predicate !== 'object' || Array.isArray(predicate)) {
       problems.push(`${where}: predicate must be an object`);
+      return;
+    }
+    // OR-composition (adcp-client#3711): an any_of group of two or more
+    // predicates, with no sibling keys.
+    if ('any_of' in predicate) {
+      const siblings = Object.keys(predicate).filter(key => key !== 'any_of');
+      if (siblings.length > 0) problems.push(`${where}: any_of cannot be combined with ${siblings.join(', ')}`);
+      if (!Array.isArray(predicate.any_of) || predicate.any_of.length < 2) {
+        problems.push(`${where}: any_of must list at least two predicates`);
+        return;
+      }
+      predicate.any_of.forEach((entry, index) => checkPredicate(entry, `${where}.any_of[${index}]`));
       return;
     }
     if (typeof predicate.path !== 'string' || predicate.path.length === 0) {
@@ -1926,4 +2026,296 @@ test('product signal targeting never sends an unresolved product_id to its rejec
     .steps.find(step => step.step_id === 'create_media_buy_with_unknown_signal');
   assert.equal(probe.skipped, true);
   assert.equal(probe.skip_reason, 'prerequisite_failed');
+});
+
+async function runWithStubbedSeller(storyboard, rawCapabilities, respond) {
+  const executable = { ...storyboard, requires: undefined, prerequisites: undefined, fixtures: undefined };
+  const tools = ['get_adcp_capabilities', ...(storyboard.required_tools ?? [])];
+  const dispatched = [];
+  const result = await runStoryboard('https://agent.example/mcp', executable, {
+    _profile: { tools, raw_capabilities: rawCapabilities },
+    agentTools: tools,
+    _client: {
+      resetContext() {},
+      async executeTask(task, request) {
+        dispatched.push({ task, request });
+        return respond(task, request);
+      },
+    },
+  });
+  return { result, dispatched };
+}
+
+test('product_coverage_filters skips its wholesale get_products phase for brief-only sellers', async () => {
+  const storyboard = loadMediaBuyStoryboard('product_coverage_filters');
+  const legacy = storyboard.phases.find(phase => phase.id === 'legacy_coverage');
+  const compact = storyboard.phases.find(phase => phase.id === 'compact_coverage');
+  assert.deepEqual(legacy.requires_capability, { path: 'media_buy.buying_modes', contains: 'wholesale' });
+  assert.deepEqual(compact.depends_on, []);
+
+  const { result, dispatched } = await runWithStubbedSeller(
+    storyboard,
+    { media_buy: { buying_modes: ['brief', 'refine'] } },
+    () => ({ success: false, status: 'failed', error: 'stub' })
+  );
+
+  assert.equal(dispatched.some(call => call.task === 'get_products'), false);
+  const legacyResult = result.phases.find(phase => phase.phase_id === 'legacy_coverage');
+  assert.equal(legacyResult.steps[0].skipped, true);
+  assert.equal(legacyResult.steps[0].skip_reason, 'not_applicable');
+  const compactResult = result.phases.find(phase => phase.phase_id === 'compact_coverage');
+  assert.notEqual(compactResult.steps[0].skip_reason, 'prerequisite_failed');
+});
+
+function portfolioCapabilities(buyingModes) {
+  return {
+    adcp: { major_versions: [3], idempotency: { supported: false } },
+    supported_protocols: ['media_buy'],
+    media_buy: {
+      buying_modes: buyingModes,
+      portfolio: { publisher_domains: ['acmeoutdoor.example'], primary_countries: ['US'], primary_channels: ['display'] },
+    },
+  };
+}
+
+async function runPortfolioRoutingScope(capabilities) {
+  // parseStoryboard maps context_outputs `name` to the context key that skip_if reads.
+  const source = path.join(mediaBuyScenariosPath, 'portfolio_routing_scope.yaml');
+  const storyboard = parseStoryboard(fs.readFileSync(source, 'utf8'));
+  return runWithStubbedSeller(storyboard, capabilities, (task, request) => {
+    if (task === 'get_adcp_capabilities') {
+      return { success: true, status: 'completed', data: { ...capabilities, context: request.context } };
+    }
+    return { success: true, status: 'completed', data: { products: [], context: request.context } };
+  });
+}
+
+test('portfolio_routing_scope reads declared channels in wholesale mode for wholesale sellers', async () => {
+  const { dispatched } = await runPortfolioRoutingScope(portfolioCapabilities(['brief', 'wholesale']));
+  const reads = dispatched.filter(call => call.task === 'get_products');
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0].request.buying_mode, 'wholesale');
+});
+
+test('portfolio_routing_scope skips the product read when no channel scope is declared', async () => {
+  const capabilities = portfolioCapabilities(['brief', 'wholesale']);
+  delete capabilities.media_buy.portfolio.primary_channels;
+  const { dispatched, result } = await runPortfolioRoutingScope(capabilities);
+  assert.deepEqual(dispatched.filter(call => call.task === 'get_products'), []);
+  assert.equal(result.failed_count, 0);
+});
+
+test('portfolio_routing_scope skips the product read for brief-only sellers', async () => {
+  const { dispatched, result } = await runPortfolioRoutingScope(portfolioCapabilities(['brief', 'refine']));
+  assert.deepEqual(dispatched.filter(call => call.task === 'get_products'), []);
+  assert.equal(result.failed_count, 0);
+});
+
+function loadParsedMediaBuyStoryboard(name) {
+  return parseStoryboard(fs.readFileSync(path.join(mediaBuyScenariosPath, `${name}.yaml`), 'utf8'));
+}
+
+// Response schemas are linted separately. These stubs return only the fields
+// the authored checks read, so each run isolates how a missing optional tool
+// is graded and what it blocks.
+async function runOptionalToolSeller(storyboard, tools, rawCapabilities, respond) {
+  const executable = {
+    ...storyboard,
+    prerequisites: undefined,
+    fixtures: undefined,
+    phases: storyboard.phases.map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({
+        ...step,
+        validations: (step.validations ?? []).filter(validation => validation.check !== 'response_schema'),
+      })),
+    })),
+  };
+  const agentTools = ['get_adcp_capabilities', ...tools];
+  const dispatched = [];
+  const result = await runStoryboard('https://agent.example/mcp', executable, {
+    _profile: { tools: agentTools, raw_capabilities: rawCapabilities },
+    agentTools,
+    _client: {
+      resetContext() {},
+      async executeTask(task, request) {
+        dispatched.push(request.scenario ? `${task}:${request.scenario}` : task);
+        const data = { ...respond(task, request), context: request.context };
+        return { success: true, status: data.status ?? 'completed', data };
+      },
+    },
+  });
+  return { result, dispatched };
+}
+
+function phaseSteps(result, phaseId) {
+  const phase = result.phases.find(candidate => candidate.phase_id === phaseId);
+  assert.ok(phase, `missing phase ${phaseId}`);
+  return phase.steps;
+}
+
+function assertNoCascadeFailures(result) {
+  const cascaded = result.phases.flatMap(phase => phase.steps).filter(step => step.skip_reason === 'prerequisite_failed');
+  assert.deepEqual(cascaded.map(step => step.step_id), []);
+  assert.equal(result.failed_count, 0, JSON.stringify(result.phases));
+  assert.equal(result.overall_passed, true);
+}
+
+test('provenance audit reads skip with a missing sync_creatives instead of failing', async () => {
+  const storyboard = loadParsedMediaBuyStoryboard('provenance_audit_observation');
+  const [product] = storyboard.fixtures.products;
+  const respond = (task, request) => {
+    if (task === 'get_products') return { products: [product] };
+    if (task === 'sync_creatives') {
+      return { creatives: request.creatives.map(creative => ({ creative_id: creative.creative_id, action: 'created' })) };
+    }
+    const humanOversight = request.params.creative_id === PROVENANCE_DIRECTED_CREATIVE_ID ? 'directed' : 'edited';
+    return {
+      success: true,
+      audit_observations: [{
+        code: PROVENANCE_CARVEOUT_CODE,
+        details: { claimed_value: { human_oversight: humanOversight, disclosure_required: false } },
+      }],
+    };
+  };
+  const optedIn = { creative: { supports_provenance: true }, compliance_testing: { scenarios: [PROVENANCE_AUDIT_SCENARIO] } };
+
+  const withoutSync = await runOptionalToolSeller(storyboard, ['get_products', 'comply_test_controller'], optedIn, respond);
+  assert.deepEqual(withoutSync.dispatched, ['get_products']);
+  assertNoCascadeFailures(withoutSync.result);
+  const skipped = ['accept_carveout_claim', 'observe_directed_audit', 'observe_edited_audit']
+    .flatMap(phaseId => phaseSteps(withoutSync.result, phaseId));
+  assert.equal(skipped.length, 3);
+  for (const step of skipped) {
+    assert.equal(step.skip_reason, 'missing_tool', step.step_id);
+    assert.match(step.skip.detail, /sync_creatives/, step.step_id);
+  }
+
+  // Coverage follows the advertised tool, not a creative-library declaration.
+  const withSync = await runOptionalToolSeller(
+    storyboard,
+    ['get_products', 'sync_creatives', 'comply_test_controller'],
+    optedIn,
+    respond
+  );
+  const auditQuery = `comply_test_controller:${PROVENANCE_AUDIT_SCENARIO}`;
+  assert.deepEqual(withSync.dispatched, ['get_products', 'sync_creatives', auditQuery, auditQuery]);
+  assertNoCascadeFailures(withSync.result);
+
+  // The reads still depend on the sync: a rejected sync must block both.
+  const rejectSync = (task, request) => (task === 'sync_creatives'
+    ? { creatives: request.creatives.map(creative => ({
+      creative_id: creative.creative_id,
+      action: 'failed',
+      errors: [{ code: PROVENANCE_REJECTION_CODE }],
+    })) }
+    : respond(task, request));
+  const rejected = await runOptionalToolSeller(
+    storyboard,
+    ['get_products', 'sync_creatives', 'comply_test_controller'],
+    optedIn,
+    rejectSync
+  );
+  assert.deepEqual(rejected.dispatched, ['get_products', 'sync_creatives']);
+  assert.equal(rejected.result.overall_passed, false);
+  for (const phaseId of ['observe_directed_audit', 'observe_edited_audit']) {
+    const [read] = phaseSteps(rejected.result, phaseId);
+    assert.equal(read.skip_reason, 'prerequisite_failed', read.step_id);
+    assert.equal(read.passed, false, read.step_id);
+  }
+});
+
+test('optional task reconciliation reads never block each other or the controller completion', async () => {
+  const storyboard = loadParsedMediaBuyStoryboard('create_media_buy_async_lifecycle');
+  const respondWithLifecycle = () => {
+    let terminalResult;
+    return (task, request) => {
+      if (request.scenario === FORCE_SUBMITTED_SCENARIO) {
+        return { success: true, forced: { arm: 'submitted', task_id: ASYNC_LIFECYCLE_TASK_ID } };
+      }
+      if (request.scenario === FORCE_COMPLETION_SCENARIO) {
+        terminalResult = request.params.result;
+        return { success: true, current_state: 'completed' };
+      }
+      if (task === 'create_media_buy') return { status: 'submitted', task_id: ASYNC_LIFECYCLE_TASK_ID };
+      const status = terminalResult ? 'completed' : 'submitted';
+      const identity = { task_id: ASYNC_LIFECYCLE_TASK_ID, task_type: 'create_media_buy', status };
+      if (task === 'get_task_status') return { ...identity, protocol: 'media-buy', ...(terminalResult && { result: terminalResult }) };
+      return { query_summary: { total_matching: 1 }, tasks: [{ ...identity, domain: 'media-buy' }] };
+    };
+  };
+  const bothScenarios = { compliance_testing: { scenarios: [FORCE_SUBMITTED_SCENARIO, FORCE_COMPLETION_SCENARIO] } };
+  const forceSubmitted = `comply_test_controller:${FORCE_SUBMITTED_SCENARIO}`;
+  const forceCompletion = `comply_test_controller:${FORCE_COMPLETION_SCENARIO}`;
+  const runSeller = (tools, capabilities = bothScenarios) =>
+    runOptionalToolSeller(storyboard, ['create_media_buy', ...tools, 'comply_test_controller'], capabilities, respondWithLifecycle());
+
+  const baseline = await runSeller([]);
+  assert.deepEqual(baseline.dispatched, [forceSubmitted, 'create_media_buy', forceCompletion]);
+  assertNoCascadeFailures(baseline.result);
+
+  const listOnly = await runSeller(['list_tasks']);
+  assert.deepEqual(listOnly.dispatched, [forceSubmitted, 'create_media_buy', 'list_tasks', forceCompletion, 'list_tasks']);
+  assertNoCascadeFailures(listOnly.result);
+  assert.equal(phaseSteps(listOnly.result, 'poll_submitted_task')[0].skip_reason, 'missing_tool');
+
+  const bothReads = await runSeller(['get_task_status', 'list_tasks']);
+  assert.deepEqual(bothReads.dispatched, [
+    forceSubmitted, 'create_media_buy', 'get_task_status', 'list_tasks',
+    forceCompletion, 'get_task_status', 'list_tasks',
+  ]);
+  assertNoCascadeFailures(bothReads.result);
+  assert.equal(bothReads.result.skipped_count, 0);
+
+  // Without the completion hook, the completed-task reads have nothing to
+  // observe. They must carry the completion gate themselves rather than rely
+  // on a runner forwarding the skipped completion phase through depends_on.
+  const noCompletionHook = await runSeller(
+    ['get_task_status', 'list_tasks'],
+    { compliance_testing: { scenarios: [FORCE_SUBMITTED_SCENARIO] } }
+  );
+  assert.deepEqual(noCompletionHook.dispatched, [forceSubmitted, 'create_media_buy', 'get_task_status', 'list_tasks']);
+  assertNoCascadeFailures(noCompletionHook.result);
+  for (const phaseId of ['complete_task', 'poll_completed_task', 'list_completed_task']) {
+    for (const step of phaseSteps(noCompletionHook.result, phaseId)) {
+      assert.equal(step.skip_reason, 'not_applicable', step.step_id);
+      assert.match(step.skip.detail, /force_task_completion/, step.step_id);
+    }
+  }
+});
+
+test('governance binding recovery is graded without the optional controller read', async () => {
+  const storyboard = loadParsedMediaBuyStoryboard('governance_agent_binding_acceptance');
+  const acceptedUrl = storyboard.context.governance_agent_url;
+  const respond = (task, request) => {
+    if (task === 'sync_accounts') return { accounts: [{ account_id: 'acct_governance_binding' }] };
+    if (task === 'comply_test_controller') return { success: true, simulated: { governance_agents: [{ url: acceptedUrl }] } };
+    const url = request.accounts[0].governance_agents[0].url;
+    if (url !== acceptedUrl) return { accounts: [{ status: 'failed', errors: [{ code: 'GOVERNANCE_AGENT_NOT_ACCEPTED' }] }] };
+    return { accounts: [{ status: 'synced', governance_agents: [{ url }] }] };
+  };
+  const setup = ['sync_accounts', 'sync_governance', 'sync_governance'];
+
+  const withoutController = await runOptionalToolSeller(
+    storyboard,
+    ['sync_accounts', 'sync_governance'],
+    GOVERNANCE_BINDING_CAPABILITIES,
+    respond
+  );
+  assert.deepEqual(withoutController.dispatched, [...setup, 'sync_governance']);
+  assertNoCascadeFailures(withoutController.result);
+  assert.equal(phaseSteps(withoutController.result, 'verify_retained_binding')[0].skip_reason, 'missing_test_controller');
+
+  const withController = await runOptionalToolSeller(
+    storyboard,
+    ['sync_accounts', 'sync_governance', 'comply_test_controller'],
+    GOVERNANCE_BINDING_CAPABILITIES,
+    respond
+  );
+  assert.deepEqual(withController.dispatched, [
+    ...setup,
+    'comply_test_controller:query_account_governance_binding',
+    'sync_governance',
+  ]);
+  assertNoCascadeFailures(withController.result);
 });

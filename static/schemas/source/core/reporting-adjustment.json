@@ -22,7 +22,7 @@
         "end": { "type": "string", "format": "date-time" }
       },
       "required": ["start", "end"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "control_total_deltas": {
       "type": "array",
@@ -42,5 +42,5 @@
     "ordering": "correction_observed_at MUST be no earlier than the adjusted revision's finalized_at and no later than created_at.",
     "canonical_evidence": "When the adjusted revision belongs to an obligation whose selected atomic offering uses reconciliation_mode: consumer_receipt (the Reconciled Billing tier), the adjustment MUST include canonical_adjustment_sha256 computed over the complete immutable adjustment object with only canonical_adjustment_sha256 omitted, using RFC 8785 JCS UTF-8 bytes and SHA-256. A seller's separate Core or Managed Delivery obligations do not inherit this requirement merely because the seller also advertises reconciled_billing: true; their adjustments do not require digest or receipt code and MAY omit this field."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

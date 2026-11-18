@@ -101,7 +101,7 @@
         "name": { "type": "string", "minLength": 1 }
       },
       "required": ["domain"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "acceptance_profile": {
       "$ref": "/schemas/media-buy/acceptance-policy-profile.json",
@@ -131,14 +131,14 @@
           "description": "Scenarios that violate this policy."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
   "required": ["policy_id", "enforcement", "policy"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "$defs": {
     "exemplar": {
       "type": "object",
@@ -153,7 +153,7 @@
         }
       },
       "required": ["scenario", "explanation"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   }
 }

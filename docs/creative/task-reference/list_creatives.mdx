@@ -321,11 +321,17 @@ To manage one of these creatives, a buyer uses its `creative_id` as-is. See [sel
 
 `platform_id` is the seller's identifier for the creative in its source of truth, the same value `sync_creatives` returns. It lets operators match a creative to the seller's own UI and reports without keeping the sync response. Buyers address creatives by `creative_id`, never by `platform_id`.
 
+### Adjacent-code readback
+
+Proposed for AdCP 3.4, with WG approval pending: each `assignments.assigned_packages[]` row MAY carry `adjacent_code[]`, mirroring [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the same assignment. Supporting sellers report the complete array, including pending or omitted code. Required code that is not applied holds assignment delivery while creative `status` and assignment `approval_status` retain their review meanings. Omission means undeclared; `[]` explicitly reports none. See [adjacent code](/docs/creative/adjacent-code) for provider scope and notification rules.
+
 ### Assignment indicators
 
 In AdCP 3.3, sellers advertising `creative.supports_assignment_trackers` MUST return `assignments.assigned_packages[].trackers`: the complete assignment-scoped tracker list, or `[]` when none are attached. Preserve event names, URL templates, order, and duplicate occurrences. The list excludes the creative's own trackers in `assets`; both sets fire on this placement. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers).
 
 In AdCP 3.3, `assignments.assigned_packages[].landing_page_url` reports the effective serving destination for that creative on that package. Sellers advertising `creative.supports_assignment_landing_page` return the assignment override, or the creative's own destination when unique. Macro-bearing URLs retain the effective template. Omit the scalar when no destination exists or an unoverridden creative has multiple destinations; read those from the creative's `assets` rather than treating an arbitrary destination as applying to every click. The creative's own `status` and assignment `approval_status` remain separate. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages).
+
+In AdCP 3.3, sellers that list the experimental `media_buy.installment_creative_assignment` return `assignments.assigned_packages[].installment_refs` on every assignment limited to some installments of the package, and omit it when the assignment applies to every installment. See [assigning to specific installments](/docs/creative/task-reference/sync_creatives#assigning-to-specific-installments-experimental).
 
 Creative-library sellers that advertise `list_creatives` in `media_buy.relationship_notifications.projection_tasks` attach evaluated indicator state to `assignments.assigned_packages[]` and include `media_buy_id` plus `approval_status` on every row, including unknown rows. These fields mirror [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the same relationship. A mixed publisher/placement outcome uses `approval_status: "partially_approved"` plus complete `approval_scopes[]`; the assignment webhook remains a compact invalidation and buyers reread these scopes. Each evaluated row includes `indicator_types_evaluated`, `indicators_as_of`, and `indicators[]`; omitted types remain unknown.
 

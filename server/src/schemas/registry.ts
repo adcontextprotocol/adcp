@@ -631,9 +631,11 @@ export const ResolvedBrandSchema = z
       description: "Loss or ambiguity encountered while promoting a pre-v3 document. A `house` warning means the legacy house object was preserved only as opaque metadata and did not establish a trusted relationship.",
     }),
     brand_agent_url: z.string().optional(),
-    brand_manifest: z.record(z.string(), z.unknown()).optional(),
+    brand_manifest: z.record(z.string(), z.unknown()).optional().openapi({
+      description: "Stored or origin brand manifest. Each logo object in `logos[]` (and in `brands[].logos[]`) carries `background`, the brand.json field naming the background the logo is drawn for: `light-bg` (dark ink), `dark-bg` (light ink) or `transparent-bg`. A declared `background` in that enum is returned as published; any other declared value is treated as undeclared and is never returned. Otherwise it comes from a `light-bg` or `dark-bg` tag, then a `transparent-bg` tag, and for AgenticAdvertising.org-hosted logos from the luminance of the rendered logo (`light-bg` or `dark-bg`). It is absent when none of these is known.",
+    }),
     brand: z.record(z.string(), z.unknown()).optional().openapi({
-      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.",
+      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization. Logos in `brand.logos[]` carry `background` on the same rules as `brand_manifest.logos[]`.",
     }),
     source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
       description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
@@ -906,8 +908,11 @@ const BadgeGradingEvidenceSchema = z.object({
   relevant_bundle_ids: z.array(z.string()),
   failing_bundle_count: z.number().int().nonnegative(),
   incomplete_bundle_count: z.number().int().nonnegative(),
+  incomplete_bundle_ids: z.array(z.string()).optional().openapi({
+    description: "Relevant bundles, as kind:id, that keep Strict Spec partial because their evidence is incomplete: an untested or partially covered storyboard, including runner and test-kit gaps.",
+  }),
   not_applicable_universal_bundle_ids: z.array(z.string()).optional().openapi({
-    description: "Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.",
+    description: "Universal bundles left partial only because the agent does not offer the surface: it advertises none of the tools for a surface it does not declare, or it does not advertise request signing for signed_requests. They do not count as incomplete.",
   }),
   relevant_failure_count: z.number().int().nonnegative(),
   missing_universal_bundle: z.boolean(),
@@ -980,6 +985,30 @@ export const StoryboardSkippedStepSchema = z
     blocked_by_reason: z.string().nullable().openapi({ description: "'failed', or the skip reason of the earlier step." }),
   })
   .openapi("StoryboardSkippedStep");
+
+export const StoryboardVerdictContributorSchema = z
+  .object({
+    kind: z.string().nullable().openapi({ description: "step, assertion, phase or requirement." }),
+    id: z.string().nullable().openapi({ description: "Step id, assertion id, phase id, or requirement name." }),
+    reason: z.string().nullable().openapi({ description: "The verdict reason this row supports." }),
+    status: z.string().nullable().openapi({ description: "failed, skipped, or not_passed." }),
+    phase_id: z.string().nullable(),
+    pass_index: z.number().int().nullable().openapi({ description: "1-based pass index in multi-pass runs." }),
+    skip_reason: z.string().nullable().openapi({ description: "Runner skip reason, when the step was skipped." }),
+    requirement: z.string().nullable().openapi({ description: "Unmet requirement named by the skip, e.g. controller." }),
+    message: z.string().nullable().openapi({ description: "Redacted runner text. May echo agent-supplied values." }),
+  })
+  .openapi("StoryboardVerdictContributor");
+
+export const StoryboardVerdictExplanationSchema = z
+  .object({
+    reason: z.string().openapi({
+      description: "Runner verdict_reason: step_failed, assertion_failed, controller_prerequisite_unmet, required_phase_not_executed, no_executed_steps, fixture_error, coverage_unverified, runner_error, or unexplained. runner_error is not an agent failure.",
+    }),
+    detail: z.string().nullable().openapi({ description: "One-line redacted runner explanation. May echo agent-supplied values." }),
+    contributing: z.array(StoryboardVerdictContributorSchema).openapi({ description: "Up to 10 steps, assertions, phases or requirements behind the verdict." }),
+  })
+  .openapi("StoryboardVerdictExplanation");
 
 export const AgentComplianceDetailSchema = z
   .object({
@@ -1083,6 +1112,7 @@ export const AgentComplianceDetailSchema = z
       first_failure_message: z.string().nullable(),
       first_failure_validations: z.array(z.any()).openapi({ description: "Validation evidence for the first failure. Populated only for owners and empty for other callers." }),
       skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers." }),
+      verdict_explanation: StoryboardVerdictExplanationSchema.nullable().openapi({ description: "Why the storyboard failed when no counted step did (adcp#8576). Populated only for owners and operators; null for other callers and for passing or step-level verdicts." }),
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
     })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
@@ -1159,6 +1189,7 @@ export const StoryboardStatusSchema = z
     first_failed_step_task: z.string().nullable().openapi({ description: "Task/tool name for the first root failing or actionable skipped step, when captured." }),
     first_failure_message: z.string().nullable().openapi({ description: "Runner error/detail text for the first root failing or actionable skipped step, when captured." }),
     skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers." }),
+    verdict_explanation: StoryboardVerdictExplanationSchema.nullable().openapi({ description: "Why the storyboard failed when no counted step did (adcp#8576). Populated only for owners and operators; null for other callers and for passing or step-level verdicts." }),
     last_tested_at: z.string().nullable(),
     last_passed_at: z.string().nullable(),
   })
@@ -1200,7 +1231,7 @@ export const FederatedAgentWithDetailsSchema = z
     compliance: AgentComplianceSchema.optional(),
     declared_urls: z.array(z.string()).optional().openapi({
       description:
-        "Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches spec-exactly with the slash significant — so a client answering \"which publishers authorize this agent\" must query once per spelling here and merge the results.",
+        "Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches with adagents.json agent URL matching, where the slash is significant for an entry with a path — so a client answering \"which publishers authorize this agent\" must query once per spelling here and merge the results. Publishers that authorize the agent's bare origin are returned for every spelling.",
     }),
     publisher_domains: z.array(z.string()).optional(),
     property_summary: PropertySummarySchema.optional(),

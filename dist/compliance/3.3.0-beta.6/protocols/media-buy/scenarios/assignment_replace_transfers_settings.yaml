@@ -1,0 +1,314 @@
+id: media_buy_seller/assignment_replace_transfers_settings
+version: "1.0.0"
+introduced_in: "3.3"
+title: "A replace keeps the replaced assignment's trackers and landing page"
+category: media_buy_seller
+summary: "Verifies that sync_creatives assignment_operations assign attaches assignment trackers and a landing-page override, and that replace transfers both to the replacement creative so a swap changes the creative and nothing else."
+track: creative
+requires:
+  - controller
+
+required_tools:
+  - get_adcp_capabilities
+  - sync_creatives
+  - get_media_buys
+  - list_creatives
+  - comply_test_controller
+
+requires_all_capabilities:
+  - path: creative.supports_assignment_trackers
+    equals: true
+  - path: creative.supports_assignment_landing_page
+    equals: true
+
+narrative: |
+  Swapping the creative on a live package is routine: a refreshed asset, a
+  legal fix, or the recovery from CREATIVE_LIVE_UPDATE_UNSUPPORTED. A replace
+  operation swaps one creative for another in one atomic step, and the
+  replacement takes over the replaced assignment's authored settings
+  (docs/creative/task-reference/sync_creatives#replacing-a-creative-on-a-package).
+  A seller that drops the assignment trackers stops measurement, and one that
+  drops the landing-page override sends clicks to the wrong destination.
+
+  The controller seeds an active media buy with an empty package. The buyer
+  syncs two creatives and assigns the first with an impression tracker and a
+  landing-page override in the same atomic request, then replaces it with the
+  second. get_media_buys and list_creatives must show the tracker and the
+  landing page on the replacement, and the first creative gone from the package.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - has_creative_library
+  examples:
+    - "Sellers that support assignment-scoped trackers and landing pages"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds one active media buy whose package has no creatives.
+    The seller must accept an image creative with a clickthrough url asset.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_bafd80f5ec82"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_assignment_replace_-4e9d92ed"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  media_buys:
+    - media_buy_id: "assign_replace_buy"
+      account:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_assignment_replace_-4e9d92ed"
+        sandbox: true
+      status: "active"
+      currency: "USD"
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T00:00:00Z"
+      packages:
+        - package_id: "assign_replace_package"
+          product_id: "assign_replace_product"
+          pricing_option_id: "assign_replace_pricing"
+          budget: 1000
+
+phases:
+  - id: discover
+    title: "Confirm assignment trackers and landing pages"
+    steps:
+      - id: get_assignment_capabilities
+        title: "Read the assignment capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "assignment_replace_transfers_settings--capability"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "creative.supports_assignment_trackers"
+            value: true
+            description: "The seller accepts assignment trackers"
+          - check: field_value
+            path: "creative.supports_assignment_landing_page"
+            value: true
+            description: "The seller accepts assignment landing pages"
+
+  - id: assign_with_settings
+    title: "Assign a creative with a tracker and a landing page"
+    steps:
+      - id: sync_and_assign
+        title: "Sync two creatives and assign the first, atomically"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#assignment-trackers"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: &replace_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_assignment_replace_-4e9d92ed"
+            sandbox: true
+          creatives:
+            - creative_id: "replace_hero_v1"
+              name: "Replace hero v1"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/replace-hero-v1.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/v1"
+            - creative_id: "replace_hero_v2"
+              name: "Replace hero v2"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/replace-hero-v2.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/v2"
+          assignment_operations:
+            - operation: "assign"
+              creative_id: "replace_hero_v1"
+              package_id: "assign_replace_package"
+              trackers:
+                - event: "impression"
+                  url: "https://measure.pinnacle-agency.example/imp?pkg=assign_replace_package"
+              landing_page_url: "https://acmeoutdoor.example/spring-sale"
+          idempotency_key: "$generate:uuid_v4#assignment_replace_transfers_settings_assign"
+          context:
+            correlation_id: "assignment_replace_transfers_settings--assign"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_absent
+            path: "errors"
+            description: "The atomic sync and assignment is accepted"
+
+      - id: read_assigned_settings
+        title: "The package shows the tracker and the override"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        sample_request:
+          account: *replace_account
+          media_buy_ids: ["assign_replace_buy"]
+          context:
+            correlation_id: "assignment_replace_transfers_settings--read_assigned"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].creative_id"
+            value: "replace_hero_v1"
+            description: "The first creative is assigned"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].trackers[0].url"
+            value: "https://measure.pinnacle-agency.example/imp?pkg=assign_replace_package"
+            description: "The assignment tracker is read back"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].landing_page_url"
+            value: "https://acmeoutdoor.example/spring-sale"
+            description: "The landing-page override is the effective destination"
+
+  - id: replace_keeps_settings
+    title: "Replace the creative and keep its settings"
+    steps:
+      - id: replace_creative
+        title: "Replace the first creative with the second"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#replacing-a-creative-on-a-package"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *replace_account
+          # The replacement is re-sent unchanged so the request carries
+          # creatives; the replace itself needs only the assignment operation.
+          creatives:
+            - creative_id: "replace_hero_v2"
+              name: "Replace hero v2"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/replace-hero-v2.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/v2"
+          assignment_operations:
+            - operation: "replace"
+              creative_id: "replace_hero_v2"
+              replaces_creative_id: "replace_hero_v1"
+              package_id: "assign_replace_package"
+          idempotency_key: "$generate:uuid_v4#assignment_replace_transfers_settings_replace"
+          context:
+            correlation_id: "assignment_replace_transfers_settings--replace"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_absent
+            path: "errors"
+            description: "The replace is accepted"
+
+      - id: read_transferred_settings
+        title: "The replacement carries the tracker and the override"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        sample_request:
+          account: *replace_account
+          media_buy_ids: ["assign_replace_buy"]
+          context:
+            correlation_id: "assignment_replace_transfers_settings--read_replaced"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].creative_id"
+            value: "replace_hero_v2"
+            description: "The replacement took the replaced creative's place"
+          - check: field_absent
+            path: "media_buys[0].packages[0].creative_approvals[1]"
+            description: "The replaced creative is no longer assigned"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].trackers[0].url"
+            value: "https://measure.pinnacle-agency.example/imp?pkg=assign_replace_package"
+            description: "replace transfers the assignment tracker; it is never silently dropped"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].landing_page_url"
+            value: "https://acmeoutdoor.example/spring-sale"
+            description: "replace transfers the landing-page override rather than reverting to the replacement's own click-through"
+
+      - id: list_transferred_settings
+        title: "list_creatives agrees"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        sample_request:
+          account: *replace_account
+          filters:
+            creative_ids: ["replace_hero_v2"]
+          include_assignments: true
+          context:
+            correlation_id: "assignment_replace_transfers_settings--list"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].assignments.assigned_packages[0].package_id"
+            value: "assign_replace_package"
+            description: "The replacement is assigned to the package"
+          - check: field_value
+            path: "creatives[0].assignments.assigned_packages[0].trackers[0].url"
+            value: "https://measure.pinnacle-agency.example/imp?pkg=assign_replace_package"
+            description: "list_creatives reads back the transferred tracker"
+          - check: field_value
+            path: "creatives[0].assignments.assigned_packages[0].landing_page_url"
+            value: "https://acmeoutdoor.example/spring-sale"
+            description: "list_creatives reads back the transferred landing page"

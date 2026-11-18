@@ -40,7 +40,7 @@
       },
       "minProperties": 1,
       "maxProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "exclude_account_ids": {
       "type": "array",
@@ -60,7 +60,7 @@
     },
     "selector": {
       "type": "object",
-      "description": "Offering attributes that are stable across sellers. The seller resolves the selector separately for each account and its products. An account, buy, or package with no matching offering is excluded with reason offering_unsupported; that never fails the subscription.",
+      "description": "Offering attributes that are stable across sellers. The seller resolves the selector separately for each account and its products. An account, buy, or package with no matching offering is excluded with reason offering_unsupported; that never fails the subscription. Rejects `offering_id`: the selector chooses by stable attributes, never by a seller-specific offering.",
       "properties": {
         "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"], "description": "Same values as the offering feed_purpose." },
         "period_duration": {
@@ -96,7 +96,8 @@
         }
       },
       "required": ["feed_purpose", "period_duration", "required_finality"],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "required": ["offering_id"] }
     },
     "reconciliation_mode": {
       "$ref": "/schemas/core/reporting-reconciliation-mode.json",
@@ -127,7 +128,7 @@
         }
       },
       "required": ["destination_id"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "destination_overrides": {
       "type": "array",
@@ -151,7 +152,7 @@
           "then": { "properties": { "path_template": { "pattern": "\\{account_id\\}" } } }
         },
         "else": { "required": ["operator_domains"], "properties": { "path_template": { "pattern": "\\{account_id\\}" } } },
-        "additionalProperties": false
+        "additionalProperties": true
       }
     }
   },
@@ -208,7 +209,7 @@
     "delivery_within_flight": "A seller advertising media_buy.reporting_subscriptions, or holding an active billing generation of an account-level reporting_delivery_configs entry for the buy's account (reporting-delivery-config.json billing_continuity), MUST NOT deliver on a buy outside its flight, from start_time to the stop time defined in coverage, so all delivery on a buy falls in periods the coverage rule owes. To deliver past the stop time, including make-good delivery under makegood_policy additional_delivery on the same buy, the seller first extends end_time, recorded on the buy and advancing its revision before that delivery starts; the added periods are then still unresolved, so the coverage rule owes them. A canceled or completed buy is not extended: make-good delivery for it goes on a subsequent buy in the same account, which is covered like any other buy.",
     "destination": "destination_id, and every destination_overrides destination_id, MUST name a destination present in the caller's reporting_destinations after the same request applies; otherwise the whole request fails. Each account's data goes to the destination of the account_ids override naming it, else the operator_domains override naming its operator, else destination. When more than one active subscription of the caller shares a destination, every path_template MUST contain {account_id} and the templates MUST differ. Destination proof establishes where data may go, never which account data the caller may receive: every delivery re-checks account authority. Every delivered row carries account_id, set to the account the row reports. A seller advertising media_buy.reporting_subscriptions MUST publish, on every managed-delivery offering (one with method), a reporting_profile whose row schema declares account_id as a required string property and whose primary_keys include account_id, so rows from several accounts in one consolidated destination validate and never collide. An SDK refuses an offering that breaks this with SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY (reporting-delivery-offering.json subscription_rows)."
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Daily official analytics for every authorized account, partitioned by account",

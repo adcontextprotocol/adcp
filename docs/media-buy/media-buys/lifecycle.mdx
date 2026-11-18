@@ -254,8 +254,10 @@ performance standards, measurement terms, and makegood resolution.
 `buy_products` and `accept_proposal` do not accept creative bodies. After
 commitment, supply or update library creatives with `sync_creatives`, then use
 explicit `assignment_operations` to assign them to packages. A compact seller
-advertises the creative workflow it supports; callers should not infer an
-inline-creative path from older tool availability.
+advertises the creative workflow it supports, including the assignment
+operations it accepts in
+[`creative.assignment_operations`](/docs/creative/task-reference/sync_creatives#which-operations-a-seller-accepts);
+callers should not infer an inline-creative path from older tool availability.
 
 This sequence does not move request-time validation across the commitment
 boundary. On the compatibility facades, one invalid inline creative or

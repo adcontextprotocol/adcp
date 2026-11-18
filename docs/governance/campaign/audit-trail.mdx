@@ -41,7 +41,7 @@ The table below classifies every field in the [`get_plan_audit_logs`](/docs/gove
 | `plans[].summary.checks_performed`, `outcomes_reported` | yes | no | yes |
 | `plans[].summary.statuses` | yes | no | yes |
 | `plans[].summary.findings_count` | yes | no | yes |
-| `plans[].summary.human_reviews[]` | yes | no | redact reason; share resolution + timestamp on request |
+| `plans[].summary.escalations[]` | yes | no | redact reason; share resolution + timestamp on request |
 | `plans[].summary.drift_metrics.*` | yes | no | available if the buyer's counterparty rules require disclosure |
 | `plans[].entries[].id`, `type`, `timestamp` | yes | yes (own context only) | yes |
 | `plans[].entries[].caller` | yes | yes (own context only) | yes |
@@ -96,9 +96,9 @@ The seller can verify the `plan_hash` against the plan revision they signed unde
 
 A regulator typically asks for one of three things:
 
-1. **Did human oversight occur where required?** Share `summary.human_reviews[]` and the `requires_human_review` flag from the resolved policies. Reasons may be redacted or summarized; resolutions and timestamps should be intact.
+1. **Did human oversight occur where required?** Share `summary.escalations[]` and the `requires_human_review` flag from the resolved policies. Reasons may be redacted or summarized; resolutions and timestamps should be intact.
 2. **Did the buy comply with a specific regulation?** Share entries scoped by `policies_evaluated` containing the regulation's `policy_id` (e.g., `us_coppa`). Include `plan_hash` so the regulator can verify against the plan revision.
-3. **Are oversight metrics within thresholds?** Share `summary.drift_metrics` and the policy-derived thresholds. A `human_review_rate` below `human_review_rate_min` is a signal worth explaining.
+3. **Are oversight metrics within thresholds?** Share `summary.drift_metrics` and the policy-derived thresholds. An `escalation_rate` below `thresholds.escalation_rate_min` is a signal worth explaining.
 
 The protocol does not define a regulator API. Counterparty rules govern the disclosure; the audit trail makes the disclosure possible.
 
@@ -176,15 +176,14 @@ Findings are how the audit trail communicates risk. Two patterns worth knowing:
 
 ### Security-shaped finding: an unauthorized seller
 
-The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` and gets denied:
+The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` with an execution check and gets denied:
 
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
   "status": "completed",
   "check_id": "chk_0ac8d7de",
-  "check_type": "intent",
-  "plan_id": "plan_2027_apex_athletic",
+  "check_type": "execution",
   "verdict": "denied",
   "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
@@ -230,7 +229,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
 
 ## The operator's dial: enforce / advisory / audit
 
-`mode` is set on the plan via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) and is the operator's primary lever. The same caller, same payload, same finding produces three different outcomes depending on mode.
+`mode` is governance agent configuration. The buyer's policy team sets it on the governance agent itself; it is not a plan field and is not sent in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans). It is the operator's primary lever, and an agent that reports `mode` records the mode in force on each check entry. The same caller, same payload and same finding produce three different outcomes depending on mode. The example is a buy that asks for more than the plan's total budget.
 
 **`mode: "enforce"`** — the buy is blocked at the governance layer:
 
@@ -242,14 +241,14 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "check_type": "intent",
   "plan_id": "plan_mode_enforce",
   "verdict": "denied",
-  "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
-  "categories_evaluated": ["delegation_authority", "seller_compliance"],
+  "explanation": "Denied: Requested budget $150000 exceeds plan total $100000.",
+  "categories_evaluated": ["delegation_authority", "budget_authority"],
   "policies_evaluated": [],
   "findings": [
     {
-      "category_id": "seller_compliance",
+      "category_id": "budget_authority",
       "severity": "critical",
-      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+      "explanation": "Requested budget $150000 exceeds plan total $100000."
     }
   ]
 }
@@ -268,13 +267,13 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "explanation": "Approved with 1 advisory finding(s).",
   "expires_at": "2027-01-15T15:32:41Z",
   "governance_context": "eyJhbGciOiJFZERTQSJ9.advisory.signature",
-  "categories_evaluated": ["delegation_authority", "seller_compliance"],
+  "categories_evaluated": ["delegation_authority", "budget_authority"],
   "policies_evaluated": [],
   "findings": [
     {
-      "category_id": "seller_compliance",
+      "category_id": "budget_authority",
       "severity": "critical",
-      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+      "explanation": "Requested budget $150000 exceeds plan total $100000."
     }
   ]
 }
@@ -293,17 +292,19 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "explanation": "All governance checks passed.",
   "expires_at": "2027-01-15T15:32:41Z",
   "governance_context": "eyJhbGciOiJFZERTQSJ9.audit.signature",
-  "categories_evaluated": ["delegation_authority", "seller_compliance"],
+  "categories_evaluated": ["delegation_authority", "budget_authority"],
   "policies_evaluated": [],
   "findings": [
     {
-      "category_id": "seller_compliance",
+      "category_id": "budget_authority",
       "severity": "critical",
-      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+      "explanation": "Requested budget $150000 exceeds plan total $100000."
     }
   ]
 }
 ```
+
+Two outcomes do not move with the dial. A failed `approved_sellers` or `delegations` evaluation is `denied` in every mode, as in the [unauthorized seller](#security-shaped-finding-an-unauthorized-seller) example above, and plans with `human_review_required: true` escalate in every mode.
 
 The trade-off:
 
@@ -313,7 +314,7 @@ The trade-off:
 | `advisory` | Full velocity | Findings surface but don't block | Rolling out a new policy; observing behavior before tightening |
 | `audit` | Full velocity | Findings logged silently | Backstop telemetry; never the only governance posture |
 
-A plan can shift modes between revisions — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; today it appears on the per-`check_governance` response but not consistently on `get_plan_audit_logs` responses ([#3156](https://github.com/adcontextprotocol/adcp/issues/3156)).
+The agent's mode can change during a plan's lifetime. A different `mode` on two audit entries reflects a change to the governance agent's configuration, not a plan revision — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; today it appears on the per-`check_governance` response but not consistently on `get_plan_audit_logs` responses ([#3156](https://github.com/adcontextprotocol/adcp/issues/3156)).
 
 ## What the protocol guarantees
 

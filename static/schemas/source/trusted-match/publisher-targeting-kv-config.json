@@ -30,7 +30,7 @@
   "required": [
     "targeting_kv_mapping"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "targeting_kv_mapping": {

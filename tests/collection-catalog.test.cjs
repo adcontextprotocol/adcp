@@ -105,12 +105,14 @@ test('list_collections request: selectors, filters and pagination, strict', () =
   };
   assert.equal(requestSchema(ok), true, JSON.stringify(requestSchema.errors));
   assert.equal(requestSchema({}), true, 'every field is optional: an empty request browses the catalog');
-  assert.equal(requestSchema({ ...ok, include_products: true }), false, 'the request rejects unknown fields');
-  assert.equal(requestSchema({ ...ok, filters: { audience_size_min: 1000 } }), false, 'unknown filters are rejected');
-  assert.equal(requestSchema({ ...ok, filters: { sort: 'followers' } }), false, 'there is no sort');
+  // Open by default (DR-0036): unknown request fields and filter keys validate; `sort` is not a declared filter.
+  assert.equal(requestSchema({ ...ok, include_products: true }), true, 'the request accepts unknown fields');
+  assert.equal(requestSchema({ ...ok, filters: { audience_size_min: 1000 } }), true, 'unknown filters are accepted');
+  assert.equal(requestSchema({ ...ok, filters: { sort: 'followers' } }), true, 'sort is not declared, so it is an unknown key');
   assert.equal(requestSchema({ ...ok, pagination: { max_results: 101 } }), false, 'pagination caps at 100');
-  assert.equal(requestSchema({ ...ok, filters: { talent: [{ domain: 'jordanvega.example', countries: ['US'] }] } }), false,
-    'talent filters read only domain and brand_id');
+  // Open by default (DR-0036): an unknown key on a talent filter validates.
+  assert.equal(requestSchema({ ...ok, filters: { talent: [{ domain: 'jordanvega.example', countries: ['US'] }] } }), true,
+    'unknown talent filter keys are accepted');
   assert.equal(requestSchema({ ...ok, filters: { statuses: ['paused'] } }), false, 'statuses use collection-status');
   const schema = read('media-buy/list-collections-request.json');
   assert.equal(schema['x-status'], 'experimental');
@@ -204,7 +206,7 @@ test('docs carry the task page, the registry row, and no stale future-work note'
   for (const type of CARD_EVENTS) assert.ok(row.includes(type), `registry row names ${type}`);
   const guide = readText('docs/media-buy/product-discovery/collections-and-installments.mdx');
   assert.doesNotMatch(guide, /is future work/);
-  for (const doc of ['docs/media-buy/task-reference/get_products.mdx', 'docs/media-buy/task-reference/list_products.mdx', 'docs/media-buy/product-discovery/collections-and-installments.mdx']) {
+  for (const doc of ['docs/media-buy/task-reference/list_products.mdx', 'docs/media-buy/product-discovery/collections-and-installments.mdx']) {
     assert.match(readText(doc), /collection_card\.\*/, `${doc} points webhook-fed mirrors at the card events`);
   }
 });

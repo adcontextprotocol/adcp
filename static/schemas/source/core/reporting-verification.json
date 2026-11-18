@@ -31,7 +31,7 @@
               "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
             },
             "required": ["object_ref", "algorithm", "value"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "SHA-512 physical checksum",
@@ -42,7 +42,7 @@
               "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{128}$" }
             },
             "required": ["object_ref", "algorithm", "value"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -56,7 +56,7 @@
         "observed_through": { "type": "string", "enum": ["representative_consumer", "destination"] }
       },
       "required": ["native_version_ref", "observed_through"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "required": ["verified_at", "verification_path", "verification_profile", "row_count", "control_totals"],
@@ -80,5 +80,5 @@
     "native_version_match": "When native_commit_evidence is present, native_version_ref MUST equal resource.native_version_ref and observed_through MUST match the consumer/destination verification path.",
     "checksum_binding": "Every physical_checksums.object_ref MUST be an object selected by this exact immutable resource/manifest; algorithm and value length MUST agree."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

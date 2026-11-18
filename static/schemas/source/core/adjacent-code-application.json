@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adjacent-code-application.json",
+  "title": "Adjacent Code Application",
+  "description": "Seller-reported current application state for code adjacent to one package–creative assignment. An assembly assertion, not independent evidence of browser execution or a per-delivery history.",
+  "x-added-in": "3.4.0",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/adjacent-code.json" }
+  ],
+  "properties": {
+    "position": {
+      "type": "string",
+      "enum": ["prepend", "append"],
+      "description": "Placement relative to the unchanged buyer creative in the seller's delivery representation. For pending or omitted entries, the intended placement. Does not specify ordering among providers or guarantee browser execution order."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["applied", "omitted", "pending"],
+      "description": "applied: seller has applied the code to the assignment's current delivery representation. omitted: code is absent from that representation. pending: application has not completed. A required pending or omitted entry blocks this assignment's delivery; applied alone does not establish that the assignment is otherwise eligible to serve."
+    }
+  },
+  "required": ["position", "status"],
+  "additionalProperties": true
+}
