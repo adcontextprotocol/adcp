@@ -455,6 +455,8 @@ Digital out-of-home placements can declare structured selling-unit metadata via 
 | `loop_duration_seconds` | integer | Duration of the full ad loop rotation in seconds. Buyers derive nominal slot share as `slot_duration_seconds / loop_duration_seconds`. This is the canonical source; the pricing-layer field in `flat-rate-option` is superseded |
 | `screen_resolution` | object | Physical screen resolution (`{ width, height }` in pixels). Buyers derive aspect ratio from `width / height`. Omit for audio-only placements |
 | `motion` | string | Motion capability of a visual screen: `full_motion` (video), `partial_motion` (animated stills), or `static` (images only). Omit for audio-only placements |
+| `impression_basis` | string | Experimental (`media_buy.dooh_impression_basis`), product and canonical placements only: the tier the seller plans to estimate the audience on (`currency_measured`, `seller_modeled`, `sensor_measured`, `hybrid`). See [DOOH impression basis](/docs/creative/channels/dooh#impression-basis-experimental) |
+| `audience_multiplier` | number | Experimental (`media_buy.dooh_impression_basis`), product and canonical placements only: planning audience per play, the `impressions / plays` the seller's forecasts apply |
 
 All fields are optional. A single visual screen/frame placement can include all fields; an audio-only placement can declare only its slot and loop timing. A package or network placement should include only fields that are uniform across the included inventory. After publisher and product declarations are resolved, `slot_duration_seconds` MUST NOT exceed `loop_duration_seconds`.
 

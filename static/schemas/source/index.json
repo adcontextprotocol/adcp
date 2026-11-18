@@ -329,6 +329,10 @@
           "$ref": "/schemas/core/delivery-metrics.json",
           "description": "Standard delivery metrics for reporting"
         },
+        "impression-basis-breakdown-entry": {
+          "$ref": "/schemas/core/impression-basis-breakdown-entry.json",
+          "description": "Experimental. The plays of a DOOH row or forecast point estimated on one impression basis tier, and the impressions they produced"
+        },
         "delivery-metric-aggregate": {
           "$ref": "/schemas/core/delivery-metric-aggregate.json",
           "description": "Cross-buy delivery aggregate partitioned by metric scope and qualifier"
@@ -1613,6 +1617,10 @@
         "delivery-projection-basis": {
           "$ref": "/schemas/enums/delivery-projection-basis.json",
           "description": "Class of method behind a delivery projection (trailing_daily_avg, trailing_hourly_avg, platform_model, seller_defined)"
+        },
+        "impression-estimation-basis": {
+          "$ref": "/schemas/enums/impression-estimation-basis.json",
+          "description": "Methodology tier of a DOOH audience figure (currency_measured, seller_modeled, sensor_measured, hybrid)"
         },
         "forecast-method": {
           "$ref": "/schemas/enums/forecast-method.json",
