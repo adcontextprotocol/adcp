@@ -430,7 +430,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     await expectsMarkerOnlyWorkerToBeDenied();
     await expectsRecreatedWorkerToPreflightCostlyTasks();
     expectNoChildProcessSince(launches);
-  }, 60_000);
+  });
 
   it('terminates hostile scalar constructors without property access or coercion', async () => {
     const launches = childLaunchMark();
@@ -438,7 +438,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     await expectsHostileConstructorToTerminate('rational({ [Symbol.toPrimitive]() { for (;;) {} } })');
     await expectsHostileConstructorToTerminate('canonicalRational({ numerator: 1n, denominator: 2n }, { [Symbol.toPrimitive]() { for (;;) {} } })');
     expectNoChildProcessSince(launches);
-  }, 30_000);
+  }, 5_000);
 
   it('never dispatches descriptor snapshots through poisoned prototype setters', async () => {
     const launches = childLaunchMark();
@@ -452,7 +452,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       const outcome = await restrictedScoreEM({ counts: { n11: 1, n10: 1, n01: 0, n00: 0 }, margin: d('0.10'), alpha: d('0.05') });
       process.exit(outcome.admission.admitted ? 2 : 0);`);
     expectNoChildProcessSince(launches);
-  }, 30_000);
+  }, 7_000);
 
   it('does not invoke poisoned Array prototype map or iterator after snapshotting', async () => {
     const launches = childLaunchMark();
@@ -468,7 +468,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
       process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
     expectNoChildProcessSince(launches);
-  }, 30_000);
+  }, 7_000);
 
   it('keeps all exported algebraic root helpers off poisoned Array prototypes in source and emitted builds', async () => {
     const launches = childLaunchMark();
@@ -478,7 +478,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       ['--import', 'tsx'],
     );
     expectNoChildProcessSince(launches);
-  }, 30_000);
+  }, 20_000);
 
   it('keeps post-loader/pre-core TypeScript worker realms bounded under mutable intrinsic poisoning', async () => {
     const launches = childLaunchMark();
@@ -494,13 +494,13 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const launches = childLaunchMark();
     await expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee();
     expectNoChildProcessSince(launches);
-  }, 30_000);
+  }, 5_000);
 
   it('keeps emitted JavaScript workers bounded under pre-evaluation mutable-intrinsic poisoning', async () => {
     const launches = childLaunchMark();
     await expectsBuiltPathToRetainRootAndWorkerBounds();
     expectOnePlainNodeChildSince(launches);
-  }, 90_000);
+  }, 30_000);
 
   it('divides signed intervals outward over a strictly positive divisor', () => {
     expect(intervalDividePositive(interval(rational(-2), rational(-1)), interval(ONE, rational(2)))).toEqual(interval(rational(-2), rational(-1, 2)));
@@ -515,7 +515,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const launches = childLaunchMark();
     await expectsRootIsolationToTerminate();
     expectNoChildProcessSince(launches);
-  }, 30_000);
+  }, 6_000);
 
   it('snapshots aliases into immutable values before certification', () => {
     const shared = { numerator: 1n, denominator: 2n };
