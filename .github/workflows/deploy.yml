@@ -276,7 +276,9 @@ jobs:
           timeout 2400 flyctl logs -a adcp-docs > "$live/logs-raw.txt" 2>&1 &
           logs_pid=$!
           (
-            set +e
+            # Spelled `+o errexit` on purpose: deploy-workflow.test.ts slices
+            # this script from the deploy's own errexit toggle further down.
+            set +o errexit
             while [ ! -f "$live/stop" ]; do
               if machines=$(flyctl machines list -a adcp-docs --json 2>/dev/null); then
                 for id in $(echo "$machines" | jq -r '.[].id'); do
