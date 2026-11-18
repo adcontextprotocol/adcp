@@ -683,6 +683,17 @@ consumes the marker. Review that generated PR normally and require a non-author
 maintainer approval on its final head before merge; only the new candidate may
 publish.
 
+`3.2.0-rc.5` (#7663) and `3.3.0-rc.1` were superseded this way. `3.3.0-rc.1`
+(release merge `32a90ee0d0fd7d66505bb14277a84eeb6d15fb79`, #9073) was approved
+on head `b46ec2e1804fb9fae08b3a4aede4043c235bbe7f`, generated on
+`61a1638493297b2119a41e4cd918e00fc42a5811`. #9080 merged after that without a
+changeset, so the bot never regenerated the PR, and the squash merge's parent
+and tree differed from the reviewed head. Release run `44300240363` stopped at
+the provenance gate before any tag, GitHub Release or R2 write. A merge with no
+changeset still moves the base of an open Version Packages PR: keep `main`
+frozen from the moment a release PR is approved until it merges, or have the
+PR regenerated and re-reviewed on current `main` first.
+
 For the 2026-09-14 `3.2.0-rc.3` incident, the recovery target is
 `71f9cd5414454e94ccfef87ce25777ead6fad228` (#7485), whose final PR head
 `e7d42cbe5d7b3d05c3fcdcaa6f568b08ba131439` received human approval at

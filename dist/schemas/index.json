@@ -27,9 +27,10 @@
   "versions": [
     {
       "version": "3.3.0-rc.1",
-      "stability": "rc",
+      "stability": "unpublished",
       "prerelease": true,
       "deprecated": false,
+      "published": false,
       "path": "/schemas/3.3.0-rc.1/",
       "index": "/schemas/3.3.0-rc.1/index.json"
     },

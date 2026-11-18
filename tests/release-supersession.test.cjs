@@ -154,3 +154,96 @@ test('pending release fence accepts artifacts only through the reviewed superses
   assert.notEqual(unreviewed.status, 0);
   assert.match(unreviewed.stderr, /git ls-remote --exit-code/);
 });
+
+test('supersession tolerates unrelated commits but not new changesets or changed candidate bytes', (t) => {
+  const f = fixture(t);
+
+  // 3.3.0-rc.1 shape: a code fix without a changeset lands after the release
+  // merge. It does not change the reviewed pool, so the marker stays valid.
+  fs.mkdirSync(path.join(f.root, 'server'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, 'server/fix.ts'), 'export const fixed = true;\n');
+  f.git('add', '.');
+  f.git('commit', '-qm', 'Unrelated fix without a changeset');
+  const unrelated = f.run();
+  assert.equal(unrelated.status, 0, unrelated.stderr);
+
+  // Any changeset that lands after review changes the pool the next
+  // candidate would consume, so main must stay frozen until it publishes.
+  fs.writeFileSync(path.join(f.root, '.changeset/late.md'), '---\n"adcontextprotocol": patch\n---\n\nLate.\n');
+  const late = f.run();
+  assert.notEqual(late.status, 0);
+  assert.match(late.stderr, /Pending changesets differ/);
+  fs.unlinkSync(path.join(f.root, '.changeset/late.md'));
+
+  fs.appendFileSync(path.join(f.root, 'dist/compliance/3.2.0-rc.5/index.yaml'), 'edited: true\n');
+  f.git('add', '.');
+  f.git('commit', '-qm', 'Edit superseded bytes');
+  const edited = f.run();
+  assert.notEqual(edited.status, 0);
+  assert.match(edited.stderr, /Superseded release artifacts changed after their release merge/);
+});
+
+test('the repository supersession marker binds its committed candidate', (t) => {
+  const markerPath = path.join(repositoryRoot, '.changeset', 'release-supersession.json');
+  if (!fs.existsSync(markerPath)) {
+    t.skip('No pending supersession; the next Version Packages cut consumed it.');
+    return;
+  }
+  const marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+  const gitInRepo = (...args) =>
+    execFileSync(realGit, args, {
+      cwd: repositoryRoot,
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+  assert.deepEqual(
+    Object.keys(marker).sort(),
+    ['changesets', 'protocol_sha256', 'reason', 'release_commit', 'version'],
+  );
+  assert.match(marker.version, /^\d+\.\d+\.\d+-rc\.\d+$/);
+  assert.match(marker.release_commit, /^[a-f0-9]{40}$/);
+  assert.ok(marker.reason.trim().length >= 40);
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'));
+  assert.equal(pkg.version, marker.version, 'The marker must name the committed candidate.');
+  const { RELEASE_STATUS_OVERRIDES } = require(path.join(repositoryRoot, 'scripts', 'build-schemas.cjs'));
+  assert.equal(
+    RELEASE_STATUS_OVERRIDES.get(marker.version),
+    'unpublished',
+    'A superseded candidate must be unpublished in release discovery.',
+  );
+
+  // Read committed bytes from Git so a sparse checkout without dist/protocol
+  // still checks the digest.
+  const tarball = `dist/protocol/${marker.version}.tgz`;
+  assert.equal(sha256(gitInRepo('cat-file', 'blob', `HEAD:${tarball}`)), marker.protocol_sha256);
+  assert.equal(
+    gitInRepo('cat-file', 'blob', `HEAD:${tarball}.sha256`).toString('utf8').split(/\s+/)[0],
+    marker.protocol_sha256,
+  );
+  const releaseCommitAvailable = spawnSync(realGit, ['cat-file', '-e', `${marker.release_commit}^{commit}`], {
+    cwd: repositoryRoot,
+  }).status === 0;
+  if (releaseCommitAvailable) {
+    assert.equal(
+      JSON.parse(gitInRepo('show', `${marker.release_commit}:package.json`).toString('utf8')).version,
+      marker.version,
+    );
+    assert.equal(
+      sha256(gitInRepo('cat-file', 'blob', `${marker.release_commit}:${tarball}`)),
+      marker.protocol_sha256,
+    );
+  }
+
+  const pending = fs
+    .readdirSync(path.join(repositoryRoot, '.changeset'))
+    .filter((name) => name.endsWith('.md') && name !== 'README.md')
+    .sort()
+    .map((file) => ({ file, sha256: sha256(fs.readFileSync(path.join(repositoryRoot, '.changeset', file))) }));
+  assert.deepEqual(
+    pending,
+    [...marker.changesets].sort((a, b) => a.file.localeCompare(b.file)),
+    'Pending changesets must match the reviewed supersession pool; keep main frozen until the next candidate publishes.',
+  );
+});
