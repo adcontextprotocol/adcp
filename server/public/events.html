@@ -24,6 +24,10 @@
   <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
 
   <link rel="stylesheet" href="/design-system.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" integrity="sha384-b5hg04N6F0rvyz1a/GVoPPY0JcqGTARCmEuFCqwQKX3zq7LsxhV+n+6Ykh2pQOCH" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
+  <script src="/js/markdown-to-plain-text.js"></script>
+  <script src="/js/event-summary.js"></script>
   <script src="/nav.js"></script>
   <style>
     body { background: var(--color-surface); }
@@ -451,7 +455,7 @@
                 ${dateStr} at ${timeStr}
               </div>
               <a href="/events/${escapeHtml(event.slug)}" class="event-title">${escapeHtml(event.title)}</a>
-              <p class="event-description">${escapeHtml(event.short_description || event.description?.substring(0, 150) || '')}</p>
+              <p class="event-description">${escapeHtml(eventCardSummary(event, 150))}</p>
               <div class="event-meta">
                 <span class="event-badge badge-${event.event_format}">${formatLabel}</span>
                 ${event.visibility === 'invite_listed' ? '<span class="event-badge badge-invite">Invite only</span>' : ''}

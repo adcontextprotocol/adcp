@@ -35,6 +35,32 @@ function trackedUrl(trackingId: string, linkName: string, destinationUrl: string
 }
 
 /**
+ * Reader-facing names for email category ids, used in the footer's
+ * "Unsubscribe from …" line. The footer used to print the raw id
+ * ("Unsubscribe from the_prompt").
+ */
+const EMAIL_CATEGORY_LABELS: Record<string, string> = {
+  the_prompt: 'The Prompt',
+  the_build: 'The Build',
+  weekly_digest: 'the weekly digest',
+  newsletter: 'the newsletter',
+  working_groups: 'working group updates',
+  releases: 'release announcements',
+  member_directory: 'member directory updates',
+  events: 'events and webinars',
+};
+
+/**
+ * Human label for an email category. Known ids map to their name; an
+ * unknown id has its underscores turned into spaces; text that is already a
+ * label (e.g. "community updates") passes through unchanged.
+ */
+export function formatEmailCategoryLabel(category: string | undefined): string | undefined {
+  if (!category) return undefined;
+  return EMAIL_CATEGORY_LABELS[category] ?? category.replace(/_/g, ' ');
+}
+
+/**
  * Generate standard email footer HTML with optional unsubscribe links
  * @param trackingId - The tracking ID for URL tracking
  * @param unsubscribeToken - Token for one-click unsubscribe (null for transactional emails)
@@ -55,7 +81,7 @@ function generateFooterHtml(
     unsubscribeSection = `
     <p style="font-size: 12px; color: #666; text-align: center; margin-top: 10px;">
       <a href="${unsubscribeUrl}" style="color: #666; text-decoration: underline;">Unsubscribe</a>
-      ${category ? ` from ${category}` : ''} |
+      ${category ? ` from ${escapeFooterText(formatEmailCategoryLabel(category)!)}` : ''} |
       <a href="${preferencesUrl}" style="color: #666; text-decoration: underline;">Manage email preferences</a>
     </p>`;
   }
@@ -70,6 +96,10 @@ function generateFooterHtml(
   ${unsubscribeSection}`;
 }
 
+function escapeFooterText(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /**
  * Generate standard email footer text with optional unsubscribe links
  */
@@ -81,7 +111,7 @@ https://agenticadvertising.org`;
   if (unsubscribeToken) {
     footer += `
 
-Unsubscribe${category ? ` from ${category}` : ''}: ${BASE_URL}/unsubscribe/${unsubscribeToken}
+Unsubscribe${category ? ` from ${formatEmailCategoryLabel(category)}` : ''}: ${BASE_URL}/unsubscribe/${unsubscribeToken}
 Manage email preferences: ${BASE_URL}/unsubscribe/${unsubscribeToken}`;
   }
 

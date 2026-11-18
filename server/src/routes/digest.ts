@@ -4,6 +4,8 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { getDigestByDate, getCurrentWeekDigest, getRecentDigests, getDigestCoverImage, recordDigestFeedback, isLegacyContent, type PersonaCluster, type DigestContent } from '../db/digest-db.js';
 import { generateDigestSubject } from '../addie/services/digest-builder.js';
 import { renderDigestWebPage, renderDigestEmail, type DigestSegment } from '../addie/templates/weekly-digest.js';
+import { coverCacheControl } from '../newsletters/cover.js';
+import { editionDisplayDate } from '../newsletters/send-date.js';
 
 const logger = createLogger('digest-routes');
 
@@ -53,7 +55,10 @@ export function createDigestRouter(): Router {
       }
 
       // Render with 'preview' tracking ID so links are not tracked
-      const { html } = renderDigestEmail(digest.content, 'preview', editionDate, segment, firstName, undefined, personaCluster);
+      const { html } = renderDigestEmail(
+        digest.content, 'preview', editionDate, segment, firstName, undefined, personaCluster, undefined,
+        { displayDate: editionDisplayDate(digest) },
+      );
 
       // Wrap in a simple page with segment switcher
       const page = `<!DOCTYPE html>
@@ -154,7 +159,8 @@ export function createDigestRouter(): Router {
 
   /**
    * GET /digest/:date/cover.png - Serve the cover image for a digest edition.
-   * Public (used in emails and web views). Long cache since images don't change.
+   * Public (used in emails and web views). Versioned URLs (`?v=<hash>`) are
+   * cached as immutable; unversioned ones briefly, so a regenerated cover shows.
    */
   router.get('/:date/cover.png', async (req: Request, res: Response) => {
     const { date } = req.params;
@@ -170,7 +176,7 @@ export function createDigestRouter(): Router {
       }
       res.set('Content-Type', 'image/png');
       res.set('Content-Length', String(imageData.length));
-      res.set('Cache-Control', 'public, max-age=604800');
+      res.set('Cache-Control', coverCacheControl(imageData, req.query.v));
       res.send(imageData);
     } catch (error) {
       logger.error({ error, date }, 'Failed to serve cover image');
@@ -204,7 +210,7 @@ export function createDigestRouter(): Router {
         return;
       }
 
-      const html = renderDigestWebPage(digest.content, date);
+      const html = renderDigestWebPage(digest.content, date, editionDisplayDate(digest));
       res.type('html').send(html);
     } catch (error) {
       logger.error({ error, date }, 'Failed to render digest');

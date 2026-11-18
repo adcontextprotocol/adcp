@@ -25,6 +25,12 @@ export interface DigestContent {
   customSections?: import('../newsletters/config.js').CustomSection[];
   /** Paste-your-own mode: markdown body that replaces all auto-generated sections */
   pastedContent?: string;
+  /** Generated fields an editor changed; "Regenerate" keeps them (see newsletters/editor-state.ts) */
+  editedFields?: string[];
+  /** Candidate item ids an editor dismissed */
+  dismissedIds?: string[];
+  /** Normalized URLs of items an editor removed; "Regenerate" does not bring them back */
+  dismissedUrls?: string[];
 }
 
 export interface DigestSpecInsight {
@@ -74,6 +80,9 @@ export interface DigestNewsItem {
   knowledgeId?: number;
   suggestionId?: number;
   takeaways?: string[];
+  /** Set when an editor changed this item; "Regenerate" keeps the edited version */
+  editedBy?: string;
+  editedAt?: string;
 }
 
 export interface DigestTakeAction {
@@ -250,6 +259,38 @@ export interface DigestPerspectiveRow {
 // ─── Database functions ─────────────────────────────────────────────────
 
 /**
+ * A look-back window: a start time, or a number of days before now (the
+ * older call shape, kept for callers that still pass days).
+ */
+export type DigestWindow = Date | number;
+
+function windowStart(window: DigestWindow): Date {
+  return window instanceof Date ? window : new Date(Date.now() - window * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * When the content of the most recently sent edition was built, or null if
+ * nothing has been sent. Section windows start here, not at the send time:
+ * anything published between that edition's build and its (possibly late)
+ * send was not in it, so the next edition must pick it up.
+ */
+export async function getLastSentEditionBuiltAt(): Promise<Date | null> {
+  const result = await query<{ built_at: Date | null }>(
+    `SELECT COALESCE(
+              CASE WHEN content->>'generatedAt' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'
+                   THEN (content->>'generatedAt')::timestamptz END,
+              created_at
+            ) AS built_at
+     FROM weekly_digests
+     WHERE status = 'sent'
+     ORDER BY sent_at DESC NULLS LAST
+     LIMIT 1`,
+  );
+  const builtAt = result.rows[0]?.built_at;
+  return builtAt ? new Date(builtAt) : null;
+}
+
+/**
  * Create a new digest draft. Returns null if one already exists for this date.
  */
 export async function createDigest(
@@ -421,7 +462,7 @@ export async function setPerspectiveId(digestId: number, perspectiveId: string):
  * legacy 'news' and current 'whatToWatch' field names).
  */
 export async function getRecentArticlesForDigest(
-  days: number = 7,
+  window: DigestWindow = 7,
   limit: number = 10,
 ): Promise<DigestArticle[]> {
   const result = await query<DigestArticle>(
@@ -432,7 +473,7 @@ export async function getRecentArticlesForDigest(
        AND k.fetch_status = 'success'
        AND k.is_active = TRUE
        AND k.source_url IS NOT NULL
-       AND k.created_at > NOW() - make_interval(days => $1)
+       AND k.created_at > $1
        AND NOT EXISTS (
          SELECT 1 FROM weekly_digests wd
          WHERE wd.status = 'sent'
@@ -443,7 +484,7 @@ export async function getRecentArticlesForDigest(
        )
      ORDER BY k.quality_score DESC, k.published_at DESC NULLS LAST
      LIMIT $2`,
-    [days, limit],
+    [windowStart(window), limit],
   );
   return result.rows;
 }
@@ -454,7 +495,7 @@ export async function getRecentArticlesForDigest(
  * legacy 'memberPerspectives' and current 'voices' field names).
  */
 export async function getRecentMemberPerspectivesForDigest(
-  days: number = 7,
+  window: DigestWindow = 7,
   limit: number = 5,
 ): Promise<DigestPerspectiveRow[]> {
   const result = await query<DigestPerspectiveRow>(
@@ -471,7 +512,7 @@ export async function getRecentMemberPerspectivesForDigest(
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
        AND (p.content_origin IS NULL OR p.content_origin != 'official')
        AND p.published_at IS NOT NULL
-       AND p.published_at > NOW() - make_interval(days => $1)
+       AND p.published_at > $1
        AND NOT EXISTS (
          SELECT 1 FROM weekly_digests wd
          WHERE wd.status = 'sent'
@@ -484,7 +525,7 @@ export async function getRecentMemberPerspectivesForDigest(
        )
      ORDER BY p.published_at DESC
      LIMIT $2`,
-    [days, limit],
+    [windowStart(window), limit],
   );
   return result.rows;
 }
@@ -494,7 +535,7 @@ export async function getRecentMemberPerspectivesForDigest(
  * These go into "Worth Your Time" — front and center, not in "Voices."
  */
 export async function getRecentOfficialPerspectives(
-  days: number = 14,
+  window: DigestWindow = 14,
   limit: number = 5,
 ): Promise<DigestPerspectiveRow[]> {
   const result = await query<DigestPerspectiveRow>(
@@ -510,45 +551,60 @@ export async function getRecentOfficialPerspectives(
        AND p.is_members_only = false
        AND p.content_origin = 'official'
        AND p.published_at IS NOT NULL
-       AND p.published_at > NOW() - make_interval(days => $1)
+       AND p.published_at > $1
      ORDER BY p.published_at DESC
      LIMIT $2`,
-    [days, limit],
+    [windowStart(window), limit],
   );
   return result.rows;
 }
 
 /**
- * Get organizations created in the last N days (non-personal)
+ * Get organizations that became members within the window (non-personal).
+ *
+ * "Joined" is the first paid subscription invoice (`revenue_events`), so an
+ * organization whose record existed long before it became a member is
+ * announced when it joins, not when the record was created. Organizations
+ * with no subscription revenue event (invoiced or comped memberships) fall
+ * back to the record's `created_at`: there is no membership-start column on
+ * `organizations` to key on instead.
  */
-export async function getNewOrganizations(days: number = 7): Promise<Array<{
+export async function getNewOrganizations(window: DigestWindow = 7): Promise<Array<{
   name: string;
   enrichment_description: string | null;
   created_at: Date;
+  joined_at: Date;
 }>> {
   const result = await query<{
     name: string;
     enrichment_description: string | null;
     created_at: Date;
+    joined_at: Date;
   }>(
-    `SELECT o.name, o.enrichment_description, o.created_at
-     FROM organizations o
-     WHERE o.created_at > NOW() - make_interval(days => $1)
-       AND o.is_personal = FALSE
-       AND o.subscription_status = 'active'
-     ORDER BY o.created_at DESC`,
-    [days],
+    `SELECT name, enrichment_description, created_at, joined_at
+     FROM (
+       SELECT o.name, o.enrichment_description, o.created_at,
+              COALESCE(
+                (SELECT MIN(re.paid_at)
+                 FROM revenue_events re
+                 WHERE re.workos_organization_id = o.workos_organization_id
+                   AND re.revenue_type IN ('subscription_initial', 'subscription_recurring')
+                   AND re.amount_paid > 0),
+                o.created_at
+              ) AS joined_at
+       FROM organizations o
+       WHERE o.is_personal = FALSE
+         AND o.subscription_status = 'active'
+     ) members
+     WHERE joined_at > $1
+     ORDER BY joined_at DESC`,
+    [windowStart(window)],
   );
   return result.rows;
 }
 
-/**
- * Get users eligible to receive The Prompt email.
- * Returns users with email who haven't opted out of the_prompt (or legacy weekly_digest) category.
- */
-export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]> {
-  const result = await query<DigestEmailRecipient>(
-    `SELECT DISTINCT ON (u.workos_user_id)
+/** Recipient columns shared by the full send list and single-user lookups. */
+const DIGEST_RECIPIENT_SELECT = `SELECT DISTINCT ON (u.workos_user_id)
        u.workos_user_id,
        u.email,
        u.first_name,
@@ -588,7 +644,15 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        WHERE lp.workos_user_id = u.workos_user_id
        ORDER BY lp.updated_at DESC, lp.module_id DESC
        LIMIT 1
-     ) active_track ON TRUE
+     ) active_track ON TRUE`;
+
+/**
+ * Get users eligible to receive The Prompt email.
+ * Returns users with email who haven't opted out of the_prompt (or legacy weekly_digest) category.
+ */
+export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]> {
+  const result = await query<DigestEmailRecipient>(
+    `${DIGEST_RECIPIENT_SELECT}
      WHERE u.email IS NOT NULL
        AND u.email != ''
        AND NOT EXISTS (
@@ -610,6 +674,23 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        )`,
   );
   return result.rows;
+}
+
+/**
+ * The recipient record for one user, with the same personalisation fields a
+ * real send uses. Ignores the opt-in filters: an admin test send renders for
+ * the requesting admin even if they are not on the list themselves.
+ */
+export async function getDigestEmailRecipientByUserId(
+  workosUserId: string,
+): Promise<DigestEmailRecipient | null> {
+  const result = await query<DigestEmailRecipient>(
+    `${DIGEST_RECIPIENT_SELECT}
+     WHERE u.workos_user_id = $1
+     ORDER BY u.workos_user_id`,
+    [workosUserId],
+  );
+  return result.rows[0] || null;
 }
 
 /**

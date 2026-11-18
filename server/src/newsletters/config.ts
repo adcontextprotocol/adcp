@@ -133,6 +133,12 @@ export interface NewsletterEditionDB {
   setPerspectiveId(id: number, perspectiveId: string): Promise<void>;
   getRecent(limit: number): Promise<EditionRecord[]>;
   getRecipients(): Promise<NewsletterRecipient[]>;
+  /**
+   * One user's recipient record (personalisation fields), regardless of
+   * opt-in. Used to render an admin test send exactly as that admin would
+   * receive it. Optional; without it the test send uses the admin's name only.
+   */
+  getRecipientByUserId?(workosUserId: string): Promise<NewsletterRecipient | null>;
   getUserWorkingGroupMap(): Promise<Map<string, string[]>>;
 
   // ─── Cover Image (optional) ──────────────────────────────────────────
@@ -156,6 +162,14 @@ export interface NewsletterEditionDB {
 }
 
 // ─── Newsletter Config ─────────────────────────────────────────────────
+
+export interface NewsletterRenderOptions {
+  /**
+   * Date printed in the header (YYYY-MM-DD): the send date. `editionDate`
+   * stays the internal key used in URLs. Defaults to `editionDate`.
+   */
+  displayDate?: string;
+}
 
 export interface NewsletterConfig {
   /** Machine identifier: 'the_prompt', 'the_build' */
@@ -212,12 +226,13 @@ export interface NewsletterConfig {
     userWGs?: string[],
     personaCluster?: string,
     recipient?: NewsletterRecipient | null,
+    options?: NewsletterRenderOptions,
   ) => { html: string; text: string };
 
-  /** Render Slack announcement message */
-  renderSlack: (content: unknown, editionDate: string) => SlackBlockMessage;
+  /** Render Slack announcement message. `displayDate` is the send date shown in the header. */
+  renderSlack: (content: unknown, editionDate: string, displayDate?: string) => SlackBlockMessage;
   /** Render Slack review message for editorial approval */
-  renderReview: (content: unknown, editionDate: string) => SlackBlockMessage;
+  renderReview: (content: unknown, editionDate: string, displayDate?: string) => SlackBlockMessage;
 
   /** Database adapter */
   db: NewsletterEditionDB;

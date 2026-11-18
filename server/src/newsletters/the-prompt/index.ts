@@ -8,6 +8,8 @@
 import { getCustomSections, getPastedContent, type NewsletterConfig, type SectionDescriptor, type ItemOperations } from '../config.js';
 import DOMPurify from 'isomorphic-dompurify';
 import { registerNewsletter } from '../registry.js';
+import { getVisiblePromptContent } from './edition-rules.js';
+import { markItemEdited, recordDismissedUrl } from '../editor-state.js';
 import { escapeHtml } from '../email-layout.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
 import { applyDigestEdit } from '../../addie/services/digest-editor.js';
@@ -24,6 +26,7 @@ import {
   setPerspectiveId,
   getRecentDigests,
   getDigestEmailRecipients,
+  getDigestEmailRecipientByUserId,
   getUserWorkingGroupMap,
   setDigestCoverImage,
   getDigestCoverImage,
@@ -130,6 +133,9 @@ const promptDB: NewsletterEditionDB = {
   async getRecipients() {
     return getDigestEmailRecipients();
   },
+  async getRecipientByUserId(workosUserId) {
+    return getDigestEmailRecipientByUserId(workosUserId);
+  },
   async getUserWorkingGroupMap() {
     return getUserWorkingGroupMap();
   },
@@ -174,7 +180,7 @@ function domToMarkdown(node: any): string {
 }
 
 function buildPromptMarkdown(content: unknown): string {
-  const c = content as DigestContent;
+  const c = getVisiblePromptContent(content as DigestContent);
   const sections: string[] = [];
   const customSections = getCustomSections(c);
   const pasted = getPastedContent(c);
@@ -202,7 +208,7 @@ function buildPromptMarkdown(content: unknown): string {
     sections.push(custom.title ? `## ${custom.title}\n\n${custom.body}` : custom.body);
   }
   if (c.newMembers.length > 0) {
-    sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined this week.`);
+    sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined since the last edition.`);
   }
   if (c.whatToWatch.length > 0) {
     const official = c.whatToWatch.filter((item) => item.tags?.includes('official'));
@@ -381,11 +387,18 @@ const PROMPT_ITEM_OPS: Record<string, ItemOperations> = {
     editItem: (content, index, body, editor) => {
       const c = { ...(content as DigestContent) };
       if (index < 0 || index >= c.whatToWatch.length) throw new Error('Index out of range');
-      const article = { ...c.whatToWatch[index] };
+      let article = { ...c.whatToWatch[index] };
       if (body.title !== undefined) article.title = String(body.title);
       if (body.summary !== undefined) article.summary = String(body.summary);
       if (body.whyItMatters !== undefined) article.whyItMatters = String(body.whyItMatters);
-      if (body.url !== undefined) article.url = String(body.url);
+      if (body.url !== undefined && String(body.url) !== article.url) {
+        // The edited item no longer matches the original by URL, so remember
+        // the original as removed or "Regenerate" would bring it back.
+        Object.assign(c, recordDismissedUrl(c, article.url));
+        article.url = String(body.url);
+      }
+      // Mark the item so "Regenerate" keeps the editor's version.
+      article = markItemEdited(article, editor);
       c.whatToWatch = [...c.whatToWatch];
       c.whatToWatch[index] = article;
       c.editHistory = [...(c.editHistory || []), {
@@ -400,6 +413,8 @@ const PROMPT_ITEM_OPS: Record<string, ItemOperations> = {
       if (index < 0 || index >= c.whatToWatch.length) throw new Error('Index out of range');
       const removed = c.whatToWatch[index];
       c.whatToWatch = c.whatToWatch.filter((_, i) => i !== index);
+      // Remember the removal so "Regenerate" does not bring the article back.
+      Object.assign(c, recordDismissedUrl(c, removed.url));
       c.editHistory = [...(c.editHistory || []), {
         editedBy: editor,
         editedAt: new Date().toISOString(),
@@ -466,10 +481,10 @@ export const thePromptConfig: NewsletterConfig = {
   generateSubject: (c) => generateDigestSubject(c as DigestContent),
   buildMarkdown: buildPromptMarkdown,
   extractTags: extractPromptTags,
-  renderEmail: (content, trackingId, editionDate, segment, firstName, userWGs, personaCluster, recipient) =>
-    renderDigestEmail(content as DigestContent, trackingId, editionDate, segment as Parameters<typeof renderDigestEmail>[3], firstName, userWGs, personaCluster as Parameters<typeof renderDigestEmail>[6], recipient as Parameters<typeof renderDigestEmail>[7]),
-  renderSlack: (content, editionDate) => renderDigestSlack(content as DigestContent, editionDate),
-  renderReview: (content, editionDate) => renderDigestReview(content as DigestContent, editionDate),
+  renderEmail: (content, trackingId, editionDate, segment, firstName, userWGs, personaCluster, recipient, options) =>
+    renderDigestEmail(content as DigestContent, trackingId, editionDate, segment as Parameters<typeof renderDigestEmail>[3], firstName, userWGs, personaCluster as Parameters<typeof renderDigestEmail>[6], recipient as Parameters<typeof renderDigestEmail>[7], options),
+  renderSlack: (content, editionDate, displayDate) => renderDigestSlack(content as DigestContent, editionDate, displayDate),
+  renderReview: (content, editionDate, displayDate) => renderDigestReview(content as DigestContent, editionDate, displayDate),
   db: promptDB,
   editableFields: ['openingTake', 'editorsNote', 'shareableTake', 'emailSubject', 'dateFlavor'],
   sections: PROMPT_SECTIONS,

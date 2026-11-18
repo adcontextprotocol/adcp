@@ -5,6 +5,7 @@
  * Used by both The Prompt and The Build.
  */
 
+import { createHash } from 'node:crypto';
 import { createLogger } from '../logger.js';
 import { complete, isLLMConfigured } from '../utils/llm.js';
 import { generateIllustration } from '../services/illustration-generator.js';
@@ -62,6 +63,41 @@ RULES:
   }
 }
 
+// ─── Cover Versioning ─────────────────────────────────────────────────
+
+/**
+ * Content hash of a cover image, used as the `v` query parameter. The cover
+ * route serves "the current cover for this date", so without a version a
+ * regenerated cover kept the old URL and every cache (browser, email client
+ * proxy, CDN) kept showing the old image for a week.
+ */
+export function coverVersion(imageData: Buffer): string {
+  return createHash('sha256').update(imageData).digest('hex').slice(0, 16);
+}
+
+/** Public cover URL for an edition, versioned by the image's content hash. */
+export function buildCoverImageUrl(
+  config: Pick<NewsletterConfig, 'id' | 'coverRoutePrefix'>,
+  editionDate: string,
+  imageData: Buffer,
+): string {
+  const prefix = config.coverRoutePrefix || `/${config.id.replace('the_', '')}`;
+  return `${BASE_URL}${prefix}/${editionDate}/cover.png?v=${coverVersion(imageData)}`;
+}
+
+/**
+ * Cache-Control for a cover response. A URL whose `v` matches the image
+ * being served can be cached forever (a new cover gets a new URL); anything
+ * else — an unversioned URL from an older edition, or a stale version — is
+ * cached briefly so a regenerated cover shows up.
+ */
+export function coverCacheControl(imageData: Buffer, requestedVersion: unknown): string {
+  if (typeof requestedVersion === 'string' && requestedVersion === coverVersion(imageData)) {
+    return 'public, max-age=31536000, immutable';
+  }
+  return 'public, max-age=300';
+}
+
 // ─── Cover Generation ─────────────────────────────────────────────────
 
 export interface CoverResult {
@@ -105,8 +141,7 @@ export async function generateCoverForEdition(
     return null;
   }
 
-  const prefix = config.coverRoutePrefix || `/${config.id.replace('the_', '')}`;
-  const coverImageUrl = `${BASE_URL}${prefix}/${editionDate}/cover.png`;
+  const coverImageUrl = buildCoverImageUrl(config, editionDate, imageBuffer);
 
   return { coverImageUrl, imageBuffer, promptUsed };
 }

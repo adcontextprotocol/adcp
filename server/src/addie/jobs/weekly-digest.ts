@@ -23,6 +23,7 @@ import { withNewsletterSendLock } from '../../newsletters/send-lock.js';
 import { publishDigestAsPerspective } from '../services/digest-publisher.js';
 import { generateCoverForEdition } from '../../newsletters/cover.js';
 import { markSuggestionsIncluded } from '../../db/newsletter-suggestions-db.js';
+import { etDateString } from '../../newsletters/send-date.js';
 
 const logger = createLogger('weekly-digest');
 const workingGroupDb = new WorkingGroupDatabase();
@@ -304,11 +305,13 @@ async function deliverDigest(digest: DigestRecord): Promise<{ sent: number }> {
 
   const content = digest.content;
   const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
+  // The header shows the day the edition actually goes out, not the draft date.
+  const displayDate = etDateString(new Date());
   const stats: DigestSendStats = { email_count: 0, slack_count: 0, by_segment: {} };
 
   // Post to Slack #announcements
   if (ANNOUNCEMENTS_CHANNEL) {
-    const slackMessage = renderDigestSlack(content, editionDate);
+    const slackMessage = renderDigestSlack(content, editionDate, displayDate);
     const slackResult = await sendChannelMessage(ANNOUNCEMENTS_CHANNEL, slackMessage);
     if (slackResult.ok) {
       stats.slack_count = 1;
@@ -331,7 +334,12 @@ async function deliverDigest(digest: DigestRecord): Promise<{ sent: number }> {
       to: recipient.email,
       subject,
       render: (trackingId: string) => {
-        const { html, text } = renderDigestEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs, cluster);
+        // Pass the recipient (as the send-now pipeline does) so the
+        // personalised nudge renders here too, and test sends match.
+        const { html, text } = renderDigestEmail(
+          content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs, cluster, recipient,
+          { displayDate },
+        );
         return { htmlContent: html, textContent: text };
       },
       category: 'the_prompt',

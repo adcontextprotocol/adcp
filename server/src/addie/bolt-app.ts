@@ -242,6 +242,7 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft, isLegacyContent } from '../db/digest-db.js';
 import { applyDigestEdit } from './services/digest-editor.js';
 import { renderDigestReview } from './templates/weekly-digest.js';
+import { plannedSendDate } from '../newsletters/send-date.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import * as personEvents from '../db/person-events-db.js';
 import {
@@ -5786,7 +5787,7 @@ async function handleDigestEditReply(
       // If content was actually changed, post an updated preview
       if (updated) {
         const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
-        const preview = renderDigestReview(result.content, editionDate);
+        const preview = renderDigestReview(result.content, editionDate, plannedSendDate(editionDate));
 
         await boltApp.client.chat.postMessage({
           channel: channelId,
