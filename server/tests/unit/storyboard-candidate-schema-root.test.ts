@@ -85,6 +85,9 @@ function startWireWitness(schemaRoot: string, register: boolean): Promise<Witnes
     app.use(express.json({ verify: (req, _res, body) => { req.rawBody = body.toString('utf8'); } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     const server = http.createServer(app);
+    // As listenOnLoopback() (src/testing/loopback-server.ts), which this
+    // child script cannot import: no idle reaper on the in-process server.
+    server.keepAliveTimeout = 0;
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const url = 'http://127.0.0.1:' + server.address().port + '/api/training-agent/sales/mcp';
     async function call(name, args) {

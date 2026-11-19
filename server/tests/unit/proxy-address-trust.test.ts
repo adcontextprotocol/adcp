@@ -2,6 +2,8 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createServer } from 'node:http';
 
 const require = createRequire(import.meta.url);
 const proxyAddress = require('proxy-addr') as {
@@ -19,10 +21,10 @@ describe('proxy address trust boundaries', () => {
 
       // The peer must be IPv4: these ranges are only wrong for IPv4 peers, and
       // supertest's default localhost may resolve to ::1.
-      const server = app.listen(0, '127.0.0.1');
+      const server = createServer(app);
       let response: request.Response;
       try {
-        await new Promise(resolve => server.once('listening', resolve));
+        await listenOnLoopback(server);
         response = await request(server)
           .get('/identity')
           .set('X-Forwarded-For', '198.51.100.40');

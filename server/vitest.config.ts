@@ -68,7 +68,9 @@ export default defineConfig({
     environment: 'node',
     root: ROOT,
     setupFiles: ['./tests/setup/revenue-tracking-env.ts', './tests/setup/conductor-loopback-setup.ts'],
-    globalSetup: ['./tests/setup/built-schemas.ts'],
+    // Build the schema tree, then do the cold work every worker's first
+    // training-agent setup would repeat (tests/setup/warm-caches.ts).
+    globalSetup: ['./tests/setup/built-schemas.ts', './tests/setup/warm-caches.ts'],
     env: { ...validatorCacheEnv(process.env, path.dirname(ROOT)), ...compileCacheEnv(process.env, path.dirname(ROOT)) },
     testTimeout: 30000,
     pool: 'forks',

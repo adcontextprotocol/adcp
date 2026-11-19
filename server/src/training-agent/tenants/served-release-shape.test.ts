@@ -33,6 +33,8 @@ import { fieldsAddedAfterRelease } from '../served-release-fields.js';
 import { clearSessions, stopSessionCleanup } from '../state.js';
 import { clearAccountStore } from '../account-handlers.js';
 import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
+import { listenOnLoopback } from '../../testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../index.js';
 
 
 const TOKEN = 'test-token';
@@ -297,7 +299,6 @@ describe('served-release response shape below 3.3 (#8487)', () => {
   beforeAll(async () => {
     clearSessions();
     clearAccountStore();
-    const { createTrainingAgentRouter } = await import('../index.js');
     const app = express();
     app.use(express.json({
       limit: '5mb',
@@ -307,7 +308,7 @@ describe('served-release response shape below 3.3 (#8487)', () => {
     }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;

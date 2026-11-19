@@ -34,9 +34,11 @@ import { clearAccountStore } from '../../src/training-agent/account-handlers.js'
 import { clearForcedTaskCompletions } from '../../src/training-agent/comply-test-controller.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createServer, type Server } from 'node:http';
 
 describe('OAuth sales task ownership over HTTP MCP', () => {
-  let server: ReturnType<express.Express['listen']>;
+  let server: Server;
   let endpoint: string;
   let keys: Awaited<ReturnType<typeof generateKeyPair>>;
   let rpcId = 0;
@@ -64,7 +66,7 @@ describe('OAuth sales task ownership over HTTP MCP', () => {
     await clearSessions(); clearAccountStore(); clearIdempotencyCache(); clearForcedTaskCompletions();
     keys = await generateKeyPair('RS256'); authority.key = keys.publicKey;
     const app = express(); app.use(express.json()); app.use(createTrainingAgentRouter({ disableRateLimit: true }));
-    server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
+    server = createServer(app); await listenOnLoopback(server);
     const address = server.address(); if (!address || typeof address === 'string') throw new Error('Missing HTTP listener.');
     endpoint = `http://127.0.0.1:${address.port}/sales/mcp`;
   });

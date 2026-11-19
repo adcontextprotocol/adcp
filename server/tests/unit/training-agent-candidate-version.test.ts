@@ -18,6 +18,8 @@ import { trainingAgentCandidateVersion } from '../../src/training-agent/candidat
 import { createTrainingAgentServer } from '../../src/training-agent/task-handlers.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION } from '../../src/training-agent/types.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 describe('local candidate wire contract', () => {
   let schemaRoot: string;
@@ -38,14 +40,13 @@ describe('local candidate wire contract', () => {
     const index = JSON.parse(readFileSync(indexPath, 'utf8'));
     writeFileSync(indexPath, JSON.stringify({ ...index, adcp_version: '3.3.0-beta.1' }));
     registerExternalSchemaRoot('3.3.0-beta.1', schemaRoot);
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ verify: (req, _res, body) => {
       (req as unknown as { rawBody: string }).rawBody = body.toString('utf8');
     } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;

@@ -8,6 +8,7 @@ import { InMemoryStateStore } from '@adcp/sdk/server';
 import { mountCreative33Sandbox } from '../../src/training-agent/creative33/router.js';
 import { ensureCreative33SchemaBundle } from '../../src/training-agent/creative33/schema.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 type Json = Record<string, unknown>;
 const ACCOUNT = { account_id: 'creative33_sandbox' };
@@ -35,8 +36,8 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
         res.locals.trainingPrincipal = 'test:creative33:buyer-flow'; next();
       },
     });
-    server = app.listen(0, '127.0.0.1');
-    await new Promise<void>(resolve => server.once('listening', resolve));
+    server = http.createServer(app);
+    await listenOnLoopback(server);
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     ensureCreative33SchemaBundle();
     agent = ADCPMultiAgentClient.simple(`${base}/beta/3.3/creative/mcp`, {

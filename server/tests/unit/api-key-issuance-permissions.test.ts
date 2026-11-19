@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { request as httpRequest } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const mocks = vi.hoisted(() => ({
   listOrganizationMemberships: vi.fn(),
@@ -313,8 +314,8 @@ describe('organization-wide API key management permissions', () => {
   });
 
   async function rawDelete(path: string) {
-    const server = app.listen(0, '127.0.0.1');
-    await once(server, 'listening');
+    const server = createServer(app);
+    await listenOnLoopback(server);
     try {
       return await new Promise<number | undefined>((resolve, reject) => {
         // Passing a raw HTTP path avoids the client's URL dot normalization.

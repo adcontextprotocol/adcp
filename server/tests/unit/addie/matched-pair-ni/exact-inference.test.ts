@@ -32,6 +32,7 @@ import {
   restrictedScoreEM,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
 import { abs, add, choose, compare, decimal, display, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
+import { WorkBudget } from '../../../../src/addie/eval/matched-pair-ni/work-budget.js';
 
 // Pass-through recorder: every launch runs for real; tests read how many
 // child processes a check started and with which executable and argv.
@@ -62,6 +63,14 @@ const REALM_PROBE_PATH = fileURLToPath(new URL('./realm-probe.mjs', import.meta.
 describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   const margin = parseMatchedPairNiDecimal('0.10');
   const alpha = parseMatchedPairNiDecimal('0.05');
+  /**
+   * The engine's wall-clock limits off: a determinate result then depends only
+   * on its work budget, never on CPU load. Each call stays bounded by its
+   * test's timeout, and each cold child by spawnSync's 25 s (a cold child takes
+   * 15.5 s on the idle noetis VM). A hung worker keeps its two slots, so later
+   * engine calls in this file would fall back as well.
+   */
+  const BUDGET_ONLY = { computeMilliseconds: null, workerMilliseconds: null } as const;
 
   /** Every probe below runs in a fresh Worker realm; this loader makes it the TypeScript source realm. */
   const TSX = ['--import', 'tsx'] as const;
@@ -239,7 +248,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const outputDirectory = join(outputRoot, 'addie/eval/matched-pair-ni');
     mkdirSync(outputDirectory, { recursive: true });
     const sources = readdirSync(sourceDirectory).filter((file) => file.endsWith('.ts'));
-    expect(sources.sort()).toEqual(['admission.ts', 'algebraic.ts', 'certificates.ts', 'engine.ts', 'polynomial.ts', 'rational.ts']);
+    expect(sources.sort()).toEqual(['admission.ts', 'algebraic.ts', 'certificates.ts', 'engine.ts', 'polynomial.ts', 'rational.ts', 'work-budget.ts']);
     for (const file of sources) {
       const source = readFileSync(join(sourceDirectory, file), 'utf8');
       const specifiers = ts.preProcessFile(source, true, true).importedFiles.map((imported) => imported.fileName);
@@ -328,7 +337,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       && (['n11', 'n10', 'n01', 'n00'] as const).every((cell) => (sharedN25!.input as typeof input).counts[cell] === input.counts[cell])
       && compare((sharedN25.input as typeof input).margin, input.margin) === 0
       && compare((sharedN25.input as typeof input).alpha, input.alpha) === 0;
-    if (!same) sharedN25 = { input, outcome: restrictedScoreEM(input) };
+    if (!same) sharedN25 = { input, outcome: restrictedScoreEM(input, BUDGET_ONLY) };
     return sharedN25!.outcome;
   }
 
@@ -336,7 +345,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
     for (let attempt = 0; attempt < 3; attempt++) {
       const source = `import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
-        const outcome = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: d("0.10"), alpha: d("0.05") });
+        const outcome = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: d("0.10"), alpha: d("0.05") }, ${JSON.stringify(BUDGET_ONLY)});
         process.exit(outcome.diagnostic.indeterminate ? 2 : 0);`;
       const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
         cwd: process.cwd(), encoding: 'utf8', timeout: 25_000,
@@ -375,10 +384,56 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expectsColdWorkerFixtureToBeDeterminate();
   }, 80_000);
 
+  it('stops the computation once the clock passes the default 12 s compute deadline', () => {
+    let now = 1_000;
+    const budget = new WorkBudget(10, undefined, () => now);
+    now += 12_000;
+    expect(() => budget.charge()).not.toThrow();
+    now += 1;
+    expect(() => budget.charge()).toThrow(/ceiling/);
+  });
+
+  it('bounds a computation without a compute deadline by its work units alone', () => {
+    let now = 0;
+    const budget = new WorkBudget(2, null, () => now);
+    now = Number.MAX_SAFE_INTEGER;
+    expect(() => { budget.charge(); budget.charge(); }).not.toThrow();
+    expect(() => budget.charge()).toThrow(/ceiling/);
+  });
+
+  it('applies a caller compute deadline inside the worker', async () => {
+    const outcome = await restrictedScoreEM(
+      { counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin, alpha },
+      { computeMilliseconds: 0, workerMilliseconds: null },
+    );
+    expect(outcome.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
+  });
+
+  it('reads the wall clock only through the work budget, whose clock and deadline callers set', () => {
+    const clockReads = (source: string): number => (source.match(/\b(?:Date|performance)\s*\.\s*now\s*\(/g) ?? []).length;
+    expect(clockReads('const t = Date.now();')).toBe(1);
+    expect(clockReads('const t = globalThis.performance . now ();')).toBe(1);
+    expect(clockReads('const nowhere = Date; // Date.nowish')).toBe(0);
+    const directory = fileURLToPath(new URL('../../../../src/addie/eval/matched-pair-ni/', import.meta.url));
+    const readers = readdirSync(directory).filter((file) => file.endsWith('.ts') && clockReads(readFileSync(join(directory, file), 'utf8')) > 0);
+    expect(readers).toEqual(['work-budget.ts']);
+  });
+
+  it('rejects wall-clock limits outside their ranges before starting a worker', () => {
+    const input = { counts: { n11: 3, n10: 2, n01: 0, n00: 0 }, margin, alpha };
+    for (const limits of [
+      { computeMilliseconds: -1 }, { computeMilliseconds: 1.5 }, { computeMilliseconds: '5' },
+      { workerMilliseconds: 2_147_483_648 }, { workerMilliseconds: Number.POSITIVE_INFINITY }, { deadline: 1 },
+    ]) {
+      expect(() => restrictedScoreEM(input, limits as never), JSON.stringify(limits)).toThrow(RangeError);
+      expect(() => nullBoundarySizeEnvelope(2, margin, alpha, limits as never), JSON.stringify(limits)).toThrow(RangeError);
+    }
+  });
+
   it('routes an exactly zero margin only to exact conditional McNemar', async () => {
     const outcome = await restrictedScoreEM({
       counts: { n11: 2, n10: 2, n01: 1, n00: 3 }, margin: ZERO, alpha,
-    });
+    }, BUDGET_ONLY);
     expect(outcome.mode).toBe('conditional_mcnemar_zero_margin');
     expect(outcome.diagnostic.pValue.lower).toEqual(conditionalMcNemarPValue({ n: 8, x: 2, t: 3 }));
     expect(() => nullBoundarySizeEnvelope(2, ZERO, alpha)).toThrow(/Zero margin/);
@@ -548,7 +603,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     for (const [n, candidateMargin, candidateAlpha] of [[3, '0.10', '0.05'], [4, '0.10', '0.05'], [3, '0.20', '0.10']] as const) {
       const parsedMargin = decimal(candidateMargin);
       const parsedAlpha = decimal(candidateAlpha);
-      const size = await nullBoundarySizeEnvelope(n, parsedMargin, parsedAlpha);
+      const size = await nullBoundarySizeEnvelope(n, parsedMargin, parsedAlpha, BUDGET_ONLY);
       expect(size.status).toBe('certified');
       const certificate = maximizePolynomial(size.upper, parsedMargin, ONE);
       expect(certificate.indeterminate).toBe(false);
@@ -568,7 +623,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   it('finds the published-review repeated-endpoint Sturm counterexample interior maximum', async () => {
     const outcome = await restrictedScoreEM({
       counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, margin: decimal('0.07'), alpha,
-    });
+    }, BUDGET_ONLY);
     expect(outcome.diagnostic.statisticalRejectNull).toBe(false);
     expect(outcome.diagnostic.certificate?.stationaryPointCount).toBeGreaterThan(0);
     expect(compare(outcome.diagnostic.pValue.lower, decimal('0.05888'))).toBeGreaterThan(0);
@@ -580,11 +635,11 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     for (const [x, t] of tieCases) {
       const outcome = await restrictedScoreEM({
         counts: { n11: 5 - t, n10: x, n01: t - x, n00: 0 }, margin: decimal('0.20'), alpha,
-      });
+      }, BUDGET_ONLY);
       expect(outcome.diagnostic.indeterminate).toBeUndefined();
       expect(outcome.diagnostic.statisticalRejectNull).toBe(true);
     }
-    const size = await nullBoundarySizeEnvelope(5, decimal('0.20'), alpha);
+    const size = await nullBoundarySizeEnvelope(5, decimal('0.20'), alpha, BUDGET_ONLY);
     expect(size.status).toBe('certified');
     expect(size.indeterminateStates).toEqual([]);
     const maximum = maximizePolynomial(size.upper, decimal('0.20'), ONE);
@@ -622,7 +677,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       expect(outcome.reason).toBe('size_complexity_ceiling');
     }
     const boundaryDenominator = 1n << 15n;
-    const withinBoundary = await nullBoundarySizeEnvelope(8, rational(boundaryDenominator - 1n, boundaryDenominator), alpha);
+    const withinBoundary = await nullBoundarySizeEnvelope(8, rational(boundaryDenominator - 1n, boundaryDenominator), alpha, BUDGET_ONLY);
     expect(withinBoundary.reason).not.toBe('size_complexity_ceiling');
   });
 
@@ -652,7 +707,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   });
 
   it('keeps engine ambiguity distinct from a determinate alpha overlap in size envelopes', async () => {
-    const ambiguous = await nullBoundarySizeEnvelope(2, decimal('0.20'), alpha);
+    const ambiguous = await nullBoundarySizeEnvelope(2, decimal('0.20'), alpha, BUDGET_ONLY);
     expect(ambiguous.status).toBe('indeterminate');
     expect(ambiguous.reason).toBe('ambiguous_e_ordering');
     expect(ambiguous.alphaOverlapStates).toEqual([]);
@@ -666,14 +721,14 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       { counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, n: 4, x: 3, t: 3, margin: decimal('0.07') },
       { counts: { n11: 3, n10: 2, n01: 0, n00: 0 }, n: 5, x: 2, t: 2, margin: decimal('0.20') },
     ]) {
-      const p = (await restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha })).diagnostic.pValue;
-      const uncertain = await nullBoundarySizeEnvelope(fixtureCase.n, fixtureCase.margin, midpoint(p.lower, p.upper));
+      const p = (await restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha }, BUDGET_ONLY)).diagnostic.pValue;
+      const uncertain = await nullBoundarySizeEnvelope(fixtureCase.n, fixtureCase.margin, midpoint(p.lower, p.upper), BUDGET_ONLY);
       expect(uncertain.status).toBe('indeterminate');
       expect(uncertain.reason).toBe('overlapping_p_value');
       expect(uncertain.engineIndeterminacy).toEqual([]);
       expect(uncertain.alphaOverlapStates).toContainEqual({ n: fixtureCase.n, x: fixtureCase.x, t: fixtureCase.t });
       expect(uncertain.indeterminateStates).toContainEqual({ n: fixtureCase.n, x: fixtureCase.x, t: fixtureCase.t });
-      expect((await restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha: midpoint(p.lower, p.upper) })).diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
+      expect((await restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha: midpoint(p.lower, p.upper) }, BUDGET_ONLY)).diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
     }
   });
 
@@ -708,7 +763,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => { (diagnostic.diagnostic as { statisticalRejectNull: boolean }).statisticalRejectNull = false; }).toThrow();
     expect(() => { (diagnostic.diagnostic.pValue as { lower: typeof ZERO }).lower = ZERO; }).toThrow();
     expect(() => { (diagnostic.diagnostic.certificate as { stationaryPointCount: number }).stationaryPointCount = 0; }).toThrow();
-    const size = await nullBoundarySizeEnvelope(2, margin, alpha);
+    const size = await nullBoundarySizeEnvelope(2, margin, alpha, BUDGET_ONLY);
     expect(Object.isFrozen(size)).toBe(true);
     expect(Object.isFrozen(size.lower)).toBe(true);
     expect(Object.isFrozen(size.upper)).toBe(true);
@@ -716,11 +771,18 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   });
 
   it('fails closed rather than creating an unbounded worker queue under contention', async () => {
-    const input = { counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin, alpha };
-    const started = Date.now();
-    const outcomes = await Promise.all([restrictedScoreEM(input), restrictedScoreEM(input), restrictedScoreEM(input)]);
-    expect(Date.now() - started).toBeLessThan(25_000);
+    // One call takes both worker slots; the calls that find no free slot fall
+    // back at once instead of waiting in a queue.
+    const input = { counts: { n11: 3, n10: 2, n01: 0, n00: 0 }, margin: decimal('0.20'), alpha };
+    const settled: number[] = [];
+    const calls = [0, 1, 2].map((index) => restrictedScoreEM(input, BUDGET_ONLY).then((outcome) => { settled.push(index); return outcome; }));
+    const outcomes = await Promise.all(calls);
+    expect(settled).toEqual([1, 2, 0]);
+    expect(outcomes[0]!.diagnostic.indeterminate).toBeUndefined();
+    expect(outcomes[1]!.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
+    expect(outcomes[2]!.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
     expect(outcomes.every((outcome) => outcome.admission.admitted === false)).toBe(true);
-    expect(outcomes.some((outcome) => outcome.diagnostic.indeterminate?.reason === 'complexity_ceiling')).toBe(true);
+    // The admitted call released its slots: the next call runs.
+    expect((await restrictedScoreEM(input, BUDGET_ONLY)).diagnostic.indeterminate).toBeUndefined();
   }, 30_000);
 });

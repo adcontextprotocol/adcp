@@ -46,6 +46,8 @@ import {
 } from '../../src/training-agent/hosted-grader.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const SELLER = 'https://seller.hosted-grader-7758.example/mcp';
 // Generated per run so no key material lives in the repository. The key is
@@ -60,7 +62,6 @@ let base = '';
 let close: () => Promise<void> = async () => {};
 
 beforeAll(async () => {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -70,7 +71,7 @@ beforeAll(async () => {
   }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
   const srv = http.createServer(app);
-  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  await listenOnLoopback(srv);
   base = `http://127.0.0.1:${(srv.address() as { port: number }).port}/api/training-agent`;
   process.env.TRAINING_AGENT_URL = base;
   close = () => new Promise(done => srv.close(() => done()));
@@ -306,7 +307,7 @@ describe('hosted-grader brand host (adcp#7758)', () => {
     const app = express();
     app.use(createHostedGraderHostRouter());
     const srv = http.createServer(app);
-    await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+    await listenOnLoopback(srv);
     const origin = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
     return { origin, close: () => new Promise<void>(done => srv.close(() => done())) };
   }

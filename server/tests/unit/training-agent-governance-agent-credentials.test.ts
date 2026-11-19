@@ -36,6 +36,8 @@ import {
 import { getTrainingGovernanceIssuer } from '../../src/training-agent/canonical-base.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const SELLER = 'https://seller.gov-7758.example/mcp';
 const OTHER_SELLER = 'https://other-seller.gov-7758.example/mcp';
@@ -47,7 +49,6 @@ let base = '';
 let close: () => Promise<void> = async () => {};
 
 beforeAll(async () => {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -57,7 +58,7 @@ beforeAll(async () => {
   }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
   const srv = http.createServer(app);
-  await new Promise<void>(resolve => srv.listen(0, '127.0.0.1', () => resolve()));
+  await listenOnLoopback(srv);
   origin = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
   base = `${origin}/api/training-agent`;
   // Local runs pin the canonical base (and so the governance identity) to

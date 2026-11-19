@@ -19,6 +19,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const TOKEN = 'test-token';
 const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
@@ -182,7 +184,6 @@ describe('experimental 3.3 holds graded by the reference hold-policy grader', ()
   beforeAll(async () => {
     clearSessions();
     clearAccountStore();
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({
       limit: '5mb',
@@ -192,7 +193,7 @@ describe('experimental 3.3 holds graded by the reference hold-policy grader', ()
     }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     url = `http://127.0.0.1:${address.port}/api/training-agent/sales/mcp`;

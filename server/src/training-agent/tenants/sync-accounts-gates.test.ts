@@ -14,9 +14,10 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { listenOnLoopback } from '../../testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../index.js';
 
 async function bootServer(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
-  const { createTrainingAgentRouter } = await import('../index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -26,7 +27,7 @@ async function bootServer(): Promise<{ baseUrl: string; close: () => Promise<voi
   }));
   app.use('/api/training-agent', createTrainingAgentRouter());
   const srv = http.createServer(app);
-  await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
+  await listenOnLoopback(srv);
   const port = (srv.address() as { port: number }).port;
   return {
     baseUrl: `http://127.0.0.1:${port}/api/training-agent`,

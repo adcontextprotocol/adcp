@@ -29,6 +29,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { attachConformanceWS } from '../../src/conformance/ws-route.js';
 import { conformanceSessions } from '../../src/conformance/session-store.js';
 import { issueConformanceToken } from '../../src/conformance/token.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 process.env.CONFORMANCE_JWT_SECRET = 'test-e2e-conformance-secret';
 process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
@@ -96,9 +97,7 @@ beforeAll(async () => {
     res.end();
   });
   attachConformanceWS(httpServer);
-  await new Promise<void>((resolve) => {
-    httpServer.listen(0, '127.0.0.1', () => resolve());
-  });
+  await listenOnLoopback(httpServer);
   const addr = httpServer.address();
   if (typeof addr === 'object' && addr) {
     port = addr.port;

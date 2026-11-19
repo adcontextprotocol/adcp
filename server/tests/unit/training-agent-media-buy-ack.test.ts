@@ -4,6 +4,8 @@ import http from 'node:http';
 import { InMemoryStateStore, type PutIfMatchResult } from '@adcp/sdk/server';
 import { clearSessions, setStateStore, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearIdempotencyCache, getIdempotencyStore } from '../../src/training-agent/idempotency.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 
 const BUY_NAME = 'Durable acknowledgement fixture';
@@ -106,7 +108,6 @@ describe('tenant media-buy acknowledgement durability', () => {
     replaySaveAttempts = () => save.mock.calls.length;
     store = new ControlledStateStore();
     setStateStore(store);
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
     clearAccountStore();
     createResponse = undefined;
@@ -120,7 +121,7 @@ describe('tenant media-buy acknowledgement durability', () => {
     });
     app.use('/api/training-agent', createTrainingAgentRouter());
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/training-agent/sales/mcp`;
   }, 60_000);
 

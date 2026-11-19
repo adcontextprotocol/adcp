@@ -11,6 +11,7 @@ import {
 } from '../../src/addie/services/compliance-testing.js';
 import { deriveVerificationProfileRoleAssessments } from '../../src/services/verification-profile-assessment.js';
 import { hostedComplianceOptions, hostedComplianceTarget } from '../../src/services/hosted-compliance-version.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 // Exercise the installed SDK's projection as well as its public runner. The
 // mapper has no public export; load its ES module file next to the public
@@ -141,7 +142,7 @@ describe('hosted controller preflight gaps (#8576)', () => {
       await mcp.connect(transport);
       await transport.handleRequest(req, res);
     });
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     try {
       const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/mcp`;
       const result = await comply(url, {

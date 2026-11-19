@@ -19,6 +19,8 @@ import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } fr
 import { PREVIEW_SCHEMA_BUNDLE } from '../../src/training-agent/schema-compat.js';
 import { TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS } from '../../src/training-agent/types.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
 
@@ -38,14 +40,13 @@ describe('hosted 3.3 preview kill switch', () => {
   };
 
   beforeAll(async () => {
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ verify: (req, _res, body) => {
       (req as unknown as { rawBody: string }).rawBody = body.toString('utf8');
     } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;

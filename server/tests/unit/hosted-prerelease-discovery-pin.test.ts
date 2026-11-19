@@ -16,6 +16,8 @@ import { testCapabilityDiscovery } from '@adcp/sdk/testing';
 import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { hostedComplianceTarget, withHostedTestOptions } from '../../src/services/hosted-compliance-version.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const TOKEN = 'test-token';
 
@@ -24,14 +26,13 @@ describe('hosted capability discovery against an agent that serves its preview o
   let agentUrl = '';
 
   beforeAll(async () => {
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ limit: '5mb', verify: (req, _res, body) => {
       (req as unknown as { rawBody: string }).rawBody = body.toString('utf8');
     } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     agentUrl = `http://127.0.0.1:${address.port}/api/training-agent/sales/mcp`;

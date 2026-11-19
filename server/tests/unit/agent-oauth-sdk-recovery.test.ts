@@ -9,6 +9,7 @@ import { adaptAuthForSdk, agentConfigAuthFields, type SdkAuth } from '../../src/
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../src/routes/helpers/agent-oauth-prompt.js';
 import { isOAuthRequiredErrorMessage } from '../../src/routes/helpers/oauth-error-detection.js';
 import type { AgentContextDatabase } from '../../src/db/agent-context-db.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const agentUrl = 'https://owned-agent.example/mcp';
 const issuer = 'https://owned-issuer.example';
@@ -46,8 +47,7 @@ describe('actual SDK15 owner recovery prompts', () => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end('{}');
     });
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
+    await listenOnLoopback(server);
     try {
       const address = server.address();
       if (!address || typeof address === 'string') throw new Error('Owned fixture has no port');

@@ -10,6 +10,7 @@ import {
   creative33SandboxEnabled,
   mountCreative33Sandbox,
 } from '../../src/training-agent/creative33/router.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const PATH = '/beta/3.3/creative/mcp';
 const VERSION = '3.3-beta.1';
@@ -225,9 +226,9 @@ describe('creative 3.3 beta route security boundaries', () => {
     const bytes = Buffer.concat([source.subarray(0, offset), Buffer.from([0xff]), source.subarray(offset + marker.length)]);
     // Supertest serializes Buffer as a JSON object for application/json.
     // Send the actual malformed bytes over HTTP to exercise parser.verify.
-    const listener = app.listen(0, '127.0.0.1');
-    await new Promise<void>(resolve => listener.once('listening', resolve));
+    const listener = http.createServer(app);
     try {
+      await listenOnLoopback(listener);
       const body = await new Promise<RpcBody>((resolve, reject) => {
         const outbound = http.request({
           hostname: '127.0.0.1', port: (listener.address() as { port: number }).port,

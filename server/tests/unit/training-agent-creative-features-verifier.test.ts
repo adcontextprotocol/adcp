@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { jsonBodyLimitForPath } from '../../src/utils/json-body-limit.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const ROOT = resolve(__dirname, '../../..');
 const SCENARIOS = resolve(ROOT, 'static/compliance/source/protocols/media-buy/scenarios');
@@ -35,7 +36,7 @@ async function serve(disableRateLimit: boolean): Promise<string> {
   app.use(express.json({ limit: '5mb' }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit }));
   const srv = http.createServer(app);
-  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  await listenOnLoopback(srv);
   closers.push(() => new Promise(done => srv.close(() => done())));
   return `http://127.0.0.1:${(srv.address() as { port: number }).port}/api/training-agent`;
 }
@@ -56,7 +57,7 @@ async function serveWithTransportCaps(): Promise<{ bare: string; mounted: string
     res.status(err.status ?? 500).json({ error: 'body_error' });
   });
   const srv = http.createServer(app);
-  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  await listenOnLoopback(srv);
   closers.push(() => new Promise(done => srv.close(() => done())));
   const origin = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
   return { bare: origin, mounted: `${origin}/api/training-agent` };
