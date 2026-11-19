@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/video_hosted.json",
   "title": "Canonical Format: Hosted Video",
-  "description": "Direct video file (mp4/webm/mov, or mxf for broadcast delivery) hosted by the buyer. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression, click and playback pixels (`pixel_tracker` events `start`, `first_quartile`, `midpoint`, `third_quartile`, `complete`, added in 3.3.0) via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time and playback pixels at the matching playback point.",
+  "description": "Direct video file (mp4/webm/mov, or mxf for broadcast delivery), buyer-hosted for asset-driven products or produced by the publisher for host-read products. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression, click and playback pixels (`pixel_tracker` events `start`, `first_quartile`, `midpoint`, `third_quartile`, `complete`, added in 3.3.0) via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time and playback pixels at the matching playback point.",
   "allOf": [
     { "$ref": "/schemas/formats/canonical/_base.json" },
     {
@@ -21,7 +21,7 @@
         { "asset_group_id": "companion_banner", "asset_type": "image", "required": false },
         { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
       ],
-      "description": "Default slots for video_hosted canonical. Buyer ships a video asset (file or hosted URL); optional headline, primary text (long-form caption), CTA (typically constrained via `cta_values`), brand_name (typical for vertical short-form), companion_banner (typical for horizontal instream), and clickthrough URL. Products MAY override or extend the default — e.g., remove `companion_banner` for short-form vertical, narrow `cta` to a value enum, mark `landing_page_url` as required."
+      "description": "Default slots for video_hosted canonical. Buyer ships a video asset (file or hosted URL); optional headline, primary text (long-form caption), CTA (typically constrained via `cta_values`), brand_name (typical for vertical short-form), companion_banner (typical for horizontal instream), and clickthrough URL. Products MAY override or extend the default — e.g., remove `companion_banner` for short-form vertical, narrow `cta` to a value enum, mark `landing_page_url` as required. Host-read products override `video_main` with a `script` (asset_type: text) or `creative_brief` (asset_type: brief) slot, plus `asset_source: 'publisher_host_recorded'`, `buyer_asset_acceptance: 'rejected'`, and a positive `production_window_business_days`."
     },
     "orientation": {
       "type": "string",
@@ -131,7 +131,7 @@
       "type": "string",
       "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
       "default": "buyer_uploaded",
-      "description": "Where the rendered asset bytes come from. Single shared enum across canonicals. See `image.json#asset_source` for the full semantics. `publisher_host_recorded` is audio-specific and has no defined behavior on video. `publisher_owned_reference` is valid when the product accepts an existing post reference via a `published_post` slot instead of uploaded video bytes. Adopters MUST select a value appropriate to the canonical."
+      "description": "Where the rendered asset bytes come from. Single shared enum across canonicals. See `image.json#asset_source` for the full semantics. `publisher_host_recorded`: the publisher's own on-camera talent (host or creator) records the ad read on video, either standalone or integrated into their own content (an embed); the buyer obtains it through the publisher's `build_creative`. `publisher_owned_reference` is valid when the product accepts an existing post reference via a `published_post` slot instead of uploaded video bytes. Adopters MUST select a value appropriate to the canonical."
     },
     "buyer_asset_acceptance": {
       "type": "string",
