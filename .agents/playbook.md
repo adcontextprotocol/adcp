@@ -884,9 +884,25 @@ Apply this pattern when restructuring protocol sections.
 
 ## Local Hooks
 
-`.husky/pre-commit` runs `npm run precommit` (root unit tests, dynamic-import
-and format-identity guards, the staged-file-scoped server unit suite, and
-`typecheck`). It must pass on a clean checkout of `main` in any shell:
+`.husky/pre-commit` runs the commands of `npm run precommit` (root unit tests,
+dynamic-import and format-identity guards, the staged-file-scoped server unit
+suite, and `typecheck`) plus the advisory image check, through
+`node scripts/profile-precommit.mjs hook`. The runner expands the `precommit`
+script into its leaf commands and runs them in phases: the independent checks
+together, then the server unit suite on its own. `npm run precommit` is the
+sequential equivalent and runs the same commands.
+
+- A phase reports every failure in it; a failed phase skips the later ones.
+  `ADCP_PRECOMMIT_KEEP_GOING=1` runs every phase.
+- The terminal shows one line per step and the output of each failed step.
+  Every step's full log and `report.json` are in `.hook-runs/<stamp>-hook/`;
+  the newest 20 hook runs are kept (`ADCP_HOOK_RUNS_KEEP`).
+- `ADCP_PRECOMMIT_PROFILE=1` runs the same phases with profiling data.
+- A leaf that is not a test, type check, or known read-only check runs alone,
+  in order. Add a leaf to the read-only allowlist in
+  `scripts/profile-precommit/plan.mjs` only if it writes nothing.
+
+The hook must pass on a clean checkout of `main` in any shell:
 
 - `server/tests/setup/revenue-tracking-env.ts` scrubs `DEV_USER_EMAIL`,
   `DEV_USER_ID`, `ALLOW_DEV_MODE_IN_PROD`, `ADMIN_API_KEY`, and `ADMIN_EMAILS`

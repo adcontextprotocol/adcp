@@ -1,20 +1,46 @@
 #!/usr/bin/env node
-// Pre-commit hook profiler: runs the same commands as .husky/pre-commit and
-// writes a run directory you read instead of the terminal.
+// Pre-commit runner and profiler. `hook` is what .husky/pre-commit runs: the
+// hook's commands, scheduled concurrently, with a run directory you read
+// instead of the terminal. `run` profiles the same commands.
 //
 // USAGE
+//   node scripts/profile-precommit.mjs hook [--root DIR] [--keep-going]
 //   node scripts/profile-precommit.mjs run [options]
 //   node scripts/profile-precommit.mjs summarize <run-dir>
 //   node scripts/profile-precommit.mjs compare <run-a> <run-b>
 //   node scripts/profile-precommit.mjs costs <profile-dir>... [--group dir|subdir] [--repo-root /app] [--out f.json]
 //                                 Inclusive CPU cost items over .cpuprofile files.
+//   node scripts/profile-precommit.mjs plan
 //
-// RUN OPTIONS
+// THE PLAN (scripts/profile-precommit/plan.mjs) is derived, not hard-coded:
+// the advisory image check, then `npm run precommit` with every `npm run X`
+// expanded through package.json into its leaf commands (split on &&).
+// `with-timeout.sh N` budgets are enforced per group (ADCP_TIMEOUT_SCALE
+// honoured). `npm run precommit` stays the sequential equivalent.
+//
+// HOOK (scripts/profile-precommit/runner.mjs). Leaves run exactly as
+// package.json writes them, in phases: the concurrency-safe leaves (vitest,
+// node:test, tsc and a read-only allowlist) together, then the server unit
+// step on its own (it already uses every core), and any other leaf alone, in
+// order. A phase runs to the end and reports every failure; a failed phase
+// skips the later ones (--keep-going or ADCP_PRECOMMIT_KEEP_GOING=1 runs them
+// all). The exit status is the first failing leaf's in plan order, a budget
+// expiry prints with-timeout.sh's ⏰ TIMEOUT line, and Ctrl-C stops every
+// running leaf.
+// The terminal gets one line per step, the full output of a phase with a
+// single step, and the log tail of every failed step. The image check is
+// advisory, as it was in the old hook: its failure is shown, not fatal.
+// Hook runs write .hook-runs/<stamp>-hook/; the newest ADCP_HOOK_RUNS_KEEP
+// (default 20) are kept. --root runs the plan of another tree (tests).
+//
+// RUN OPTIONS (profiling; sequential unless --concurrent or --as-hook)
 //   --server-unit full|skip|auto  Server unit plan. Standalone default: full
 //                                 (the path a staged package.json takes);
 //                                 --as-hook default: auto (staged files).
 //   --label TEXT                  Suffix for the run directory name.
 //   --out DIR                     Parent directory (default .hook-runs).
+//   --concurrent                  Use the hook's phases instead of running
+//                                 one command at a time.
 //   --cpu-prof                    V8 CPU profiles for every Node process and
 //                                 worker thread (NODE_OPTIONS=--cpu-prof);
 //                                 aggregated into cpu-summary.json, the three
@@ -34,26 +60,27 @@
 //   --synthetic-load N            Keep N busy-loop processes (`yes`) running
 //                                 for the whole run: a repeatable stand-in
 //                                 for other agents' work on the machine.
-//   --as-hook                     Terse terminal output; for .husky/pre-commit.
+//   --as-hook                     The hook's phases and terse terminal output;
+//                                 for ADCP_PRECOMMIT_PROFILE=1 in the hook.
 //
-// The command list is derived, not hard-coded: the hook's command lines are
-// read from .husky/pre-commit and every `npm run X` is expanded through
-// package.json into its leaf commands (split on &&). `with-timeout.sh N`
-// budgets are enforced per group, as the hook does (ADCP_TIMEOUT_SCALE
-// honoured). The exit status is the hook's: the first failing command's code.
-//
-// RUN DIRECTORY  .hook-runs/<UTC timestamp>[-label]/
-//   machine.json                 CPU count, load, memory, competing processes.
+// RUN DIRECTORY  .hook-runs/<UTC timestamp>[-label]/ (hook: <stamp>-hook/)
+//   run.json                     Options, plan with phases, git state.
+//   machine.json                 (run) CPU count, load, memory, competing
+//                                processes.
 //   summary.json, summary.html   Ranked commands, vitest files, shard balance.
+//                                total_wall_s is elapsed time; steps overlap
+//                                in concurrent runs (sum_command_wall_s).
 //   <NN-command>/
-//     report.json                Command, start/end, wall, exit, rusage
-//                                (user/sys CPU, max RSS of the largest
-//                                process), tree peak RSS, failure summary.
+//     report.json                Command, status (passed, failed, advisory,
+//                                timed_out, interrupted, skipped), start/end,
+//                                wall, exit, failure summary; for `run` also
+//                                rusage (user/sys CPU, max RSS of the largest
+//                                process) and tree peak RSS.
 //     stdout.log, stderr.log     Full output.
-//     samples.csv                Every --sample-ms: process count, summed
-//                                CPU% and RSS of the command's process tree.
-//     vitest/ node-test.json     Structured results (vitest timing reporter,
-//                                vitest JSON, node:test JSON reporter).
+//     samples.csv                (run) Every --sample-ms: process count,
+//                                summed CPU% and RSS of the command's tree.
+//     vitest/ node-test.json     (run) Structured results (vitest timing
+//                                reporter, vitest JSON, node:test JSON).
 //     cpu/ cpu-summary.json      With --cpu-prof.
 //
 // WHAT IS NOT COVERED
@@ -74,10 +101,11 @@
 //     rusage user/sys totals for exact CPU time. rusage covers only waited-for
 //     descendants, and its max RSS is the single largest process; the
 //     tree peak in samples.csv is the summed footprint.
+//   - `run` uses macOS tools (/usr/bin/time -l, vm_stat); `hook` uses none.
 //
-// HOOK USE (optional): ADCP_PRECOMMIT_PROFILE=1 git commit ... makes
-// .husky/pre-commit run this script with --as-hook instead of the plain
-// commands; the commit passes or fails exactly as it would otherwise.
+// PROFILED HOOK (optional): ADCP_PRECOMMIT_PROFILE=1 git commit ... makes
+// .husky/pre-commit run `run --as-hook` instead of `hook`: the same phases
+// and the same pass/fail outcome, plus the profiling data.
 
 import { spawn, execFileSync, execFile } from 'node:child_process';
 import {
@@ -87,13 +115,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aggregateCpuProfiles } from './profile-precommit/cpuprofile.mjs';
-import { renderSummaryHtml, renderCompareHtml } from './profile-precommit/render.mjs';
+import { planCommands, phasesOf } from './profile-precommit/plan.mjs';
+import { renderCompareHtml } from './profile-precommit/render.mjs';
+import { buildSummary, collectResults, readJson } from './profile-precommit/results.mjs';
+import { leanLauncher, pruneHookRuns, runPlan } from './profile-precommit/runner.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
 const NODE_TEST_REPORTER = path.join(SCRIPT_DIR, 'profile-precommit', 'node-test-json-reporter.mjs');
 const VITEST_TIMING_REPORTER = path.join(SCRIPT_DIR, 'profile-precommit', 'vitest-timing-reporter.mjs');
 const COMPETING_RE = 'pre-push|storyboard|git push|vitest|tsc --project';
+const DEFAULT_HOOK_RUNS_KEEP = 20;
+const FAILURE_LOG_LINES = 200;
 
 // ---------------------------------------------------------------- arguments
 
@@ -104,86 +137,14 @@ function parseArgs(argv) {
     const arg = rest[i];
     if (!arg.startsWith('--')) { opts._.push(arg); continue; }
     const [key, inline] = arg.slice(2).split('=', 2);
-    const flag = ['cpu-prof', 'heap-prof', 'keep-going', 'as-hook', 'import-durations'].includes(key);
+    const flag = ['cpu-prof', 'heap-prof', 'keep-going', 'as-hook', 'import-durations', 'concurrent'].includes(key);
     opts[key] = flag ? true : (inline ?? rest[++i]);
   }
   return { command, opts };
 }
 
-// ---------------------------------------------------------- command expansion
+// ------------------------------------------------------------ instrumentation
 
-function hookCommandLines() {
-  const text = readFileSync(path.join(REPO_ROOT, '.husky', 'pre-commit'), 'utf8');
-  const lines = [];
-  let depth = 0;
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (/^if\b/.test(line)) { depth += 1; continue; }
-    if (/^fi\b/.test(line)) { depth -= 1; continue; }
-    if (depth > 0 || !line || line.startsWith('#') || /^(export|HUSKY_INIT=|\[)/.test(line)) continue;
-    if (line.includes('profile-precommit')) continue;
-    lines.push(line);
-  }
-  return lines;
-}
-
-function expand(command, scripts, ctx, out) {
-  const clauses = command.split(/\s+&&\s+/).map((c) => c.trim()).filter(Boolean);
-  clauses.forEach((clause, index) => {
-    if (/(\|\||;|\|)/.test(clause.replace(/'[^']*'|"[^"]*"/g, ''))) {
-      throw new Error(`Cannot expand clause with shell operators: ${clause}`);
-    }
-    let budget = ctx.budget;
-    let inner = clause;
-    const timeout = /^bash scripts\/with-timeout\.sh (\d+) (.+)$/.exec(clause);
-    if (timeout) {
-      budget = { id: out.budgets.length, seconds: scaleBudget(Number(timeout[1])), label: timeout[2], startedAt: null };
-      out.budgets.push(budget);
-      inner = timeout[2];
-    }
-    const npmRun = /^npm run (?:--silent )?([\w:.-]+)$/.exec(inner);
-    if (npmRun) {
-      const name = npmRun[1];
-      if (!(name in scripts)) throw new Error(`package.json has no script ${name}`);
-      expand(scripts[name], scripts, { budget, chain: [...ctx.chain, name] }, out);
-      return;
-    }
-    const owner = ctx.chain.at(-1) ?? 'hook';
-    const name = clauses.length > 1 ? `${owner}#${index + 1}` : owner;
-    out.commands.push({ name, chain: ctx.chain, command: inner, budget });
-  });
-}
-
-function scaleBudget(seconds) {
-  const scale = Number(process.env.ADCP_TIMEOUT_SCALE);
-  return Number.isFinite(scale) && scale >= 1 ? Math.ceil(seconds * scale) : seconds;
-}
-
-function planCommands() {
-  const scripts = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).scripts;
-  const out = { commands: [], budgets: [] };
-  for (const line of hookCommandLines()) {
-    const label = /check-image-quality/.test(line) ? 'check-image-quality' : null;
-    const before = out.commands.length;
-    expand(line, scripts, { budget: null, chain: [] }, out);
-    if (label) for (const c of out.commands.slice(before)) c.name = label;
-  }
-  out.commands.forEach((c, i) => {
-    c.index = i + 1;
-    c.slug = `${String(i + 1).padStart(2, '0')}-${c.name.replace(/[^\w.-]+/g, '-')}`;
-    c.kind = classify(c.command);
-  });
-  return out;
-}
-
-function classify(command) {
-  if (/precommit-server-unit\.cjs/.test(command)) return 'server-unit';
-  if (/(^|\s)vitest run\b/.test(command)) return 'vitest';
-  if (/\bnode\b.*\s--test(\s|$)/.test(command)) return 'node-test';
-  if (/^tsc\b/.test(command)) return 'tsc';
-  if (/typecheck/.test(command)) return 'tsc-wrapper';
-  return 'other';
-}
 
 // The leaf command as run: the hook's command plus structured reporters.
 function instrument(cmd, dir, opts) {
@@ -200,10 +161,6 @@ function instrument(cmd, dir, opts) {
 }
 
 // ------------------------------------------------------------- machine state
-
-function sh(command, args) {
-  try { return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; }
-}
 
 function availableMemoryBytes() {
   const vm = sh('vm_stat', []);
@@ -328,278 +285,69 @@ function killTree(pid, signal) {
   try { process.kill(-pid, signal); } catch { /* gone */ }
 }
 
-async function runCommand(cmd, runDir, opts) {
-  const dir = path.join(runDir, cmd.slug);
-  mkdirSync(dir, { recursive: true });
-  const command = instrument(cmd, dir, opts);
-  const env = {
-    ...process.env,
-    PATH: `${path.join(REPO_ROOT, 'node_modules', '.bin')}:${process.env.PATH}`,
-  };
-  const nodeOptions = [];
-  if (opts['cpu-prof']) nodeOptions.push('--cpu-prof', `--cpu-prof-dir=${path.join(dir, 'cpu')}`);
-  if (opts['heap-prof']) nodeOptions.push('--heap-prof', `--heap-prof-dir=${path.join(dir, 'heap')}`);
-  if (nodeOptions.length) env.NODE_OPTIONS = [process.env.NODE_OPTIONS, ...nodeOptions].filter(Boolean).join(' ');
-  if (cmd.kind === 'vitest') env.ADCP_VITEST_TIMING_DIR = path.join(dir, 'vitest');
-  if (cmd.kind === 'server-unit') {
-    env.ADCP_PRECOMMIT_REPORT_DIR = path.join(dir, 'vitest');
-    env.ADCP_VITEST_TIMING_DIR = path.join(dir, 'vitest');
-    env.ADCP_PRECOMMIT_SERVER_UNIT_PLAN = opts['server-unit'];
-    if (opts['import-durations']) env.ADCP_VITEST_IMPORT_DURATIONS = '500';
-    if (opts['cpu-prof']) env.ADCP_VITEST_CPU_PROF_DIR = path.join(dir, 'cpu');
-    if (opts['heap-prof']) env.ADCP_VITEST_HEAP_PROF_DIR = path.join(dir, 'heap');
-  }
+// The profiling launcher for runner.mjs: the leaf plus structured reporters,
+// under /usr/bin/time, with a process-tree sampler and machine state.
+function profileLauncher(opts) {
+  return {
+    launch(cmd, dir) {
+      const command = instrument(cmd, dir, opts);
+      const env = {
+        ...process.env,
+        PATH: `${path.join(REPO_ROOT, 'node_modules', '.bin')}:${process.env.PATH}`,
+      };
+      const nodeOptions = [];
+      if (opts['cpu-prof']) nodeOptions.push('--cpu-prof', `--cpu-prof-dir=${path.join(dir, 'cpu')}`);
+      if (opts['heap-prof']) nodeOptions.push('--heap-prof', `--heap-prof-dir=${path.join(dir, 'heap')}`);
+      if (nodeOptions.length) env.NODE_OPTIONS = [process.env.NODE_OPTIONS, ...nodeOptions].filter(Boolean).join(' ');
+      if (cmd.kind === 'vitest') env.ADCP_VITEST_TIMING_DIR = path.join(dir, 'vitest');
+      if (cmd.kind === 'server-unit') {
+        env.ADCP_PRECOMMIT_REPORT_DIR = path.join(dir, 'vitest');
+        env.ADCP_VITEST_TIMING_DIR = path.join(dir, 'vitest');
+        env.ADCP_PRECOMMIT_SERVER_UNIT_PLAN = opts['server-unit'];
+        if (opts['import-durations']) env.ADCP_VITEST_IMPORT_DURATIONS = '500';
+        if (opts['cpu-prof']) env.ADCP_VITEST_CPU_PROF_DIR = path.join(dir, 'cpu');
+        if (opts['heap-prof']) env.ADCP_VITEST_HEAP_PROF_DIR = path.join(dir, 'heap');
+      }
 
-  let deadlineMs = null;
-  if (cmd.budget) {
-    cmd.budget.startedAt ??= Date.now();
-    deadlineMs = cmd.budget.startedAt + cmd.budget.seconds * 1000;
-  }
+      const before = machineState();
+      const t0 = Date.now();
+      const outFd = openSync(path.join(dir, 'stdout.log'), 'w');
+      const errFd = openSync(path.join(dir, 'stderr.log'), 'w');
+      const rusageFile = path.join(dir, 'rusage.txt');
+      const child = spawn('/usr/bin/time', [TIME_FLAG, '-o', rusageFile, 'sh', '-c', command], {
+        cwd: REPO_ROOT, env, detached: true, stdio: ['ignore', outFd, errFd],
+      });
+      closeSync(outFd);
+      closeSync(errFd);
+      const sampler = startSampler(child.pid, path.join(dir, 'samples.csv'), Number(opts['sample-ms'] ?? 1000), t0);
 
-  const before = machineState();
-  const t0 = Date.now();
-  const outFd = openSync(path.join(dir, 'stdout.log'), 'w');
-  const errFd = openSync(path.join(dir, 'stderr.log'), 'w');
-  const rusageFile = path.join(dir, 'rusage.txt');
-  const child = spawn('/usr/bin/time', [TIME_FLAG, '-o', rusageFile, 'sh', '-c', command], {
-    cwd: REPO_ROOT, env, detached: true, stdio: ['ignore', outFd, errFd],
-  });
-  closeSync(outFd);
-  closeSync(errFd);
-  const sampler = startSampler(child.pid, path.join(dir, 'samples.csv'), Number(opts['sample-ms'] ?? 1000), t0);
-
-  let timedOut = false;
-  let killTimer = null;
-  if (deadlineMs !== null) {
-    const remaining = Math.max(0, deadlineMs - Date.now());
-    killTimer = setTimeout(() => {
-      timedOut = true;
-      killTree(child.pid, 'SIGTERM');
-      setTimeout(() => killTree(child.pid, 'SIGKILL'), 5000).unref();
-    }, remaining);
-  }
-  const code = await new Promise((resolve) => {
-    child.on('error', () => resolve(127));
-    child.on('close', (c, signal) => resolve(c ?? (signal ? 128 + (os.constants.signals[signal] ?? 1) : 1)));
-  });
-  if (killTimer) clearTimeout(killTimer);
-  sampler.stop();
-  const t1 = Date.now();
-
-  const report = {
-    name: cmd.name,
-    index: cmd.index,
-    kind: cmd.kind,
-    chain: cmd.chain,
-    command: cmd.command,
-    command_as_run: command,
-    budget_s: cmd.budget?.seconds ?? null,
-    started_at: new Date(t0).toISOString(),
-    ended_at: new Date(t1).toISOString(),
-    wall_s: +((t1 - t0) / 1000).toFixed(2),
-    exit_code: timedOut ? 124 : code,
-    timed_out: timedOut,
-    rusage: parseRusage(rusageFile),
-    tree: {
-      peak_rss_mb: +sampler.state.peakRssMb.toFixed(1),
-      peak_cpu_pct: +sampler.state.peakCpuPct.toFixed(0),
-      mean_cpu_pct: sampler.state.samples ? +(sampler.state.cpuPctSum / sampler.state.samples).toFixed(0) : null,
-      max_procs: sampler.state.maxProcs,
-      node_processes_seen: sampler.state.nodePids.size,
+      const finish = async () => {
+        sampler.stop();
+        const extra = {
+          rusage: parseRusage(rusageFile),
+          tree: {
+            peak_rss_mb: +sampler.state.peakRssMb.toFixed(1),
+            peak_cpu_pct: +sampler.state.peakCpuPct.toFixed(0),
+            mean_cpu_pct: sampler.state.samples ? +(sampler.state.cpuPctSum / sampler.state.samples).toFixed(0) : null,
+            max_procs: sampler.state.maxProcs,
+            node_processes_seen: sampler.state.nodePids.size,
+          },
+          machine_before: before,
+          machine_after: machineState(),
+          ...collectResults(cmd, dir, REPO_ROOT),
+        };
+        if (opts['cpu-prof']) {
+          extra.cpu_profile = aggregateCpuProfiles(path.join(dir, 'cpu'), { repoRoot: REPO_ROOT });
+          if (extra.cpu_profile) writeFileSync(path.join(dir, 'cpu', 'cpu-summary.json'), JSON.stringify(extra.cpu_profile, null, 1));
+        }
+        if (opts['heap-prof']) {
+          try { extra.heap_profiles = readdirSync(path.join(dir, 'heap')).length; } catch { extra.heap_profiles = 0; }
+        }
+        return extra;
+      };
+      return { child, commandAsRun: command, done: Promise.resolve(), finish };
     },
-    machine_before: before,
-    machine_after: machineState(),
   };
-  Object.assign(report, collectResults(cmd, dir, report));
-  if (opts['cpu-prof']) {
-    report.cpu_profile = aggregateCpuProfiles(path.join(dir, 'cpu'), { repoRoot: REPO_ROOT });
-    if (report.cpu_profile) writeFileSync(path.join(dir, 'cpu', 'cpu-summary.json'), JSON.stringify(report.cpu_profile, null, 1));
-  }
-  if (opts['heap-prof']) {
-    try { report.heap_profiles = readdirSync(path.join(dir, 'heap')).length; } catch { report.heap_profiles = 0; }
-  }
-  if (report.exit_code !== 0) report.failure = failureSummary(cmd, dir, report);
-  writeFileSync(path.join(dir, 'report.json'), JSON.stringify(report, null, 2));
-  return report;
-}
-
-// ------------------------------------------------------- structured results
-
-function readJson(file) {
-  try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
-}
-
-function tail(file, lines) {
-  try {
-    return readFileSync(file, 'utf8').replace(/\u001b\[[0-9;]*m/g, '').split('\n').slice(-lines).join('\n');
-  } catch { return ''; }
-}
-
-function readLog(dir, name) {
-  try { return readFileSync(path.join(dir, name), 'utf8').replace(/\u001b\[[0-9;]*m/g, ''); } catch { return ''; }
-}
-
-function collectResults(cmd, dir) {
-  const out = {};
-  if (cmd.kind === 'vitest' || cmd.kind === 'server-unit') {
-    const vdir = path.join(dir, 'vitest');
-    const timings = existsSync(vdir)
-      ? readdirSync(vdir).filter((f) => /^timing-.*\.json$/.test(f)).sort().map((f) => ({ file: f, ...readJson(path.join(vdir, f)) }))
-      : [];
-    const shardsRecord = readJson(path.join(vdir, 'shards.json'));
-    const shards = timings.map((t) => {
-      const rec = shardsRecord?.shards?.find((s) => t.shard && s.index === t.shard.index);
-      const files = t.files ?? [];
-      return {
-        shard: t.shard ? `${t.shard.index}/${t.shard.count}` : 'all',
-        wall_s: rec ? +((rec.endedAt - rec.startedAt) / 1000).toFixed(1) : +(t.wall_ms / 1000).toFixed(1),
-        exit_code: rec?.code ?? null,
-        files: files.length,
-        tests: files.reduce((a, f) => a + f.tests, 0),
-        sum_file_s: +(files.reduce((a, f) => a + f.total_ms, 0) / 1000).toFixed(1),
-        sum_prepare_s: +(files.reduce((a, f) => a + f.prepare_ms + f.env_ms, 0) / 1000).toFixed(1),
-        sum_setup_s: +(files.reduce((a, f) => a + f.setup_ms, 0) / 1000).toFixed(1),
-        sum_collect_s: +(files.reduce((a, f) => a + f.collect_ms, 0) / 1000).toFixed(1),
-        sum_tests_s: +(files.reduce((a, f) => a + f.tests_ms, 0) / 1000).toFixed(1),
-        failed_files: files.filter((f) => f.state === 'failed').length,
-        isolate: t.isolate,
-        pool: t.pool,
-        max_workers: t.max_workers,
-        file_parallelism: t.file_parallelism,
-        // Busy time per worker lane (concurrencyId): the balance inside one run.
-        lanes: Object.values(files.reduce((acc, f) => {
-          const lane = (acc[f.worker] ??= { worker: f.worker, files: 0, busy_s: 0 });
-          lane.files += 1;
-          lane.busy_s = +(lane.busy_s + f.total_ms / 1000).toFixed(1);
-          return acc;
-        }, {})),
-      };
-    });
-    const files = timings.flatMap((t) => (t.files ?? []).map((f) => ({
-      shard: t.shard ? `${t.shard.index}/${t.shard.count}` : 'all', ...f,
-    }))).sort((a, b) => b.total_ms - a.total_ms);
-    const imports = new Map();
-    for (const t of timings) {
-      for (const row of t.top_imports ?? []) {
-        const cur = imports.get(row.module) ?? { module: row.module, self_ms: 0, total_ms: 0, count: 0 };
-        cur.self_ms += row.self_ms; cur.total_ms += row.total_ms; cur.count += row.count;
-        imports.set(row.module, cur);
-      }
-    }
-    const log = readLog(dir, 'stdout.log');
-    out.vitest = {
-      shards,
-      files: files.map(({ failures, module_errors, ...rest }) => rest),
-      top_imports: [...imports.values()].sort((a, b) => b.self_ms - a.self_ms).slice(0, 40)
-        .map((r) => ({ ...r, self_ms: Math.round(r.self_ms), total_ms: Math.round(r.total_ms) })),
-      duration_lines: [...log.matchAll(/^(?:\[shard [^\]]+\] )?\s*Duration\s+.*$/gm)].map((m) => m[0].trim()),
-      hints: [...log.matchAll(/^.*(?:faster with|modules were evaluated|workers spawned).*$/gm)].map((m) => m[0].trim()).slice(0, 12),
-      rerun: shardsRecord?.rerun ?? null,
-      failed: timings.flatMap((t) => (t.files ?? []).filter((f) => f.state === 'failed' || f.failures.length || f.module_errors.length)
-        .map((f) => ({ file: f.file, shard: t.shard ? `${t.shard.index}/${t.shard.count}` : 'all', failures: f.failures, module_errors: f.module_errors }))),
-      unhandled_errors: timings.flatMap((t) => t.unhandled_errors ?? []),
-    };
-    if (!timings.length) out.vitest.note = 'No timing report found (the run crashed before reporting, or the plan skipped the suite).';
-  }
-  if (cmd.kind === 'node-test') {
-    const nt = readJson(path.join(dir, 'node-test.json'));
-    if (nt) {
-      const perFile = new Map();
-      for (const t of nt.tests) {
-        if (t.nesting !== 0) continue;
-        const key = path.relative(REPO_ROOT, t.file ?? '?');
-        perFile.set(key, (perFile.get(key) ?? 0) + (t.duration_ms ?? 0));
-      }
-      out.node_test = {
-        tests: nt.tests.filter((t) => t.type === 'test').length,
-        failed: nt.tests.filter((t) => t.status === 'failed' && t.type === 'test').length,
-        files: [...perFile.entries()].map(([file, ms]) => ({ file, ms: Math.round(ms) })).sort((a, b) => b.ms - a.ms),
-      };
-    }
-  }
-  return out;
-}
-
-function tsErrors(text) {
-  const byFile = new Map();
-  for (const m of text.matchAll(/^(.+?)\((\d+),(\d+)\): error (TS\d+): (.*)$/gm)) {
-    const list = byFile.get(m[1]) ?? [];
-    list.push({ line: +m[2], col: +m[3], code: m[4], message: m[5] });
-    byFile.set(m[1], list);
-  }
-  return [...byFile.entries()].map(([file, errors]) => ({ file, count: errors.length, errors: errors.slice(0, 50) }))
-    .sort((a, b) => b.count - a.count);
-}
-
-function failureSummary(cmd, dir, report) {
-  const summary = { exit_code: report.exit_code, timed_out: report.timed_out };
-  if (report.timed_out) summary.message = `Killed by the with-timeout budget (${report.budget_s}s for this group).`;
-  if (report.vitest) {
-    summary.vitest_failed_files = report.vitest.failed;
-    if (report.vitest.unhandled_errors.length) summary.unhandled_errors = report.vitest.unhandled_errors;
-    if (report.vitest.rerun) summary.serial_rerun = report.vitest.rerun;
-  }
-  if (cmd.kind === 'node-test') {
-    const nt = readJson(path.join(dir, 'node-test.json'));
-    summary.node_test_failures = (nt?.tests ?? [])
-      .filter((t) => t.status === 'failed' && t.type === 'test')
-      .map((t) => ({
-        file: path.relative(REPO_ROOT, t.file ?? '?'),
-        line: t.line,
-        name: t.name,
-        message: t.error?.cause?.message ?? t.error?.message,
-        expected: t.error?.cause?.expected,
-        actual: t.error?.cause?.actual,
-        stack: t.error?.cause?.stack ?? t.error?.stack,
-      }));
-  }
-  if (cmd.kind === 'tsc' || cmd.kind === 'tsc-wrapper') {
-    summary.typecheck_errors_by_file = tsErrors(readLog(dir, 'stdout.log') + '\n' + readLog(dir, 'stderr.log'));
-  }
-  summary.stderr_tail = tail(path.join(dir, 'stderr.log'), 40);
-  summary.stdout_tail = tail(path.join(dir, 'stdout.log'), 25);
-  return summary;
-}
-
-// ------------------------------------------------------------------- summary
-
-function buildSummary(runDir) {
-  const meta = readJson(path.join(runDir, 'run.json')) ?? {};
-  const reports = readdirSync(runDir)
-    .filter((d) => /^\d\d-/.test(d) && existsSync(path.join(runDir, d, 'report.json')))
-    .sort()
-    .map((d) => ({ dir: d, ...readJson(path.join(runDir, d, 'report.json')) }));
-  const total = reports.reduce((a, r) => a + r.wall_s, 0);
-  const commands = reports.map((r) => ({
-    dir: r.dir, name: r.name, kind: r.kind, command: r.command, wall_s: r.wall_s,
-    share: total ? +(r.wall_s / total).toFixed(3) : 0,
-    exit_code: r.exit_code, timed_out: r.timed_out, budget_s: r.budget_s,
-    user_s: r.rusage?.user_s, sys_s: r.rusage?.sys_s, max_rss_mb: r.rusage?.max_rss_mb,
-    tree_peak_rss_mb: r.tree?.peak_rss_mb, tree_mean_cpu_pct: r.tree?.mean_cpu_pct,
-    cpu_profile: r.cpu_profile ? { profiles: r.cpu_profile.profiles, node_processes_seen: r.tree?.node_processes_seen, categories: r.cpu_profile.categories, buckets: r.cpu_profile.buckets.slice(0, 15), functions: r.cpu_profile.functions.slice(0, 15) } : undefined,
-    failure: r.failure,
-  }));
-  const vitestFiles = reports.flatMap((r) => (r.vitest?.files ?? []).map((f) => ({ command: r.name, ...f })))
-    .sort((a, b) => b.total_ms - a.total_ms);
-  const summary = {
-    run_dir: runDir,
-    ...meta,
-    total_wall_s: +total.toFixed(1),
-    exit_code: meta.exit_code,
-    commands_ranked: [...commands].sort((a, b) => b.wall_s - a.wall_s).map((c) => c.name),
-    commands,
-    vitest_shards: reports.flatMap((r) => (r.vitest?.shards ?? []).map((s) => ({ command: r.name, ...s }))),
-    vitest_files_top: vitestFiles.slice(0, 60),
-    vitest_files_all: vitestFiles.map((f) => ({ command: f.command, file: f.file, shard: f.shard, total_ms: f.total_ms, collect_ms: f.collect_ms, tests_ms: f.tests_ms, setup_ms: f.setup_ms, prepare_ms: f.prepare_ms + f.env_ms, state: f.state })),
-    vitest_top_imports: reports.flatMap((r) => (r.vitest?.top_imports ?? []).map((i) => ({ command: r.name, ...i }))).sort((a, b) => b.self_ms - a.self_ms).slice(0, 30),
-    vitest_hints: reports.flatMap((r) => (r.vitest?.hints ?? []).map((h) => `${r.name}: ${h}`)),
-    vitest_durations: reports.flatMap((r) => (r.vitest?.duration_lines ?? []).map((h) => `${r.name}: ${h}`)),
-    node_test_files: reports.flatMap((r) => (r.node_test?.files ?? []).map((f) => ({ command: r.name, ...f }))).sort((a, b) => b.ms - a.ms),
-    failures: commands.filter((c) => c.failure).map((c) => ({ name: c.name, dir: c.dir, ...c.failure })),
-  };
-  writeFileSync(path.join(runDir, 'summary.json'), JSON.stringify(summary, null, 2));
-  writeFileSync(path.join(runDir, 'summary.html'), renderSummaryHtml(summary));
-  return summary;
 }
 
 // ------------------------------------------------------------------- compare
@@ -649,52 +397,156 @@ function compareRuns(dirA, dirB, outFile) {
   writeFileSync(`${base}.html`, renderCompareHtml(result));
   return { base, result };
 }
+// ---------------------------------------------------------------- terminal
 
-// ---------------------------------------------------------------------- main
+const say = (line) => process.stdout.write(`${line}\n`);
+
+const STATUS_MARK = {
+  passed: 'ok  ', failed: 'FAIL', timed_out: 'TIME', interrupted: 'INT ', advisory: 'warn', skipped: 'skip',
+};
+
+function statusLine(report) {
+  const mark = STATUS_MARK[report.status] ?? report.status;
+  const wall = report.status === 'skipped' ? '      -' : `${report.wall_s.toFixed(1).padStart(6)}s`;
+  const note = report.status === 'skipped' ? `  (${report.skipped_because})`
+    : report.status === 'advisory' ? `  (exit ${report.exit_code}; advisory, does not block the commit)`
+      : report.exit_code ? `  (exit ${report.exit_code})` : '';
+  return `  ${mark} ${report.name.padEnd(40)} ${wall}${note}`;
+}
+
+function logTail(file, lines) {
+  let text = '';
+  try { text = readFileSync(file, 'utf8'); } catch { return { text: '', cut: 0 }; }
+  const all = text.replace(/\n$/, '').split('\n');
+  return { text: all.slice(-lines).join('\n'), cut: Math.max(0, all.length - lines) };
+}
+
+// A failed step's output, printed when it ends (concurrent steps' output is
+// only in their logs). A step that streamed live already showed it.
+function printStepOutput(report, dir, streamed) {
+  if (streamed || !['failed', 'timed_out', 'advisory'].includes(report.status)) return;
+  for (const name of ['stdout.log', 'stderr.log']) {
+    const file = path.join(dir, name);
+    const { text, cut } = logTail(file, FAILURE_LOG_LINES);
+    if (!text.trim()) continue;
+    const sink = name === 'stderr.log' ? process.stderr : process.stdout;
+    sink.write(`  ----- ${report.name}: ${name}${cut ? ` (last ${FAILURE_LOG_LINES} lines; full log ${file})` : ''}\n${text}\n  ----- end of ${report.name} ${name}\n`);
+  }
+}
+
+function utcStamp(withMs) {
+  const iso = new Date().toISOString().replace(/[:]/g, '');
+  return withMs ? iso : iso.replace(/\.\d+Z$/, 'Z');
+}
+
+function sh(command, args, cwd = REPO_ROOT) {
+  try { return execFileSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; }
+}
+
+function gitState(root) {
+  const staged = sh('git', ['diff', '--cached', '--name-only'], root).split('\n').filter(Boolean);
+  return { head: sh('git', ['rev-parse', 'HEAD'], root), branch: sh('git', ['rev-parse', '--abbrev-ref', 'HEAD'], root), staged_count: staged.length, staged_sample: staged.slice(0, 20) };
+}
+
+function planMeta(commands, phases) {
+  const phaseOf = new Map(phases.flatMap((phase, i) => phase.map((c) => [c.index, i + 1])));
+  return commands.map((c) => ({
+    index: c.index, name: c.name, kind: c.kind, lane: c.lane, phase: phaseOf.get(c.index) ?? null,
+    advisory: c.advisory, chain: c.chain, command: c.command, budget_s: c.budget?.seconds ?? null,
+  }));
+}
+
+// -------------------------------------------------------------------- hook
+
+async function runHook(opts) {
+  const root = path.resolve(opts.root ?? REPO_ROOT);
+  const parent = path.join(root, '.hook-runs');
+  let runDir = path.join(parent, `${utcStamp(true)}-hook`);
+  for (let n = 2; existsSync(runDir); n += 1) runDir = path.join(parent, `${utcStamp(true)}.${n}-hook`);
+  mkdirSync(runDir, { recursive: true });
+
+  const keepGoing = !!opts['keep-going'] || process.env.ADCP_PRECOMMIT_KEEP_GOING === '1';
+  const { commands } = planCommands({ root });
+  const phases = phasesOf(commands);
+  const meta = {
+    mode: 'hook',
+    started_at: new Date().toISOString(),
+    git: gitState(root),
+    node: process.version,
+    options: { keep_going: keepGoing, ADCP_TIMEOUT_SCALE: process.env.ADCP_TIMEOUT_SCALE ?? null },
+    plan: planMeta(commands, phases),
+  };
+  writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(meta, null, 2));
+  say(`pre-commit: ${commands.length} steps in ${phases.length} phases; logs in ${path.relative(root, runDir)}`);
+
+  const { exitCode, interrupted } = await runPlan({
+    root, runDir, phases, keepGoing, live: true,
+    launcher: leanLauncher({ root }),
+    onFinish: (report, dir) => {
+      say(statusLine(report));
+      printStepOutput(report, dir, report.streamed);
+    },
+    onMarker: (line) => process.stderr.write(`${line}\n`),
+  });
+  meta.ended_at = new Date().toISOString();
+  meta.exit_code = exitCode;
+  if (interrupted) meta.interrupted_by = interrupted;
+  writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(meta, null, 2));
+  const summary = buildSummary(runDir);
+  const keep = Number(process.env.ADCP_HOOK_RUNS_KEEP ?? DEFAULT_HOOK_RUNS_KEEP);
+  pruneHookRuns(parent, Number.isInteger(keep) && keep >= 1 ? keep : DEFAULT_HOOK_RUNS_KEEP);
+  const verdict = interrupted ? `INTERRUPTED (${interrupted})` : exitCode === 0 ? 'passed' : `FAILED (exit ${exitCode})`;
+  say(`pre-commit: ${verdict} in ${summary.total_wall_s}s; report: ${path.join(runDir, 'summary.html')}`);
+  return exitCode;
+}
+
+// ---------------------------------------------------------------- profiling
 
 async function runAll(opts) {
   const asHook = !!opts['as-hook'];
   opts['server-unit'] ??= asHook ? 'auto' : 'full';
   if (!['full', 'skip', 'auto'].includes(opts['server-unit'])) throw new Error('--server-unit must be full, skip or auto');
-  const stamp = new Date().toISOString().replace(/[:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const runDir = path.resolve(REPO_ROOT, opts.out ?? '.hook-runs', `${stamp}${opts.label ? `-${String(opts.label).replace(/[^\w.-]+/g, '-')}` : ''}`);
+  const runDir = path.resolve(REPO_ROOT, opts.out ?? '.hook-runs', `${utcStamp(false)}${opts.label ? `-${String(opts.label).replace(/[^\w.-]+/g, '-')}` : ''}`);
   mkdirSync(runDir, { recursive: true });
 
-  const plan = planCommands();
+  const plan = planCommands({ root: REPO_ROOT });
   const only = opts.only ? String(opts.only).split(',') : null;
   const commands = only ? plan.commands.filter((c) => only.some((o) => c.name.includes(o))) : plan.commands;
-  const staged = sh('git', ['diff', '--cached', '--name-only']).split('\n').filter(Boolean);
+  const concurrent = asHook || !!opts.concurrent;
+  const phases = concurrent ? phasesOf(commands) : commands.map((c) => [c]);
   const meta = {
+    mode: 'profile',
     label: opts.label ?? null,
     started_at: new Date().toISOString(),
-    git: { head: sh('git', ['rev-parse', 'HEAD']), branch: sh('git', ['rev-parse', '--abbrev-ref', 'HEAD']), staged_count: staged.length, staged_sample: staged.slice(0, 20) },
+    git: gitState(REPO_ROOT),
     node: process.version,
-    options: { 'server-unit': opts['server-unit'], 'cpu-prof': !!opts['cpu-prof'], 'import-durations': !!opts['import-durations'], 'heap-prof': !!opts['heap-prof'], 'keep-going': !!opts['keep-going'], 'synthetic-load': Number(opts['synthetic-load'] ?? 0), only, ADCP_TIMEOUT_SCALE: process.env.ADCP_TIMEOUT_SCALE ?? null, ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_SHARDS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_WORKERS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL: process.env.ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL ?? null },
-    plan: commands.map((c) => ({ index: c.index, name: c.name, kind: c.kind, chain: c.chain, command: c.command, budget_s: c.budget?.seconds ?? null })),
+    options: { 'server-unit': opts['server-unit'], concurrent, 'cpu-prof': !!opts['cpu-prof'], 'import-durations': !!opts['import-durations'], 'heap-prof': !!opts['heap-prof'], 'keep-going': !!opts['keep-going'], 'synthetic-load': Number(opts['synthetic-load'] ?? 0), only, ADCP_TIMEOUT_SCALE: process.env.ADCP_TIMEOUT_SCALE ?? null, ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_SHARDS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_WORKERS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL: process.env.ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL ?? null, NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE ?? null, NODE_DISABLE_COMPILE_CACHE: process.env.NODE_DISABLE_COMPILE_CACHE ?? null },
+    plan: planMeta(commands, phases),
     machine_start: machineState(new Set([process.pid])),
   };
   writeFileSync(path.join(runDir, 'machine.json'), JSON.stringify(meta.machine_start, null, 2));
   writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(meta, null, 2));
-  const say = (line) => process.stdout.write(`${line}\n`);
   const load = Number(opts['synthetic-load'] ?? 0);
   const hogs = Array.from({ length: Number.isInteger(load) && load > 0 ? load : 0 }, () => spawn('sh', ['-c', 'exec yes > /dev/null'], { stdio: 'ignore', detached: true }));
   const stopHogs = () => { for (const hog of hogs) killTree(hog.pid, 'SIGKILL'); };
   process.on('exit', stopHogs);
   if (hogs.length) say(`  synthetic load: ${hogs.length} busy processes`);
-  say(`${asHook ? 'pre-commit' : 'profile-precommit'}: ${commands.length} commands -> ${path.relative(REPO_ROOT, runDir)}`);
+  say(`${asHook ? 'pre-commit' : 'profile-precommit'}: ${commands.length} commands${concurrent ? ` in ${phases.length} phases` : ''} -> ${path.relative(REPO_ROOT, runDir)}`);
 
-  let exitCode = 0;
-  for (const cmd of commands) {
-    if (exitCode !== 0 && !opts['keep-going']) break;
-    if (!asHook) say(`  [${cmd.index}/${plan.commands.length}] ${cmd.name} ...`);
-    const report = await runCommand(cmd, runDir, opts);
-    const mark = report.exit_code === 0 ? 'ok  ' : 'FAIL';
-    say(`  ${mark} ${cmd.name.padEnd(36)} ${report.wall_s.toFixed(1).padStart(7)}s${report.timed_out ? ' (timed out)' : ''}`);
-    if (report.exit_code !== 0 && exitCode === 0) exitCode = report.exit_code || 1;
-  }
+  const { exitCode, interrupted } = await runPlan({
+    root: REPO_ROOT, runDir, phases, keepGoing: !!opts['keep-going'],
+    launcher: profileLauncher(opts),
+    onStart: (cmd) => { if (!asHook) say(`  [${cmd.index}/${plan.commands.length}] ${cmd.name} ...`); },
+    onFinish: (report, dir) => {
+      say(statusLine(report));
+      if (asHook) printStepOutput(report, dir, false);
+    },
+    onMarker: (line) => process.stderr.write(`${line}\n`),
+  });
   stopHogs();
   meta.ended_at = new Date().toISOString();
   meta.exit_code = exitCode;
+  if (interrupted) meta.interrupted_by = interrupted;
   meta.machine_end = machineState(new Set([process.pid]));
   writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(meta, null, 2));
   const summary = buildSummary(runDir);
@@ -702,11 +554,15 @@ async function runAll(opts) {
   return exitCode;
 }
 
+// ---------------------------------------------------------------------- main
+
 const { command, opts } = parseArgs(process.argv.slice(2));
 try {
   if (process.argv[2] === 'costs') {
     const { runCostsCommand } = await import('./profile-precommit/cost-items.mjs');
     runCostsCommand(process.argv.slice(3));
+  } else if (command === 'hook') {
+    process.exitCode = await runHook(opts);
   } else if (command === 'run') {
     process.exitCode = await runAll(opts);
   } else if (command === 'summarize' && opts._[0]) {
@@ -716,9 +572,11 @@ try {
     const { base } = compareRuns(path.resolve(opts._[0]), path.resolve(opts._[1]), opts.out ? path.resolve(opts.out) : undefined);
     console.log(`${base}.html`);
   } else if (command === 'plan') {
-    console.log(JSON.stringify(planCommands().commands.map(({ budget, ...c }) => ({ ...c, budget_s: budget?.seconds ?? null })), null, 2));
+    const root = path.resolve(opts.root ?? REPO_ROOT);
+    const { commands } = planCommands({ root });
+    console.log(JSON.stringify(planMeta(commands, phasesOf(commands)), null, 2));
   } else {
-    console.error('usage: node scripts/profile-precommit.mjs run [--server-unit full|skip|auto] [--cpu-prof] [--label X] | summarize <dir> | compare <a> <b> | plan');
+    console.error('usage: node scripts/profile-precommit.mjs hook [--root DIR] [--keep-going] | run [--server-unit full|skip|auto] [--concurrent] [--cpu-prof] [--label X] | summarize <dir> | compare <a> <b> | plan');
     process.exitCode = 2;
   }
 } catch (error) {

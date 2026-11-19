@@ -299,10 +299,10 @@ A pre-commit hook automatically ensures schema integrity on every commit:
 npm run precommit
 ```
 
-This runs:
-1. Schema validation tests (6 tests)
-2. Example data validation tests (7 tests)  
-3. TypeScript type checking
+This runs the root unit tests, the lint guards, the server unit tests for
+the staged changes, and TypeScript type checking. The hook runs the same
+commands with the independent ones in parallel; see "Local Hooks" in
+`.agents/playbook.md`.
 
 ### Manual Testing
 
