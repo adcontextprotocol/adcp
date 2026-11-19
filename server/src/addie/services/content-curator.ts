@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * Addie Content Curator Service
  *

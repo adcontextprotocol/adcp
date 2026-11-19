@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * The Prompt — Addie's Weekly Newsletter
  *

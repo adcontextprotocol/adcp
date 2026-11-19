@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * Brand-book import: turn a brand guidelines PDF, PPTX, or web page into
  * proposed brand.json fields for the builder to review.
