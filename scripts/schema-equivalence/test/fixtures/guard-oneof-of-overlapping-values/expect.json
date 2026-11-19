@@ -1,0 +1,5 @@
+{
+  "why": "A oneOf whose branches share a value rejects that value, so it is not the enum of all values.",
+  "exit": 1,
+  "class": 3
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/thing.json",
+  "title": "Thing",
+  "description": "A thing.",
+  "$comment": "note",
+  "examples": [
+    {
+      "name": "a"
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Name",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [
+        "a"
+      ]
+    }
+  }
+}

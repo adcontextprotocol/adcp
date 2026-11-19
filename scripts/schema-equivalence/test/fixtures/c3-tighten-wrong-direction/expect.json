@@ -1,0 +1,10 @@
+{
+  "why": "The same tightening declared as a loosening fails.",
+  "exit": 1,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml"
+  ],
+  "manifestOk": false
+}

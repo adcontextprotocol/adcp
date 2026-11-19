@@ -1,0 +1,6 @@
+{
+  "why": "format is an assertion under ajv-formats.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "format"
+}

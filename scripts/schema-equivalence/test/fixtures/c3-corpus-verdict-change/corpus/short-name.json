@@ -1,0 +1,6 @@
+{
+  "schema": "a-request.json",
+  "instance": {
+    "name": "ok"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "why": "oneOf -> anyOf, but the discriminator values overlap.",
+  "exit": 1,
+  "class": 3
+}

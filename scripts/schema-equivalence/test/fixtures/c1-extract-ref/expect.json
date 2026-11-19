@@ -1,0 +1,5 @@
+{
+  "why": "Head extracts an inline subschema into its own file and references it with $ref (a description sibling stays at the call site).",
+  "exit": 0,
+  "class": 1
+}

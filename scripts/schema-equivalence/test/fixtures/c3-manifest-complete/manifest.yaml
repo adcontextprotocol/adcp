@@ -1,0 +1,15 @@
+changes:
+  - root: c-request.json
+    pointer: /properties/name
+    keyword: maxLength
+    old: 200
+    new: 100
+    direction: tighten
+    side: request
+  - root: c-request.json
+    pointer: /properties/code
+    keyword: pattern
+    old: ^[a-z]+$
+    new: ^[a-z0-9]+$
+    direction: loosen
+    side: request

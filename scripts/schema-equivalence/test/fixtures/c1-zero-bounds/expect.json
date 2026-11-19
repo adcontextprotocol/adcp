@@ -1,0 +1,5 @@
+{
+  "why": "minLength: 0, minItems: 0, minProperties: 0, and uniqueItems: false equal absence.",
+  "exit": 0,
+  "class": 1
+}

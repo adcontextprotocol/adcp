@@ -1,0 +1,6 @@
+{
+  "why": "oneOf -> anyOf where type: object sits on the node that holds the union, not on the branches.",
+  "exit": 0,
+  "class": 2,
+  "rule": "oneOf-to-anyOf"
+}

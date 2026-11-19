@@ -1,0 +1,6 @@
+{
+  "why": "The same tightening with no manifest fails.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "maxLength"
+}

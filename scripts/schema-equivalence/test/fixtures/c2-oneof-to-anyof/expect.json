@@ -1,0 +1,6 @@
+{
+  "why": "oneOf -> anyOf where every branch is an object with a required const discriminator.",
+  "exit": 0,
+  "class": 2,
+  "rule": "oneOf-to-anyOf"
+}

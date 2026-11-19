@@ -1,0 +1,5 @@
+{
+  "why": "Recursive schema: head unrolls the recursion once (A -> A2 -> A instead of A -> A); the unfoldings are identical.",
+  "exit": 0,
+  "class": 1
+}

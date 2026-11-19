@@ -1,0 +1,6 @@
+{
+  "why": "contains: {} requires a non-empty array; it is not absence.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "contains"
+}

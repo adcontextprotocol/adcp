@@ -1,0 +1,8 @@
+{
+  "why": "Recursive schema: head moves the recursion into an extracted file (the cycle is entered at a different place).",
+  "exit": 0,
+  "class": 1,
+  "addedRoots": [
+    "core/node.json"
+  ]
+}

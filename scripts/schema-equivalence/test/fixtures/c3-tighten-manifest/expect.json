@@ -1,0 +1,11 @@
+{
+  "why": "Deliberate tightening (maxLength 200 -> 100) with a matching manifest.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

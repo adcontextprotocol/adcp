@@ -1,0 +1,5 @@
+{
+  "why": "type next to const/enum is dropped when every allowed value has that type.",
+  "exit": 0,
+  "class": 1
+}

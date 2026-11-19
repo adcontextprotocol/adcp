@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a.json",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "video"
+    },
+    "n": {
+      "enum": [
+        1,
+        2
+      ]
+    }
+  }
+}
