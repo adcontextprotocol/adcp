@@ -332,7 +332,7 @@
     "sharp@0.33.5": true
   },
   "overrides": {
-    "@hono/node-server": "2.0.12",
+    "@hono/node-server": "2.1.9",
     "@modelcontextprotocol/node": "2.1.1",
     "tar": "^7.5.22",
     "react": "^19.2.0",
