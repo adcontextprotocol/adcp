@@ -1,0 +1,307 @@
+title: Reference the canonical manifest branch from creative-representation (#9103, #8922, #8921)
+changes:
+  - location: core/creative-manifest.json#/definitions/creative-manifest-base
+    keyword: oneOf
+    old:
+      - required:
+          - format_id
+        not:
+          required:
+            - format_kind
+      - required:
+          - format_kind
+        not:
+          required:
+            - format_id
+    direction: none
+    side: both
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: >-
+      media-buy/build-creative-response.json#/oneOf/2/properties/creatives/items/properties/variants/items/properties/creative_manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: response
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: media-buy/build-creative-response.json#/oneOf/0/properties/creative_manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: response
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: media-buy/build-creative-response.json#/oneOf/1/properties/creative_manifests/items
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: response
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: creative/preview-creative-response.json#/oneOf/2/properties/manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: response
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: core/creative-manifest.json#
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: none
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: core/creative-manifest.json#/oneOf/1/not
+    keyword: required
+    new:
+      - format_id
+    direction: none
+    side: request
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat. The other conjuncts are the same schemas on both sides. (The full bundled root times out in the oracle.)
+  - location: core/creative-manifest.json#/oneOf/1/not
+    keyword: anyOf
+    old:
+      - required:
+          - format_id
+      - required:
+          - format_option_ref
+      - required:
+          - representation_selection
+    direction: none
+    side: request
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat. The other conjuncts are the same schemas on both sides. (The full bundled root times out in the oracle.)
+  - location: core/creative-representation-set.json#/properties/representations/items
+    keyword: allOf
+    new:
+      not:
+        anyOf:
+          - required:
+              - format_option_ref
+          - required:
+              - representation_selection
+    direction: none
+    side: request
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat. The other conjuncts are the same schemas on both sides. (The full bundled root times out in the oracle.)
+  - location: core/creative-representation.json#
+    keyword: allOf
+    new:
+      not:
+        anyOf:
+          - required:
+              - format_option_ref
+          - required:
+              - representation_selection
+    direction: none
+    side: none
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat. The other conjuncts are the same schemas on both sides. (The full bundled root times out in the oracle.)
+  - location: core/creative-variant.json#/allOf/1/properties/manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: response
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: creative/get-creative-features-request.json#/properties/creative_manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: request
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: creative/preview-creative-request.json#/properties/creative_manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: request
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: creative/preview-creative-request.json#/properties/requests/items/properties/creative_manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: request
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: creative/validate-input-request.json#/properties/manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: request
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: media-buy/build-creative-request.json#/properties/creative_manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: request
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.
+  - location: trusted-match/offer.json#/properties/creative_manifest
+    keyword: allOf
+    new:
+      type:
+        - object
+      oneOf:
+        - required:
+            - format_kind
+          not:
+            required:
+              - format_id
+        - required:
+            - format_id
+          not:
+            required:
+              - format_kind
+    direction: none
+    side: response
+    note: >-
+      creative-manifest's fields and rules moved into definitions/creative-manifest-base, referenced from the root next to the unchanged oneOf: the same keywords, now split across two allOf members. Each dependent keyword group (properties with additionalProperties, if with then and else) stays in one member. Independent containment oracle on the base and head documents with each reference to another file replaced by the same opaque constraint on both sides: unsat in both directions (a control that drops required assets from the head is sat). The full bundled root times out.

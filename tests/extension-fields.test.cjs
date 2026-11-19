@@ -148,7 +148,8 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/creative-manifest.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
+    // Both manifest branches share the fields in definitions/creative-manifest-base.
+    validateExtField(schema.definitions['creative-manifest-base'].properties.ext, '/schemas/core/ext.json');
     return true;
   });
 
