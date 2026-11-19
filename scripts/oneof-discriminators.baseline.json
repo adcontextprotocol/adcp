@@ -151,11 +151,6 @@
       "variants": 2,
       "note": "0:[summary,results] | 1:[errors]"
     },
-    "core/account-ref.json##/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[account_id] | 1:[brand,operator]"
-    },
     "core/audience-selector.json##/oneOf": {
       "kind": "dangerous",
       "variants": 4,
