@@ -114,8 +114,11 @@
 //     profiling run once the rest finish; the profiles written so far are
 //     still aggregated. A process killed by a signal writes no
 //     profile; report.json shows profiles written against Node processes
-//     seen by the sampler. tsc is @typescript/native (a Go binary), so the
-//     typecheck steps have rusage and samples but no V8 profile.
+//     seen by the sampler. A profile Node could not write (on a full disk,
+//     for example) is listed in report.json as profile_write_errors and
+//     printed after the step's status line. tsc is @typescript/native (a Go
+//     binary), so the typecheck steps have rusage and samples but no V8
+//     profile.
 //   - CPU% in samples.csv comes from `ps` (a decaying average); use the
 //     rusage user/sys totals for exact CPU time. rusage covers only waited-for
 //     descendants, and its max RSS is the single largest process; the
@@ -325,6 +328,18 @@ function killTree(pid, signal) {
   try { process.kill(-pid, signal); } catch { /* gone */ }
 }
 
+// Node reports a profile it could not write, or a profile directory it could
+// not create, as one line on the process's stderr ("ENOSPC: Failed to write
+// file <path>") and still exits 0. Without these lines a full disk shows only
+// as a missing or cut-short profile.
+const PROFILE_WRITE_ERROR = /^E[A-Z]+: Failed to (?:write file|create (?:CPU|heap) profile directory) .+$/gm;
+
+function profileWriteErrors(stderrFile) {
+  let text;
+  try { text = readFileSync(stderrFile, 'utf8'); } catch { return []; }
+  return [...new Set(text.match(PROFILE_WRITE_ERROR) ?? [])];
+}
+
 // The profiling launcher for runner.mjs: the leaf plus structured reporters,
 // under /usr/bin/time, with a process-tree sampler and machine state.
 function profileLauncher(opts, root) {
@@ -386,6 +401,10 @@ function profileLauncher(opts, root) {
         }
         if (opts['heap-prof']) {
           try { extra.heap_profiles = readdirSync(path.join(dir, 'heap')).length; } catch { extra.heap_profiles = 0; }
+        }
+        if (opts['cpu-prof'] || opts['heap-prof']) {
+          const writeErrors = profileWriteErrors(path.join(dir, 'stderr.log'));
+          if (writeErrors.length) extra.profile_write_errors = writeErrors;
         }
         return extra;
       };
@@ -639,6 +658,9 @@ async function runAll(opts) {
     onStart: (cmd) => { if (!asHook) say(`  [${cmd.index}/${plan.commands.length}] ${cmd.name} ...`); },
     onFinish: (report, dir) => {
       say(statusLine(report));
+      if (report.profile_write_errors) {
+        process.stderr.write(`  ${report.name}: ${report.profile_write_errors.length} profile write(s) failed; those profiles are missing or cut short:\n${report.profile_write_errors.map((line) => `    ${line}\n`).join('')}`);
+      }
       if (asHook) printStepOutput(report, dir, false);
     },
     onBudgetExpired: printBudgetExpiry,

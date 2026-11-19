@@ -6,8 +6,13 @@
 // execArgv (vitest's work-around for nodejs/node#55094); from NODE_OPTIONS
 // alone the worker's profile is lost. The case runs the real CLI against a
 // throwaway root with one test file and reads the profiles it writes.
+//
+// Node only logs a profile it cannot write and exits 0, so on a full disk the
+// profile is simply missing. The case first requires the step to report no
+// failed profile write (report.json profile_write_errors), and every message
+// names the free space on the root's volume.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +41,17 @@ function childEnv(): NodeJS.ProcessEnv {
     env[key] = value;
   }
   return env;
+}
+
+/** Free space on dir's volume, for failure messages. */
+function freeSpace(dir: string): string {
+  const { bavail, bsize } = statfsSync(dir);
+  return `${Math.round((bavail * bsize) / 2 ** 20)} MB free on the volume of ${dir}`;
+}
+
+/** The files in dir, for failure messages. */
+function listing(dir: string): string {
+  try { return readdirSync(dir).join(', ') || '(empty)'; } catch (error) { return (error as Error).message; }
 }
 
 /** Profile files under dir whose text names MARKER_FUNCTION. */
@@ -77,12 +93,20 @@ describe('profile-precommit run', () => {
       [PROFILER, 'run', '--root', root, '--server-unit', 'skip', '--cpu-prof', '--heap-prof', '--label', 'forks', '--out', 'runs'],
       { cwd: root, env: childEnv(), encoding: 'utf8', timeout: 5_000 },
     );
-    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.status, `${result.stdout}${result.stderr}\n${freeSpace(root)}`).toBe(0);
 
     const runDir = join(root, 'runs', readdirSync(join(root, 'runs'))[0]);
     const step = readdirSync(runDir).find((name) => /^\d{2}-test-unit$/.test(name));
     expect(step, readdirSync(runDir).join(', ')).toBeDefined();
-    expect(profilesNamingMarker(join(runDir, step!, 'cpu'), '.cpuprofile'), 'CPU profile of the worker').toHaveLength(1);
-    expect(profilesNamingMarker(join(runDir, step!, 'heap'), '.heapprofile'), 'heap profile of the worker').toHaveLength(1);
+    const stepDir = join(runDir, step!);
+    const report = JSON.parse(readFileSync(join(stepDir, 'report.json'), 'utf8'));
+    expect(report.profile_write_errors ?? [], `profile writes failed; ${freeSpace(root)}`).toEqual([]);
+    for (const [kind, suffix] of [['cpu', '.cpuprofile'], ['heap', '.heapprofile']]) {
+      const dir = join(stepDir, kind);
+      expect(
+        profilesNamingMarker(dir, suffix),
+        `${kind} profile of the worker; ${kind}/ holds: ${listing(dir)}; ${freeSpace(root)}`,
+      ).toHaveLength(1);
+    }
   });
 });
