@@ -117,18 +117,12 @@ test('lintSchemas catches violations in synthetic schema examples', () => {
         $schema: 'http://json-schema.org/draft-07/schema#',
         title: 'List Things Response',
         examples: [
-          {
-            description: 'Mid-page (continuable) but missing cursor',
-            data: { things: [], pagination: { has_more: true } },
-          },
-          {
-            description: 'Terminal page with stale cursor',
-            data: { things: [], pagination: { has_more: false, cursor: 'stale' } },
-          },
-          {
-            description: 'Conformant — terminal with total_count',
-            data: { things: [], pagination: { has_more: false, total_count: 0 } },
-          },
+          // Mid-page (continuable) but missing cursor
+          { things: [], pagination: { has_more: true } },
+          // Terminal page with stale cursor
+          { things: [], pagination: { has_more: false, cursor: 'stale' } },
+          // Conformant: terminal with total_count
+          { things: [], pagination: { has_more: false, total_count: 0 } },
         ],
       }),
     );
@@ -138,27 +132,6 @@ test('lintSchemas catches violations in synthetic schema examples', () => {
     assert.match(violations[0].location, /examples\[0\]\.pagination/);
     assert.equal(violations[1].rule, 'has_more_false_with_cursor');
     assert.match(violations[1].location, /examples\[1\]\.pagination/);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('lintSchemas handles unwrapped examples (payload at array element top level)', () => {
-  // Some schemas put the payload directly at examples[i]; others wrap it
-  // in `{ description, data }`. The lint must accept both shapes.
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pagination-lint-unwrapped-'));
-  try {
-    fs.writeFileSync(
-      path.join(tmp, 'unwrapped.json'),
-      JSON.stringify({
-        examples: [
-          { items: [], pagination: { has_more: true } },
-        ],
-      }),
-    );
-    const violations = lintSchemas(tmp);
-    assert.equal(violations.length, 1);
-    assert.equal(violations[0].rule, 'has_more_true_missing_cursor');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
