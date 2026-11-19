@@ -85,16 +85,15 @@
 //     cpu/ cpu-summary.json      With --cpu-prof.
 //
 // WHAT IS NOT COVERED
-//   - Forked vitest workers (the server suite's `forks` pool) ignore
-//     --cpu-prof in NODE_OPTIONS; the server-unit step passes it through
-//     vitest's --execArgv instead (ADCP_VITEST_CPU_PROF_DIR), giving one
-//     profile per test file. Under --cpu-prof, ten server test files never
+//   - Forked vitest workers (the `forks` pool) lose a --cpu-prof profile
+//     given in NODE_OPTIONS; vitest leaves get it through vitest's --execArgv
+//     instead, and the server-unit step through ADCP_VITEST_CPU_PROF_DIR,
+//     giving one profile per test file. Under --cpu-prof, ten server test files never
 //     finish (their worker idles in the event loop; for example
 //     tests/unit/storyboards.test.ts and
 //     src/training-agent/identity33/identity33-route.test.ts), so stop a
 //     profiling run once the rest finish; the profiles written so far are
-//     still aggregated. Thread-pool workers (the root suite) are
-//     covered by NODE_OPTIONS. A process killed by a signal writes no
+//     still aggregated. A process killed by a signal writes no
 //     profile; report.json shows profiles written against Node processes
 //     seen by the sampler. tsc is @typescript/native (a Go binary), so the
 //     typecheck steps have rusage and samples but no V8 profile.
@@ -149,11 +148,24 @@ function parseArgs(argv) {
 // ------------------------------------------------------------ instrumentation
 
 
+// Profiling flags for vitest's workers. A forks-pool worker is stopped with
+// SIGTERM and writes its profile on that signal only when the flag is in its
+// own execArgv (vitest's nodejs/node#55094 work-around); NODE_OPTIONS alone
+// loses it. Worker threads accept the same flags. As the server-unit step
+// does (scripts/precommit-server-unit.cjs).
+function vitestProfileArgs(dir, opts) {
+  const flags = [
+    ...(opts['cpu-prof'] ? ['--cpu-prof', `--cpu-prof-dir=${path.join(dir, 'cpu')}`] : []),
+    ...(opts['heap-prof'] ? ['--heap-prof', `--heap-prof-dir=${path.join(dir, 'heap')}`] : []),
+  ];
+  return flags.map((flag) => ` --execArgv=${flag}`).join('');
+}
+
 // The leaf command as run: the hook's command plus structured reporters.
 function instrument(cmd, dir, opts) {
   switch (cmd.kind) {
     case 'vitest':
-      return `${cmd.command} --reporter=default --reporter=${VITEST_TIMING_REPORTER}${opts['import-durations'] ? ' --experimental.importDurations.limit=500' : ''}`;
+      return `${cmd.command} --reporter=default --reporter=${VITEST_TIMING_REPORTER}${opts['import-durations'] ? ' --experimental.importDurations.limit=500' : ''}${vitestProfileArgs(dir, opts)}`;
     case 'node-test':
       return cmd.command.replace(/(\s--test)(\s|$)/, `$1 --require=${NODE_TEST_BLOCKING_STDOUT} --test-reporter=spec --test-reporter-destination=stdout --test-reporter=${NODE_TEST_REPORTER} --test-reporter-destination=${path.join(dir, 'node-test.json')}$2`);
     case 'tsc':

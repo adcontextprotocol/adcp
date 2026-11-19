@@ -74,6 +74,19 @@ lib.mark(${JSON.stringify(`${self}-saw-${other}`)});
 `,
   /** Long-running leaf (scripts/ dir) that publishes its pid. */
   hold: (name: string, ms: number) => `${LIB_FROM_SCRIPTS}.holdWithPid(${JSON.stringify(name)}, ${ms});\n`,
+  /**
+   * Leaf (scripts/ dir, ES module) that forks scripts/worker.cjs, as a vitest
+   * forks pool does, and SIGKILLs itself once the worker is up, as an OOM kill
+   * or a crash would end it. The worker keeps a timer and its inherited stdio.
+   */
+  crashingMain: () => [
+    "import { fork } from 'node:child_process';",
+    "import path from 'node:path';",
+    "const worker = fork(path.join(import.meta.dirname, 'worker.cjs'));",
+    "worker.on('message', () => process.kill(process.pid, 'SIGKILL'));",
+    '',
+  ].join('\n'),
+  worker: () => `${LIB_FROM_SCRIPTS}.holdWithPid('worker', 60_000);\nprocess.send('ready');\n`,
 };
 
 const roots: string[] = [];
@@ -174,7 +187,7 @@ function runOracle(
   closeSync(out);
   return new Promise((resolveExit) => {
     child.on('exit', (code) => {
-      // with-timeout.sh's fallback watcher leaves a `sleep N` behind in this group.
+      // Nothing the oracle's commands started may outlive them.
       try { process.kill(-child.pid!, 'SIGKILL'); } catch { /* group already gone */ }
       resolveExit(code);
     });
@@ -640,6 +653,39 @@ describe('pre-commit hook runner: budgets, signals and advisory checks', () => {
     expect(alive(pid), `leaf ${pid} is still running after the runner exited`).toBe(false);
     expect(result.code, result.output).toBe(130);
     expect(stepFor(onlyHookRun(root), 'long-leaf.cjs').report).toMatchObject({ status: 'interrupted' });
+  });
+
+  // A leaf whose main process dies on its own leaves its forked workers in
+  // the leaf's process group; nothing else would ever stop them.
+  it.each([
+    {
+      output: 'streamed to the terminal',
+      scripts: { precommit: 'node scripts/crash-main.mjs' },
+      main: 'scripts/crash-main.mjs',
+    },
+    {
+      output: 'written to files beside another leaf',
+      scripts: { precommit: 'node scripts/generate-governance-jws-vectors.mjs --check && node --test tests/pass.test.cjs' },
+      main: 'scripts/generate-governance-jws-vectors.mjs',
+    },
+  ])('kills the rest of a leaf\'s process group when its main process is SIGKILLed (output $output)', async ({ scripts, main }) => {
+    const root = fixtureRoot({
+      scripts,
+      files: {
+        [main]: leaf.crashingMain(),
+        'scripts/worker.cjs': leaf.worker(),
+        'tests/pass.test.cjs': leaf.passes('pass-ran'),
+      },
+    });
+    const pidFile = marker(root, 'worker.pid');
+
+    const result = await startHook(root).done;
+
+    expect(existsSync(pidFile), `the worker never started; runner output:\n${result.output}`).toBe(true);
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(alive(pid), `worker ${pid} outlived its leaf`).toBe(false);
+    expect(result.code, result.output).toBe(137);
+    expect(stepFor(onlyHookRun(root), main.split('/')[1]).report).toMatchObject({ exit_code: 137, status: 'failed' });
   });
 
   it('does not fail the commit when the advisory image check fails', async () => {

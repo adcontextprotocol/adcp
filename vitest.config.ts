@@ -13,8 +13,9 @@ export default defineConfig({
     // vitest process (5+ GB), and each child process a test spawns forks that
     // whole address space (57-70 ms of kernel time per spawn on Linux, against
     // 1.6 ms from a forks worker). A fork worker whose vitest main process dies
-    // waits on it forever, so the launcher stops the command's whole process
-    // group (scripts/with-timeout.sh).
+    // waits on it forever, so the launchers stop each command's whole process
+    // group: the pre-commit runner (scripts/profile-precommit/runner.mjs) and
+    // scripts/with-timeout.sh.
     pool: 'forks',
     // Cap individual test hangs at 10 s so a single stalled test doesn't
     // silently consume the entire 60 s precommit budget with no test name.

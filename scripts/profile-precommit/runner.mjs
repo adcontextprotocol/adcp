@@ -16,6 +16,12 @@
 // Signals: SIGINT, SIGTERM and SIGHUP are forwarded to every running leaf's
 // process group (leaves are detached, so the terminal's Ctrl-C reaches only
 // this process); the run then exits 128 + signal number.
+//
+// Leftovers: each leaf runs in its own process group, and when the leaf's
+// process exits, for whatever reason, the rest of its group gets SIGTERM and
+// then SIGKILL after the grace period. A vitest forks-pool worker whose main
+// process crashed or was OOM-killed waits on it forever; this is what stops
+// it. The leaf's exit status is still the one it reported.
 
 import { spawn } from 'node:child_process';
 import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -40,11 +46,14 @@ function stopChild(child) {
   killGroup(child.pid, 'SIGTERM');
 }
 
-// After a stopped leaf's shell exits, its group can still hold processes that
-// shut down slowly or ignore SIGTERM. Wait for the group to go, SIGKILL it
-// after the grace period, as with-timeout.sh's --kill-after does, so nothing
-// outlives the step (or the runner).
-async function reapStoppedGroup(child) {
+// After a leaf's process exits, its group can still hold processes: workers
+// its main process left behind, or ones that shut down slowly or ignore
+// SIGTERM. SIGTERM the group unless the runner already did, wait for it to
+// go and SIGKILL it after the grace period, as with-timeout.sh's --kill-after
+// does, so nothing outlives the step (or the runner).
+async function reapGroup(child) {
+  if (!groupAlive(child.pid)) return;
+  if (!child.stopping) killGroup(child.pid, 'SIGTERM');
   const end = Date.now() + KILL_GRACE_MS;
   while (groupAlive(child.pid) && Date.now() < end) await new Promise((r) => setTimeout(r, 100));
   if (!groupAlive(child.pid)) return;
@@ -114,12 +123,14 @@ async function runStep(cmd, ctx, live) {
       stopChild(child);
     }, remaining);
   }
+  // 'exit', not 'close': a leftover process can hold the leaf's output pipes
+  // open, and only the reap below ends it.
   const [code, signal] = await new Promise((resolve) => {
     child.on('error', () => resolve([127, null]));
-    child.on('close', (c, s) => resolve([c, s]));
+    child.on('exit', (c, s) => resolve([c, s]));
   });
   if (budgetTimer) clearTimeout(budgetTimer);
-  if (child.stopping) await reapStoppedGroup(child);
+  await reapGroup(child);
   ctx.running.delete(child);
   await launched.done;
   const t1 = Date.now();
