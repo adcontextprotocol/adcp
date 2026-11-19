@@ -82,6 +82,7 @@
       "required": [
         "exemplars"
       ],
+      "not": { "required": ["agent_url"] },
       "properties": {
         "exemplars": {
           "type": "object",
@@ -112,6 +113,7 @@
       "required": [
         "agent_url"
       ],
+      "not": { "required": ["exemplars"] },
       "properties": {
         "agent_url": {
           "type": "string",

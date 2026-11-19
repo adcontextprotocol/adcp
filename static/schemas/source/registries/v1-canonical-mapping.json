@@ -30,6 +30,7 @@
             "oneOf": [
               {
                 "required": ["format_id_glob"],
+                "not": { "required": ["structural"] },
                 "properties": {
                   "format_id_glob": {
                     "type": "string",
@@ -39,6 +40,7 @@
               },
               {
                 "required": ["structural"],
+                "not": { "required": ["format_id_glob"] },
                 "properties": {
                   "structural": {
                     "type": "object",
