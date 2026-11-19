@@ -84,7 +84,8 @@ export function serverTestBase() {
     testTimeout: 30000,
     pool: 'forks' as const,
     // Undo vi.stubEnv / vi.stubGlobal before every test (the setup file also
-    // undoes them before each file's imports).
+    // undoes them before each file's imports). The `serial` project turns
+    // both off.
     unstubEnvs: true,
     unstubGlobals: true,
   };
@@ -95,6 +96,8 @@ export interface ServerProjectOptions {
   include: string[];
   exclude?: string[];
   isolate: boolean;
+  unstubEnvs?: boolean;
+  unstubGlobals?: boolean;
   setupFiles?: string[];
   fileParallelism?: boolean;
   sequence?: { groupOrder: number };
@@ -167,6 +170,13 @@ export function serverProjects({ prefix = '', unitFilter = () => true, serial = 
         include: ['tests/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
         exclude: [...configDefaults.exclude, 'tests/unit/**'],
         isolate: true,
+        // A fresh process per file leaves nothing for the next file, so
+        // there is nothing to undo between tests. These files stub env and
+        // globals at the top level or in beforeAll and rely on those stubs
+        // in every test; undoing them before each test sent their fetch
+        // calls to the network and ran their env-dependent paths unstubbed.
+        unstubEnvs: false,
+        unstubGlobals: false,
         fileParallelism: false,
         sequence: { groupOrder: 1 },
       },
