@@ -7,5 +7,5 @@
     "manifest.yaml",
     "--witness"
   ],
-  "witnesses": 1
+  "witnesses": 2
 }

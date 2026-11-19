@@ -74,8 +74,16 @@ class Differ {
     if (newV !== undefined) e.new = newV;
     const la = parentA !== undefined ? parentA : a && a.n !== undefined ? a.n : a;
     const lb = parentB !== undefined ? parentB : b && b.n !== undefined ? b.n : b;
-    e.base_location = la !== null && la !== undefined ? originLabel(g.nodes[la].origin) : null;
-    e.head_location = lb !== null && lb !== undefined ? originLabel(g.nodes[lb].origin) : null;
+    // A node merged from several schema objects reports the object that
+    // writes the keyword (or the property, for a presence entry).
+    const where = (id) => {
+      const node = g.nodes[id];
+      const o = node.kwOrigins || {};
+      const name = keyword === 'properties' ? pointer.split('/').pop().replace(/~1/g, '/').replace(/~0/g, '~') : null;
+      return originLabel((name !== null && o[`properties/${name}`]) || o[keyword] || node.origin);
+    };
+    e.base_location = la !== null && la !== undefined ? where(la) : null;
+    e.head_location = lb !== null && lb !== undefined ? where(lb) : null;
     if (isInfo(keyword.split('/')[0]) && keyword !== '(schema)' && keyword !== '(root)') e.info = true;
     return e;
   }

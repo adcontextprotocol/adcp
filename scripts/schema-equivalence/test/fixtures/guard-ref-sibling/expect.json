@@ -2,5 +2,5 @@
   "why": "An assertion next to $ref is applied (Ajv 8), so dropping it is a change.",
   "exit": 1,
   "class": 3,
-  "keyword": "allOf"
+  "keyword": "maxLength"
 }

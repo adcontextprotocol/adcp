@@ -1,0 +1,5 @@
+{
+  "why": "additionalProperties: false in one member does not see another member's properties: allOf[{properties: {a}}, {additionalProperties: false}] admits no property at all, unlike the single object.",
+  "exit": 1,
+  "class": 3
+}

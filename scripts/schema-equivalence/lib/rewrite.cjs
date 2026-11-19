@@ -309,6 +309,23 @@ class Rewriter {
       if (out !== null) node.replacedBy = out;
     }
     g._resolved = null;
+    // A plain node that holds both a `not` and a union (members merged into
+    // one object) is the conjunction of the two parts for not-branch-subtraction.
+    for (let id = 0; id < count; id++) {
+      const node = g.nodes[id];
+      if (node.kind !== 'plain' || node.replacedBy !== undefined || !node.kids.not) continue;
+      if (!node.kids.anyOf && !node.kids.oneOf) continue;
+      const restKids = { ...node.kids };
+      delete restKids.not;
+      const rest = g.addPlain(node.origin, node.kw, restKids, node.info);
+      const notPart = g.addPlain(node.origin, {}, { not: node.kids.not }, {});
+      let members = [{ n: rest, via: '' }, { n: notPart, via: '' }];
+      const afterNot = this.notRule(members, contextOf(g, [g.nodes[rest]]), node);
+      if (!afterNot) continue;
+      members = flatten(g, afterNot);
+      node.replacedBy = members.length === 1 ? members[0].n : g.add({ kind: 'conj', origin: node.origin, members });
+      g._resolved = null;
+    }
     // Conjunctions, under all members' keywords.
     for (let id = 0; id < count; id++) {
       const node = g.nodes[id];

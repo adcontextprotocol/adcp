@@ -263,8 +263,125 @@ class Graph {
     // 3. `true` fixpoint, then drop keywords that are `true`.
     this._propagateTrue();
     this._mergeValueUnions();
+    this._mergeConjunctions();
+    this._propagateTrue();
     this._propertyNamesAreStrings();
     this._propagateTrue();
+  }
+
+  /**
+   * Merges plain members of a conjunction into one schema object where that
+   * keeps the meaning exactly, so a schema split across `allOf` members (or
+   * across `$ref` and its siblings) compares equal to the same keywords
+   * written in one object. Two members merge when every keyword they share
+   * combines exactly (see mergePlain); otherwise both stay separate members.
+   */
+  _mergeConjunctions() {
+    for (let id = 0; id < this.nodes.length; id++) {
+      const node = this.nodes[id];
+      if (node.kind !== 'conj') continue;
+      const members = this.conjMembers(node);
+      const out = [];
+      let changed = false;
+      for (const m of members) {
+        const target = this.nodes[m.n];
+        let merged = false;
+        if (target.kind === 'plain') {
+          for (let i = 0; i < out.length; i++) {
+            const prev = this.nodes[out[i].n];
+            if (prev.kind !== 'plain') continue;
+            const combined = this._mergePlain(prev, target);
+            if (combined === null) continue;
+            out[i] = { n: combined, via: out[i].via };
+            merged = true;
+            changed = true;
+            break;
+          }
+        }
+        if (!merged) out.push(m);
+      }
+      if (changed) {
+        node.members = out;
+        this._resolved = null;
+      }
+    }
+  }
+
+  /** One plain node equal to the conjunction of a and b, or null. */
+  _mergePlain(a, b) {
+    const has = (n, k) => Object.prototype.hasOwnProperty.call(n.kids, k);
+    const objectSchemas = (n) => has(n, 'properties') || has(n, 'patternProperties');
+    // additionalProperties sees only its own object's properties and
+    // patternProperties; additionalItems only its own object's items.
+    if ((has(a, 'additionalProperties') || has(a, 'patternProperties')) && objectSchemas(b)) return null;
+    if ((has(b, 'additionalProperties') || has(b, 'patternProperties')) && objectSchemas(a)) return null;
+    if ((has(a, 'additionalItems') && has(b, 'items')) || (has(b, 'additionalItems') && has(a, 'items'))) return null;
+    // discriminator reads its own object's oneOf and required.
+    if (a.kw.discriminator !== undefined || b.kw.discriminator !== undefined) return null;
+    if (a.kw.nullable !== undefined || b.kw.nullable !== undefined) return null;
+    const kw = { ...a.kw };
+    for (const [k, v] of Object.entries(b.kw)) {
+      if (!Object.prototype.hasOwnProperty.call(kw, k)) {
+        kw[k] = v;
+        continue;
+      }
+      const combined = combineValue(k, kw[k], v, a.ckw[k], b.ckw[k]);
+      if (combined === undefined) return null;
+      kw[k] = combined;
+    }
+    const info = { ...a.info };
+    for (const [k, v] of Object.entries(b.info)) {
+      if (Object.prototype.hasOwnProperty.call(info, k) && stableStringify(info[k]) !== stableStringify(v)) return null;
+      info[k] = v;
+    }
+    const kids = {};
+    for (const k of new Set([...Object.keys(a.kids), ...Object.keys(b.kids)])) {
+      const ka = a.kids[k];
+      const kb = b.kids[k];
+      if (!ka || !kb) {
+        kids[k] = ka || kb;
+        continue;
+      }
+      if (k === 'properties') {
+        // The same property in both: its value must satisfy both schemas.
+        const merged = { ...ka };
+        for (const [name, ref] of Object.entries(kb)) {
+          if (!merged[name]) merged[name] = ref;
+          else if (this.kid(merged[name]).n !== this.kid(ref).n) {
+            merged[name] = { n: this.add({ kind: 'conj', origin: a.origin, members: [this.kid(merged[name]), this.kid(ref)], info: {} }), via: '' };
+          }
+        }
+        kids[k] = merged;
+        continue;
+      }
+      // Any other keyword in both members stays as separate conjuncts
+      // (two `not`s, two `oneOf`s, two `if`s, ...), unless it is the same node.
+      if ((SINGLE.has(k) || (k === 'items' && !ka.tuple && !kb.tuple)) && this.kid(ka).n === this.kid(kb).n) {
+        kids[k] = ka;
+        continue;
+      }
+      return null;
+    }
+    // if/then/else form one group: never combine parts from two members.
+    const group = (n) => ['if', 'then', 'else'].some(k => has(n, k));
+    if (group(a) && group(b)) return null;
+    normalizeValues(kw);
+    // Keep the form a single source object would get: no type split here.
+    if (Array.isArray(kw.type) && kw.type.length > 1 && (Object.keys(kw).some(k => KEYWORD_TYPE.has(k)) || Object.keys(kids).some(k => KEYWORD_TYPE.has(k)))) return null;
+    pruneByType(kw, kids);
+    const id = this.addPlain(a.origin, kw, kids, info);
+    // Where each keyword is written, for reports and witness reverts.
+    const origins = {};
+    for (const n of [b, a]) {
+      for (const k of [...Object.keys(n.kw), ...Object.keys(n.kids), ...Object.keys(n.info)]) {
+        origins[k] = (n.kwOrigins && n.kwOrigins[k]) || n.origin;
+      }
+      for (const name of Object.keys(n.kids.properties || {})) {
+        origins[`properties/${name}`] = (n.kwOrigins && n.kwOrigins[`properties/${name}`]) || n.origin;
+      }
+    }
+    this.nodes[id].kwOrigins = origins;
+    return id;
   }
 
   _propagateTrue() {
@@ -674,6 +791,29 @@ function splitByType(kw, kids) {
   for (const k of Object.keys(kw)) if (typed(k)) delete kw[k];
   for (const k of Object.keys(kids)) if (typed(k)) delete kids[k];
   return { branches };
+}
+
+const UPPER = new Set(['maxLength', 'maxItems', 'maxProperties', 'maximum', 'exclusiveMaximum']);
+const LOWER = new Set(['minLength', 'minItems', 'minProperties', 'minimum', 'exclusiveMinimum']);
+
+/**
+ * The value of keyword k equal to having both values in one conjunction, or
+ * undefined when no single value is exactly equivalent.
+ */
+function combineValue(k, va, vb, ca, cb) {
+  if (stableStringify(ca) === stableStringify(cb)) return va;
+  if (UPPER.has(k) && typeof va === 'number' && typeof vb === 'number') return Math.min(va, vb);
+  if (LOWER.has(k) && typeof va === 'number' && typeof vb === 'number') return Math.max(va, vb);
+  if (k === 'required' && Array.isArray(va) && Array.isArray(vb)) return [...new Set([...va, ...vb])].sort();
+  if (k === 'type' && Array.isArray(va) && Array.isArray(vb) && [...va, ...vb].every(t => TYPE_NAMES.has(t))) {
+    const out = new Set();
+    for (const t of va) for (const u of vb) {
+      if (t === u) out.add(t);
+      else if ((t === 'integer' && u === 'number') || (t === 'number' && u === 'integer')) out.add('integer');
+    }
+    return out.size ? [...out].sort() : undefined;
+  }
+  return undefined;
 }
 
 function canonicalKw(kw) {
