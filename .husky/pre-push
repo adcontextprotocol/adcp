@@ -1,9 +1,22 @@
 #!/bin/sh
 
-HUSKY_INIT="${XDG_CONFIG_HOME:-$HOME/.config}/husky/init.sh"
-[ -f "$HUSKY_INIT" ] && . "$HUSKY_INIT"
-[ "${HUSKY-}" = "0" ] && exit 0
-export PATH="node_modules/.bin:$PATH"
+# The whole hook runs under one wall-clock budget (180 s by default; set
+# ADCP_PREPUSH_BUDGET_S or ADCP_HOOK_BUDGET_S to change it): this file re-runs
+# itself, once, as the single step of the hook runner, which stops everything
+# it started and exits 124 when the budget runs out. See
+# scripts/profile-precommit/budget.mjs. Logs go to .hook-runs/<stamp>-pre-push-hook/.
+if [ "${ADCP_HOOK_RUNNER-}" != "pre-push" ]; then
+  HUSKY_INIT="${XDG_CONFIG_HOME:-$HOME/.config}/husky/init.sh"
+  [ -f "$HUSKY_INIT" ] && . "$HUSKY_INIT"
+  [ "${HUSKY-}" = "0" ] && exit 0
+  export PATH="node_modules/.bin:$PATH"
+  # husky runs hooks with `sh -e`; keep that.
+  case $- in
+    *e*) set -- -e "$0" "$@" ;;
+    *) set -- "$0" "$@" ;;
+  esac
+  exec node scripts/profile-precommit.mjs hook --name pre-push -- sh "$@"
+fi
 # Node's on-disk compile cache for every Node process this hook starts
 # (the storyboard runs' tsx-loaded server code, @adcp/sdk and the build scripts).
 export NODE_COMPILE_CACHE="${NODE_COMPILE_CACHE-$PWD/node_modules/.cache/node-compile-cache}"

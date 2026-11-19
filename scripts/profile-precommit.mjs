@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// Pre-commit runner and profiler. `hook` is what .husky/pre-commit runs: the
-// hook's commands, scheduled concurrently, with a run directory you read
-// instead of the terminal. `run` profiles the same commands.
+// Hook runner and pre-commit profiler. `hook` is what .husky/pre-commit and
+// .husky/pre-push run: the hook's steps under one wall-clock budget, with a
+// run directory you read instead of the terminal. `run` profiles the
+// pre-commit commands.
 //
 // USAGE
-//   node scripts/profile-precommit.mjs hook [--root DIR] [--keep-going]
+//   node scripts/profile-precommit.mjs hook [--name pre-commit|pre-push] [--budget-s N]
+//                                 [--root DIR] [--keep-going] [-- CMD ARGS...]
 //   node scripts/profile-precommit.mjs run [options]
 //   node scripts/profile-precommit.mjs summarize <run-dir>
 //   node scripts/profile-precommit.mjs compare <run-a> <run-b>
@@ -15,8 +17,16 @@
 // THE PLAN (scripts/profile-precommit/plan.mjs) is derived, not hard-coded:
 // the advisory image check, then `npm run precommit` with every `npm run X`
 // expanded through package.json into its leaf commands (split on &&).
-// `with-timeout.sh N` budgets are enforced per group (ADCP_TIMEOUT_SCALE
-// honoured). `npm run precommit` stays the sequential equivalent.
+// `npm run precommit` stays the sequential equivalent.
+//
+// BUDGET (scripts/profile-precommit/budget.mjs). One wall-clock budget for the
+// whole hook, counted from this process's start: pre-commit 120 s, pre-push
+// 180 s. First match wins: --budget-s N; ADCP_PRECOMMIT_BUDGET_S or
+// ADCP_PREPUSH_BUDGET_S; ADCP_HOOK_BUDGET_S; the default. A value that is not
+// a positive number of seconds exits 2 before any step starts. When the
+// budget runs out, the runner prints a ⏰ TIMEOUT block naming every step
+// still running and how long it ran, stops those steps and everything they
+// started, skips the rest and exits 124. ADCP_TIMEOUT_SCALE does not apply.
 //
 // HOOK (scripts/profile-precommit/runner.mjs). Leaves run exactly as
 // package.json writes them, in phases: the concurrency-safe leaves (vitest,
@@ -24,14 +34,18 @@
 // step on its own (it already uses every core), and any other leaf alone, in
 // order. A phase runs to the end and reports every failure; a failed phase
 // skips the later ones (--keep-going or ADCP_PRECOMMIT_KEEP_GOING=1 runs them
-// all). The exit status is the first failing leaf's in plan order, a budget
-// expiry prints with-timeout.sh's ⏰ TIMEOUT line, and Ctrl-C stops every
-// running leaf.
+// all). The exit status is the first failing leaf's in plan order (124 when
+// the budget ran out), and Ctrl-C stops every running leaf.
+// With `-- CMD ARGS...` the hook runs CMD as its single step instead of the
+// plan, with the hook's standard input, under the --name hook's budget, and
+// sets ADCP_HOOK_RUNNER=<name> for it (.husky/pre-push re-runs itself this
+// way; a hook that becomes one command changes only its exec line).
 // The terminal gets one line per step, the full output of a phase with a
 // single step, and the log tail of every failed step. The image check is
 // advisory, as it was in the old hook: its failure is shown, not fatal.
-// Hook runs write .hook-runs/<stamp>-hook/; the newest ADCP_HOOK_RUNS_KEEP
-// (default 20) are kept. --root runs the plan of another tree (tests).
+// Hook runs write .hook-runs/<stamp>-hook/ (pre-push: <stamp>-pre-push-hook/);
+// the newest ADCP_HOOK_RUNS_KEEP (default 20) of each hook are kept. --root
+// runs the plan of another tree (tests).
 //
 // RUN OPTIONS (profiling; sequential unless --concurrent or --as-hook)
 //   --server-unit full|skip|auto  Server unit plan. Standalone default: full
@@ -61,8 +75,9 @@
 //   --synthetic-load N            Keep N busy-loop processes (`yes`) running
 //                                 for the whole run: a repeatable stand-in
 //                                 for other agents' work on the machine.
-//   --as-hook                     The hook's phases and terse terminal output;
-//                                 for ADCP_PRECOMMIT_PROFILE=1 in the hook.
+//   --as-hook                     The hook's phases, budget and terse terminal
+//                                 output; for ADCP_PRECOMMIT_PROFILE=1 in the hook.
+//   --budget-s N                  A budget for a standalone run (none by default).
 //
 // RUN DIRECTORY  .hook-runs/<UTC timestamp>[-label]/ (hook: <stamp>-hook/)
 //   run.json                     Options, plan with phases, git state.
@@ -115,6 +130,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aggregateCpuProfiles } from './profile-precommit/cpuprofile.mjs';
+import { BudgetUsageError, budgetOverrideHint, resolveBudget } from './profile-precommit/budget.mjs';
 import { planCommands, phasesOf } from './profile-precommit/plan.mjs';
 import { renderCompareHtml } from './profile-precommit/render.mjs';
 import { buildSummary, collectResults, readJson } from './profile-precommit/results.mjs';
@@ -132,9 +148,12 @@ const FAILURE_LOG_LINES = 200;
 
 // ---------------------------------------------------------------- arguments
 
+// Everything after the first `--` is a command line, kept verbatim.
 function parseArgs(argv) {
-  const [command, ...rest] = argv;
-  const opts = { _: [] };
+  const [command, ...all] = argv;
+  const end = all.indexOf('--');
+  const rest = end === -1 ? all : all.slice(0, end);
+  const opts = { _: [], command: end === -1 ? null : all.slice(end + 1) };
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
     if (!arg.startsWith('--')) { opts._.push(arg); continue; }
@@ -424,6 +443,7 @@ function statusLine(report) {
   const mark = STATUS_MARK[report.status] ?? report.status;
   const wall = report.status === 'skipped' ? '      -' : `${report.wall_s.toFixed(1).padStart(6)}s`;
   const note = report.status === 'skipped' ? `  (${report.skipped_because})`
+    : report.status === 'timed_out' ? '  (stopped: the hook budget ran out)'
     : report.status === 'advisory' ? `  (exit ${report.exit_code}; advisory, does not block the commit)`
       : report.exit_code ? `  (exit ${report.exit_code})` : '';
   return `  ${mark} ${report.name.padEnd(40)} ${wall}${note}`;
@@ -467,51 +487,102 @@ function planMeta(commands, phases) {
   const phaseOf = new Map(phases.flatMap((phase, i) => phase.map((c) => [c.index, i + 1])));
   return commands.map((c) => ({
     index: c.index, name: c.name, kind: c.kind, lane: c.lane, phase: phaseOf.get(c.index) ?? null,
-    advisory: c.advisory, chain: c.chain, command: c.command, budget_s: c.budget?.seconds ?? null,
+    advisory: c.advisory, chain: c.chain, command: c.command,
   }));
 }
 
 // -------------------------------------------------------------------- hook
 
+// A command line as text, for reports: words quoted only where needed.
+function shellText(argv) {
+  return argv.map((a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(' ');
+}
+
+// The budget from --budget-s and the environment; a usage error is printed
+// and returned as null.
+function hookBudget(hook, opts) {
+  try {
+    return resolveBudget({ hook, arg: opts['budget-s'], hasArg: 'budget-s' in opts, env: process.env });
+  } catch (error) {
+    if (!(error instanceof BudgetUsageError)) throw error;
+    process.stderr.write(`${hook}: ${error.message}\n`);
+    return null;
+  }
+}
+
+// The block printed when the budget runs out: what was still running and how
+// long it ran, and how to change the budget.
+function printBudgetExpiry(budget, running) {
+  const from = budget.source === 'default' ? 'the default' : `from ${budget.source}`;
+  const lines = [`⏰ TIMEOUT: ${budget.hook} used its ${budget.seconds} s budget (${from}). To change it, ${budgetOverrideHint(budget.hook)}.`];
+  if (!running.length) lines.push('  No step was running; the steps not yet started are skipped.');
+  else lines.push('  Stopping the steps still running:');
+  for (const step of running) {
+    lines.push(`  - ${step.name}${step.command ? ` (${step.command.slice(0, 200)})` : ''}: ran ${step.ran_s.toFixed(1)} s`);
+    for (const c of step.commands) lines.push(`      ${c.command.slice(0, 200)}${c.ran_s === null ? '' : `: ran ${c.ran_s} s`}`);
+  }
+  process.stderr.write(`${lines.join('\n')}\n`);
+}
+
 async function runHook(opts) {
+  const hook = opts.name ?? 'pre-commit';
+  const budget = hookBudget(hook, opts);
+  if (!budget) return 2;
+  if (opts.command && !opts.command.length) {
+    process.stderr.write(`${hook}: nothing to run after --\n`);
+    return 2;
+  }
   const root = path.resolve(opts.root ?? REPO_ROOT);
   const parent = path.join(root, '.hook-runs');
-  let runDir = path.join(parent, `${utcStamp(true)}-hook`);
-  for (let n = 2; existsSync(runDir); n += 1) runDir = path.join(parent, `${utcStamp(true)}.${n}-hook`);
+  const suffix = hook === 'pre-commit' ? 'hook' : `${hook}-hook`;
+  let runDir = path.join(parent, `${utcStamp(true)}-${suffix}`);
+  for (let n = 2; existsSync(runDir); n += 1) runDir = path.join(parent, `${utcStamp(true)}.${n}-${suffix}`);
   mkdirSync(runDir, { recursive: true });
 
   const keepGoing = !!opts['keep-going'] || process.env.ADCP_PRECOMMIT_KEEP_GOING === '1';
-  const { commands } = planCommands({ root });
+  // The plan, or the given command as the hook's single step.
+  const commands = opts.command
+    ? [{
+      index: 1, name: hook, slug: `01-${hook}`, kind: 'command', lane: 'barrier', chain: [], advisory: false,
+      command: shellText(opts.command), argv: opts.command, env: { ADCP_HOOK_RUNNER: hook },
+    }]
+    : planCommands({ root }).commands;
   const phases = phasesOf(commands);
   const meta = {
     mode: 'hook',
+    hook,
     started_at: new Date().toISOString(),
     git: gitState(root),
     node: process.version,
-    options: { keep_going: keepGoing, ADCP_TIMEOUT_SCALE: process.env.ADCP_TIMEOUT_SCALE ?? null },
+    options: { keep_going: keepGoing },
     plan: planMeta(commands, phases),
   };
   writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(meta, null, 2));
-  say(`pre-commit: ${commands.length} steps in ${phases.length} phases; logs in ${path.relative(root, runDir)}`);
+  say(`${hook}: ${commands.length} steps in ${phases.length} phases, budget ${budget.seconds} s; logs in ${path.relative(root, runDir)}`);
+  if (process.env.ADCP_TIMEOUT_SCALE) say(`${hook}: ADCP_TIMEOUT_SCALE does not apply to hooks; to change the budget, ${budgetOverrideHint(hook)}`);
 
-  const { exitCode, interrupted } = await runPlan({
-    root, runDir, phases, keepGoing, live: true,
+  const result = await runPlan({
+    root, runDir, phases, keepGoing, live: true, budget,
     launcher: leanLauncher({ root }),
     onFinish: (report, dir) => {
       say(statusLine(report));
       printStepOutput(report, dir, report.streamed);
     },
-    onMarker: (line) => process.stderr.write(`${line}\n`),
+    onBudgetExpired: printBudgetExpiry,
   });
+  const { exitCode, interrupted } = result;
   meta.ended_at = new Date().toISOString();
   meta.exit_code = exitCode;
+  meta.budget = result.budget;
   if (interrupted) meta.interrupted_by = interrupted;
   writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(meta, null, 2));
   const summary = buildSummary(runDir);
   const keep = Number(process.env.ADCP_HOOK_RUNS_KEEP ?? DEFAULT_HOOK_RUNS_KEEP);
-  pruneHookRuns(parent, Number.isInteger(keep) && keep >= 1 ? keep : DEFAULT_HOOK_RUNS_KEEP);
-  const verdict = interrupted ? `INTERRUPTED (${interrupted})` : exitCode === 0 ? 'passed' : `FAILED (exit ${exitCode})`;
-  say(`pre-commit: ${verdict} in ${summary.total_wall_s}s; report: ${path.join(runDir, 'summary.html')}`);
+  pruneHookRuns(parent, Number.isInteger(keep) && keep >= 1 ? keep : DEFAULT_HOOK_RUNS_KEEP, hook);
+  const verdict = interrupted ? `INTERRUPTED (${interrupted})`
+    : result.budget?.expired_at ? `FAILED (the ${budget.seconds} s budget ran out; exit ${exitCode})`
+      : exitCode === 0 ? 'passed' : `FAILED (exit ${exitCode})`;
+  say(`${hook}: ${verdict} in ${summary.total_wall_s}s; report: ${path.join(runDir, 'summary.html')}`);
   return exitCode;
 }
 
@@ -521,6 +592,9 @@ async function runAll(opts) {
   const asHook = !!opts['as-hook'];
   opts['server-unit'] ??= asHook ? 'auto' : 'full';
   if (!['full', 'skip', 'auto'].includes(opts['server-unit'])) throw new Error('--server-unit must be full, skip or auto');
+  // The hook's budget under --as-hook; a standalone run has one only when asked.
+  const budget = asHook || 'budget-s' in opts ? hookBudget('pre-commit', opts) : null;
+  if ((asHook || 'budget-s' in opts) && !budget) return 2;
   const root = path.resolve(opts.root ?? REPO_ROOT);
   const runDir = path.resolve(root, opts.out ?? '.hook-runs', `${utcStamp(false)}${opts.label ? `-${String(opts.label).replace(/[^\w.-]+/g, '-')}` : ''}`);
   mkdirSync(runDir, { recursive: true });
@@ -536,7 +610,7 @@ async function runAll(opts) {
     started_at: new Date().toISOString(),
     git: gitState(root),
     node: process.version,
-    options: { 'server-unit': opts['server-unit'], concurrent, 'cpu-prof': !!opts['cpu-prof'], 'import-durations': !!opts['import-durations'], 'heap-prof': !!opts['heap-prof'], 'keep-going': !!opts['keep-going'], 'synthetic-load': Number(opts['synthetic-load'] ?? 0), only, ADCP_TIMEOUT_SCALE: process.env.ADCP_TIMEOUT_SCALE ?? null, ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_SHARDS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_WORKERS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL: process.env.ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL ?? null, NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE ?? null, NODE_DISABLE_COMPILE_CACHE: process.env.NODE_DISABLE_COMPILE_CACHE ?? null },
+    options: { 'server-unit': opts['server-unit'], concurrent, 'cpu-prof': !!opts['cpu-prof'], 'import-durations': !!opts['import-durations'], 'heap-prof': !!opts['heap-prof'], 'keep-going': !!opts['keep-going'], 'synthetic-load': Number(opts['synthetic-load'] ?? 0), only, ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_SHARDS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_WORKERS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL: process.env.ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL ?? null, NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE ?? null, NODE_DISABLE_COMPILE_CACHE: process.env.NODE_DISABLE_COMPILE_CACHE ?? null },
     plan: planMeta(commands, phases),
     machine_start: machineState(new Set([process.pid])),
   };
@@ -549,19 +623,21 @@ async function runAll(opts) {
   if (hogs.length) say(`  synthetic load: ${hogs.length} busy processes`);
   say(`${asHook ? 'pre-commit' : 'profile-precommit'}: ${commands.length} commands${concurrent ? ` in ${phases.length} phases` : ''} -> ${path.relative(root, runDir)}`);
 
-  const { exitCode, interrupted } = await runPlan({
-    root, runDir, phases, keepGoing: !!opts['keep-going'],
+  const result = await runPlan({
+    root, runDir, phases, keepGoing: !!opts['keep-going'], budget,
     launcher: profileLauncher(opts, root),
     onStart: (cmd) => { if (!asHook) say(`  [${cmd.index}/${plan.commands.length}] ${cmd.name} ...`); },
     onFinish: (report, dir) => {
       say(statusLine(report));
       if (asHook) printStepOutput(report, dir, false);
     },
-    onMarker: (line) => process.stderr.write(`${line}\n`),
+    onBudgetExpired: printBudgetExpiry,
   });
+  const { exitCode, interrupted } = result;
   stopHogs();
   meta.ended_at = new Date().toISOString();
   meta.exit_code = exitCode;
+  meta.budget = result.budget;
   if (interrupted) meta.interrupted_by = interrupted;
   meta.machine_end = machineState(new Set([process.pid]));
   writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(meta, null, 2));
@@ -592,7 +668,7 @@ try {
     const { commands } = planCommands({ root });
     console.log(JSON.stringify(planMeta(commands, phasesOf(commands)), null, 2));
   } else {
-    console.error('usage: node scripts/profile-precommit.mjs hook [--root DIR] [--keep-going] | run [--root DIR] [--server-unit full|skip|auto] [--concurrent] [--cpu-prof] [--label X] | summarize <dir> | compare <a> <b> | plan');
+    console.error('usage: node scripts/profile-precommit.mjs hook [--name pre-commit|pre-push] [--budget-s N] [--root DIR] [--keep-going] [-- CMD ARGS...] | run [--root DIR] [--server-unit full|skip|auto] [--concurrent] [--cpu-prof] [--label X] | summarize <dir> | compare <a> <b> | plan');
     process.exitCode = 2;
   }
 } catch (error) {

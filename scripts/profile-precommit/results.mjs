@@ -115,7 +115,7 @@ function tsErrors(text) {
 
 export function failureSummary(cmd, dir, report, root) {
   const summary = { exit_code: report.exit_code, timed_out: report.timed_out };
-  if (report.timed_out) summary.message = `Killed by the with-timeout budget (${report.budget_s}s for this group).`;
+  if (report.timed_out) summary.message = `Stopped when the hook's ${report.budget_s} s budget ran out.`;
   if (report.vitest) {
     summary.vitest_failed_files = report.vitest.failed;
     if (report.vitest.unhandled_errors.length) summary.unhandled_errors = report.vitest.unhandled_errors;

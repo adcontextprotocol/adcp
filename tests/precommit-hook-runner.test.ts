@@ -611,24 +611,28 @@ lib.mark('pass-done');
 });
 
 describe('pre-commit hook runner: budgets, signals and advisory checks', () => {
-  it('kills a budget group at its with-timeout deadline, prints the with-timeout marker once and exits 143', async () => {
+  // Budgets are hook-wide (tests/hook-budget.test.ts); a per-step
+  // with-timeout wrapper in the chain must not come back.
+  it('rejects a precommit chain that wraps a step in with-timeout.sh, before any step runs', async () => {
     const root = fixtureRoot({
       scripts: {
-        precommit: 'bash scripts/with-timeout.sh 1 npm run slow',
-        slow: 'node scripts/typecheck-slow-a.cjs && node scripts/typecheck-slow-b.cjs',
+        precommit: 'node --test tests/before.test.cjs && bash scripts/with-timeout.sh 1 npm run slow',
+        slow: 'node scripts/typecheck-slow.cjs',
       },
       files: {
-        'scripts/typecheck-slow-a.cjs': leaf.hold('slow-a', 30_000),
-        'scripts/typecheck-slow-b.cjs': leaf.hold('slow-b', 30_000),
+        'tests/before.test.cjs': leaf.passes('before-ran'),
+        'scripts/typecheck-slow.cjs': `${LIB_FROM_SCRIPTS}.mark('slow-ran');\n`,
       },
     });
 
     const result = await startHook(root, { env: childEnv() }).done;
 
-    const timeoutLine = /^⏰ TIMEOUT: with-timeout killed the command after 1s \(exit 143, elapsed \d+s\): npm run slow$/gm;
-    const printed = (result.stdout.match(timeoutLine) ?? []).length + (result.stderr.match(timeoutLine) ?? []).length;
-    expect(printed, result.output).toBe(1);
-    expect(result.code, result.output).toBe(143);
+    expect(result.code, result.output).not.toBe(0);
+    expect(result.code, result.output).not.toBeNull();
+    expect(result.output).toMatch(/budgets are hook-wide/);
+    expect(result.output).toContain('with-timeout');
+    expect(existsSync(marker(root, 'before-ran')), 'no step runs when the plan is rejected').toBe(false);
+    expect(existsSync(marker(root, 'slow-ran')), 'no step runs when the plan is rejected').toBe(false);
   });
 
   it('forwards SIGINT to running leaves, waits for them and exits 130', async () => {

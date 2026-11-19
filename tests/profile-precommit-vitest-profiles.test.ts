@@ -75,7 +75,7 @@ describe('profile-precommit run', () => {
     const result = spawnSync(
       NODE,
       [PROFILER, 'run', '--root', root, '--server-unit', 'skip', '--cpu-prof', '--heap-prof', '--label', 'forks', '--out', 'runs'],
-      { cwd: root, env: childEnv(), encoding: 'utf8', timeout: 9_000 },
+      { cwd: root, env: childEnv(), encoding: 'utf8', timeout: 5_000 },
     );
     expect(result.status, result.stdout + result.stderr).toBe(0);
 

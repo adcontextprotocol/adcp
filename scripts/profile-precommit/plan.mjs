@@ -3,8 +3,8 @@
 //
 // Roots are fixed: the advisory image check, then `npm run precommit`. Every
 // `npm run X` is expanded through package.json into its leaf commands (split
-// on &&); `bash scripts/with-timeout.sh N cmd` opens a budget group whose
-// deadline covers every leaf beneath it (ADCP_TIMEOUT_SCALE honoured).
+// on &&). The hook has one overall budget (budget.mjs), so a per-step
+// `bash scripts/with-timeout.sh N cmd` in the chain is rejected.
 //
 // phasesOf() groups the leaves for concurrent runs. Leaves of a known
 // read-only kind (vitest, node:test, tsc and its wrapper, plus an allowlist)
@@ -31,11 +31,6 @@ const READ_ONLY_COMMANDS = [
   /^node scripts\/generate-governance-jws-vectors\.mjs --check$/,
 ];
 
-export function scaleBudget(seconds, env = process.env) {
-  const scale = Number(env.ADCP_TIMEOUT_SCALE);
-  return Number.isFinite(scale) && scale >= 1 ? Math.ceil(seconds * scale) : seconds;
-}
-
 export function classify(command) {
   if (/precommit-server-unit\.cjs/.test(command)) return 'server-unit';
   if (/(^|\s)vitest run\b/.test(command)) return 'vitest';
@@ -45,39 +40,34 @@ export function classify(command) {
   return 'other';
 }
 
-function expand(command, scripts, ctx, out, env) {
+function expand(command, scripts, ctx, out) {
   const clauses = command.split(/\s+&&\s+/).map((c) => c.trim()).filter(Boolean);
   clauses.forEach((clause, index) => {
     if (/(\|\||;|\|)/.test(clause.replace(/'[^']*'|"[^"]*"/g, ''))) {
       throw new Error(`Cannot expand clause with shell operators: ${clause}`);
     }
-    let budget = ctx.budget;
-    let inner = clause;
-    const timeout = /^bash scripts\/with-timeout\.sh (\d+) (.+)$/.exec(clause);
-    if (timeout) {
-      budget = { id: out.budgets.length, seconds: scaleBudget(Number(timeout[1]), env), label: timeout[2], startedAt: null };
-      out.budgets.push(budget);
-      inner = timeout[2];
+    if (/^bash scripts\/with-timeout\.sh\b/.test(clause)) {
+      throw new Error(`Hook budgets are hook-wide (scripts/profile-precommit/budget.mjs); remove the per-step wrapper: ${clause}`);
     }
-    const npmRun = /^npm run (?:--silent )?([\w:.-]+)$/.exec(inner);
+    const npmRun = /^npm run (?:--silent )?([\w:.-]+)$/.exec(clause);
     if (npmRun) {
       const name = npmRun[1];
       if (!(name in scripts)) throw new Error(`package.json has no script ${name}`);
-      expand(scripts[name], scripts, { budget, chain: [...ctx.chain, name] }, out, env);
+      expand(scripts[name], scripts, { chain: [...ctx.chain, name] }, out);
       return;
     }
     const owner = ctx.chain.at(-1) ?? 'hook';
     const name = clauses.length > 1 ? `${owner}#${index + 1}` : owner;
-    out.commands.push({ name, chain: ctx.chain, command: inner, budget });
+    out.commands.push({ name, chain: ctx.chain, command: clause });
   });
 }
 
-export function planCommands({ root, env = process.env } = {}) {
+export function planCommands({ root } = {}) {
   const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts ?? {};
-  const out = { commands: [], budgets: [] };
+  const out = { commands: [] };
   for (const { line, name, advisory } of PLAN_ROOTS) {
     const before = out.commands.length;
-    expand(line, scripts, { budget: null, chain: [] }, out, env);
+    expand(line, scripts, { chain: [] }, out);
     for (const c of out.commands.slice(before)) {
       if (name) c.name = name;
       c.advisory = !!advisory;

@@ -896,8 +896,22 @@ sequential equivalent and runs the same commands.
   `ADCP_PRECOMMIT_KEEP_GOING=1` runs every phase.
 - The terminal shows one line per step and the output of each failed step.
   Every step's full log and `report.json` are in `.hook-runs/<stamp>-hook/`;
-  the newest 20 hook runs are kept (`ADCP_HOOK_RUNS_KEEP`).
+  the newest 20 runs of each hook are kept (`ADCP_HOOK_RUNS_KEEP`).
 - `ADCP_PRECOMMIT_PROFILE=1` runs the same phases with profiling data.
+- Each hook has one wall-clock budget for all of its steps: 120 s for
+  pre-commit and 180 s for pre-push. On a 14-core M4 Pro, pre-commit with the
+  full server unit suite takes about 64-74 s (up to 99 s with other work on
+  the machine), and pre-push with every conditional step about 134-142 s. When the budget runs out, the hook stops every
+  step and every process the steps started, prints a `⏰ TIMEOUT` block that
+  names the steps still running and how long each ran, and exits 124. That
+  means budget, not a failing test.
+- On a slower machine, a sandbox or CI, raise the budget in seconds:
+  `ADCP_HOOK_BUDGET_S` for both hooks, or `ADCP_PRECOMMIT_BUDGET_S` and
+  `ADCP_PREPUSH_BUDGET_S` for one. Called directly, the runner also takes
+  `--budget-s` (`node scripts/profile-precommit.mjs hook --budget-s 600`).
+  `ADCP_TIMEOUT_SCALE` does not apply to the hooks. Steps don't carry budgets
+  of their own: the runner rejects a `scripts/with-timeout.sh` wrapper in the
+  `precommit` chain.
 - A leaf that is not a test, type check, or known read-only check runs alone,
   in order. Add a leaf to the read-only allowlist in
   `scripts/profile-precommit/plan.mjs` only if it writes nothing.
@@ -912,16 +926,14 @@ The hook must pass on a clean checkout of `main` in any shell:
   explicitly in `vi.hoisted()`.
 - Staging anything under `docs/`, `static/schemas/source/`, `.agents/`, or
   `server/src/` runs the **full** server unit suite (see
-  `FULL_SERVER_UNIT_PATTERNS` in `scripts/precommit-server-unit.cjs`). The
-  suite is sequential by design (`fileParallelism: false`) and took ~1020s
-  for 612 files on an idle Vercel sandbox, so the `with-timeout` budget in
-  the `precommit` script is 1500s (raised from 600s in #7478, as #6644 raised
-  it from 240s). A `⏰ TIMEOUT` marker means budget, not a failing test.
+  `FULL_SERVER_UNIT_PATTERNS` in `scripts/precommit-server-unit.cjs`).
 - Live-model router scenarios in `server/tests/unit/addie-router.test.ts`
   are opt-in: `ADDIE_ROUTER_LIVE_TESTS=1` plus `ANTHROPIC_API_KEY`. Having the
   key in your shell is not enough on its own; they are an eval, not a gate.
 
-`.husky/pre-push` runs the storyboard matrices
+`.husky/pre-push` runs under the same runner, as its single step
+(`node scripts/profile-precommit.mjs hook --name pre-push -- sh .husky/pre-push`),
+with logs in `.hook-runs/<stamp>-pre-push-hook/`. It runs the storyboard matrices
 (`scripts/run-storyboards-prepush.sh`: the current-source matrix
 `scripts/run-storyboards-matrix.sh` and the 3.0 compatibility matrix
 `scripts/run-storyboards-3-0-compat.sh` together) when training-agent,
