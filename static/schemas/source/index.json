@@ -1390,7 +1390,7 @@
         },
         "sla-duration": {
           "$ref": "/schemas/core/sla-duration.json",
-          "description": "ISO 8601 duration of an SLA bound that is not zero."
+          "description": "ISO 8601 duration of an SLA bound, such as PT4H or P1D. Zero, such as PT0S, is a valid bound; an absent bound means no commitment."
         },
         "adcp-major-version": {
           "$ref": "/schemas/core/adcp-major-version.json",

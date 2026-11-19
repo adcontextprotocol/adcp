@@ -63,14 +63,25 @@ test('SLA windows keep their 3.2.8 elapsed-time shape (#8501)', async () => {
   const { $id: releasedId, ...releasedRest } = released;
   assert.equal(sourceId, '/schemas/core/sla-window.json');
   assert.match(releasedId, /\/3\.2\.8\/core\/sla-window\.json$/);
-  // The durations reference core/sla-duration.json (#8525); resolved, they are the 3.2.8 text.
+  // The durations reference core/sla-duration.json (#8525); resolved, they are the 3.2.8 text,
+  // except the duration pattern, which no longer accepts a bare T such as PT or P1DT (#8905).
+  const slaDurationPattern = readJson(path.join(SOURCE, 'core/sla-duration.json')).pattern;
   const resolvedProperties = Object.fromEntries(
     Object.entries(sourceRest.properties).map(([name, site]) => [name, resolveScalar(site, source)]),
   );
-  assert.deepEqual({ ...sourceRest, properties: resolvedProperties }, releasedRest, 'core/sla-window.json must match its 3.2.8 publication');
+  const releasedProperties = Object.fromEntries(
+    Object.entries(releasedRest.properties).map(([name, site]) => [name, { ...site, pattern: slaDurationPattern }]),
+  );
+  assert.deepEqual(
+    { ...sourceRest, properties: resolvedProperties },
+    { ...releasedRest, properties: releasedProperties },
+    'core/sla-window.json must match its 3.2.8 publication',
+  );
 
   const validate = await compile('core/sla-window.json');
   for (const value of [{}, escalation, { completion_max: 'PT24H' }, { response_max: 'PT4H', completion_max: 'PT2H' }]) accepts(validate, value);
+  accepts(validate, { response_max: 'PT0S', completion_max: 'P0D' });
+  for (const duration of ['PT', 'P1DT', 'P']) rejects(validate, { completion_max: duration });
   rejects(validate, { response_time_minutes: 15 });
   for (const value of [
     { clock: 'elapsed', completion_max: 'P1D' },
