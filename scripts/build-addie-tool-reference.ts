@@ -2,7 +2,7 @@
 /**
  * Build the Addie tool-reference page.
  *
- * Walks `server/src/addie/mcp/*-tools.ts` (plus the actively registered
+ * Walks `server/src/addie/mcp/*-tools.ts` and `*-tool-definitions.ts` (plus the actively registered
  * `knowledge-search.ts`) for AddieTool definitions, cross-references them against
  * the curated TOOL_SETS in `server/src/addie/tool-sets.ts`, and writes the
  * combined reference to `docs/aao/addie-tools.mdx`.
@@ -452,6 +452,7 @@ function main() {
   // search_docs/get_doc names must not override the runtime definitions.
   const toolFiles = fs.readdirSync(MCP_DIR)
     .filter(f => (f.endsWith('-tools.ts') && f !== 'story-tools.ts')
+      || f.endsWith('-tool-definitions.ts')
       || f === 'knowledge-search.ts'
       || f === 'admin-analytics.ts'
       || f === 'google-docs.ts')
