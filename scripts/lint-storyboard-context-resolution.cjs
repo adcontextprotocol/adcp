@@ -149,8 +149,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
 const { injectContext } = require('@adcp/sdk/testing');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
@@ -422,7 +422,7 @@ function lintTree(dir = STORYBOARD_DIR) {
   for (const file of walkYaml(dir)) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       unparsed.push(file);
       continue;
@@ -492,22 +492,23 @@ function main() {
       `lint-storyboard-context-resolution: ${unparsed.length} storyboard(s) failed to parse:\n` +
         unparsed.map((file) => `  ${path.relative(REPO_ROOT, file)}`).join('\n'),
     );
-    process.exit(1);
+    return 1;
   }
   if (violations.length === 0) {
     console.log('lint-storyboard-context-resolution: every $context placeholder resolves.');
-    return;
+    return 0;
   }
   console.error(
     `lint-storyboard-context-resolution: ${violations.length} unresolved $context placeholder(s):\n` +
       violations.map(formatViolation).join('\n\n'),
   );
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   CONTEXT_TOKEN_RE,
   CONVENTION_CONTEXT_PRODUCERS,
   RUNNER_PINNED_CONTEXT_KEYS,

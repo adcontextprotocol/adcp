@@ -27,7 +27,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 
@@ -212,7 +212,7 @@ function lint() {
   for (const file of files) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -228,7 +228,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ storyboard provides_state_for lint: all declarations conform');
-    return;
+    return 0;
   }
 
   console.error(`✗ storyboard provides_state_for lint: ${violations.length} violation(s)\n`);
@@ -239,12 +239,13 @@ function main() {
   console.error(
     '\nSee static/compliance/source/universal/storyboard-schema.yaml (`provides_state_for` field) for the normative rules.',
   );
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   RULE_MESSAGES,
   lint,
   lintDoc,

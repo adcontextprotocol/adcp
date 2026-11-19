@@ -31,7 +31,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SCHEMA_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
@@ -162,7 +162,7 @@ function lintStoryboards(dir = STORYBOARD_DIR) {
   for (const file of walkFiles(dir, ['.yaml', '.yml'])) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -201,7 +201,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ pagination-invariant lint: no violations');
-    return;
+    return 0;
   }
   console.error(`✗ pagination-invariant lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -210,12 +210,13 @@ function main() {
     console.error(`    ${msg}`);
     console.error('');
   }
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   RULE_MESSAGES,
   walkPaginationObjects,
   checkPagination,

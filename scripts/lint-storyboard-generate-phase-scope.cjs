@@ -52,7 +52,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
@@ -137,7 +137,7 @@ function lint(dir = STORYBOARD_DIR) {
   for (const file of walkYaml(dir)) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       // YAML parse errors are reported by sibling lints.
       continue;
@@ -167,18 +167,19 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('lint-storyboard-generate-phase-scope: no $generate alias crosses a phase boundary.');
-    return;
+    return 0;
   }
   console.error(
     `lint-storyboard-generate-phase-scope: ${violations.length} cross-phase $generate alias(es):\n` +
       violations.map(formatViolation).join('\n\n'),
   );
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   GENERATE_ALIAS_RE,
   collectAliasPhases,
   lintDoc,

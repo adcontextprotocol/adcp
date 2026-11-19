@@ -46,7 +46,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 
@@ -162,7 +162,7 @@ function buildScenarioFlagIndex(sourceDir) {
   for (const file of walkYaml(sourceDir)) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -402,7 +402,7 @@ function lint() {
     try {
       // YAML parse errors are handled by the schema-validation pass in the
       // build pipeline; skip unparseable files here rather than double-reporting.
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -418,7 +418,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ storyboard branch-set lint: all declarations conform');
-    return;
+    return 0;
   }
 
   console.error(`✗ storyboard branch-set lint: ${violations.length} violation(s)\n`);
@@ -429,12 +429,13 @@ function main() {
   console.error(
     '\nSee static/compliance/source/universal/storyboard-schema.yaml ("Branch sets" section) for the normative rules.',
   );
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   SUPPORTED_SEMANTICS,
   RULE_MESSAGES,
   lint,

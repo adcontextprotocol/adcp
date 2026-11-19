@@ -22,8 +22,14 @@
  * stat and write. A file the build reads that the digest does not cover would
  * let a stale tree pass as current; the guard fails on it.
  *
+ * The work-count guards read the same trace. They count repeated work (how
+ * often a build reads one source file or lists dist/schemas, and which process
+ * runs each lint), so a build that redoes work per schema, per tool or per
+ * lint fails on a count instead of on a clock.
+ *
  * Every CLI run is asynchronous (runChild), so the runner's --test-timeout
- * bounds it. Nothing here asserts on wall-clock time.
+ * bounds it, real builds included: node:test applies it to each hook and
+ * each test. Nothing here asserts on wall-clock time.
  */
 
 const assert = require('node:assert/strict');
@@ -40,11 +46,6 @@ const REAL_NODE_MODULES = fs.realpathSync(path.join(REPO_ROOT, 'node_modules'));
 const TMP_ROOTS = [...new Set([os.tmpdir(), fs.realpathSync(os.tmpdir())])];
 // Kills any CLI run still alive when the file ends (a timed-out hook or test).
 const teardown = { kills: [], after(kill) { this.kills.push(kill); } };
-// The hooks and tests that run a real build. Alone on noetis-b-vm,
-// build-schemas takes 17 s and build-compliance 28 s; at load 96 the
-// compliance build took over 120 s. Every other case keeps the runner's 30 s
-// (tp-jyw.33).
-const REAL_BUILD_TIMEOUT_MS = 5 * 60 * 1000;
 
 const TARGETS = {
   schemas: {
@@ -399,6 +400,65 @@ function relContentReads(trace) {
     .map((e) => posix(path.relative(root, e.file)));
 }
 
+// ------------------------------------------------------------- work counts
+
+/**
+ * The most times one source file may be read by the schemas build process.
+ * Each pass over the source tree reads a file at most once, and a file can be
+ * reached by these passes:
+ *
+ *   1  the input digest taken at the start of the build (withBuildLock)
+ *   1  the source registry update (index.json only)
+ *   3  the three source lints (idempotency key, vendor metric uniqueness,
+ *      error-code enumMetadata)
+ *   1  copy-and-transform into dist/schemas/latest
+ *   2  the manifest: discoverTools, plus the mutating-request check and the
+ *      task-type and error-code reads
+ *   2  extensions: discovery, then the extension-meta copy
+ *   1  bundling, with one parsed-document map for the whole run
+ *   1  MCP projection, with one source cache for the six projections
+ *
+ * The sum, 12, is the ceiling for a file that every pass touches. A pass that
+ * reads a file again per root schema, per tool or per profile goes far past
+ * it.
+ */
+const MAX_SCHEMA_SOURCE_READS = 12;
+// The most times one process may list dist/schemas. The cache CLI digests the
+// release listing twice (before and after it takes the lock). The build lists
+// it once for its own digest, and the symbol linker once for release
+// membership; that is still two if the linker runs in the build's process.
+const MAX_RELEASE_LISTINGS_PER_PROCESS = 2;
+
+/** Counts of `key(entry)` over the entries, highest first. */
+function countBy(entries, key) {
+  const counts = new Map();
+  for (const entry of entries) {
+    const k = key(entry);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+}
+
+/** The top `n` counts as indented lines, for failure messages. */
+function topCounts(sorted, n = 8, label = String) {
+  return sorted.slice(0, n).map(([k, count]) => `  ${String(count).padStart(6)}  ${label(k)}`).join('\n');
+}
+
+/** The pids that loaded the target's build script. */
+function buildPidsOf(trace, script) {
+  return new Set(trace.filter((e) => e.op === 'load' && e.file === abs(script)).map((e) => e.pid));
+}
+
+/** A label for a traced process: its pid and the first repository module it loaded (its main script). */
+function processLabel(trace) {
+  const main = new Map();
+  for (const e of trace) {
+    if (e.op !== 'load' || main.has(e.pid) || !e.file.startsWith(`${root}/`) || e.file.startsWith(`${abs('node_modules')}/`)) continue;
+    main.set(e.pid, posix(path.relative(root, e.file)));
+  }
+  return (pid) => `pid ${pid} (${main.get(pid) ?? 'no repository module'})`;
+}
+
 // --------------------------------------------------------------- the cases
 
 const firstBuild = {};
@@ -425,7 +485,7 @@ for (const target of Object.keys(TARGETS)) {
       // start, so they converge after one more build. Settle that here; when
       // nothing was rewritten this is a cache hit.
       await cli(['ensure', target]);
-    }, { timeout: REAL_BUILD_TIMEOUT_MS });
+    });
 
     it(`the first ensure ${target} reports a miss, runs ${script} and stamps the result`, async () => {
       const run = firstBuild[target];
@@ -472,6 +532,70 @@ for (const target of Object.keys(TARGETS)) {
       }
       await assertFresh(target, 'after reverting every script edit');
     });
+
+    if (target === 'schemas') {
+      it(`work-count guard: the schemas build reads each file under static/schemas/source at most ${MAX_SCHEMA_SOURCE_READS} times`, () => {
+        const trace = firstBuild.schemas.trace;
+        // Only the build process counts: the cache CLI's digest runs before
+        // the build and is part of the cache key, not of the build.
+        const buildPids = buildPidsOf(trace, script);
+        assert.ok(buildPids.size > 0, `the traced run loaded ${script}\n${firstBuild.schemas.describe()}`);
+        const sourceDir = `${abs('static/schemas/source')}/`;
+        const reads = trace.filter((e) => buildPids.has(e.pid) && CONTENT_OPS.has(e.op) && e.file.startsWith(sourceDir));
+        assert.ok(reads.length > 0, 'the build read files under static/schemas/source');
+        const perFile = countBy(reads, (e) => posix(path.relative(root, e.file)));
+        const over = perFile.filter(([, count]) => count > MAX_SCHEMA_SOURCE_READS);
+        assert.deepEqual(
+          over.map(([rel]) => rel),
+          [],
+          `${over.length} of ${perFile.length} source files are read more than ${MAX_SCHEMA_SOURCE_READS} times ` +
+            `(${reads.length} reads in all); most read:\n${topCounts(perFile)}`,
+        );
+      });
+    }
+
+    if (target === 'compliance') {
+      it(`work-count guard: no process of the compliance build lists dist/schemas more than ${MAX_RELEASE_LISTINGS_PER_PROCESS} times`, () => {
+        const trace = firstBuild.compliance.trace;
+        const releaseListing = abs('dist/schemas');
+        const listings = trace.filter((e) => e.op === 'readdir' && e.file === releaseListing);
+        assert.ok(listings.length > 0, 'the run lists dist/schemas (the release listing is a compliance input)');
+        const perPid = countBy(listings, (e) => e.pid);
+        const over = perPid.filter(([, count]) => count > MAX_RELEASE_LISTINGS_PER_PROCESS);
+        const label = processLabel(trace);
+        assert.deepEqual(
+          over.map(([pid]) => label(pid)),
+          [],
+          `processes that list dist/schemas more than ${MAX_RELEASE_LISTINGS_PER_PROCESS} times:\n${topCounts(perPid, 8, label)}`,
+        );
+      });
+
+      it('work-count guard: every scripts/lint-*.cjs the compliance build runs is loaded in the build process, not in a child', () => {
+        const trace = firstBuild.compliance.trace;
+        const buildPids = buildPidsOf(trace, script);
+        assert.equal(buildPids.size, 1, `one process loaded ${script}; pids: ${[...buildPids]}\n${firstBuild.compliance.describe()}`);
+        const [buildPid] = buildPids;
+        const lintLoads = trace.filter((e) => e.op === 'load' && /^scripts\/lint-[^/]+\.cjs$/.test(posix(path.relative(root, e.file))));
+        const lints = [...new Set(lintLoads.map((e) => posix(path.relative(root, e.file))))].sort();
+        assert.ok(lints.length > 0, `the build loaded at least one scripts/lint-*.cjs\n${firstBuild.compliance.describe()}`);
+        const inBuild = new Set(lintLoads.filter((e) => e.pid === buildPid).map((e) => posix(path.relative(root, e.file))));
+        const label = processLabel(trace);
+        const elsewhere = new Map();
+        for (const e of lintLoads.filter((entry) => entry.pid !== buildPid)) {
+          if (!elsewhere.has(e.pid)) elsewhere.set(e.pid, new Set());
+          elsewhere.get(e.pid).add(posix(path.relative(root, e.file)));
+        }
+        const elsewhereLines = [...elsewhere].slice(0, 8)
+          .map(([pid, loaded]) => `  ${label(pid)} loads ${[...loaded].sort().join(', ')}`).join('\n');
+        assert.deepEqual(
+          lints.filter((rel) => !inBuild.has(rel)),
+          [],
+          `${lints.length - inBuild.size} of ${lints.length} lints are not loaded in the build process ${label(buildPid)}; ` +
+            `${elsewhere.size} other processes load lints, first few:\n${elsewhereLines}`,
+        );
+        assert.deepEqual([...elsewhere.keys()].map(label), [], 'no process other than the build loads a lint');
+      });
+    }
 
     describe(`status ${target}: fresh -> edit -> stale -> revert -> fresh, per input class`, () => {
       const classes = {
@@ -572,7 +696,7 @@ describe('build cache: rebuilds and failed builds', () => {
   for (const target of Object.keys(rebuildEdits)) {
     const { stamp, sentinel } = TARGETS[target];
 
-    it(`ensure ${target} after one input edit reports a miss, runs the build and stamps the new inputs`, { timeout: REAL_BUILD_TIMEOUT_MS }, async () => {
+    it(`ensure ${target} after one input edit reports a miss, runs the build and stamps the new inputs`, async () => {
       await assertFresh(target, 'before the edit');
       assert.ok(fs.existsSync(abs(sentinel)), `${sentinel} exists after the first build`);
       const stampBefore = fs.readFileSync(abs(stamp), 'utf8');
@@ -596,7 +720,7 @@ describe('build cache: rebuilds and failed builds', () => {
   })) {
     const { lockDir, script } = TARGETS[target];
 
-    it(`a failing ${target} build (broken source) exits with the build's status from ensure and from ${script}, and leaves no ${lockDir}`, { timeout: REAL_BUILD_TIMEOUT_MS }, async () => {
+    it(`a failing ${target} build (broken source) exits with the build's status from ensure and from ${script}, and leaves no ${lockDir}`, async () => {
       edits.addFile(broken.rel, broken.content); // kept: last case for this target
 
       const ensured = await cli(['ensure', target]);

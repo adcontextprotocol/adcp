@@ -110,6 +110,33 @@ function discoverFiles(repoRoot, patterns = PARTICIPATING_GLOBS) {
   return files;
 }
 
+// Whether a 3.x release ships a schema: for a path under the schema source
+// root, the answer globSync('dist/schemas/3.*.*/<path>', { nodir: true })
+// gives, from one listing of the release directories. Released trees are
+// immutable, so each answer is computed once.
+function releasedSchemaLookup(repoRoot) {
+  const releases = globSync('dist/schemas/3.*.*', {
+    cwd: repoRoot,
+    posix: true,
+    follow: false,
+  }).sort(compareText);
+  const answers = new Map();
+  const ships = (release, schemaRelative) => {
+    try {
+      const stat = fs.lstatSync(path.join(repoRoot, release, schemaRelative), { throwIfNoEntry: false });
+      return stat !== undefined && !stat.isDirectory();
+    } catch {
+      return false; // the release entry is not a directory
+    }
+  };
+  return (schemaRelative) => {
+    if (!answers.has(schemaRelative)) {
+      answers.set(schemaRelative, releases.some(release => ships(release, schemaRelative)));
+    }
+    return answers.get(schemaRelative);
+  };
+}
+
 function addUniqueAuthority(map, symbol, authority) {
   const entries = map.get(symbol) ?? [];
   if (!entries.some(entry => entry.family === authority.family && entry.target === authority.target)) {
@@ -182,7 +209,28 @@ function collectErrorAuthorities(repoRoot) {
   return errors;
 }
 
-function discoverTaskAuthorities(repoRoot) {
+/**
+ * A parser that parses each distinct document text once. The heading pass
+ * and transformDocument only read the trees, so they share them.
+ */
+function createParseCache() {
+  const trees = new Map();
+  return (source) => {
+    let tree = trees.get(source);
+    if (tree === undefined) {
+      tree = PARSER.parse(source);
+      trees.set(source, tree);
+    }
+    return tree;
+  };
+}
+
+const parseOnce = source => PARSER.parse(source);
+
+function discoverTaskAuthorities(repoRoot, {
+  isReleased = releasedSchemaLookup(repoRoot),
+  parse = parseOnce,
+} = {}) {
   if (typeof discoverTools !== 'function') {
     throw new Error('scripts/build-schemas.cjs must export discoverTools');
   }
@@ -215,7 +263,7 @@ function discoverTaskAuthorities(repoRoot) {
   for (const relative of headingDocs) {
     let tree;
     try {
-      tree = PARSER.parse(readRegularFile(repoRoot, relative));
+      tree = parse(readRegularFile(repoRoot, relative));
     } catch (error) {
       throw new Error(`Unable to parse task destination ${relative}: ${error.message}`);
     }
@@ -247,12 +295,7 @@ function discoverTaskAuthorities(repoRoot) {
         uniqueHeadingTargets.map(entry => entry.target).join(', '),
       );
     }
-    const released = globSync(`dist/schemas/3.*.*/${tool.request_schema}`, {
-      cwd: repoRoot,
-      nodir: true,
-      posix: true,
-      follow: false,
-    }).length > 0;
+    const released = isReleased(tool.request_schema);
     const target = matches.length === 1
       ? `/${matches[0].replace(/\.mdx?$/, '')}`
       : uniqueHeadingTargets.length === 1
@@ -263,7 +306,7 @@ function discoverTaskAuthorities(repoRoot) {
   return tasks;
 }
 
-function collectSchemaFields(repoRoot) {
+function collectSchemaFields(repoRoot, { isReleased = releasedSchemaLookup(repoRoot) } = {}) {
   const names = new Set();
   const qualified = new Map();
   for (const relative of globSync(`${SCHEMA_SOURCE}/**/*.json`, {
@@ -274,12 +317,7 @@ function collectSchemaFields(repoRoot) {
   })) {
     const document = readJson(repoRoot, relative);
     const schemaRelative = relative.slice(`${SCHEMA_SOURCE}/`.length);
-    const released = globSync(`dist/schemas/3.*.*/${schemaRelative}`, {
-      cwd: repoRoot,
-      nodir: true,
-      posix: true,
-      follow: false,
-    }).length > 0;
+    const released = isReleased(schemaRelative);
     const visit = (value, pointer = '') => {
       if (Array.isArray(value)) {
         value.forEach((item, index) => visit(item, `${pointer}/${index}`));
@@ -336,12 +374,13 @@ function collectStoryboardAuthorities(repoRoot) {
   return storyboards;
 }
 
-function loadAuthorities(repoRoot) {
+function loadAuthorities(repoRoot, { parse = parseOnce } = {}) {
+  const isReleased = releasedSchemaLookup(repoRoot);
   return {
     errors: collectErrorAuthorities(repoRoot),
-    fields: collectSchemaFields(repoRoot),
+    fields: collectSchemaFields(repoRoot, { isReleased }),
     storyboards: collectStoryboardAuthorities(repoRoot),
-    tasks: discoverTaskAuthorities(repoRoot),
+    tasks: discoverTaskAuthorities(repoRoot, { isReleased, parse }),
   };
 }
 
@@ -554,7 +593,7 @@ function addWarning(context, key, message) {
 function transformDocument(source, context) {
   let tree;
   try {
-    tree = PARSER.parse(source);
+    tree = (context.parse ?? parseOnce)(source);
   } catch (error) {
     context.errors.push(`${context.file}: unable to parse MDX: ${error.message}`);
     return source;
@@ -876,7 +915,8 @@ function linkComplianceSymbols({
 } = {}) {
   const files = discoverFiles(repoRoot, patterns);
   const participating = new Set(files);
-  const authorities = loadAuthorities(repoRoot);
+  const parse = createParseCache();
+  const authorities = loadAuthorities(repoRoot, { parse });
   const ignores = loadIgnoreList(repoRoot, participating);
   const usedIgnores = new Set();
   const errors = [];
@@ -892,6 +932,7 @@ function linkComplianceSymbols({
       errors,
       file: relative,
       ignores,
+      parse,
       references,
       usedIgnores,
       warnings,

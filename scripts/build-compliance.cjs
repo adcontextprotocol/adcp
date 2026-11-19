@@ -30,9 +30,10 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const yaml = require('js-yaml');
-const { execFileSync, execSync } = require('child_process');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
+const { execFileSync, execSync, spawn } = require('child_process');
 
 const SOURCE_DIR = path.join(__dirname, '../static/compliance/source');
 const DIST_DIR = path.join(__dirname, '../dist/compliance');
@@ -84,7 +85,7 @@ function copyTree(srcDir, dstDir) {
 }
 
 function readYamlFrontmatter(filePath) {
-  const doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
+  const doc = loadYamlFile(filePath);
   if (doc == null || typeof doc !== 'object') return {};
   const out = {};
   for (const key of ['id', 'protocol', 'title', 'role', 'track', 'status']) {
@@ -311,7 +312,7 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     if (rel.endsWith('storyboard-schema.yaml')) return;
 
     let doc;
-    try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
+    try { doc = loadYamlFile(p); }
     catch { return; }
     if (!doc || typeof doc !== 'object' || !Array.isArray(doc.phases)) return;
     const generatedContextNames = new Set();
@@ -526,6 +527,124 @@ function assertComplianceBuiltMirror(sourceDir, targetDir) {
   );
 }
 
+// The storyboard lints, in the order the build runs them. Each module's
+// main() prints its result and returns its exit code. They run in this
+// process, so js-yaml, the SDK and the parsed storyboard sources
+// (scripts/compliance-yaml.cjs) load once for all of them. A failing lint
+// stops the build before it writes dist/.
+const STORYBOARD_LINTS = [
+  // Scoping lint: every session-scoped step must carry brand/account identity.
+  // Fails fast before we build dist/ so broken storyboards don't ship.
+  './lint-storyboard-scoping.cjs',
+  // Branch-set lint: explicit `branch_set:` declarations must be well-formed
+  // and grade-connected to an assert_contribution step.
+  './lint-storyboard-branch-sets.cjs',
+  // provides_state_for lint: same-phase substitution declarations on stateful
+  // steps must reference real, stateful, same-phase peers and the per-phase
+  // peer-graph must be acyclic. See adcontextprotocol/adcp#3734.
+  './lint-storyboard-provides-state-for.cjs',
+  // Fixture-resolution lint: 3.2 discovery/construct declarations must point
+  // at real fixture handles and use only the normative strategy/matcher DSL.
+  // Legacy fixture blocks without resolution metadata remain seed-only.
+  './lint-storyboard-fixture-resolution.cjs',
+  // Contradiction lint: no two storyboards may encode contradictory outcomes
+  // for the same (task, request, prior-state, env) — a conformant agent
+  // cannot satisfy both.
+  './lint-storyboard-contradictions.cjs',
+  // Context-entity lint: captured $context values must not flow from a field
+  // of one entity type into a consume site of a different entity type
+  // (issue #2660, rule 3; canonical case #2627).
+  './lint-storyboard-context-entity.cjs',
+  // Auth-shape lint: storyboard steps must use principal-handle shapes
+  // (from_test_kit, value_strategy, none) rather than literal credentials
+  // that bind the storyboard to a specific value and leak identity into
+  // source control. #2720.
+  './lint-storyboard-auth-shape.cjs',
+  // Test-kits lint: every file under test-kits/ must declare either
+  // auth.api_key (brand-kit flavor) or applies_to (runner-contract flavor).
+  // Enforces the bimodal partition documented in storyboard-schema.yaml
+  // under "Test kit flavors". #2721.
+  './lint-storyboard-test-kits.cjs',
+  // Buyer-fixture lifecycle-tools lint: a buyer storyboard's fixture publisher
+  // may only advertise compact lifecycle tools the fixture-publisher contract
+  // serves (universal/buyer-fixture-publisher.yaml > authoring_rules).
+  // Advertising a tool with no handler sends a correctly-gating buyer to a
+  // tool the publisher cannot answer. adcontextprotocol/adcp#7749.
+  './lint-storyboard-buyer-fixture-lifecycle-tools.cjs',
+  // Packaged-reference lint: authored storyboards may only point at files that
+  // ship in the versioned compliance tree. This catches source-tree-only
+  // references before they produce protocol tarballs that SDKs cannot load.
+  './lint-compliance-packaged-refs.cjs',
+  // Pagination invariant: schema examples and storyboard fixtures MUST NOT
+  // teach the cursor↔has_more contradiction. has_more=true requires cursor;
+  // has_more=false MUST omit cursor. See pagination-response.json.
+  './lint-pagination-invariant.cjs',
+  // Vendor metric uniqueness lint: storyboard fixture inline payloads MUST NOT
+  // contain duplicate (vendor.domain, vendor.brand_id, metric_id) tuples in
+  // vendor_metric_values or vendor_metrics arrays. Enforces the MUST constraint
+  // documented in reporting-capabilities.json and delivery-metrics.json that
+  // JSON Schema uniqueItems cannot enforce (BrandRef optional fields defeat
+  // deep-equal). Companion schema-examples lint runs in build-schemas.cjs.
+  // adcontextprotocol/adcp#3502.
+  './lint-vendor-metric-uniqueness.cjs',
+  // Check-enum lint: storyboards may only declare validations[].check values
+  // listed in runner-output-contract.yaml's `authored_check_kinds` enum.
+  // Synthesized codes (capture_path_not_resolvable, unresolved_substitution)
+  // are runner-emitted, not authored. The runtime forward-compat default
+  // (unknown kinds → not_applicable) handles cross-version skew; this lint
+  // catches typos at publish time. adcontextprotocol/adcp#3830 item 1.
+  './lint-storyboard-check-enum.cjs',
+  // update_media_buy affected_packages lint: package-mutating update
+  // storyboards must assert full affected package state, not just package IDs.
+  './lint-update-media-buy-affected-packages.cjs',
+  // Raw-mode-required lint: storyboards setting attestation_mode_required:
+  // "raw" on an upstream_traffic check MUST declare at least one
+  // payload_must_contain clause. Otherwise the raw flag has no operational
+  // value and just excludes digest-mode adopters from the conformance
+  // signal. adcontextprotocol/adcp#3847 item 2.
+  './lint-storyboard-raw-mode-required.cjs',
+  // Controller-requires lint: storyboards that seed through
+  // comply_test_controller (prerequisites.controller_seeding: true) MUST
+  // declare requires: [controller] so a seller without a controller gets one
+  // storyboard-level requirement_unmet skip, not per-step
+  // missing_test_controller grades. adcontextprotocol/adcp#7858.
+  './lint-storyboard-controller-requires.cjs',
+  // Upstream-traffic path lint: identifier_paths use a small portable
+  // request-payload-relative grammar so runners don't diverge on JSONPath
+  // variants, numeric indexes, or explicit roots. adcontextprotocol/adcp#5073.
+  './lint-storyboard-upstream-traffic-paths.cjs',
+  // $generate phase-scope lint: the runner scopes `$generate:<kind>#<alias>`
+  // values to one phase, so an alias reused in a later phase silently mints a
+  // different ID. Cross-phase values must travel through context_outputs.
+  './lint-storyboard-generate-phase-scope.cjs',
+  // $context resolution lint: a `$context.<key>` the storyboard never seeds or
+  // captures makes the runner skip the step with `prerequisite_failed`, so the
+  // storyboard can never pass — and once a bundle ships, dist/** is immutable
+  // and the only remedy is another release (#7797 / #7801 / #8317).
+  './lint-storyboard-context-resolution.cjs',
+  // Advisory-expiry lint (warnings only): surface storyboards declaring
+  // severity: advisory without expires_after_version (or permanent_advisory),
+  // so authors can confirm at PR review whether the drift is on purpose.
+  // adcontextprotocol/adcp#3847 item 1. The script exits 0 on rule
+  // violations (warnings, not errors); a non-zero exit here means the
+  // script itself crashed and SHOULD surface — don't silently swallow
+  // implementation bugs that mask the lint forever.
+  './lint-storyboard-advisory-expiry.cjs',
+];
+
+// Warnings only: a nonzero exit or a throw is a crash of the script itself.
+const WARNING_ONLY_LINTS = new Set(['./lint-storyboard-advisory-expiry.cjs']);
+
+/** Runs one lint's main() in this process: its exit code, or { error } when it throws. */
+function runLint(modulePath) {
+  try {
+    return require(modulePath).main();
+  } catch (err) {
+    if (!WARNING_ONLY_LINTS.has(modulePath)) console.error(err);
+    return { error: err };
+  }
+}
+
 function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
   const protocols = discoverProtocols(sourceDir, specialisms);
@@ -601,7 +720,47 @@ function buildTo(targetDir, version, sourceDir) {
   return index;
 }
 
-function main() {
+/**
+ * Starts `node scripts/link-compliance-symbols.mjs --check` in the background
+ * and returns a promise of { code, stdout, stderr }. The symbol linker reads only the
+ * schema and compliance sources, the docs and the release listing. The lints,
+ * the dist build and the snippets change none of these, so the check runs
+ * beside them. Its output goes to a temporary file, not a pipe, so it never
+ * waits on a full pipe while this process is busy; the caller prints it. A
+ * build that exits first stops the check.
+ */
+function startSymbolLinkCheck() {
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-symbol-links-'));
+  const streams = { stdout: path.join(outputDir, 'stdout.log'), stderr: path.join(outputDir, 'stderr.log') };
+  const stdout = fs.openSync(streams.stdout, 'w');
+  const stderr = fs.openSync(streams.stderr, 'w');
+  const child = spawn(process.execPath, ['scripts/link-compliance-symbols.mjs', '--check'], {
+    cwd: path.join(__dirname, '..'),
+    stdio: ['ignore', stdout, stderr],
+  });
+  fs.closeSync(stdout);
+  fs.closeSync(stderr);
+  const stop = () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  };
+  process.on('exit', stop);
+  return new Promise((resolve) => {
+    child.on('error', () => resolve(1));
+    child.on('exit', (code) => resolve(code ?? 1));
+  }).then((code) => {
+    process.off('exit', stop);
+    const result = {
+      code,
+      stdout: fs.readFileSync(streams.stdout, 'utf8'),
+      stderr: fs.readFileSync(streams.stderr, 'utf8'),
+    };
+    fs.rmSync(outputDir, { recursive: true, force: true });
+    return result;
+  });
+}
+
+async function main() {
   const version = getVersion();
   const unknownArgs = args.filter(arg => arg !== '--release' && arg !== '--check');
   if (unknownArgs.length) {
@@ -618,6 +777,8 @@ function main() {
     process.exit(1);
   }
 
+  const symbolLinkCheck = startSymbolLinkCheck();
+
   try {
     assertComplianceSourceAuthority(SOURCE_DIR);
   } catch (err) {
@@ -625,263 +786,17 @@ function main() {
     process.exit(1);
   }
 
-  // Scoping lint: every session-scoped step must carry brand/account identity.
-  // Fails fast before we build dist/ so broken storyboards don't ship.
-  try {
-    execSync('node scripts/lint-storyboard-scoping.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
+  for (const lint of STORYBOARD_LINTS) {
+    const result = runLint(lint);
+    if (result === 0) continue;
+    if (WARNING_ONLY_LINTS.has(lint)) {
+      const err = result.error ?? new Error(`${lint} exited ${result}`);
+      console.error(`⚠ advisory-expiry lint crashed (not a rule violation — script bug):`);
+      console.error(`  ${err.message || err}`);
+      console.error(`  Continuing build, but the lint will be silent until this is fixed.`);
+      continue;
+    }
     process.exit(1);
-  }
-
-  // Branch-set lint: explicit `branch_set:` declarations must be well-formed
-  // and grade-connected to an assert_contribution step.
-  try {
-    execSync('node scripts/lint-storyboard-branch-sets.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // provides_state_for lint: same-phase substitution declarations on stateful
-  // steps must reference real, stateful, same-phase peers and the per-phase
-  // peer-graph must be acyclic. See adcontextprotocol/adcp#3734.
-  try {
-    execSync('node scripts/lint-storyboard-provides-state-for.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Fixture-resolution lint: 3.2 discovery/construct declarations must point
-  // at real fixture handles and use only the normative strategy/matcher DSL.
-  // Legacy fixture blocks without resolution metadata remain seed-only.
-  try {
-    execSync('node scripts/lint-storyboard-fixture-resolution.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Contradiction lint: no two storyboards may encode contradictory outcomes
-  // for the same (task, request, prior-state, env) — a conformant agent
-  // cannot satisfy both.
-  try {
-    execSync('node scripts/lint-storyboard-contradictions.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Context-entity lint: captured $context values must not flow from a field
-  // of one entity type into a consume site of a different entity type
-  // (issue #2660, rule 3; canonical case #2627).
-  try {
-    execSync('node scripts/lint-storyboard-context-entity.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Auth-shape lint: storyboard steps must use principal-handle shapes
-  // (from_test_kit, value_strategy, none) rather than literal credentials
-  // that bind the storyboard to a specific value and leak identity into
-  // source control. #2720.
-  try {
-    execSync('node scripts/lint-storyboard-auth-shape.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Test-kits lint: every file under test-kits/ must declare either
-  // auth.api_key (brand-kit flavor) or applies_to (runner-contract flavor).
-  // Enforces the bimodal partition documented in storyboard-schema.yaml
-  // under "Test kit flavors". #2721.
-  try {
-    execSync('node scripts/lint-storyboard-test-kits.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Buyer-fixture lifecycle-tools lint: a buyer storyboard's fixture publisher
-  // may only advertise compact lifecycle tools the fixture-publisher contract
-  // serves (universal/buyer-fixture-publisher.yaml > authoring_rules).
-  // Advertising a tool with no handler sends a correctly-gating buyer to a
-  // tool the publisher cannot answer. adcontextprotocol/adcp#7749.
-  try {
-    execSync('node scripts/lint-storyboard-buyer-fixture-lifecycle-tools.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Packaged-reference lint: authored storyboards may only point at files that
-  // ship in the versioned compliance tree. This catches source-tree-only
-  // references before they produce protocol tarballs that SDKs cannot load.
-  try {
-    execSync('node scripts/lint-compliance-packaged-refs.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Pagination invariant: schema examples and storyboard fixtures MUST NOT
-  // teach the cursor↔has_more contradiction. has_more=true requires cursor;
-  // has_more=false MUST omit cursor. See pagination-response.json.
-  try {
-    execSync('node scripts/lint-pagination-invariant.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Vendor metric uniqueness lint: storyboard fixture inline payloads MUST NOT
-  // contain duplicate (vendor.domain, vendor.brand_id, metric_id) tuples in
-  // vendor_metric_values or vendor_metrics arrays. Enforces the MUST constraint
-  // documented in reporting-capabilities.json and delivery-metrics.json that
-  // JSON Schema uniqueItems cannot enforce (BrandRef optional fields defeat
-  // deep-equal). Companion schema-examples lint runs in build-schemas.cjs.
-  // adcontextprotocol/adcp#3502.
-  try {
-    execSync('node scripts/lint-vendor-metric-uniqueness.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Check-enum lint: storyboards may only declare validations[].check values
-  // listed in runner-output-contract.yaml's `authored_check_kinds` enum.
-  // Synthesized codes (capture_path_not_resolvable, unresolved_substitution)
-  // are runner-emitted, not authored. The runtime forward-compat default
-  // (unknown kinds → not_applicable) handles cross-version skew; this lint
-  // catches typos at publish time. adcontextprotocol/adcp#3830 item 1.
-  try {
-    execSync('node scripts/lint-storyboard-check-enum.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // update_media_buy affected_packages lint: package-mutating update
-  // storyboards must assert full affected package state, not just package IDs.
-  try {
-    execSync('node scripts/lint-update-media-buy-affected-packages.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Raw-mode-required lint: storyboards setting attestation_mode_required:
-  // "raw" on an upstream_traffic check MUST declare at least one
-  // payload_must_contain clause. Otherwise the raw flag has no operational
-  // value and just excludes digest-mode adopters from the conformance
-  // signal. adcontextprotocol/adcp#3847 item 2.
-  try {
-    execSync('node scripts/lint-storyboard-raw-mode-required.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Controller-requires lint: storyboards that seed through
-  // comply_test_controller (prerequisites.controller_seeding: true) MUST
-  // declare requires: [controller] so a seller without a controller gets one
-  // storyboard-level requirement_unmet skip, not per-step
-  // missing_test_controller grades. adcontextprotocol/adcp#7858.
-  try {
-    execSync('node scripts/lint-storyboard-controller-requires.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Upstream-traffic path lint: identifier_paths use a small portable
-  // request-payload-relative grammar so runners don't diverge on JSONPath
-  // variants, numeric indexes, or explicit roots. adcontextprotocol/adcp#5073.
-  try {
-    execSync('node scripts/lint-storyboard-upstream-traffic-paths.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // $generate phase-scope lint: the runner scopes `$generate:<kind>#<alias>`
-  // values to one phase, so an alias reused in a later phase silently mints a
-  // different ID. Cross-phase values must travel through context_outputs.
-  try {
-    execSync('node scripts/lint-storyboard-generate-phase-scope.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // $context resolution lint: a `$context.<key>` the storyboard never seeds or
-  // captures makes the runner skip the step with `prerequisite_failed`, so the
-  // storyboard can never pass — and once a bundle ships, dist/** is immutable
-  // and the only remedy is another release (#7797 / #7801 / #8317).
-  try {
-    execSync('node scripts/lint-storyboard-context-resolution.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
-  }
-
-  // Advisory-expiry lint (warnings only): surface storyboards declaring
-  // severity: advisory without expires_after_version (or permanent_advisory),
-  // so authors can confirm at PR review whether the drift is on purpose.
-  // adcontextprotocol/adcp#3847 item 1. The script exits 0 on rule
-  // violations (warnings, not errors); a non-zero exit here means the
-  // script itself crashed and SHOULD surface — don't silently swallow
-  // implementation bugs that mask the lint forever.
-  try {
-    execSync('node scripts/lint-storyboard-advisory-expiry.cjs', {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch (err) {
-    console.error(`⚠ advisory-expiry lint crashed (not a rule violation — script bug):`);
-    console.error(`  ${err.message || err}`);
-    console.error(`  Continuing build, but the lint will be silent until this is fixed.`);
   }
 
   console.log(isRelease
@@ -937,14 +852,23 @@ function main() {
     process.exit(1);
   }
 
-  const symbolArgs = ['scripts/link-compliance-symbols.mjs', isCheck ? '--check' : '--fix'];
-  try {
-    execFileSync(process.execPath, symbolArgs, {
-      cwd: path.join(__dirname, '..'),
-      stdio: 'inherit',
-    });
-  } catch {
-    process.exit(1);
+  // The check started with the build. When it passes, the links are current
+  // and --fix would change nothing. Otherwise --fix runs here, as before: it
+  // rewrites stale links, or fails with the same errors.
+  const symbolCheck = await symbolLinkCheck;
+  if (symbolCheck.code === 0 || isCheck) {
+    process.stdout.write(symbolCheck.stdout);
+    process.stderr.write(symbolCheck.stderr);
+    if (symbolCheck.code !== 0) process.exit(1);
+  } else {
+    try {
+      execFileSync(process.execPath, ['scripts/link-compliance-symbols.mjs', '--fix'], {
+        cwd: path.join(__dirname, '..'),
+        stdio: 'inherit',
+      });
+    } catch {
+      process.exit(1);
+    }
   }
 
   const docParityErrors = lintUniversalDocParity({ sourceDir: SOURCE_DIR });
@@ -965,8 +889,8 @@ if (require.main === module) {
   // stamp lets scripts/built-schemas.cjs skip the next build while the inputs
   // stay the same. A failed build exits inside main() and writes no stamp.
   const { withBuildLock, writeBuildStamp } = require('./built-schemas.cjs');
-  withBuildLock(() => {
-    main();
+  withBuildLock(async () => {
+    await main();
     writeBuildStamp('compliance');
   }, 'compliance').catch((error) => {
     console.error(error);

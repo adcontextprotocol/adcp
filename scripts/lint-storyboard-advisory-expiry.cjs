@@ -55,8 +55,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
 const semver = require('semver');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
@@ -140,7 +140,7 @@ function lint(sourceDir = SOURCE_DIR) {
     if (!isStoryboardYaml(rel)) return;
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(p, 'utf8'));
+      doc = loadYamlFile(p);
     } catch {
       return;
     }
@@ -179,7 +179,7 @@ function main() {
   const warnings = lint();
   if (warnings.length === 0) {
     console.log('✓ storyboard advisory-expiry lint: every advisory validation is gated, permanent, or fully spec\'d');
-    return;
+    return 0;
   }
   console.log(`⚠ storyboard advisory-expiry lint: ${warnings.length} warning(s)\n`);
   for (const w of warnings) {
@@ -188,11 +188,13 @@ function main() {
     console.log(`    ${msg}`);
     console.log('');
   }
+  return 0;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   RULE_MESSAGES,
   walkAdvisoryValidations,
   checkValidation,

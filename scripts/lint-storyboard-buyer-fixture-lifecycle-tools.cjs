@@ -49,7 +49,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
@@ -95,7 +95,7 @@ function toPosix(rel) {
 
 function loadYaml(file) {
   try {
-    return yaml.load(fs.readFileSync(file, 'utf8'));
+    return loadYamlFile(file);
   } catch {
     return undefined;
   }
@@ -190,7 +190,7 @@ function main() {
     console.log(
       '✓ storyboard buyer-fixture lifecycle-tools lint: every fixture publisher advertises only lifecycle tools the contract serves',
     );
-    return;
+    return 0;
   }
   console.error(`✗ storyboard buyer-fixture lifecycle-tools lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -199,12 +199,13 @@ function main() {
     console.error(`    ${msg}`);
     console.error('');
   }
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   PENDING_STORYBOARDS,
   RULE_MESSAGES,
   walkLifecycleTools,

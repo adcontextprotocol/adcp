@@ -55,7 +55,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 const SCHEMAS_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
@@ -640,7 +640,7 @@ function lint() {
   for (const file of files) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -656,7 +656,7 @@ function main() {
   const contradictions = lint();
   if (contradictions.length === 0) {
     console.log('✓ storyboard contradiction lint: no cross-storyboard contradictions');
-    return;
+    return 0;
   }
 
   console.error(`✗ storyboard contradiction lint: ${contradictions.length} contradiction(s)\n`);
@@ -676,12 +676,13 @@ function main() {
       'the assertions, discriminate the requests so they are legitimately different\n' +
       'test vectors, or route them through different comply_scenario values.',
   );
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   MUTATING_TASKS,
   SKIP_TASKS,
   FIXTURE_CATEGORY_PRIMARY_ID,

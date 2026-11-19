@@ -22,7 +22,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 
@@ -222,7 +222,7 @@ function lint() {
   for (const file of files) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -256,14 +256,14 @@ function main() {
   for (const task of TENANT_SCOPED_TASKS) {
     if (EXEMPT_FROM_LINT.has(task)) {
       console.error(`lint-storyboard-scoping: task "${task}" is in both TENANT_SCOPED_TASKS and EXEMPT_FROM_LINT`);
-      process.exit(2);
+      return 2;
     }
   }
 
   const violations = lint();
   if (violations.length === 0) {
     console.log(`✓ storyboard scoping lint: all session-scoped steps carry brand/account identity`);
-    return;
+    return 0;
   }
 
   console.error(`✗ storyboard scoping lint: ${violations.length} violation(s)\n`);
@@ -282,12 +282,13 @@ function main() {
   console.error('  sample_request.plans[0].brand.domain                  # sync_plans — canonical per sync-plans-request schema');
   console.error('\nOr add `scoping: global` on the step if the probe is intentionally cross-tenant.');
   console.error('See docs/contributing/storyboard-authoring.md.');
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   TENANT_SCOPED_TASKS,
   EXEMPT_FROM_LINT,
   NON_TASK_HANDLER_ALLOWLIST,
