@@ -6,6 +6,12 @@
 // Each case runs the real script under bash with a PATH that has no
 // `timeout` or `gtimeout`, against a main process that forks a worker the way
 // a forks pool does, and checks the worker is gone once the script returns.
+//
+// The deadline case must find the worker up when the deadline fires, however
+// slowly node starts on a loaded machine. The fallback's watcher measures the
+// deadline with `sleep <secs>`, so the fixture's `sleep` runs the real one and
+// then, for that call only, also waits for the worker: the deadline fires at
+// <secs> or once the worker is up, whichever is later.
 import { execFileSync, spawn } from 'node:child_process';
 import {
   closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync,
@@ -62,13 +68,36 @@ function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-function fixture(): { dir: string; bin: string } {
+const toolPath = (tool: string) => execFileSync('/bin/sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).trim();
+
+/**
+ * `sleep` that sleeps as asked and, when asked for the deadline, then waits
+ * for ../worker.pid (at most 6 s, inside the 10 s test timeout). The real
+ * sleep sits in real/ under its own name.
+ */
+const deadlineSleep = (secs: number) => [
+  '#!/bin/sh',
+  'real="${0%/*}/real/sleep"',
+  '"$real" "$@" || exit',
+  `[ "$1" = ${secs} ] || exit 0`,
+  'i=0',
+  'while [ ! -e "${0%/*}/../worker.pid" ] && [ "$i" -lt 120 ]; do "$real" 0.05; i=$((i+1)); done',
+  '',
+].join('\n');
+
+function fixture(deadline?: number): { dir: string; bin: string } {
   const dir = mkdtempSync(join(tmpdir(), 'with-timeout-'));
   dirs.push(dir);
   const bin = join(dir, 'bin');
   mkdirSync(bin);
   for (const tool of TOOLS) {
-    symlinkSync(execFileSync('/bin/sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).trim(), join(bin, tool));
+    if (tool === 'sleep' && deadline !== undefined) {
+      mkdirSync(join(bin, 'real'));
+      symlinkSync(toolPath(tool), join(bin, 'real', tool));
+      writeFileSync(join(bin, tool), deadlineSleep(deadline), { mode: 0o755 });
+    } else {
+      symlinkSync(toolPath(tool), join(bin, tool));
+    }
   }
   writeFileSync(join(dir, 'main.cjs'), MAIN);
   writeFileSync(join(dir, 'worker.cjs'), WORKER);
@@ -77,10 +106,13 @@ function fixture(): { dir: string; bin: string } {
 
 /**
  * Runs `bash with-timeout.sh <secs> node main.cjs <mode>` in its own process
- * group, output to a file (a leftover worker would hold a pipe open).
+ * group, output to a file (a leftover worker would hold a pipe open). With
+ * waitForWorker, the deadline does not fire before the worker is up.
  */
-function runWithTimeout(bash: string, secs: number, mode: string): Promise<{ code: number | null; output: string; dir: string }> {
-  const { dir, bin } = fixture();
+function runWithTimeout(
+  bash: string, secs: number, mode: string, { waitForWorker = false } = {},
+): Promise<{ code: number | null; output: string; dir: string }> {
+  const { dir, bin } = fixture(waitForWorker ? secs : undefined);
   const log = join(dir, 'output.log');
   const out = openSync(log, 'w');
   const child = spawn(bash, [WITH_TIMEOUT, String(secs), 'node', 'main.cjs', mode], {
@@ -101,7 +133,7 @@ function workerPid(dir: string, output: string): number {
 
 describe.each(BASHES)('with-timeout.sh fallback under %s', (bash) => {
   it('stops the command\'s forked workers at the deadline, prints the marker and exits 143', async () => {
-    const { code, output, dir } = await runWithTimeout(bash, 1, 'hold');
+    const { code, output, dir } = await runWithTimeout(bash, 1, 'hold', { waitForWorker: true });
 
     const pid = workerPid(dir, output);
     expect(alive(pid), `worker ${pid} outlived the timeout`).toBe(false);
