@@ -11,7 +11,7 @@
  * mapUser now does the cascade inline on every link.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { SlackDatabase } from '../../src/db/slack-db.js';
 import type { Pool } from 'pg';

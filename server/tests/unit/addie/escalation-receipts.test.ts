@@ -81,8 +81,8 @@ describe('escalation persisted receipts', () => {
     expect(mocks.createEscalation).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['unconfigured', 'settings failure', 'delivery failure', 'delivery rejected'])
-    ('does not invent a notification when %s', async (scenario) => {
+  it.each(['unconfigured', 'settings failure', 'delivery failure', 'delivery rejected'])(
+    'does not invent a notification when %s', async (scenario) => {
       if (scenario === 'unconfigured') mocks.getEscalationChannel.mockResolvedValue({ channel_id: null });
       if (scenario === 'settings failure') mocks.getEscalationChannel.mockRejectedValue(new Error('settings failed'));
       if (scenario === 'delivery failure') mocks.sendChannelMessage.mockRejectedValue(new Error('delivery failed'));

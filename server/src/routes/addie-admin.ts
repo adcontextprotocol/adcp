@@ -26,7 +26,6 @@ import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
 import { getWorkos } from "../auth/workos-client.js";
 import {
-  resolveSlackUserDisplayName,
   resolveSlackUserDisplayNames,
   sendDirectMessage,
 } from "../slack/client.js";

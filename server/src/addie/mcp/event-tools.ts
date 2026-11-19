@@ -26,10 +26,7 @@ import { query } from '../../db/client.js';
 import {
   createEvent as createLumaEvent,
   updateEvent as updateLumaEvent,
-  getEvent as getLumaEvent,
-  getEventGuests,
   approveGuest,
-  declineGuest,
   isLumaEnabled,
   type CreateEventInput as LumaCreateEventInput,
   type UpdateEventInput as LumaUpdateEventInput,
@@ -988,7 +985,7 @@ export function createEventToolHandlers(
     allEvents = allEvents.slice(0, limit);
 
     // Build response
-    let response = '';
+    let response: string;
 
     // If no events found, provide helpful context
     if (allEvents.length === 0) {

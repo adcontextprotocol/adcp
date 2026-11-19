@@ -43,7 +43,6 @@ import {
   MEMBER_FILTER_ALIASED,
   NOT_MEMBER_ALIASED,
   resolveEffectiveMembership,
-  type OrgTier,
 } from "../../db/org-filters.js";
 import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
 import {

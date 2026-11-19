@@ -414,7 +414,7 @@ export class CollectionCatalogDatabase {
     );
 
     let collectionRid: string;
-    let eventType: CollectionProjectionEvent['event_type'] | null = null;
+    let eventType: CollectionProjectionEvent['event_type'] | null;
     if (existing.rows.length > 0) {
       collectionRid = existing.rows[0].collection_rid;
       const existingIdentifiers = await client.query<{

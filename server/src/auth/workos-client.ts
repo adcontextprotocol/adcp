@@ -120,7 +120,6 @@ export async function authenticateWithCode(code: string): Promise<{
   sealedSession: string;
 }> {
   const workos = getWorkos();
-  const redirectUri = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
 
   logger.debug('Authenticating with authorization code');
 

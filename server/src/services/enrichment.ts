@@ -239,8 +239,6 @@ export async function enrichOrganization(
     };
   }
 
-  const pool = getPool();
-
   // Check if already enriched and not stale (with statement timeout to avoid holding connections)
   const client = await getClient();
   try {
@@ -538,8 +536,6 @@ export async function enrichMissingOrganizations(
     logger.debug('Enrichment not configured, skipping auto-enrichment');
     return { total: 0, enriched: 0, failed: 0, skipped: 0, details: [] };
   }
-
-  const pool = getPool();
 
   // Find organizations without enrichment data that have a domain
   // Priority: accounts with users first, then prospects

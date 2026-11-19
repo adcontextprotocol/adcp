@@ -6,7 +6,7 @@
  */
 
 import { getPool } from '../../db/client.js';
-import { OrgKnowledgeDatabase, type Persona, type KnowledgeSource } from '../../db/org-knowledge-db.js';
+import { OrgKnowledgeDatabase, type Persona } from '../../db/org-knowledge-db.js';
 import { logger as baseLogger } from '../../logger.js';
 
 const logger = baseLogger.child({ module: 'persona-inference' });

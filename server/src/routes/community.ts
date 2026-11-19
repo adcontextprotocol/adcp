@@ -59,7 +59,7 @@ export interface CommunityRoutesConfig {
  * Returns publicRouter (mounted at /api/community) and userRouter (mounted at /api/me).
  */
 export function createCommunityRouters(config: CommunityRoutesConfig) {
-  const { communityDb, slackDb, memberDb, orgDb, invalidateMemberContextCache } = config;
+  const { communityDb, memberDb, orgDb, invalidateMemberContextCache } = config;
   const publicRouter = Router();
   const userRouter = Router();
 

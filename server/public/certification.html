@@ -1224,10 +1224,6 @@
         return state.myCredentials.some(function(c) { return c.credential_id === credentialId; });
       }
 
-      function getCredentialDef(credentialId) {
-        return state.credentials.find(function(c) { return c.id === credentialId; });
-      }
-
       function getAllModules() {
         var all = [];
         state.tracks.forEach(function(t) {

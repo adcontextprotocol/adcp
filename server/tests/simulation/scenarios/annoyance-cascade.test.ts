@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { getPool, initializeDatabase, closeDatabase } from '../../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../../src/db/client.js';
 import { runMigrations } from '../../../src/db/migrate.js';
 import type { Pool } from 'pg';
 import { SimulationClock } from '../engine/clock.js';
@@ -114,7 +114,7 @@ describe('Annoyance cascade prevention', () => {
     // With 2 unreplied, should escalate to exploring cooldown (7d)
     // Last message was 4 days ago — 4 < 7, so should be skipped
 
-    const result = await engine.runOutreachCycle({ limit: 5 });
+    await engine.runOutreachCycle({ limit: 5 });
 
     const person = await engine.getRelationship(personId);
     expect(person).not.toBeNull();
@@ -149,7 +149,7 @@ describe('Annoyance cascade prevention', () => {
 
     // Even with 30 days since last message, should not contact
     engine.advanceTime({ days: 30 });
-    const result = await engine.runOutreachCycle({ limit: 5 });
+    await engine.runOutreachCycle({ limit: 5 });
 
     const events = await engine.getPersonEvents(personId);
     const sendEvents = events.filter(e => e.event_type === 'message_sent');
@@ -176,7 +176,7 @@ describe('Annoyance cascade prevention', () => {
 
     // Now advance past cooldown and run outreach
     engine.advanceTime({ days: 8 }); // past exploring cooldown (7d)
-    const result = await engine.runOutreachCycle({ limit: 5 });
+    await engine.runOutreachCycle({ limit: 5 });
 
     // Should now be eligible again
     const events = await engine.getPersonEvents(personId);

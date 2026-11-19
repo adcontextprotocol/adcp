@@ -5,10 +5,7 @@
 
 import { query } from './client.js';
 import type { PoolClient } from 'pg';
-import { createLogger } from '../logger.js';
 import { redactSupportSecrets } from '../services/support-redaction.js';
-
-const logger = createLogger('escalation-db');
 
 // ============== Types ==============
 
@@ -343,7 +340,7 @@ export async function countEscalations(
   }
 
   if (filters.category) {
-    conditions.push(`category = $${paramIndex++}`);
+    conditions.push(`category = $${paramIndex}`);
     params.push(filters.category);
   }
 

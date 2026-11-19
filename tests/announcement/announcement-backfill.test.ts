@@ -28,7 +28,6 @@ const {
 // In tests we route lock acquire/release through a simple flag so a
 // second call in the same test returns "already held" when we want to
 // simulate a concurrent run.
-let lockHeld = false;
 let lockAcquireReturnsFalse = false;
 
 vi.mock('../../server/src/db/client.js', () => {
@@ -39,11 +38,9 @@ vi.mock('../../server/src/db/client.js', () => {
           if (lockAcquireReturnsFalse) {
             return Promise.resolve({ rows: [{ pg_try_advisory_lock: false }] });
           }
-          lockHeld = true;
           return Promise.resolve({ rows: [{ pg_try_advisory_lock: true }] });
         }
         if (sql.startsWith('SELECT pg_advisory_unlock')) {
-          lockHeld = false;
           return Promise.resolve({ rows: [] });
         }
       }
@@ -112,7 +109,6 @@ beforeEach(() => {
   mockDeleteChannelMessage.mockReset();
   mockDraftAnnouncement.mockReset();
   mockResolveVisual.mockReset();
-  lockHeld = false;
   lockAcquireReturnsFalse = false;
   mockDraftAnnouncement.mockResolvedValue({
     slackText: 'Welcome.',

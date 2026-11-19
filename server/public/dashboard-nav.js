@@ -578,7 +578,6 @@
   // Create sidebar HTML
   function createSidebarHTML(options = {}) {
     const currentPath = window.location.pathname;
-    const appConfig = window.__APP_CONFIG__;
     const {
       showAdmin = false,
       showOrgSwitcher = false,
@@ -586,13 +585,10 @@
       isPersonal = false,
       isSubscribed = false,
       orgId = null,
-      orgRole = 'member',
       accountOnly = false
     } = options;
 
     const currentHash = window.location.hash;
-
-    const canManageOrg = orgRole === 'owner' || orgRole === 'admin';
 
     const navSections = accountOnly
       ? ACCOUNT_NAV_SECTIONS
@@ -801,7 +797,7 @@
 
   // Update sidebar badges based on org status
   function setOrgStatus(options = {}) {
-    const { isPersonal = false, isSubscribed = false } = options;
+    const { isSubscribed = false } = options;
     const badgesEl = document.getElementById('sidebarOrgBadges');
     if (!badgesEl) return;
 

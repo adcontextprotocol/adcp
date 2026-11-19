@@ -56,7 +56,7 @@ vi.mock('../../src/utils/url-security.js', async (importOriginal) => ({
   safeFetch: mocks.safeFetch,
 }));
 
-import { initializeDatabase, closeDatabase, query } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { BrandDatabase } from '../../src/db/brand-db.js';
 import { createBrandFeedsRouter } from '../../src/routes/brand-feeds.js';

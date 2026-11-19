@@ -332,7 +332,7 @@ export class CommunityDatabase {
       LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
       ${whereClause}
       ORDER BY COALESCE((SELECT SUM(points) FROM community_points cp WHERE cp.workos_user_id = u.workos_user_id), 0) DESC, u.first_name ASC
-      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `;
 
     const result = await query<PersonListItem & { badges: Badge[] }>(sql, params);

@@ -791,7 +791,7 @@ export async function runMoltbookEngagementJob(options: {
     if (!relevant) continue;
 
     // Get the full thread
-    let comments: MoltbookComment[] = [];
+    let comments: MoltbookComment[];
     try {
       const threadData = await getPost(post.id);
       comments = threadData.comments;

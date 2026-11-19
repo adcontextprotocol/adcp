@@ -69,13 +69,6 @@ function packageIds(created: Result): string[] {
   return (created.packages as Array<{ package_id: string }>).map(pkg => pkg.package_id);
 }
 
-const inlineCreative = {
-  creative_id: 'startup_candidate',
-  name: 'Nova launch image',
-  format_kind: 'image',
-  assets: {},
-};
-
 describe('reference seller creative start policy', () => {
   beforeEach(async () => {
     await clearSessions();

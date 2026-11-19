@@ -147,7 +147,7 @@ export function createMeOrganizationDomainsRouter(
       const brandPrimary = result.rows.find((r) => r.is_primary)?.domain ?? null;
 
       const domains = result.rows.map((row) => {
-        let claimable = false;
+        let claimable: boolean;
         try {
           assertClaimableBrandDomain(canonicalizeBrandDomain(row.domain));
           claimable = true;

@@ -93,14 +93,6 @@ async function loadAndCompileSchema(schemaPath) {
   return validate;
 }
 
-// Schemas that should have ext field
-const EXTENSIBLE_SCHEMAS = [
-  'core/product.json',
-  'core/media-buy.json',
-  'core/creative-manifest.json',
-  'core/package.json'
-];
-
 // Helper to check if ext field is valid (either inline or $ref)
 function validateExtField(extProperty, expectedRef) {
   if (!extProperty) {

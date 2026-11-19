@@ -7,7 +7,6 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { decodeProtectedHeader, jwtVerify, importJWK, type JWK } from 'jose';
 import {

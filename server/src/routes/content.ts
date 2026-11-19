@@ -26,7 +26,6 @@ import { escapeSlackText } from '../utils/slack-escape.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import { createAsset } from '../db/perspective-asset-db.js';
-import { fetchPathPageviewCounts } from '../services/posthog-query.js';
 import { safeFetch } from '../utils/url-security.js';
 import { generateIllustration } from '../services/illustration-generator.js';
 import { createIllustration, approveIllustration } from '../db/illustration-db.js';

@@ -3252,9 +3252,7 @@
 
       // SI Modal Elements
       const siModalOverlay = document.getElementById('siModalOverlay');
-      const siModal = document.getElementById('siModal');
       const siModalHeader = document.getElementById('siModalHeader');
-      const siModalIcon = document.getElementById('siModalIcon');
       const siModalIconEmoji = document.getElementById('siModalIconEmoji');
       const siModalTitle = document.getElementById('siModalTitle');
       const siModalTagline = document.getElementById('siModalTagline');
@@ -4592,33 +4590,6 @@
         });
       }
 
-      // Render creative preview (iframe or HTML)
-      function renderCreativePreview(previewUrl, label) {
-        if (!previewUrl) return '';
-        // Validate URL scheme - only allow https
-        if (!/^https?:\/\//i.test(previewUrl)) return '';
-        const safeUrl = previewUrl.replace(/"/g, '&quot;');
-        const safeLabel = label ? label.replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'Creative Preview';
-        return `
-          <div class="creative-preview-container">
-            <iframe src="${safeUrl}" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>
-            <div class="creative-preview-label">${safeLabel}</div>
-          </div>
-        `;
-      }
-
-      // Render inline HTML creative (sandboxed for security)
-      function renderCreativeHtml(html, label) {
-        if (!html) return '';
-        // Use srcdoc with sandbox for isolation - encode for attribute
-        const encodedHtml = html.replace(/"/g, '&quot;');
-        return `
-          <div class="creative-html-container">
-            <iframe srcdoc="${encodedHtml}" sandbox="allow-scripts" loading="lazy"></iframe>
-          </div>
-        `;
-      }
-
       // Add message to chat
       function addMessage(content, role, messageId = null, attachments = [], modelInfo = null) {
         // Switch to conversation mode
@@ -4912,39 +4883,6 @@
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
       }
 
-      // Add typing indicator
-      function addTypingIndicator() {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'message message--assistant';
-        messageDiv.id = 'typingIndicator';
-
-        const avatarDiv = document.createElement('div');
-        avatarDiv.className = 'message-avatar';
-        const typingImg = document.createElement('img');
-        typingImg.src = '/addie-avatar.svg';
-        typingImg.alt = 'Addie';
-        avatarDiv.appendChild(typingImg);
-
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'message-content';
-        contentDiv.dir = 'auto';
-        contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
-
-        messageDiv.appendChild(avatarDiv);
-        messageDiv.appendChild(contentDiv);
-        messagesContainer.appendChild(messageDiv);
-
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-      }
-
-      // Remove typing indicator
-      function removeTypingIndicator() {
-        const indicator = document.getElementById('typingIndicator');
-        if (indicator) {
-          indicator.remove();
-        }
-      }
-
       // Create a streaming message element that can be updated
       function createStreamingMessage() {
         // Hide welcome/home content when showing messages
@@ -4995,8 +4933,6 @@
         // Count link brackets - check for unmatched link syntax
         const openBrackets = (text.match(/\[/g) || []).length;
         const closeBrackets = (text.match(/\]/g) || []).length;
-        // Count ]( which indicates a complete link opening
-        const linkOpens = (text.match(/\]\(/g) || []).length;
 
         return boldCount % 2 === 0 &&
                italicCount % 2 === 0 &&
@@ -6190,7 +6126,6 @@
             const card = document.createElement('div');
             card.className = 'si-product-card';
             const imageUrl = safeExternalHttpUrl(data.image || data.image_url);
-            const hasAction = data.cta && data.cta.action;
             card.innerHTML = `
               ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.title || '')}" class="si-product-image">` : ''}
               <div class="si-product-info">

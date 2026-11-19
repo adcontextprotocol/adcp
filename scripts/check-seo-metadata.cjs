@@ -147,7 +147,7 @@ for (const [title, paths] of ogTitleMap) {
 }
 
 // Check for duplicate descriptions
-for (const [desc, paths] of descriptionMap) {
+for (const paths of descriptionMap.values()) {
   if (paths.length > 1) {
     errors.push(`Duplicate description on ${paths.length} pages: ${paths.join(', ')}`);
   }

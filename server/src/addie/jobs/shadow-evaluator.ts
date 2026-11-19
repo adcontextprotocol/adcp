@@ -19,7 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
 import { getMemberContext } from '../member-context.js';
 import { disableAdaptiveThinking, ModelConfig, AddieModelConfig } from '../../config/models.js';
-import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
+import { type ShapeReport } from '../testing/shape-grader.js';
 import { maintainRouterShadowAttempts } from '../router-shadow.js';
 import {
   buildChannelContext,

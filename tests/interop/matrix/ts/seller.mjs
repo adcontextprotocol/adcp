@@ -286,7 +286,7 @@ const platform = service.install({
   },
   accounts: {
     resolution: 'explicit',
-    resolve: async (ref, ctx) => {
+    resolve: async (ref, _ctx) => {
       if (ref?.account_id === ACCOUNT_ID) return { id: ACCOUNT_ID, name: world.account.name, status: 'active', ctx_metadata: {} };
       const extra = ref?.account_id ? world.accounts.get(ref.account_id) : undefined;
       return extra ? { id: extra.account.account_id, name: extra.account.name, status: extra.account.status, ctx_metadata: {} } : null;

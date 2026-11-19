@@ -1697,8 +1697,6 @@
 
     function updateSaveButtonText() {
       const btn = document.getElementById('saveBtn');
-      const slug = document.getElementById('collection').value;
-      const col = collections.find(c => c.slug === slug);
       const statusVal = document.getElementById('statusSelect').value;
       const isEditing = !!document.getElementById('contentId').value;
 

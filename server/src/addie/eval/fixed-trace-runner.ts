@@ -88,7 +88,6 @@ import {
   FIXED_TRACE_STAGE_CONTROL_VERSION,
   FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE,
   FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256,
-  FIXED_TRACE_DIRECT_MODEL_SCREEN_TRACE_IDS,
   FIXED_TRACE_SUITE,
   fixedTraceArchitectureConfigSha256FromMetadata,
   FIXED_TRACE_SUITE_VERSION,
@@ -1074,7 +1073,7 @@ function localStageMetadata(
   };
 }
 
-function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadata {
+function notRunStageMetadata(_trace: FixedTraceCase): FixedTraceModelStageMetadata {
   return {
     source: 'not_run',
     dispatched: false,

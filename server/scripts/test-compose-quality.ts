@@ -8,7 +8,6 @@
 import {
   composeMessage,
   computeEngagementOpportunities,
-  COMPOSE_SYSTEM_PROMPT,
   type RelationshipContext,
   type EngagementContext,
   type CertificationSummary,

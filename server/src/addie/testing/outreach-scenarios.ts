@@ -630,7 +630,6 @@ export function compareAllVariants(): {
     // Check response patterns
     const executiveResponse = test.results.find(r => r.persona === 'Jennifer Martinez');
     const developerResponse = test.results.find(r => r.persona === 'Marcus Johnson');
-    const skepticResponse = test.results.find(r => r.persona === 'Jennifer Martinez'); // Also skeptic
 
     if (executiveResponse?.responds && executiveResponse.sentiment !== 'negative') {
       strengths.push('Works with executives');

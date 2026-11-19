@@ -31,7 +31,6 @@ const DOMAIN_SUFFIX = '.registry-baseline.example';
 const DOMAIN_PREFIX = 'mcp-';
 const AGENT_PREFIX = 'https://mcp-';
 const PUB_A = `${DOMAIN_PREFIX}acme${DOMAIN_SUFFIX}`;
-const PUB_B = `${DOMAIN_PREFIX}pinnacle${DOMAIN_SUFFIX}`;
 const AGENT_X = `${AGENT_PREFIX}sales-x.registry-baseline.example`;
 const AGENT_Y = `${AGENT_PREFIX}sales-y.registry-baseline.example`;
 

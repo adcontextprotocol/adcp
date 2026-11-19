@@ -8,7 +8,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { disableAdaptiveThinking, ModelConfig } from '../config/models.js';
 import { withRetry } from './anthropic-retry.js';
-import { logger } from '../logger.js';
 
 // Singleton client instance
 let client: Anthropic | null = null;

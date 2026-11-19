@@ -107,7 +107,7 @@ async function testPersonalAccount(page, consoleErrors) {
   await page.screenshot({ path: '/tmp/smoke-profile-personal.png', fullPage: true });
 }
 
-async function testOrgAccount(page, consoleErrors) {
+async function testOrgAccount(page, _consoleErrors) {
   console.log('\n=== Org account: profile edit ===');
   await login(page, 'admin');
 

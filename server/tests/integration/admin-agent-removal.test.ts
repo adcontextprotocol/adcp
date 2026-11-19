@@ -59,7 +59,7 @@ vi.mock('../../src/middleware/auth.js', async () => {
 import express from 'express';
 import request from 'supertest';
 import type { Pool } from 'pg';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { MemberDatabase } from '../../src/db/member-db.js';
 import { setupAdminAgentsRoutes } from '../../src/routes/admin/agents.js';

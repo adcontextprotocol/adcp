@@ -84,7 +84,7 @@ describe('Agent visibility E2E', () => {
     // resolve the test user's primary organization. We swap the user +
     // its declared org per test via middleware state.
     let currentUserId = 'user_e2e';
-    (app as any).setCurrentUser = (id: string, orgId?: string | null) => {
+    (app as any).setCurrentUser = (id: string, _orgId?: string | null) => {
       currentUserId = id;
     };
     app.use((req, _res, next) => {

@@ -19,7 +19,6 @@ import {
   getDevUser,
 } from "../middleware/auth.js";
 import { orgCreationRateLimiter } from "../middleware/rate-limit.js";
-import { invalidateMembershipCache } from "../db/org-filters.js";
 import { validateOrganizationName } from "../middleware/validation.js";
 import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, resolveMembershipTier, listSeatUpgradeRequests, type Organization } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
@@ -38,7 +37,6 @@ import {
   createStripeCustomer,
   createCustomerPortalSession,
 } from "../billing/stripe-client.js";
-import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { performCreateOrganization } from "../services/organization-bootstrap.js";
 import { collectWorkOSPages } from "../services/workos-pagination.js";
 import { canManageOrganizationBilling } from "../billing/billing-authorization.js";

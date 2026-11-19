@@ -48,7 +48,7 @@ function loadSchema(ref) {
   if (!ref) return null;
   if (schemaCache.has(ref)) return schemaCache.get(ref);
   ensureBuiltSchemas();
-  let doc = null;
+  let doc;
   try {
     doc = readBuiltSchema(ref.startsWith('/schemas/') ? ref : `/schemas/${ref}`);
   } catch {

@@ -391,7 +391,7 @@ export class WorkingGroupDatabase {
       const types = Array.isArray(options.committee_type)
         ? options.committee_type
         : [options.committee_type];
-      conditions.push(`wg.committee_type = ANY($${paramIndex++})`);
+      conditions.push(`wg.committee_type = ANY($${paramIndex})`);
       params.push(types);
     }
 
@@ -450,7 +450,7 @@ export class WorkingGroupDatabase {
       const types = Array.isArray(options.committee_type)
         ? options.committee_type
         : [options.committee_type];
-      conditions.push(`wg.committee_type = ANY($${paramIndex++})`);
+      conditions.push(`wg.committee_type = ANY($${paramIndex})`);
       params.push(types);
     }
 
@@ -1669,7 +1669,6 @@ export class WorkingGroupDatabase {
           AND wgm.status = 'active'
       )`);
       params.push(options.filterByGroup);
-      paramIndex++;
     }
 
     if (options.filterNoGroups) {

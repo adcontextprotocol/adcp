@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { query, getClient } from './client.js';
-import type { HostedProperty, ResolvedProperty, RegistryRevision } from '../types.js';
+import type { HostedProperty, RegistryRevision } from '../types.js';
 import { sanitizePropertySnapshot } from './registry-revision-snapshot.js';
 
 /**

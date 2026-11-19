@@ -573,7 +573,7 @@ export function generateActionTriggerReport(): string {
 
   report += `## Test Results\n\n`;
 
-  results.forEach(({ test, action, validation }) => {
+  results.forEach(({ test, validation }) => {
     const status = validation.passed ? '✅' : '❌';
     report += `### ${status} ${test.name}\n`;
     report += `**ID:** ${test.id}\n`;

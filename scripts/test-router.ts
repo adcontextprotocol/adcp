@@ -191,14 +191,6 @@ const MOCK_MEMBER_CONTEXT: MemberContext = {
   is_linked: true,
 };
 
-const MOCK_ADMIN_CONTEXT: MemberContext = {
-  ...MOCK_MEMBER_CONTEXT,
-  org_membership: {
-    organization_id: 'org_123',
-    role: 'admin',
-  },
-};
-
 /**
  * Test quickMatch only (no API calls)
  */
@@ -349,7 +341,7 @@ function printRoutingRules(): void {
   console.log('=' .repeat(60));
 
   console.log('\n🎯 Expertise Areas (respond with tools):');
-  for (const [key, rule] of Object.entries(ROUTING_RULES.expertise)) {
+  for (const rule of Object.values(ROUTING_RULES.expertise)) {
     console.log(`\n  ${rule.description}:`);
     console.log(`    Patterns: ${rule.patterns.join(', ')}`);
     console.log(`    Tools: ${rule.tools.join(', ')}`);

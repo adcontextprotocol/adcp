@@ -179,7 +179,6 @@ const matrixRun = await runRouterEvalMatrix({
         : cell.provider === 'google'
           ? 'low' as const
           : undefined;
-      const evalRequest = buildRouterEvalRequest(selected.model, cell.profile, testCase, reasoningEffort);
       const reserveOutputTokens = cell.provider === 'google' ? 1_200 : 300;
       let reservation: ReturnType<RouterEvalBudget['reserve']> | null = null;
       const result = await evaluateRouterCase(

@@ -16,7 +16,6 @@ import type {
   MeetingWithGroup,
   MemberMeeting,
   WorkingGroupTopic,
-  RecurrenceRule,
 } from '../types.js';
 
 /**
@@ -148,7 +147,7 @@ export class MeetingsDatabase {
     }
 
     if (options.topic_slugs && options.topic_slugs.length > 0) {
-      conditions.push(`topic_slugs && $${paramIndex++}`);
+      conditions.push(`topic_slugs && $${paramIndex}`);
       params.push(options.topic_slugs);
     }
 
@@ -356,7 +355,7 @@ export class MeetingsDatabase {
 
     let offsetClause = '';
     if (options.offset) {
-      offsetClause = `OFFSET $${paramIndex++}`;
+      offsetClause = `OFFSET $${paramIndex}`;
       params.push(options.offset);
     }
 
@@ -412,7 +411,7 @@ export class MeetingsDatabase {
 
     let limitClause = '';
     if (options.limit) {
-      limitClause = `LIMIT $${paramIndex++}`;
+      limitClause = `LIMIT $${paramIndex}`;
       params.push(options.limit);
     }
 

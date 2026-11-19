@@ -10,7 +10,6 @@ import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { disableAdaptiveThinking, ModelConfig } from "../config/models.js";
 import {
-  getLushaClient,
   isLushaConfigured,
   mapIndustryToCompanyType,
 } from "./lusha.js";

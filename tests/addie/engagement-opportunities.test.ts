@@ -13,11 +13,6 @@ import {
   extractUserFacingMessage,
   textToEmailHtml,
   OPPORTUNITY_CATALOG,
-  STAGE_COOLDOWNS,
-  MAX_UNREPLIED_BEFORE_PULSE,
-  MAX_TOTAL_UNREPLIED,
-  MONTHLY_PULSE_DAYS,
-  DISENGAGING_PULSE_DAYS,
 } from '../../server/src/addie/services/engagement-planner.js';
 import type {
   EngagementContext,
@@ -308,13 +303,8 @@ describe('computeEngagementOpportunities', () => {
     });
 
     it('includes complete_profile when profile is incomplete', () => {
-      const ctx = makeContext({
-        relationship: makeRelationship({ stage: 'welcomed' }),
-        capabilities: makeCapabilities({ profile_complete: false }),
-      });
-      const result = computeEngagementOpportunities(ctx);
-      // It should be somewhere in the catalog results (may or may not be top 5)
-      // We re-run with fewer competing items
+      // complete_profile may fall outside the top 5 when many items compete,
+      // so check it with fewer competing items.
       const ctxNarrow = makeContext({
         relationship: makeRelationship({ stage: 'welcomed', workos_user_id: 'w1' }),
         capabilities: makeCapabilities({

@@ -90,7 +90,7 @@ describe('experimental 3.3 collections on the training agent', () => {
     const cards: Card[] = [];
     let cursor: string | undefined;
     let version = '';
-    let cacheScope = '';
+    let cacheScope: string;
     do {
       const page = await preview('list_collections', { pagination: { max_results: 7, ...(cursor && { cursor }) } });
       expect(page.outcome, JSON.stringify(page).slice(0, 300)).toBe('listed');

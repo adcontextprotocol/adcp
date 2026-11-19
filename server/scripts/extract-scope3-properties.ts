@@ -48,7 +48,7 @@ const MERGEABLE_CHANNELS: Record<string, boolean> = {
   'STREAMING-VIDEO': true,  // OLV for a website domain is the same property
 };
 
-function mapInventoryType(inventoryType: string, value: string, channel: string): { type: string; value: string } | null {
+function mapInventoryType(inventoryType: string, value: string, _channel: string): { type: string; value: string } | null {
   switch (inventoryType) {
     case 'SITE':
       return { type: 'domain', value };

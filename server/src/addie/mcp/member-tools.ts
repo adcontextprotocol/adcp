@@ -32,7 +32,6 @@ import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
 import { githubIssueCreatedResult } from '../github-issue-receipt.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
-import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate, wrapUntrustedInput } from './untrusted-input.js';
 import {
   formatComplianceDiagnostics,
@@ -74,7 +73,6 @@ import {
 } from '../services/compliance-testing.js';
 import {
   listAllComplianceStoryboards,
-  createTestClient,
   testCapabilityDiscovery,
   type AgentProfile,
   type Storyboard,
@@ -114,7 +112,6 @@ import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 import {
   findExistingProposalOrFeed,
   createFeedProposal,
-  getPendingProposals,
 } from '../../db/industry-feeds-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
 import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
@@ -401,67 +398,6 @@ function evaluationTargetIdentity(target: HostedComplianceTarget): string {
 }
 
 /**
- * Known open-source agents and their GitHub repositories.
- * Used to offer GitHub issue links when tests fail on these agents.
- * Keys must be lowercase (hostnames are case-insensitive).
- */
-const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name: string }> = {
-  'wonderstruck.sales-agent.scope3.com': {
-    org: 'adcontextprotocol',
-    repo: 'salesagent',
-    name: 'Wonderstruck (Scope3 Sales Agent)',
-  },
-  'creative.adcontextprotocol.org': {
-    org: 'adcontextprotocol',
-    repo: 'creative-agent',
-    name: 'AdCP Reference Creative Agent',
-  },
-};
-
-/**
- * Known error patterns that indicate bugs in the @adcp/sdk testing library
- * rather than in the agent being tested.
- *
- * Each pattern should be specific enough to avoid false positives where an agent
- * is actually returning invalid data.
- */
-const CLIENT_LIBRARY_ERROR_PATTERNS: Array<{
-  pattern: RegExp;
-  repo: string;
-  description: string;
-}> = [
-  {
-    // This specific Zod validation error occurs when the test code tries to access
-    // authorized_properties (old field) but the schema expects publisher_domains (new field)
-    pattern: /publisher_domains\.\d+: Invalid input: expected string, received undefined/i,
-    repo: 'adcp-client',
-    description: 'The discovery test scenario references `authorized_properties` (v2.2 field) instead of `publisher_domains` (v2.3+ field).',
-  },
-];
-
-/**
- * Check if an error indicates a bug in the client library rather than the agent.
- * Returns null if no known client library bug pattern matches.
- */
-function detectClientLibraryBug(
-  failedSteps: Array<{ error?: string; step?: string; details?: string }>
-): { repo: string; description: string; matchedError: string } | null {
-  for (const step of failedSteps) {
-    const errorText = step.error || step.details || '';
-    for (const pattern of CLIENT_LIBRARY_ERROR_PATTERNS) {
-      if (pattern.pattern.test(errorText)) {
-        return {
-          repo: pattern.repo,
-          description: pattern.description,
-          matchedError: errorText,
-        };
-      }
-    }
-  }
-  return null;
-}
-
-/**
  * Extract hostname from an agent URL for matching against known agents
  */
 function getAgentHostname(agentUrl: string): string | null {
@@ -471,16 +407,6 @@ function getAgentHostname(agentUrl: string): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Check if an agent URL is a known open-source agent
- */
-function getOpenSourceAgentInfo(agentUrl: string): { org: string; repo: string; name: string } | null {
-  const hostname = getAgentHostname(agentUrl);
-  if (!hostname) return null;
-  // Normalize to lowercase for case-insensitive matching
-  return KNOWN_OPEN_SOURCE_AGENTS[hostname.toLowerCase()] || null;
 }
 
 // Configure the agent tester to use our pino logger
@@ -6025,7 +5951,6 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const storyboardId = input.storyboard_id as string;
     const stepId = input.step_id as string;
-    const dryRun = input.dry_run !== false;
     let runTarget = targetFromInput(input);
 
     const urlError = validateAgentUrl(agentUrl);
@@ -6728,7 +6653,6 @@ export function createMemberToolHandlers(
     const idempotencyKey = input.idempotency_key as string;
     const createMediaBuyIdempotencyKey = input.create_media_buy_idempotency_key as string;
     const lineItems = ((input.line_items as Array<Record<string, unknown>>) || []).slice(0, 20);
-    const advertiser = input.advertiser as string | undefined;
     const advertiserDomainInput = input.advertiser_domain as string | undefined;
     const accountId = typeof input.account_id === 'string' && input.account_id.trim()
       ? input.account_id.trim()

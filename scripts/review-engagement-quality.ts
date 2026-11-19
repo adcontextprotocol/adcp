@@ -241,7 +241,7 @@ ${snapshot.userPrompt}`,
   };
 }
 
-function printReport(results: ReviewResult[], verbose: boolean) {
+function printReport(results: ReviewResult[], _verbose: boolean) {
   if (results.length === 0) {
     console.log('\nNo results to report.');
     return;

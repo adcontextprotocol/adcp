@@ -60,7 +60,7 @@ vi.mock('../../src/auth/workos-jwt.js', async (importOriginal) => ({
 
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { stampOrganizationTestUser } from '../helpers/organization-auth-fixture.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';

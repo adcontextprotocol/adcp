@@ -19,7 +19,6 @@ import {
   decideAAOAdminAccess,
   isBreakGlassAdminEmail,
   type AAOAdminAccessDecision,
-  type AAOAdminAccessMechanism,
 } from '../auth/admin-access.js';
 
 export {

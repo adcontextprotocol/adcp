@@ -1,8 +1,5 @@
 import { query } from './client.js';
-import { createLogger } from '../logger.js';
 import { flattenToSingleLine } from '../utils/slack-escape.js';
-
-const logger = createLogger('notification-db');
 
 /**
  * Short-lived in-memory cache for unread counts.
@@ -147,7 +144,7 @@ export class NotificationDatabase {
        LEFT JOIN users u ON n.actor_user_id = u.workos_user_id
        WHERE ${whereClause}
        ORDER BY n.created_at DESC
-       LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
+       LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
       params
     );
 

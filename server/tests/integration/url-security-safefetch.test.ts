@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'http';
-import { AddressInfo } from 'net';
 import { safeFetch } from '../../src/utils/url-security.js';
 
 /**
@@ -32,7 +31,6 @@ describe('safeFetch (integration)', () => {
 
   describe('redirect hop safety', () => {
     let server: http.Server;
-    let port: number;
 
     beforeAll(async () => {
       server = http.createServer((req, res) => {
@@ -50,7 +48,6 @@ describe('safeFetch (integration)', () => {
         res.end();
       });
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-      port = (server.address() as AddressInfo).port;
     });
 
     afterAll(async () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
@@ -115,7 +115,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-const { FAKE_INVOICE, mockInvoicesList, mockCustomersRetrieve, mockSubscriptionsList, mockProductsRetrieve } = mocks;
+const { FAKE_INVOICE, mockInvoicesList } = mocks;
 
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: {

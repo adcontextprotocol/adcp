@@ -49,12 +49,6 @@ interface FixedTraceDiagnosticArtifactOptions {
 
 type RequestedStageConfig = ReturnType<typeof requestedStageConfig>;
 
-function deepFreeze<T>(value: T): T {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
-  for (const nested of Object.values(value)) deepFreeze(nested);
-  return Object.freeze(value);
-}
-
 function ownDataProperty(source: unknown, name: string, owner: string): unknown {
   if (typeof source !== 'object' || source === null) {
     throw new Error(`Fixed trace diagnostic ${owner} must be an object with own data properties`);

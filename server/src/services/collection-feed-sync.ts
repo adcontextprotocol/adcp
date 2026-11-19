@@ -502,7 +502,7 @@ export async function fetchFeed(url: string): Promise<{ result: FeedResult; feed
 const SYNC_CONCURRENCY = 3;
 const SYNC_DELAY_MS = 500;
 
-export async function syncAllFeeds(brandDb: BrandDatabase): Promise<{ synced: number; errors: number }> {
+export async function syncAllFeeds(_brandDb: BrandDatabase): Promise<{ synced: number; errors: number }> {
   // Find all brands with collections that have feed_url
   const result = await query<{ domain: string; brand_manifest: Record<string, unknown> }>(
     `SELECT domain, brand_manifest FROM brands

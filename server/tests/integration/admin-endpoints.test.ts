@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -207,6 +207,7 @@ describe('Admin Endpoints Integration Tests', () => {
         'SELECT subscription_amount, subscription_current_period_end FROM organizations WHERE workos_organization_id = $1',
         [TEST_ORG_ID]
       );
+      expect(beforeSync.rows).toHaveLength(1);
 
       // Call the sync endpoint
       const response = await request(app)

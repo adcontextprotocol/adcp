@@ -11,11 +11,7 @@
  * to characterize how aggressive Addie has been.
  */
 
-import { createLogger } from '../../logger.js';
 import {
-  shouldContact,
-  composeMessage,
-  computeNextContactDate,
   computeEngagementOpportunities,
   buildComposePrompt,
   COMPOSE_SYSTEM_PROMPT,
@@ -25,12 +21,10 @@ import {
   MONTHLY_PULSE_DAYS,
   DISENGAGING_PULSE_DAYS,
 } from './engagement-planner.js';
-import type { RelationshipContext, ComposedMessage, EngagementContext } from './engagement-planner.js';
+import type { RelationshipContext } from './engagement-planner.js';
 import type { PersonRelationship, RelationshipStage } from '../../db/relationship-db.js';
 import { STAGE_ORDER } from '../../db/relationship-db.js';
 import { getPool } from '../../db/client.js';
-
-const logger = createLogger('outreach-simulator');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -258,7 +252,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
   let nextContactAfterDay: number | null = null;
   let interactionCount = 0;
   let messagesSentToPersona = 0;
-  let lastChannel: 'slack' | 'email' | null = null;
   /** Days with no contact before negative sentiment recovers to neutral */
   const NEGATIVE_RECOVERY_DAYS = 30;
 
@@ -308,7 +301,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
     }
 
     // Apply shouldContact rules with simulated time
-    let shouldContact = true;
     let reason = 'eligible for proactive contact';
 
     // Rule -1: Negative sentiment blocks all contact
@@ -339,7 +331,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
     } else {
       // Rule 2: next_contact_after cooldown
       if (nextContactAfterDay !== null && day < nextContactAfterDay) {
-        shouldContact = false;
         reason = `cooldown — next contact after day ${nextContactAfterDay}`;
         events.push({ day, action: 'skipped', reason, stage, unrepliedCount });
         continue;
@@ -356,7 +347,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
           cooldown = Math.max(cooldown, STAGE_COOLDOWNS[nextStage]);
         }
         if (daysSinceLast < cooldown) {
-          shouldContact = false;
           reason = `stage cooldown — ${stage} requires ${cooldown}d, only ${daysSinceLast}d`;
           events.push({ day, action: 'skipped', reason, stage, unrepliedCount });
           continue;
@@ -368,8 +358,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
         reason = 'new prospect — welcome message';
       }
     }
-
-    if (!shouldContact) continue;
 
     // Contact!
     events.push({ day, action: 'contacted', reason, channel, stage, unrepliedCount });
@@ -398,7 +386,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
       content: `[Simulated ${reason}]`,
       channel,
     });
-    lastChannel = channel;
 
     // Stage transition: prospect → welcomed on first message
     if (stage === 'prospect' && messagesSentToPersona === 1) {

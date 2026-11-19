@@ -12,6 +12,7 @@
  * @param {boolean} options.compact - Compact card for horizontal scroll rows
  * @returns {string} HTML string
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function renderPersonCard(person, options = {}) {
   const { context = '', showConnectBtn = false, compact = false } = options;
 
@@ -77,6 +78,7 @@ function renderPersonCard(person, options = {}) {
  * @param {string} tab - "connections" | "pending"
  * @returns {string} HTML string
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function renderConnectionCard(connection, tab) {
   const person = connection.other_user;
   const name = escapeHtmlPC(`${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Member');
@@ -97,7 +99,7 @@ function renderConnectionCard(connection, tab) {
     ? `<div class="pc-meta">${[org, city].filter(Boolean).join(' &middot; ')}</div>`
     : '';
 
-  let actionsHtml = '';
+  let actionsHtml;
   if (tab === 'pending') {
     const messageHtml = connection.message
       ? `<div class="pc-message">"${escapeHtmlPC(connection.message)}"</div>`
@@ -134,6 +136,7 @@ function renderConnectionCard(connection, tab) {
 /**
  * Handle connect button click
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 async function handleConnect(btn, userId) {
   btn.disabled = true;
   btn.textContent = 'Sending...';
@@ -163,6 +166,7 @@ async function handleConnect(btn, userId) {
 /**
  * Inject person card CSS into the page
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function injectPersonCardStyles() {
   if (document.getElementById('person-card-styles')) return;
 

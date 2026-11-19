@@ -16,20 +16,15 @@ import {
 
 import {
   TEST_PERSONAS,
-  generateJourney,
-  analyzeJourney,
-  JourneyScenario,
 } from './user-journey-simulator.js';
 
 import {
   runActionTriggerTests,
-  generateActionTriggerReport,
   runJourneyActionTests,
 } from './action-trigger-tests.js';
 
 import {
   runSensitiveTopicTests,
-  generateSensitiveTopicReport,
 } from './sensitive-topic-tests.js';
 
 import {

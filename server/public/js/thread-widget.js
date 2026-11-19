@@ -11,6 +11,7 @@
  *   </script>
  */
 
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 const ThreadWidget = (function() {
   // Cache for loaded threads with LRU eviction
   const threadCache = new Map();

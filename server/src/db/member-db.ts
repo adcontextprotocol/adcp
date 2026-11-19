@@ -1,4 +1,4 @@
-import { query, getPool } from './client.js';
+import { query } from './client.js';
 import {
   isValidAgentType,
   type MemberProfile,
@@ -368,7 +368,7 @@ export class MemberDatabase {
     }
 
     if (options.offset) {
-      sql += ` OFFSET $${paramIndex++}`;
+      sql += ` OFFSET $${paramIndex}`;
       params.push(options.offset);
     }
 

@@ -766,10 +766,8 @@ async function runTests() {
     }
 
     // Count non-testable snippets as skipped
-    for (const snippet of nonTestableSnippets) {
-      totalTests++;
-      skippedTests++;
-    }
+    totalTests += nonTestableSnippets.length;
+    skippedTests += nonTestableSnippets.length;
 
     const filePassed = passedTests - fileStartPassed;
     const fileFailed = failedTests - fileStartFailed;

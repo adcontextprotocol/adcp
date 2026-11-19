@@ -58,7 +58,7 @@ import { packageReportingOfferingIds } from './package-reporting-offerings.js';
 import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
-import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
+import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
 import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem, TRAINING_ASSIGNMENT_OPERATIONS } from './assignment-operations.js';
 import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, servedChangeKind, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
@@ -119,9 +119,6 @@ import type {
   GetSignalsRequest,
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
-  GetAdCPCapabilitiesRequest,
-  LegacyListCreativesResponse as ListCreativesResponse,
-  LegacyPreviewCreativeResponse as PreviewCreativeResponse,
   LegacyBuildCreativeResponse as BuildCreativeResponse,
   LegacyCreativeManifest as AdcpCreativeManifest,
   CanonicalProposal,
@@ -3251,7 +3248,7 @@ import {
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
 } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
-import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
+import { getAllSignals } from './signal-providers.js';
 import {
   controllerFixturePrincipal, getSession, getProductsSessionKeyFromArgs, sessionKeyFromArgs,
   findSessionMatching,
@@ -4230,32 +4227,6 @@ export function clearTaskStore(): void {
   inMemoryTaskIdsByNaturalKey.clear();
 }
 
-/** Translate the agent's internal governance check shape into the wire-format
- * details block carried on a GOVERNANCE_DENIED error. Storyboards assert
- * `findings[]` and (when status is `conditions`) `conditions[]` on the error,
- * so surfacing them here is load-bearing. */
-function governanceErrorDetails(check: import('./types.js').GovernanceCheckState): Record<string, unknown> {
-  const details: Record<string, unknown> = {
-    findings: check.findings.map(f => ({
-      category_id: f.categoryId,
-      severity: f.severity,
-      explanation: f.explanation,
-      ...(f.policyId && { policy_id: f.policyId }),
-      ...(f.confidence !== undefined && { confidence: f.confidence }),
-    })),
-    plan_id: check.planId,
-    check_id: check.checkId,
-  };
-  if (check.conditions?.length) {
-    details.conditions = check.conditions.map(c => ({
-      field: c.field,
-      ...(c.requiredValue !== undefined && { required_value: c.requiredValue }),
-      reason: c.reason,
-    }));
-  }
-  return details;
-}
-
 interface GovernanceAuthorityTestOverride {
   jwk: AdcpJsonWebKey;
   fetch: typeof fetch;
@@ -4748,20 +4719,6 @@ interface SignalPricingOption {
   max_cpm?: number;
   amount?: number;
   period?: string;
-}
-
-/** Package delivery metrics in get_media_buy_delivery response. */
-interface PackageDeliveryMetrics {
-  package_id: string;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  pricing_model: string;
-  model: string;
-  rate: number;
-  currency: string;
-  paused: boolean;
-  delivery_status: 'delivering' | 'completed';
 }
 
 /** Creative variant in get_creative_delivery response. */
@@ -22084,7 +22041,6 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
 export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetCreativeDeliveryRequest & ToolArgs;
   const session = await getSession(creativeSessionKey(req, ctx));
-  const agentUrl = getAgentUrl();
 
   // Resolve media buy IDs from multiple input formats
   const mediaBuyIds = req.media_buy_ids;

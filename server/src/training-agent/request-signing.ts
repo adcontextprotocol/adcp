@@ -109,7 +109,7 @@ export function isProtocolMethodName(value: string): boolean {
 export function mcpOperationResolver(req: { rawBody?: string }): string | undefined {
   const raw = req.rawBody;
   if (!raw) return undefined;
-  let body: { method?: unknown; params?: { name?: unknown } } | null = null;
+  let body: { method?: unknown; params?: { name?: unknown } } | null;
   try {
     body = JSON.parse(raw) as { method?: unknown; params?: { name?: unknown } };
   } catch {

@@ -24,7 +24,7 @@ export function createStaticAssetVersioner(
 
   function versionFor(assetPath: string): string | null {
     if (memoize && versions.has(assetPath)) return versions.get(assetPath)!;
-    let version: string | null = null;
+    let version: string | null;
     try {
       const buf = readFileSync(path.join(publicDir, assetPath.slice(1)));
       version = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 8);

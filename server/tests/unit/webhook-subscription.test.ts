@@ -236,7 +236,7 @@ describe("Webhook Subscription Handler", () => {
 
       // Simulate the webhook response logic
       let responseStatus = 200;
-      let internalError = null;
+      let internalError: unknown;
 
       try {
         throw new Error('Database operation failed');
@@ -246,7 +246,7 @@ describe("Webhook Subscription Handler", () => {
       }
 
       expect(responseStatus).toBe(200);
-      expect(internalError).not.toBeNull();
+      expect(internalError).toBeInstanceOf(Error);
     });
   });
 });

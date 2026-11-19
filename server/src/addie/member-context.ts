@@ -13,10 +13,8 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { JoinRequestDatabase } from '../db/join-request-db.js';
-import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getTelemetryForUser } from '../db/addie-prompt-telemetry-db.js';
 import { getLatestAttempt } from '../db/certification-db.js';
-import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { UsersDatabase } from '../db/users-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
@@ -56,8 +54,6 @@ const workingGroupDb = new WorkingGroupDatabase();
 const emailPrefsDb = new EmailPreferencesDatabase();
 const addieDb = new AddieDatabase();
 const joinRequestDb = new JoinRequestDatabase();
-const orgKnowledgeDb = new OrgKnowledgeDatabase();
-const agentContextDb = new AgentContextDatabase();
 const usersDb = new UsersDatabase();
 
 const resolvedWebAuthority = Symbol('resolved web member authority');
@@ -778,7 +774,6 @@ export async function getMemberContext(slackUserId: string, selectedOrganization
       activity,
       userWorkingGroups,
       emailPrefs,
-      personaKnowledge,
     ] = await Promise.all([
       // Step 5: Get organization details from local DB
       orgDb.getOrganization(organizationId).catch(error => {
@@ -815,11 +810,7 @@ export async function getMemberContext(slackUserId: string, selectedOrganization
         logger.warn({ error, workosUserId }, 'Addie: Failed to get email preferences');
         return null;
       }),
-      // Step 12: Get persona and journey stage
-      orgKnowledgeDb.resolveAttribute(organizationId, 'persona').catch(error => {
-        logger.warn({ error, organizationId }, 'Addie: Failed to get persona');
-        return null;
-      }),
+      // Persona and journey stage are read below from organizations.
     ]);
 
     // Process organization details

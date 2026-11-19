@@ -173,7 +173,6 @@ const CanonicalPolicyDocumentSchema = z.object({
   }).strict().optional(),
   ext: z.record(z.string(), z.unknown()).optional(),
 }).strict();
-type CanonicalPolicyDocument = z.infer<typeof CanonicalPolicyDocumentSchema>;
 
 export interface Policy {
   policy_id: string;

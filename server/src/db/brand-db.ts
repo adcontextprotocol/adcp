@@ -1485,7 +1485,7 @@ export class BrandDatabase {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const limitClause = options.limit ? `LIMIT $${paramIndex++}` : '';
-    const offsetClause = options.offset ? `OFFSET $${paramIndex++}` : '';
+    const offsetClause = options.offset ? `OFFSET $${paramIndex}` : '';
 
     if (options.limit) values.push(options.limit);
     if (options.offset) values.push(options.offset);
@@ -1768,7 +1768,7 @@ export class BrandDatabase {
 
     let limitClause = '';
     if (options.limit) {
-      limitClause = `LIMIT $${paramIndex++}`;
+      limitClause = `LIMIT $${paramIndex}`;
       params.push(options.limit);
     }
 
@@ -1887,7 +1887,6 @@ export class BrandDatabase {
         ` OR brand_manifest->'house'->>'name' ILIKE $${paramIndex})`
       );
       params.push(p);
-      paramIndex++;
     }
 
     if (house) {

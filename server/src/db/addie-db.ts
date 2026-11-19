@@ -320,7 +320,7 @@ export class AddieDatabase {
     params.push(limit);
     const limitParam = `$${paramIndex++}`;
     params.push(offset);
-    const offsetParam = `$${paramIndex++}`;
+    const offsetParam = `$${paramIndex}`;
 
     const sql = `
       SELECT id, title, category, source_url, source_type, is_active,
@@ -358,7 +358,7 @@ export class AddieDatabase {
 
     let categoryFilter = '';
     if (options.category) {
-      categoryFilter = `AND category = $${paramIndex++}`;
+      categoryFilter = `AND category = $${paramIndex}`;
       params.push(options.category);
     }
 
@@ -1084,7 +1084,7 @@ export class AddieDatabase {
     }
 
     if (options.offset) {
-      sql += ` OFFSET $${paramIndex++}`;
+      sql += ` OFFSET $${paramIndex}`;
       params.push(options.offset);
     }
 

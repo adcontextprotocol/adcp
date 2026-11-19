@@ -346,6 +346,7 @@ function injectJoinCtaStyles() {
  * @param {string} options.containerId - ID of the container element
  * @param {boolean} options.showContactLine - Whether to show contact email (default: true)
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 async function renderJoinCta(options = {}) {
   const {
     containerId = 'join-cta-container',
@@ -581,58 +582,6 @@ let billingProductsCache = null;
 
 // Cache for user context
 let userContextCache = null;
-
-/**
- * Render confirmation message for existing members
- */
-function renderMemberConfirmation(userContext, showContactLine) {
-  const isPersonal = userContext.isPersonal;
-
-  const orgBenefits = [
-    'Contributor seats — includes community access',
-    'Community-only seats — Addie, certification, training',
-    'API access',
-    'Board eligible — voting rights',
-    'Directory listing'
-  ];
-
-  const individualBenefits = [
-    'Contributor seat — includes community access',
-    'Slack, working groups, councils, product summit',
-    'Voting rights',
-    'Directory listing'
-  ];
-
-  const benefits = isPersonal ? individualBenefits : orgBenefits;
-  const memberType = isPersonal ? 'Individual' : 'Organization';
-
-  return `
-    <div class="join-cta-member-confirmed">
-      <div class="join-cta-member-badge">
-        <span class="join-cta-member-checkmark">&#10003;</span>
-        <span>You're a Member!</span>
-      </div>
-      <p class="join-cta-member-thanks">
-        Thank you for being a member of AgenticAdvertising.org. Your support helps build the future of agentic advertising.
-      </p>
-      <div class="join-cta-member-benefits">
-        <h4>Your ${escapeHtml(memberType)} Member Benefits</h4>
-        <ul class="join-cta-benefits-list">
-          ${benefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
-        </ul>
-      </div>
-      <div class="join-cta-member-actions">
-        <a href="/dashboard-membership?org=${encodeURIComponent(userContext.orgId || '')}" class="btn btn-primary">Manage Membership</a>
-        <a href="/account#profileSection" class="btn btn-secondary">Edit your profile</a>
-      </div>
-    </div>
-    ${showContactLine ? `
-      <p class="join-cta-contact">
-        Questions? Contact us at <a href="mailto:membership@agenticadvertising.org">membership@agenticadvertising.org</a>
-      </p>
-    ` : ''}
-  `;
-}
 
 /**
  * Fetch current user context (logged in status, org, revenue tier)

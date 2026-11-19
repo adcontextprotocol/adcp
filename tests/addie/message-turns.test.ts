@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildMessageTurns, buildMessageTurnsWithMetadata, type ThreadContextEntry, type MessageTurn } from '../../server/src/addie/prompts.js';
+import { buildMessageTurns, buildMessageTurnsWithMetadata, type ThreadContextEntry } from '../../server/src/addie/prompts.js';
 
 describe('buildMessageTurns', () => {
   it('should return single user message when no thread context', () => {

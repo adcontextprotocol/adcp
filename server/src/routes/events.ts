@@ -22,16 +22,13 @@ import { getEventBySlug as getLumaEventBySlug, extractLumaSlug, getEventGuests, 
 import { createEventFromLuma, mapLumaApprovalStatus } from "../luma/sync.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import {
-  createCheckoutSession,
   createStripeCustomer,
   createEventSponsorshipProduct,
-  type CheckoutSessionData,
 } from "../billing/stripe-client.js";
 import type {
   CreateEventInput,
   UpdateEventInput,
   CreateEventRegistrationInput,
-  CreateEventSponsorshipInput,
   EventStatus,
   EventType,
   EventFormat,
@@ -2201,7 +2198,7 @@ export function createEventsRouter(): {
       });
 
       // Ensure Stripe customer exists (row-level lock prevents duplicate creation)
-      const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(org_id, () =>
+      await orgDb.getOrCreateStripeCustomer(org_id, () =>
         createStripeCustomer({
           email: user.email,
           name: org.name,
@@ -2209,29 +2206,7 @@ export function createEventsRouter(): {
         })
       );
 
-      // Create a one-time price for this sponsorship
-      // Note: In production, you might want to create products/prices in Stripe admin
-      // and reference them by lookup_key instead of creating prices dynamically
-      const host = req.get("host");
-      const protocol = req.protocol;
-      const baseUrl = `${protocol}://${host}`;
-
-      // For now, we'll use a dynamic price approach
-      // The frontend should handle the case where Stripe is not configured
-      const checkoutData: CheckoutSessionData = {
-        priceId: "", // Will be set below
-        customerId: stripeCustomerId || undefined,
-        customerEmail: stripeCustomerId ? undefined : user.email,
-        successUrl: `${baseUrl}/events/${slug}?sponsorship=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${baseUrl}/events/${slug}?sponsorship=cancelled`,
-        workosOrganizationId: org_id,
-        workosUserId: user.id,
-        eventId: event.id,
-        eventSponsorshipId: sponsorship.id,
-        sponsorshipTierId: tier_id,
-      };
-
-      // Note: This endpoint expects a priceId. In a full implementation, you would either:
+      // Note: Stripe checkout needs a priceId. In a full implementation, you would either:
       // 1. Create Stripe products/prices in advance and store the price_id in the sponsorship tier
       // 2. Use Stripe's price_data to create a one-time price inline
       // For now, we return the sponsorship info and let the frontend handle Stripe integration

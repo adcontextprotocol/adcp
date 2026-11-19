@@ -28,7 +28,7 @@ import {
   type BuildRecord,
 } from '../../db/build-db.js';
 import { getUserWorkingGroupMap } from '../../db/digest-db.js';
-import type { EditionRecord, NewsletterEditionDB, SendStats, NewsletterRecipient } from '../config.js';
+import type { EditionRecord, NewsletterEditionDB, NewsletterRecipient } from '../config.js';
 
 // ─── Palette ───────────────────────────────────────────────────────────
 

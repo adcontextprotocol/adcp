@@ -16,7 +16,7 @@ import {
   beforeEach,
 } from 'vitest';
 import type { Pool } from 'pg';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
   verifyAgentHostname,

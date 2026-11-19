@@ -21,7 +21,7 @@ const logger = createLogger('content-curator');
 import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
 import { getPendingRssPerspectives, type RssPerspective } from '../../db/industry-feeds-db.js';
 import { query } from '../../db/client.js';
-import { getActiveChannels, type NotificationChannel } from '../../db/notification-channels-db.js';
+import { getActiveChannels } from '../../db/notification-channels-db.js';
 import {
   isGoogleDocsUrl,
   createGoogleDocsReader,

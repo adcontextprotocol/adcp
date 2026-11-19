@@ -909,11 +909,11 @@ export function createMeetingToolHandlers(
     }
 
     // Check if user is already an attendee
-    let attendee = await meetingsDb.getAttendee(meeting.id, userId);
+    const attendee = await meetingsDb.getAttendee(meeting.id, userId);
 
     if (attendee) {
       // Update existing RSVP
-      attendee = await meetingsDb.updateAttendee(meeting.id, userId, {
+      await meetingsDb.updateAttendee(meeting.id, userId, {
         rsvp_status: response,
         rsvp_note: note,
       });
@@ -924,7 +924,7 @@ export function createMeetingToolHandlers(
         ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name}`
         : userEmail;
 
-      attendee = await meetingsDb.addAttendee({
+      await meetingsDb.addAttendee({
         meeting_id: meeting.id,
         workos_user_id: userId,
         email: userEmail,

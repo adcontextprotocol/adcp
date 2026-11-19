@@ -3,7 +3,6 @@ import {
   COMPANY_TYPES,
   COMPANY_TYPE_VALUES,
   getCompanyTypeLabel,
-  getCompanyTypeDescription,
   formatCompanyTypes,
   getCompanyTypesDocumentation,
   CompanyTypeValue,

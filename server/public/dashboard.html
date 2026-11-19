@@ -1714,7 +1714,6 @@
 
       const isPersonal = org.billing?.is_personal || org.is_personal || false;
       const hasSubscription = org.billing?.status === 'active';
-      const hasEverSubscribed = org.billing?.status && org.billing.status !== 'none';
 
       // Update legacy hidden elements for backwards compatibility
       document.getElementById('orgName').textContent = org.name;
@@ -4896,7 +4895,6 @@
           const checkbox = document.getElementById('membershipAgreementCheckbox');
           const pricingWrapper = document.getElementById('pricingTableWrapper');
           const warning = document.getElementById('agreementWarning');
-          const agreementSection = document.querySelector('#membershipSection .agreements');
 
           if (checkbox) {
             checkbox.checked = true;
@@ -5146,7 +5144,6 @@
 
     function openInvoiceRequestModal(options = {}) {
       const modal = document.getElementById('invoiceRequestModal');
-      const productSelect = document.getElementById('invoice-product');
 
       // Reset modal state
       document.getElementById('invoiceFormSection').style.display = 'block';

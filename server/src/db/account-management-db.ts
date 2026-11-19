@@ -373,7 +373,7 @@ export async function updateActionItemStatus(
   }
 
   if (status === 'snoozed' && options?.snoozedUntil) {
-    updates.push(`snoozed_until = $${paramIndex++}`);
+    updates.push(`snoozed_until = $${paramIndex}`);
     values.push(options.snoozedUntil);
   }
 

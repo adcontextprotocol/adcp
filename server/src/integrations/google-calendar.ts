@@ -444,7 +444,7 @@ export function formatRecurrenceRule(rule: {
 /**
  * Create conference data for Zoom meeting
  */
-export function createZoomConferenceData(joinUrl: string, passcode?: string): CreateCalendarEventInput['conferenceData'] {
+export function createZoomConferenceData(joinUrl: string, _passcode?: string): CreateCalendarEventInput['conferenceData'] {
   const entryPoints: Array<{ entryPointType: string; uri: string; label?: string }> = [
     {
       entryPointType: 'video',

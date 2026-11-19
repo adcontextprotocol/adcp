@@ -85,7 +85,7 @@ export class BansDatabase {
       values.push(options.scope);
     }
     if (options.entity_id) {
-      conditions.push(`entity_id = $${paramIndex++}`);
+      conditions.push(`entity_id = $${paramIndex}`);
       values.push(options.entity_id);
     }
 

@@ -351,7 +351,7 @@ describe('profile-edit: name fields', () => {
     (win.document.getElementById('field-last-name') as HTMLInputElement).value = 'Name';
 
     let nameCalled = false;
-    win.fetch = async (url: unknown, opts: { body?: string }) => {
+    win.fetch = async (url: unknown, _opts: { body?: string }) => {
       if (url === '/api/me/name') {
         nameCalled = true;
         return { ok: true, json: async () => ({}) };

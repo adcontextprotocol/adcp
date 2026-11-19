@@ -51,7 +51,7 @@ function loadSchema(ref) {
   const full = schemaRefToPath(ref);
   if (!full) return null;
   if (schemaCache.has(full)) return schemaCache.get(full);
-  let doc = null;
+  let doc;
   try {
     doc = JSON.parse(fs.readFileSync(full, 'utf8'));
   } catch {

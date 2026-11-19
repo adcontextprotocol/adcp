@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { gateAgentVisibilityForCaller } from '../../src/services/agent-visibility-gate.js';
 
 describe('gateAgentVisibilityForCaller — health_check_url SSRF guard', () => {

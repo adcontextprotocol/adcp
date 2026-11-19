@@ -65,6 +65,7 @@ function saveUserLikesToStorage(likes) {
  * @param {string} articleId - The perspective ID to check
  * @returns {boolean} Whether the user has liked this article
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function checkUserLike(articleId) {
   const likes = loadUserLikesFromStorage();
   return likes.has(articleId);
@@ -75,6 +76,7 @@ function checkUserLike(articleId) {
  * @param {string} articleId - The perspective ID
  * @param {boolean} liked - Whether to add or remove the like
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function saveUserLike(articleId, liked) {
   const likes = loadUserLikesFromStorage();
   if (liked) {
@@ -90,6 +92,7 @@ function saveUserLike(articleId, liked) {
  * @param {string} text - Text to escape
  * @returns {string} Escaped HTML string
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function escapeHtml(text) {
   if (!text) return '';
   const div = document.createElement('div');
@@ -102,6 +105,7 @@ function escapeHtml(text) {
  * @param {string} dateStr - ISO date string
  * @returns {string} Formatted date (e.g., "December 15, 2025")
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function formatDate(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -109,17 +113,6 @@ function formatDate(dateStr) {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-/**
- * Format a date string in short format
- * @param {string} dateStr - ISO date string
- * @returns {string} Formatted date (e.g., "Dec 15, 2025")
- */
-function formatDateShort(dateStr) {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
 // Initialize fingerprint on load
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 const userFingerprint = generateFingerprint();

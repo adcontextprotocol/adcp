@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { getPool, initializeDatabase, closeDatabase } from '../../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../../src/db/client.js';
 import { runMigrations } from '../../../src/db/migrate.js';
 import type { Pool } from 'pg';
 import { SimulationClock } from '../engine/clock.js';

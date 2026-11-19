@@ -11,12 +11,9 @@
 
 import { randomUUID } from 'crypto';
 import { query, getPool } from '../db/client.js';
-import { createLogger } from '../logger.js';
 import type { LocalModelResponseReason, ModelExecution, ModelFallbackReason, ModelProviderId, ModelResolution } from './model-providers/model-provider.js';
 import type { WebChatModelPreference } from './web-chat-model-selection.js';
 import { DURABLE_HANDLER_OUTCOME_TOOLS } from './side-effect-claims.js';
-
-const logger = createLogger('addie-thread-service');
 
 // Postgres TEXT and JSONB both reject U+0000. Tool results occasionally
 // surface null bytes from upstream APIs, which would otherwise blow up the

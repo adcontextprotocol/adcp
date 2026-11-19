@@ -131,7 +131,6 @@ describe('schema version selection', () => {
       expect(tool?.input_schema.properties.version).not.toHaveProperty('enum');
     }
 
-    const getSchema = SCHEMA_TOOLS.find((tool) => tool.name === 'get_schema');
     // The hand-written default in the tool description must name the docs
     // default that DEFAULT_SCHEMA_VERSION actually resolves to.
     for (const toolName of ['validate_json', 'get_schema', 'list_schemas']) {

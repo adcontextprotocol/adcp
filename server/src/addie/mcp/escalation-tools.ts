@@ -509,7 +509,7 @@ export function createEscalationToolHandlers(
       }
 
       logger.info(
-        { topic, threadId, authorName: authorDisplayName, content: content.slice(0, 500) },
+        { topic, threadId, whyValuable, authorName: authorDisplayName, authorOrgName, content: content.slice(0, 500) },
         'Captured learning from conversation'
       );
 

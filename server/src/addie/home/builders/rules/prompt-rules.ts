@@ -1,5 +1,5 @@
 import type { MemberContext } from '../../../member-context.js';
-import type { PromptRule, PromptRuleContext } from './types.js';
+import type { PromptRule } from './types.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 

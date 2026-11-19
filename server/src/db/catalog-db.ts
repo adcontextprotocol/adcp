@@ -927,7 +927,7 @@ export class CatalogDatabase {
        WHERE ${where}
        GROUP BY cp.property_rid, cp.source, cp.adagents_url
        ORDER BY cp.property_rid
-       LIMIT $${idx++} OFFSET $${idx++}`,
+       LIMIT $${idx++} OFFSET $${idx}`,
       [...params, limit, offset]
     );
 
@@ -953,7 +953,7 @@ export class CatalogDatabase {
         SELECT 1 FROM catalog_identifiers ci
         WHERE ci.property_rid = cp.property_rid
           AND ci.disputed = FALSE
-          AND ci.identifier_value ILIKE $${idx++} ESCAPE '\\'
+          AND ci.identifier_value ILIKE $${idx} ESCAPE '\\'
       )`);
       params.push(`%${escaped}%`);
     }

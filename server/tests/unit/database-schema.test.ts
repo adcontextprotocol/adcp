@@ -236,7 +236,7 @@ describe("Database Schema Alignment", () => {
 
   describe("Column Name Consistency", () => {
     it("should use snake_case for all column names", () => {
-      for (const [table, columns] of Object.entries(EXPECTED_COLUMNS)) {
+      for (const columns of Object.values(EXPECTED_COLUMNS)) {
         for (const col of columns) {
           // Column names should be lowercase with underscores
           expect(col).toMatch(/^[a-z][a-z0-9_]*$/);

@@ -208,7 +208,7 @@ describe('behavioral invariants', () => {
           contactsByDay.set(e.day, (contactsByDay.get(e.day) ?? 0) + 1);
         }
       }
-      for (const [day, count] of contactsByDay) {
+      for (const count of contactsByDay.values()) {
         expect(count).toBeLessThanOrEqual(1);
       }
     }
@@ -297,7 +297,7 @@ describe('behavioral invariants', () => {
 describe('harassment prevention', () => {
   it('no persona gets >10 messages with 0 responses', () => {
     const results = runAll();
-    for (const [name, result] of results) {
+    for (const result of results.values()) {
       if (result.summary.personResponses === 0) {
         expect(result.summary.totalContacts).toBeLessThanOrEqual(10);
       }
