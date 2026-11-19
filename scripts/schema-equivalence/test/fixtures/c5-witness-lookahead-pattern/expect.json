@@ -1,0 +1,11 @@
+{
+  "why": "Patterns with lookaheads still get a witness: the head requires a digit after T, so \"PT\" matches the base duration pattern and not the head one.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

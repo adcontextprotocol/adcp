@@ -10,7 +10,8 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFile } = require('node:child_process');
+const os = require('node:os');
+const { execFile, execFileSync } = require('node:child_process');
 
 const CLI = path.join(__dirname, '..', 'scripts', 'schema-equivalence', 'cli.cjs');
 const FIXTURES = path.join(__dirname, '..', 'scripts', 'schema-equivalence', 'test', 'fixtures');
@@ -67,5 +68,37 @@ describe('schema-equivalence CLI on git refs', () => {
     assert.equal(report.compare.entries.length, 0);
     assert.equal(report.compare.info.length, 0);
     assert.ok(report.compare.roots > 1000, 'every published root compared');
+  });
+
+  it('--manifest auto reads the delta manifest from the head ref, not the working tree', async () => {
+    // A scratch repository whose working tree stays at the base commit, so the
+    // head's .schema-deltas file exists only in git objects.
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-equivalence-'));
+    try {
+      const g = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: repo }).toString().trim();
+      const fixture = path.join(FIXTURES, 'c3-tighten-manifest');
+      const src = path.join(repo, 'static', 'schemas', 'source');
+      g('init', '-q', '-b', 'main');
+      fs.mkdirSync(src, { recursive: true });
+      fs.copyFileSync(path.join(fixture, 'base', 'a-request.json'), path.join(src, 'a-request.json'));
+      g('add', '.');
+      g('commit', '-q', '-m', 'base');
+      const base = g('rev-parse', 'HEAD');
+      fs.copyFileSync(path.join(fixture, 'head', 'a-request.json'), path.join(src, 'a-request.json'));
+      fs.mkdirSync(path.join(repo, '.schema-deltas'));
+      fs.copyFileSync(path.join(fixture, 'manifest.yaml'), path.join(repo, '.schema-deltas', 'tighten.yaml'));
+      g('add', '.');
+      g('commit', '-q', '-m', 'head');
+      const head = g('rev-parse', 'HEAD');
+      g('checkout', '-q', base);
+      assert.ok(!fs.existsSync(path.join(repo, '.schema-deltas', 'tighten.yaml')), 'the manifest is not in the working tree');
+      const { code, report, stderr } = await run(['--repo', repo, '--base', base, '--head', head, '--manifest', 'auto', '--witness'], repo);
+      assert.ok(report, stderr);
+      assert.deepEqual(report.manifest.files, ['.schema-deltas/tighten.yaml']);
+      assert.equal(report.manifest.ok, true);
+      assert.equal(code, 0, report.failures.join('; '));
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 });

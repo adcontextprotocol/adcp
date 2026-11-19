@@ -391,28 +391,31 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
     const res = { index: change.index, direction: change.direction, site, ok: false, payloads: [] };
     const reasons = [];
     const found = { tighten: null, loosen: null };
-    for (const entry of entries) {
-      const hybrid = revertedHead(trees, entry);
-      if (!hybrid.tree) {
-        reasons.push(`cannot attribute: ${hybrid.reason}`);
-        break;
-      }
-      // One hybrid per entry, compiled lazily (only what the root reaches).
-      const hv = new TreeValidator(hybrid.tree, { lazy: true });
+    const declared = change.direction === 'both' ? ['tighten', 'loosen'] : change.direction === 'none' ? [] : [change.direction];
+    // Every entry of a line shares its site, so one reverted head and one
+    // lazily compiling Ajv serve all of the line's roots.
+    const hybrid = entries.length ? revertedHead(trees, entries[0]) : { reason: 'no entries' };
+    if (!hybrid.tree) reasons.push(`cannot attribute: ${hybrid.reason}`);
+    const hv = hybrid.tree ? new TreeValidator(hybrid.tree, { lazy: true }) : null;
+    let firstCompiled = true;
+    for (const entry of hv ? entries : []) {
       const h = await hv.get(`${entry.root}#`);
       if (typeof h !== 'function') continue;
-      for (const dir of ['tighten', 'loosen']) {
-        if (found[dir]) continue;
+      // Declared directions are searched on every root until found; the
+      // other direction (an attributed witness the line does not declare)
+      // only on the first root that compiles.
+      const dirs = ['tighten', 'loosen'].filter(d => !found[d] && (declared.includes(d) || firstCompiled));
+      firstCompiled = false;
+      for (const dir of dirs) {
         const accept = dir === 'tighten' ? 'base' : 'head';
         const reject = dir === 'tighten' ? 'head' : 'base';
         // Reverting the line restores the base verdict.
         const attributed = (p) => (dir === 'tighten' ? h(p) : !h(p));
         found[dir] = await search(entry, accept, reject, ctx, attributed);
       }
-      if (found.tighten && found.loosen) break;
+      if (declared.every(d => found[d])) break;
     }
     const observed = ['tighten', 'loosen'].filter(d => found[d]);
-    const declared = change.direction === 'both' ? ['tighten', 'loosen'] : change.direction === 'none' ? [] : [change.direction];
     res.observed = observed;
     res.payloads = observed.map(d => payloadRecord(d, found[d]));
     const missing = declared.filter(d => !found[d]);

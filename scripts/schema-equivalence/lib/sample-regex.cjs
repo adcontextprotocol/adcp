@@ -37,14 +37,26 @@ function parse(src) {
     }
     if (c === '(') {
       i++;
+      let lookaround = false;
       if (src[i] === '?') {
         if (src[i + 1] === ':') i += 2;
-        else throw new Error('unsupported group');
+        else if (src[i + 1] === '=' || src[i + 1] === '!') {
+          lookaround = true;
+          i += 2;
+        } else if (src[i + 1] === '<' && (src[i + 2] === '=' || src[i + 2] === '!')) {
+          lookaround = true;
+          i += 3;
+        } else if (src[i + 1] === '<') {
+          const end = src.indexOf('>', i);
+          if (end < 0) throw new Error('unbalanced');
+          i = end + 1; // named group
+        } else throw new Error('unsupported group');
       }
       const inner = alternation();
       if (src[i] !== ')') throw new Error('unbalanced');
       i++;
-      return inner;
+      // A lookaround matches no characters; the final RegExp test enforces it.
+      return lookaround ? null : inner;
     }
     if (c === '[') return parseClass();
     if (c === '.') {
@@ -119,7 +131,11 @@ function parse(src) {
   return tree;
 }
 
-/** variant 0: minimal; 1: one more repetition; 2: alternative picks; 3: every optional part once, the `target`-th unbounded repetition 70 times. */
+/**
+ * variant 0: minimal; 1: one more repetition; 2: alternative picks; 3: every
+ * optional part once, the `target`-th unbounded repetition 70 times; 4: only
+ * the `target`-th optional part (a duration pattern gives "PT", "P0D", ...).
+ */
 function generate(node, variant, state = null) {
   if (node.lit !== undefined) return variant === 2 && node.alts && node.alts[1] ? node.alts[1] : node.lit;
   if (node.seq) return node.seq.map(n => generate(n, variant, state)).join('');
@@ -133,6 +149,10 @@ function generate(node, variant, state = null) {
     if (variant === 3 && state) {
       if (node.max >= 70) n = state.seen++ === state.target ? Math.max(node.min, 70) : Math.max(node.min, 1);
       else if (node.min === 0) n = 1;
+    }
+    if (variant === 4 && state && node.min === 0 && node.max >= 1) {
+      // Only the target-th optional part, once; the rest left out.
+      n = state.seen++ === state.target ? 1 : 0;
     }
     return Array.from({ length: n }, () => generate(node.rep, variant, state)).join('');
   }
@@ -155,6 +175,10 @@ function sampleRegex(pattern) {
   }
   for (let target = 0; target < 4; target++) {
     const s = generate(tree, 3, { target, seen: 0 });
+    if (re.test(s)) out.add(s);
+  }
+  for (let target = 0; target < 12; target++) {
+    const s = generate(tree, 4, { target, seen: 0 });
     if (re.test(s)) out.add(s);
   }
   return [...out];

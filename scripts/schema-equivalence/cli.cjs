@@ -16,12 +16,14 @@ const path = require('node:path');
 const { parseArgs } = require('node:util');
 const { loadFromRef, loadFromDir, git } = require('./lib/tree.cjs');
 const { compare } = require('./lib/compare.cjs');
-const { loadManifest, matchManifest, skeleton } = require('./lib/manifest.cjs');
+const yaml = require('js-yaml');
+const { loadManifest, parseManifest, matchManifest, skeleton } = require('./lib/manifest.cjs');
 const { collectCorpus, differential, sitesFromEntries, probeValues, TreeValidator } = require('./lib/corpus.cjs');
 const { generateWitnesses } = require('./lib/witness.cjs');
 const { formatText } = require('./lib/report.cjs');
 
-const REPO = path.resolve(__dirname, '..', '..');
+// The repository whose refs are compared; --repo changes it (tests use a scratch repository).
+let REPO = path.resolve(__dirname, '..', '..');
 const DELTA_DIR = '.schema-deltas';
 
 const USAGE = `Usage: node scripts/schema-equivalence/cli.cjs [verify-build] [options]
@@ -44,6 +46,7 @@ Compare the published schema roots at two refs (or two directories).
   --witness             generate one witness payload per manifest entry
   --json FILE           write the JSON report (- for stdout)
   --quiet               no text report
+  --repo DIR            the git repository to read refs from (default: this one)
 
 verify-build: compare static/schemas/source with dist/schemas/latest and
 dist/schemas/latest/bundled (run \`npm run build:schemas\` first).`;
@@ -102,6 +105,7 @@ async function main() {
       witness: { type: 'boolean', default: false },
       json: { type: 'string' },
       quiet: { type: 'boolean', default: false },
+      repo: { type: 'string' },
       help: { type: 'boolean', default: false },
     },
   });
@@ -109,6 +113,7 @@ async function main() {
     process.stdout.write(`${USAGE}\n`);
     return 0;
   }
+  if (values.repo) REPO = path.resolve(values.repo);
   const mode = positionals[0] || 'check';
   if (!['check', 'verify-build'].includes(mode)) fail(`unknown command ${mode}\n\n${USAGE}`);
 
@@ -165,7 +170,11 @@ async function main() {
     } else files = [path.resolve(values.manifest)];
     const changes = [];
     for (const f of files) {
-      const m = loadManifest(f);
+      // "auto" names files of the head ref: read them from its git objects,
+      // so the head does not have to be checked out.
+      const m = values.manifest === 'auto'
+        ? parseManifest(yaml.load(git(REPO, ['show', `${refs.head}:${path.relative(REPO, f).split(path.sep).join('/')}`]).toString('utf8')), `${refs.head}:${path.relative(REPO, f)}`)
+        : loadManifest(f);
       for (const c of m.changes) changes.push({ ...c, index: changes.length, file: displayPath(f) });
     }
     manifest = { changes, label: files.join(', ') };
