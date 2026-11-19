@@ -1384,6 +1384,10 @@
           "$ref": "/schemas/core/adcp-minor-version.json",
           "description": "AdCP version in MAJOR.MINOR form, such as 3.2."
         },
+        "supported-mraid-version": {
+          "$ref": "/schemas/core/supported-mraid-version.json",
+          "description": "IAB MRAID version that a seller supports, in MAJOR.MINOR form, such as 1.0, 2.0, or 3.0."
+        },
         "canonical-adcp-minor-version": {
           "$ref": "/schemas/core/canonical-adcp-minor-version.json",
           "description": "AdCP version in MAJOR.MINOR form with no leading zeros, such as 3.2."
@@ -3329,7 +3333,7 @@
         },
         "mraid-version": {
           "$ref": "/schemas/enums/mraid-version.json",
-          "description": "IAB MRAID version of a rich media creative or a seller's support: 2.0 or 3.0."
+          "description": "IAB MRAID version that a rich media creative requires: 2.0 or 3.0."
         },
         "vast-fullscreen-version": {
           "$ref": "/schemas/enums/vast-fullscreen-version.json",
