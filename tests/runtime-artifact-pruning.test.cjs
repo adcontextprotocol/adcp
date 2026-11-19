@@ -358,6 +358,25 @@ test("a stalled or 5xx CDN request is retried, but a definitive rejection is not
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("a committed candidate superseded without publication stays local without a runtime anchor", async () => {
+  const root = fixture();
+  try {
+    // 3.0.5 is neither hosted nor listed by R2: it was never published.
+    writeFileSync(join(root, "dist", "protocol", "3.0.5.tgz"), "3.0.5 archive\n");
+    const serving = cdnServing(root, ["3.0.0.tgz", "3.1.1.tgz"]);
+    await assert.rejects(() => verifyProtocolOffloads(root, serving, [0, 0]), /absent from R2 discovery/);
+
+    const indexPath = join(root, "dist", "schemas", "index.json");
+    const index = JSON.parse(readFileSync(indexPath, "utf8"));
+    index.versions.push({ version: "3.0.5", stability: "unpublished", published: false });
+    writeJson(indexPath, index);
+    const verified = await verifyProtocolOffloads(root, serving, [0, 0]);
+    assert.deepEqual(verified, ["3.0.0.tgz", "3.1.1.tgz"]);
+    pruneRuntimeArtifacts(root, verified);
+    assert.equal(readFileSync(join(root, "dist", "protocol", "3.0.5.tgz"), "utf8"), "3.0.5 archive\n");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("R2 discovery must list every archive outside the required closure and cannot be a Fly fallback", async () => {
   const root = fixture();
   try {

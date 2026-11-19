@@ -63,7 +63,7 @@ Prerelease pins are exact. A buyer pinned to `"3.2-rc.7"` never silently negotia
 
 ## Artifact retention
 
-Release-candidate and stable artifacts are never retired from the repository or the artifact CDN. Hosted compliance stopped grading the 3.2.0 prereleases (`3.2.0-beta.6` and `3.2.0-rc.0` through `3.2.0-rc.7`) on 2026-11-18 to keep the runtime image under its size limit; their schema and compliance bundles still resolve from the artifact CDN, and a `"3.2-rc"` or `"3.2-beta"` compliance target is no longer accepted. Superseded 3.x beta artifacts were retired from the repository and runtime image on 2026-09-14; only the `3.2.0-beta.11` schema bundle stays hosted, backing the frozen `3.2-beta` documentation snapshot. Earlier beta URLs resolve from the artifact CDN on a best-effort basis. The prerelease documentation snapshots stay reachable by URL after their selectors leave the version picker.
+Release-candidate and stable artifacts are never retired. Superseded 3.x beta artifacts were retired from the repository and runtime image on 2026-09-14; only the `3.2.0-beta.11` schema bundle stays hosted, backing the frozen `3.2-beta` documentation snapshot. Earlier beta URLs resolve from the artifact CDN on a best-effort basis. The prerelease documentation snapshots stay reachable by URL after their selectors leave the version picker.
 
 ## Related
 
