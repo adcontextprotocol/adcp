@@ -49,6 +49,7 @@ import {
   validateFixedTraceCorpusToolContracts,
 } from './fixed-trace-corpus-contracts.js';
 import { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
+import { memoizedByString } from './fixed-trace-string-memo.js';
 
 /** Version lock for the predeclared partitioned corpus. */
 export const FIXED_TRACE_CORPUS_VERSION = 'addie-fixed-traces-v32';
@@ -1988,18 +1989,40 @@ export function fixedTraceCoverageInventory(
       .map(([key, nested]) => [key, inputShape(nested)]));
     return typeof value;
   };
-  const normalizedRequest = (value: string) => value.normalize('NFKC').toLocaleLowerCase('en-US')
-    .replace(/[^a-z0-9]+/g, ' ').trim();
-  const nearDuplicateCount = (cases: readonly FixedTraceCorpusCase[]) => {
-    const values = cases.map((trace) => new Set(normalizedRequest(trace.request.message).split(' ').filter(Boolean)));
+  // Each message is normalized and tokenized once per call; the pair checks
+  // below reuse the results. |a ∪ b| = |a| + |b| - |a ∩ b|, so a pair's
+  // similarity needs no merged set.
+  const normalizedByTrace = new Map<FixedTraceCorpusCase, string>();
+  const tokensByTrace = new Map<FixedTraceCorpusCase, Set<string>>();
+  const normalizedRequestOf = (trace: FixedTraceCorpusCase): string => {
+    let normalized = normalizedByTrace.get(trace);
+    if (normalized === undefined) {
+      normalized = trace.request.message.normalize('NFKC').toLocaleLowerCase('en-US')
+        .replace(/[^a-z0-9]+/g, ' ').trim();
+      normalizedByTrace.set(trace, normalized);
+    }
+    return normalized;
+  };
+  const requestTokensOf = (trace: FixedTraceCorpusCase): Set<string> => {
+    let tokens = tokensByTrace.get(trace);
+    if (!tokens) {
+      tokens = new Set(normalizedRequestOf(trace).split(' ').filter(Boolean));
+      tokensByTrace.set(trace, tokens);
+    }
+    return tokens;
+  };
+  const similarPairCount = (cases: readonly FixedTraceCorpusCase[], threshold: number) => {
+    const values = cases.map(requestTokensOf);
     let count = 0;
     for (let index = 0; index < values.length; index++) for (let other = index + 1; other < values.length; other++) {
-      const overlap = [...values[index]].filter((token) => values[other].has(token)).length;
-      const union = new Set([...values[index], ...values[other]]).size;
-      if (union > 0 && overlap / union >= 0.9) count++;
+      let overlap = 0;
+      for (const token of values[index]) if (values[other].has(token)) overlap++;
+      const union = values[index].size + values[other].size - overlap;
+      if (union > 0 && overlap / union >= threshold) count++;
     }
     return count;
   };
+  const nearDuplicateCount = (cases: readonly FixedTraceCorpusCase[]) => similarPairCount(cases, 0.9);
   const structuralFingerprintDuplicates = (() => {
     const fingerprints = suite.map((trace) => canonicalJson({
       category: trace.category,
@@ -2030,19 +2053,10 @@ export function fixedTraceCoverageInventory(
     }
     return { crossPhase, samePhase };
   })();
-  const highSimilarityRequestPairs = (() => {
-    const values = suite.map((trace) => new Set(normalizedRequest(trace.request.message).split(' ').filter(Boolean)));
-    let count = 0;
-    for (let index = 0; index < values.length; index++) for (let other = index + 1; other < values.length; other++) {
-      const overlap = [...values[index]].filter((token) => values[other].has(token)).length;
-      const union = new Set([...values[index], ...values[other]]).size;
-      if (union > 0 && overlap / union >= 0.75) count++;
-    }
-    return count;
-  })();
+  const highSimilarityRequestPairs = similarPairCount(suite, 0.75);
   const phaseBehavior = Object.fromEntries(phases.map((phase) => {
     const cases = suite.filter((trace) => trace.phase === phase);
-    const normalized = cases.map((trace) => normalizedRequest(trace.request.message));
+    const normalized = cases.map(normalizedRequestOf);
     const mutationCases = cases.filter((trace) => trace.toolFixtures.some((fixture) => fixture.effect === 'mutation'));
     return [phase, {
       casesWithFixtures: cases.filter((trace) => trace.toolFixtures.length > 0).length,
@@ -2179,20 +2193,11 @@ function rawStringLeaves(value: unknown): string[] {
 }
 
 // Each predicate below is a pure function of its string argument over frozen
-// module constants, so its result is memoized by the string itself (the key
-// is the whole input). Corpus validation re-checks the same leaves for every
-// suite variant. At the bound a memo stops inserting; nothing is evicted.
-const IDENTITY_LEAKAGE_MEMO_LIMIT = 50_000;
+// module constants, so its result is memoized by the string itself
+// (fixed-trace-string-memo.ts). Corpus validation re-checks the same leaves
+// for every suite variant.
 const identityValueLeakageMemo = new Map<string, boolean>();
 const identityKeyLeakageMemo = new Map<string, boolean>();
-
-function memoizedLeakage(memo: Map<string, boolean>, value: string, compute: (value: string) => boolean): boolean {
-  const known = memo.get(value);
-  if (known !== undefined) return known;
-  const result = compute(value);
-  if (memo.size < IDENTITY_LEAKAGE_MEMO_LIMIT) memo.set(value, result);
-  return result;
-}
 
 const PROTECTED_IDENTITY_SKELETONS = [
   'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
@@ -2205,7 +2210,7 @@ const PROTECTED_KEY_SKELETON_PATTERNS = PROTECTED_IDENTITY_SKELETONS
   .map((identity) => new RegExp([...identity].join('_*'), 'u'));
 
 function identityValueLeakage(value: string): boolean {
-  return memoizedLeakage(identityValueLeakageMemo, value, computeIdentityValueLeakage);
+  return memoizedByString(identityValueLeakageMemo, value, computeIdentityValueLeakage);
 }
 
 function computeIdentityValueLeakage(value: string): boolean {
@@ -2241,7 +2246,7 @@ function computeIdentityValueLeakage(value: string): boolean {
 }
 
 function identityKeyLeakage(key: string): boolean {
-  return memoizedLeakage(identityKeyLeakageMemo, key, computeIdentityKeyLeakage);
+  return memoizedByString(identityKeyLeakageMemo, key, computeIdentityKeyLeakage);
 }
 
 function computeIdentityKeyLeakage(key: string): boolean {

@@ -27,6 +27,7 @@ import {
   getDocById,
   getDocsCorpusFingerprint,
   getSupportedDocsVersions,
+  MAX_SEARCH_QUERY_CHARS,
   resolveDocsVersion,
   versionAliases,
   type DocsVersion,
@@ -257,6 +258,70 @@ describe('docs-indexer', () => {
           )
         ))).toBe(true);
       }
+    });
+
+    // tp-jyw.42: one heading search does a bounded amount of work per query,
+    // not per heading. Work counts, not wall-clock limits.
+    describe('searchHeadings work per query', () => {
+      function countCalls<T>(run: () => T): { result: T; finds: number; regexps: number } {
+        const originalFind = Array.prototype.find;
+        const OriginalRegExp = globalThis.RegExp;
+        let finds = 0;
+        let regexps = 0;
+        Array.prototype.find = function countedFind(this: unknown[], ...args: Parameters<typeof originalFind>) {
+          finds++;
+          return originalFind.apply(this, args);
+        } as typeof originalFind;
+        globalThis.RegExp = class CountedRegExp extends OriginalRegExp {
+          constructor(...args: ConstructorParameters<typeof OriginalRegExp>) {
+            super(...args);
+            regexps++;
+          }
+        } as RegExpConstructor;
+        try {
+          return { result: run(), finds, regexps };
+        } finally {
+          Array.prototype.find = originalFind;
+          globalThis.RegExp = OriginalRegExp;
+        }
+      }
+
+      const query = 'targeting overlay protocol';
+      const queryWords = query.split(/\s+/).filter((word) => word.length > 2).length;
+
+      function countedVersionSearch() {
+        const version = line32();
+        const expected = searchHeadings(query, { version, limit: 20 });
+        const counted = countCalls(() => searchHeadings(query, { version, limit: 20 }));
+        expect(counted.result.map((heading) => heading.id)).toEqual(expected.map((heading) => heading.id));
+        expect(counted.result.length).toBeGreaterThan(0);
+        expect(counted.result
+          .filter((heading) => /^doc:\d/.test(heading.doc_id))
+          .every((heading) => heading.doc_id.startsWith(`doc:${version}:`))).toBe(true);
+        return counted;
+      }
+
+      it('resolves parent docs without scanning the doc index once per heading', () => {
+        const { finds } = countedVersionSearch();
+        expect(finds, `Array.prototype.find calls for ${getHeadingCount()} headings`)
+          .toBeLessThan(Math.max(10, getHeadingCount() / 100));
+      });
+
+      it('builds at most one RegExp per query word', () => {
+        const { regexps } = countedVersionSearch();
+        expect(regexps, `RegExp constructions for ${queryWords} query words`).toBeLessThanOrEqual(queryWords);
+      });
+
+      it('keeps a docId-scoped search to that doc and the invalid-pattern throw point unchanged', () => {
+        const [first] = searchHeadings('targeting overlay', { version: line32(), limit: 1 });
+        expect(first).toBeDefined();
+        const scoped = searchHeadings('targeting overlay', { docId: first.doc_id, limit: 50 });
+        expect(scoped.length).toBeGreaterThan(0);
+        expect(scoped.every((heading) => heading.doc_id === first.doc_id)).toBe(true);
+
+        expect(() => searchHeadings('targeting (overlay')).toThrow(SyntaxError);
+        expect(searchHeadings('targeting (overlay', { docId: 'doc:no-such-doc' })).toEqual([]);
+      });
     });
 
     it('does not leak the 3.2-only ACCOUNT_REQUIRED code into stable versions', () => {
@@ -569,12 +634,43 @@ The request includes a structured \`filters\` object.
       expect(result).toContain('in category: x y');
     });
 
-    it('bounds work for oversized release-number queries', async () => {
+    it('scores only the first MAX_SEARCH_QUERY_CHARS of an oversized release-number query', async () => {
+      // The logged query is the query the handler passed to the scorer.
+      const logSearch = vi.spyOn(AddieDatabase.prototype, 'logSearch').mockResolvedValue(undefined);
+      try {
+        const search = createKnowledgeToolHandlers().get('search_docs')!;
+        const hostile = Array.from({ length: 2000 }, (_, i) => `${i % 90}.${i % 97}`).join(' ');
+        expect(hostile.length).toBeGreaterThan(MAX_SEARCH_QUERY_CHARS);
+        await search({ query: hostile });
+        expect(logSearch).toHaveBeenCalledOnce();
+        const scored = logSearch.mock.calls[0][0].query;
+        expect(scored).toHaveLength(MAX_SEARCH_QUERY_CHARS);
+        expect(scored).toBe(hostile.slice(0, MAX_SEARCH_QUERY_CHARS));
+      } finally {
+        logSearch.mockRestore();
+      }
+    });
+
+    it('scores only the first four release lines of a query', async () => {
       const search = createKnowledgeToolHandlers({ disableSearchTelemetry: true }).get('search_docs')!;
-      const hostile = Array.from({ length: 2000 }, (_, i) => `${i % 90}.${i % 97}`).join(' ');
-      const started = Date.now();
-      await search({ query: hostile });
-      expect(Date.now() - started).toBeLessThan(5_000);
+      // Control: the 3.2 line alone matches the 3.2 release pages.
+      const alone = await search({ query: '3.2', version: line32() });
+      expect(alone).not.toContain('No documentation found');
+      expect(alone).toMatch(/(?:doc|schema):3\.2[^:]*:/);
+      // Four release lines that match nothing come first, so 3.2 is never scored.
+      const capped = await search({ query: '97.1 97.2 97.3 97.4 3.2', version: line32() });
+      expect(capped).toContain('No documentation found');
+      expect(capped).toContain('No other supported protocol version matches either.');
+    });
+
+    it('scores only the first MAX_SEARCH_QUERY_CHARS when searchDocs is called directly', () => {
+      // The 3.2 line ends exactly at the limit in the first query and starts
+      // one character past it in the second.
+      const within = `${'x'.repeat(MAX_SEARCH_QUERY_CHARS - 4)} 3.2`;
+      const beyond = `${'x'.repeat(MAX_SEARCH_QUERY_CHARS)} 3.2`;
+      expect(within).toHaveLength(MAX_SEARCH_QUERY_CHARS);
+      expect(searchDocs(within, { version: line32() })).not.toHaveLength(0);
+      expect(searchDocs(beyond, { version: line32() })).toHaveLength(0);
     });
 
     it('rejects an empty query instead of returning arbitrary pages', async () => {

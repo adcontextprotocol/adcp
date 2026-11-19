@@ -1,22 +1,56 @@
-// lint-allow-test-imports-file: this suite legitimately tests
-// `STRIPE_SECRET_KEY`-loaded module init — vi.resetModules() and dynamic
-// imports per test are how the env-var-load behavior is exercised.
-import { describe, test, expect, vi, beforeEach, afterEach, type MockedClass } from 'vitest';
-import type Stripe from 'stripe';
+// stripe-client reads STRIPE_SECRET_KEY once, when it is imported. The suite
+// loads it twice: with a key (the static import, whose Stripe client is the
+// shared API double below) and without one (`withoutKey`). Each test resets
+// the module's state instead of re-importing its module graph.
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import * as stripeClient from '../../server/src/billing/stripe-client.js';
 
-// Mock the Stripe module with a constructor that stores the latest mock instance
-vi.mock('stripe', () => {
-  const MockStripe = vi.fn();
-  return { default: MockStripe };
+const { stripeApi, db } = vi.hoisted(() => {
+  vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
+  return {
+    // What `new Stripe(key)` returns. Each test installs its own methods.
+    stripeApi: {} as Record<string, unknown>,
+    // What `getPool()` returns while a test sets it.
+    db: { pool: null as { query: (...args: any[]) => unknown } | null },
+  };
 });
 
+vi.mock('stripe', () => ({
+  default: vi.fn(function () {
+    return stripeApi;
+  }),
+}));
+
+vi.mock('../../server/src/db/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/src/db/client.js')>();
+  return { ...actual, getPool: () => db.pool ?? actual.getPool() };
+});
+
+let withoutKey: typeof stripeClient;
+
+/** Makes this test's API double the module's Stripe client. */
+function useStripeApi(api: object): void {
+  for (const key of Object.keys(stripeApi)) delete stripeApi[key];
+  Object.assign(stripeApi, api);
+}
+
 describe('stripe-client', () => {
+  beforeAll(async () => {
+    // The query string makes a second module record of stripe-client only;
+    // its imports resolve to the modules already loaded.
+    vi.stubEnv('STRIPE_SECRET_KEY', undefined);
+    withoutKey = await import('../../server/src/billing/stripe-client.js?without-key' as string); // lint-allow-dynamic-import: the module without STRIPE_SECRET_KEY
+    vi.unstubAllEnvs();
+    expect(stripeClient.stripe).toBe(stripeApi);
+    expect(withoutKey.stripe).toBeNull();
+  });
+
   beforeEach(() => {
-    // Clear all mocks before each test
     vi.clearAllMocks();
-    vi.doUnmock('../../server/src/db/client.js');
-    // Reset modules to get fresh imports
-    vi.resetModules();
+    useStripeApi({});
+    db.pool = null;
+    stripeClient.clearProductsCache();
+    withoutKey.clearProductsCache();
   });
 
   afterEach(() => {
@@ -25,11 +59,7 @@ describe('stripe-client', () => {
 
   describe('getStripeSubscriptionInfo', () => {
     test('returns null when Stripe is not initialized', async () => {
-      // Set environment variable to undefined to disable Stripe
-      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
-
-      // Re-import module after changing env var
-      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = withoutKey;
 
       const result = await getStripeSubscriptionInfo('cus_test123');
 
@@ -37,11 +67,6 @@ describe('stripe-client', () => {
     });
 
     test('returns status "none" for deleted customer', async () => {
-      // Set a test Stripe key
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      // Mock Stripe SDK
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           retrieve: vi.fn<any>().mockResolvedValue({
@@ -49,10 +74,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      // Re-import module to get mocked version
-      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = stripeClient;
 
       const result = await getStripeSubscriptionInfo('cus_deleted');
 
@@ -64,9 +88,6 @@ describe('stripe-client', () => {
     });
 
     test('returns status "none" for customer with no subscriptions', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           retrieve: vi.fn<any>().mockResolvedValue({
@@ -77,9 +98,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = stripeClient;
 
       const result = await getStripeSubscriptionInfo('cus_nosubs');
 
@@ -87,9 +108,6 @@ describe('stripe-client', () => {
     });
 
     test('returns subscription info for active subscription', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           retrieve: vi.fn<any>().mockResolvedValue({
@@ -132,9 +150,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = stripeClient;
 
       const result = await getStripeSubscriptionInfo('cus_active');
 
@@ -148,17 +166,14 @@ describe('stripe-client', () => {
     });
 
     test('handles errors gracefully and returns null', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           retrieve: vi.fn<any>().mockRejectedValue(new Error('Stripe API error')),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = stripeClient;
 
       const result = await getStripeSubscriptionInfo('cus_error');
 
@@ -168,9 +183,7 @@ describe('stripe-client', () => {
 
   describe('createStripeCustomer', () => {
     test('returns null when Stripe is not initialized', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
-
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = withoutKey;
 
       const result = await createStripeCustomer({
         email: 'test@example.com',
@@ -181,9 +194,6 @@ describe('stripe-client', () => {
     });
 
     test('creates customer and returns customer ID when no existing customer', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           list: vi.fn<any>().mockResolvedValue({ data: [] }),
@@ -192,9 +202,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = stripeClient;
 
       const result = await createStripeCustomer({
         email: 'test@example.com',
@@ -215,9 +225,6 @@ describe('stripe-client', () => {
     });
 
     test('returns existing customer ID when customer already exists', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           list: vi.fn<any>().mockResolvedValue({
@@ -227,9 +234,9 @@ describe('stripe-client', () => {
           create: vi.fn(),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = stripeClient;
 
       const result = await createStripeCustomer({
         email: 'test@example.com',
@@ -250,17 +257,14 @@ describe('stripe-client', () => {
     });
 
     test('handles errors and returns null', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           list: vi.fn<any>().mockRejectedValue(new Error('Stripe API error')),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = stripeClient;
 
       const result = await createStripeCustomer({
         email: 'test@example.com',
@@ -271,9 +275,6 @@ describe('stripe-client', () => {
     });
 
     test('searches by workos_organization_id metadata before email', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           search: vi.fn<any>().mockResolvedValue({
@@ -284,9 +285,9 @@ describe('stripe-client', () => {
           create: vi.fn(),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = stripeClient;
 
       const result = await createStripeCustomer({
         email: 'different-user@example.com',
@@ -305,9 +306,6 @@ describe('stripe-client', () => {
     });
 
     test('falls through to email check when org metadata search returns empty', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           search: vi.fn<any>().mockResolvedValue({ data: [] }),
@@ -315,9 +313,9 @@ describe('stripe-client', () => {
           create: vi.fn<any>().mockResolvedValue({ id: 'cus_new456' }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = stripeClient;
 
       const result = await createStripeCustomer({
         email: 'user@example.com',
@@ -335,9 +333,6 @@ describe('stripe-client', () => {
     });
 
     test('skips email-matched customer that belongs to a different org', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           search: vi.fn<any>().mockResolvedValue({ data: [] }),
@@ -348,9 +343,9 @@ describe('stripe-client', () => {
           create: vi.fn<any>().mockResolvedValue({ id: 'cus_new_for_this_org' }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = stripeClient;
 
       const result = await createStripeCustomer({
         email: 'shared@example.com',
@@ -371,9 +366,6 @@ describe('stripe-client', () => {
     });
 
     test('skips email-matched customer with no org metadata when requesting org is set', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
           search: vi.fn<any>().mockResolvedValue({ data: [] }),
@@ -384,9 +376,9 @@ describe('stripe-client', () => {
           create: vi.fn<any>().mockResolvedValue({ id: 'cus_brand_new' }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+      const { createStripeCustomer } = stripeClient;
 
       const result = await createStripeCustomer({
         email: 'shared@example.com',
@@ -402,9 +394,7 @@ describe('stripe-client', () => {
 
   describe('createCustomerPortalSession', () => {
     test('returns null when Stripe is not initialized', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
-
-      const { createCustomerPortalSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCustomerPortalSession } = withoutKey;
 
       const result = await createCustomerPortalSession('cus_123', 'http://localhost/return');
 
@@ -412,9 +402,6 @@ describe('stripe-client', () => {
     });
 
     test('creates portal session and returns URL', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         billingPortal: {
           sessions: {
@@ -424,9 +411,9 @@ describe('stripe-client', () => {
           },
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCustomerPortalSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCustomerPortalSession } = stripeClient;
 
       const result = await createCustomerPortalSession('cus_123', 'http://localhost/return');
 
@@ -440,9 +427,7 @@ describe('stripe-client', () => {
 
   describe('createCustomerSession', () => {
     test('returns null when Stripe is not initialized', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
-
-      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCustomerSession } = withoutKey;
 
       const result = await createCustomerSession('cus_123');
 
@@ -450,9 +435,6 @@ describe('stripe-client', () => {
     });
 
     test('creates customer session and returns client secret', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customerSessions: {
           create: vi.fn<any>().mockResolvedValue({
@@ -460,9 +442,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCustomerSession } = stripeClient;
 
       const result = await createCustomerSession('cus_123');
 
@@ -478,9 +460,6 @@ describe('stripe-client', () => {
     });
 
     test('re-throws resource_missing so callers can recover from a stale ID', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const notFound = Object.assign(new Error('No such customer'), {
         code: 'resource_missing',
         statusCode: 404,
@@ -490,9 +469,9 @@ describe('stripe-client', () => {
           create: vi.fn<any>().mockRejectedValue(notFound),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCustomerSession } = stripeClient;
 
       await expect(createCustomerSession('cus_stale')).rejects.toMatchObject({
         code: 'resource_missing',
@@ -500,17 +479,14 @@ describe('stripe-client', () => {
     });
 
     test('returns null and swallows other Stripe errors', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customerSessions: {
           create: vi.fn<any>().mockRejectedValue(new Error('boom')),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCustomerSession } = stripeClient;
 
       const result = await createCustomerSession('cus_123');
       expect(result).toBeNull();
@@ -533,9 +509,7 @@ describe('stripe-client', () => {
     };
 
     test('returns null when Stripe is not initialized', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
-
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = withoutKey;
 
       const result = await createAndSendInvoice(validInvoiceData);
 
@@ -543,9 +517,6 @@ describe('stripe-client', () => {
     });
 
     test('creates subscription with invoice billing and returns invoice details', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>().mockResolvedValue({
@@ -585,9 +556,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice(validInvoiceData);
 
@@ -616,13 +587,9 @@ describe('stripe-client', () => {
     });
 
     test('stamps invoice subscriptions with org and user metadata for webhook agreement attribution', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
       const mockDbQuery = vi.fn<any>().mockResolvedValue({ rows: [] });
-      vi.doMock('../../server/src/db/client.js', () => ({
-        getPool: () => ({ query: mockDbQuery }),
-      }));
+      db.pool = { query: mockDbQuery };
 
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>().mockResolvedValue({ data: [{ id: 'price_abc123' }] }),
@@ -661,9 +628,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice({
         ...validInvoiceData,
@@ -694,9 +661,6 @@ describe('stripe-client', () => {
     });
 
     test('refuses org-scoped invoice creation without signer metadata', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>(),
@@ -705,9 +669,9 @@ describe('stripe-client', () => {
           create: vi.fn<any>(),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice({
         ...validInvoiceData,
@@ -720,15 +684,11 @@ describe('stripe-client', () => {
     });
 
     test('stamps metadata when reusing a DB-linked Stripe customer', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
       const mockDbQuery = vi.fn<any>().mockResolvedValue({
         rows: [{ stripe_customer_id: 'cus_linked' }],
       });
-      vi.doMock('../../server/src/db/client.js', () => ({
-        getPool: () => ({ query: mockDbQuery }),
-      }));
+      db.pool = { query: mockDbQuery };
 
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>().mockResolvedValue({ data: [{ id: 'price_abc123' }] }),
@@ -769,9 +729,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice({
         ...validInvoiceData,
@@ -807,9 +767,6 @@ describe('stripe-client', () => {
     });
 
     test('returns null when price has zero amount', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>().mockResolvedValue({
@@ -833,9 +790,9 @@ describe('stripe-client', () => {
           create: vi.fn(),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice(validInvoiceData);
 
@@ -845,9 +802,6 @@ describe('stripe-client', () => {
     });
 
     test('cancels subscription when invoice has zero amount', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>().mockResolvedValue({
@@ -881,9 +835,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice(validInvoiceData);
 
@@ -893,9 +847,6 @@ describe('stripe-client', () => {
     });
 
     test('returns null when lookup key not found', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>().mockResolvedValue({
@@ -903,9 +854,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice({
         ...validInvoiceData,
@@ -916,9 +867,6 @@ describe('stripe-client', () => {
     });
 
     test('uses existing customer when found by email', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           list: vi.fn<any>().mockResolvedValue({
@@ -957,9 +905,9 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      const { createAndSendInvoice } = stripeClient;
 
       const result = await createAndSendInvoice(validInvoiceData);
 
@@ -972,9 +920,6 @@ describe('stripe-client', () => {
 
   describe('createCheckoutSession', () => {
     test('includes subscription_data.metadata with org and user IDs for subscription-mode checkout', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockSession = {
         id: 'cs_test_123',
         url: 'https://checkout.stripe.com/test',
@@ -992,9 +937,9 @@ describe('stripe-client', () => {
           },
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCheckoutSession } = stripeClient;
 
       await createCheckoutSession({
         priceId: 'price_test',
@@ -1013,9 +958,6 @@ describe('stripe-client', () => {
     });
 
     test('does not include subscription_data for one-time payment checkout', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockSession = {
         id: 'cs_test_456',
         url: 'https://checkout.stripe.com/test2',
@@ -1033,9 +975,9 @@ describe('stripe-client', () => {
           },
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCheckoutSession } = stripeClient;
 
       await createCheckoutSession({
         priceId: 'price_onetime',
@@ -1052,9 +994,6 @@ describe('stripe-client', () => {
     });
 
     test('adds autopublish disclosure for membership-tier prices', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           retrieve: vi.fn<any>().mockResolvedValue({
@@ -1069,9 +1008,9 @@ describe('stripe-client', () => {
           },
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCheckoutSession } = stripeClient;
 
       await createCheckoutSession({
         priceId: 'price_membership',
@@ -1088,9 +1027,6 @@ describe('stripe-client', () => {
     });
 
     test('adds disclosure for invoice-based membership prices', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           retrieve: vi.fn<any>().mockResolvedValue({
@@ -1105,9 +1041,9 @@ describe('stripe-client', () => {
           },
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCheckoutSession } = stripeClient;
 
       await createCheckoutSession({
         priceId: 'price_invoice_mem',
@@ -1121,9 +1057,6 @@ describe('stripe-client', () => {
     });
 
     test('omits disclosure for non-membership prices (e.g. event sponsorships)', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           retrieve: vi.fn<any>().mockResolvedValue({
@@ -1138,9 +1071,9 @@ describe('stripe-client', () => {
           },
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCheckoutSession } = stripeClient;
 
       await createCheckoutSession({
         priceId: 'price_sponsorship',
@@ -1154,9 +1087,6 @@ describe('stripe-client', () => {
     });
 
     test('omits disclosure when price has no lookup_key', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
           retrieve: vi.fn<any>().mockResolvedValue({
@@ -1171,9 +1101,9 @@ describe('stripe-client', () => {
           },
         },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { createCheckoutSession } = stripeClient;
 
       await createCheckoutSession({
         priceId: 'price_unlabeled',
@@ -1197,7 +1127,7 @@ describe('stripe-client', () => {
     ] as any[];
 
     test('resolves "<tier>_annual" to canonical key when unique', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       expect(resolveLookupKeyAlias('explorer_annual', products)?.lookup_key)
         .toBe('aao_membership_explorer_50');
       expect(resolveLookupKeyAlias('professional_annual', products)?.lookup_key)
@@ -1205,37 +1135,37 @@ describe('stripe-client', () => {
     });
 
     test('resolves bare tier name to canonical key', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       expect(resolveLookupKeyAlias('builder', products)?.lookup_key)
         .toBe('aao_membership_builder_3000');
     });
 
     test('handles uppercase and whitespace in input', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       expect(resolveLookupKeyAlias('  EXPLORER_ANNUAL ', products)?.lookup_key)
         .toBe('aao_membership_explorer_50');
     });
 
     test('returns undefined for unknown alias', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       expect(resolveLookupKeyAlias('nonexistent_tier', products)).toBeUndefined();
     });
 
     test('returns undefined for empty input', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       expect(resolveLookupKeyAlias('', products)).toBeUndefined();
       expect(resolveLookupKeyAlias('   ', products)).toBeUndefined();
     });
 
     test('refuses ambiguous resolution: "individual" matches two products', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       // "individual" would match both aao_membership_individual and
       // aao_membership_individual_discounted — must refuse rather than guess.
       expect(resolveLookupKeyAlias('individual', products)).toBeUndefined();
     });
 
     test('refuses ambiguous resolution: annual/monthly collision', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       const catalog = [
         { lookup_key: 'aao_membership_professional_250', price_id: 'price_pro_annual' },
         { lookup_key: 'aao_membership_professional_monthly', price_id: 'price_pro_monthly' },
@@ -1246,7 +1176,7 @@ describe('stripe-client', () => {
     });
 
     test('refuses ambiguous resolution: multi-tier corporate catalog', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       const catalog = [
         { lookup_key: 'aao_membership_corporate_5m', price_id: 'price_5m' },
         { lookup_key: 'aao_membership_corporate_50m', price_id: 'price_50m' },
@@ -1257,7 +1187,7 @@ describe('stripe-client', () => {
     });
 
     test('still resolves corporate variant when input is specific enough', async () => {
-      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const { resolveLookupKeyAlias } = stripeClient;
       const catalog = [
         { lookup_key: 'aao_membership_corporate_5m', price_id: 'price_5m' },
         { lookup_key: 'aao_membership_corporate_50m', price_id: 'price_50m' },
@@ -1272,9 +1202,6 @@ describe('stripe-client', () => {
 
   describe('getAllOpenInvoices', () => {
     test('does not exceed Stripe 4-level expand cap (data.lines.data.price.product is 5)', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ expand }: { expand?: string[] }) => {
         for (const path of expand || []) {
           // Stripe rejects expand paths deeper than 4 levels.
@@ -1295,9 +1222,9 @@ describe('stripe-client', () => {
         invoices: { list: listMock },
         products: { retrieve: vi.fn() },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const { getAllOpenInvoices } = stripeClient;
 
       // No expand path the function actually sends should exceed 4 levels —
       // i.e. the function must complete without the stub's >4-level rejection
@@ -1314,9 +1241,6 @@ describe('stripe-client', () => {
     });
 
     test('propagates Stripe errors to the caller (no silent empty-array fallback)', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       // Stripe SDK throws synchronously here to model how the previous swallow
       // turned a real 400 into "No pending invoices found" for the admin UI.
       const listMock = vi.fn<any>().mockImplementation(() => {
@@ -1326,17 +1250,14 @@ describe('stripe-client', () => {
         invoices: { list: listMock },
         products: { retrieve: vi.fn() },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const { getAllOpenInvoices } = stripeClient;
 
       await expect(getAllOpenInvoices(50)).rejects.toThrow(/4 levels/);
     });
 
     test('resolves product names via separate stripe.products.retrieve, with caching', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
 
       const makeInvoice = (id: string, productId: string) => ({
         id,
@@ -1371,9 +1292,9 @@ describe('stripe-client', () => {
         },
         products: { retrieve: productRetrieve },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const { getAllOpenInvoices } = stripeClient;
 
       const result = await getAllOpenInvoices(50);
 
@@ -1392,9 +1313,6 @@ describe('stripe-client', () => {
     // (Rishi @ InMobi, 2026-05-14). Filter them out, but keep real drafts (with
     // line items + amount) and all `open` invoices.
     test('drops empty draft invoices (no line items or zero amount)', async () => {
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
         if (status === 'open') return { data: [] };
         return {
@@ -1430,9 +1348,9 @@ describe('stripe-client', () => {
         invoices: { list: listMock },
         products: { retrieve: vi.fn() },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const { getPendingInvoices } = stripeClient;
       const result = await getPendingInvoices('cus_x');
 
       expect(result.map(r => r.id)).toEqual(['in_real']);
@@ -1442,9 +1360,6 @@ describe('stripe-client', () => {
       // Locks down the AND semantics of the filter: both conditions must
       // hold. A draft with amount but no lines is still not actionable —
       // there's nothing for Stripe to invoice — and should not surface.
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
         if (status === 'open') return { data: [] };
         return {
@@ -1465,9 +1380,9 @@ describe('stripe-client', () => {
         invoices: { list: listMock },
         products: { retrieve: vi.fn() },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const { getPendingInvoices } = stripeClient;
       const result = await getPendingInvoices('cus_x');
 
       expect(result).toEqual([]);
@@ -1477,9 +1392,6 @@ describe('stripe-client', () => {
       // Stripe `open` invoices have already been finalized + sent. Even an
       // edge-case open invoice with a $0 balance (e.g. fully refunded) is
       // legitimate state that the UI needs to render.
-      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-
-      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
         if (status === 'open') {
           return {
@@ -1502,9 +1414,9 @@ describe('stripe-client', () => {
         invoices: { list: listMock },
         products: { retrieve: vi.fn() },
       };
-      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+      useStripeApi(mockStripeInstance);
 
-      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const { getPendingInvoices } = stripeClient;
       const result = await getPendingInvoices('cus_x');
 
       expect(result.map(r => r.id)).toEqual(['in_open']);
@@ -1513,13 +1425,13 @@ describe('stripe-client', () => {
 
   describe('buildOrgCouponName', () => {
     test('keeps short org names intact', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       expect(buildOrgCouponName('Acme Inc', '$500.00 off'))
         .toBe('Acme Inc - $500.00 off');
     });
 
     test('truncates long org names so total stays at most 40 chars', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       // Real-world repro: a long org name plus " - $500.00 off" overflowed Stripe's 40-char cap
       const result = buildOrgCouponName(
         'The Omnichannel Network Exchange  O-N-X',
@@ -1530,32 +1442,32 @@ describe('stripe-client', () => {
     });
 
     test('collapses internal whitespace runs in the org name', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       expect(buildOrgCouponName('Acme    \t  Inc', '10% off'))
         .toBe('Acme Inc - 10% off');
     });
 
     test('handles a percent discount description', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       const result = buildOrgCouponName('Some Very Long Company Name LLC International', '25% off');
       expect(result.length).toBeLessThanOrEqual(40);
       expect(result.endsWith(' - 25% off')).toBe(true);
     });
 
     test('falls back to discount description alone when org name is empty', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       expect(buildOrgCouponName('', '$500.00 off'))
         .toBe('$500.00 off');
     });
 
     test('treats whitespace-only org names as empty', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       expect(buildOrgCouponName('   \t\n', '10% off'))
         .toBe('10% off');
     });
 
     test('strips bidi and zero-width format characters', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       // U+202E (RTL override) and U+200B (zero-width space) must not survive
       const result = buildOrgCouponName('Acme‮​ Inc', '$500.00 off');
       expect(result).toBe('Acme Inc - $500.00 off');
@@ -1563,7 +1475,7 @@ describe('stripe-client', () => {
     });
 
     test('slices by code points so emoji and CJK names are not split mid-surrogate', async () => {
-      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const { buildOrgCouponName } = stripeClient;
       // Each "🚀" is a UTF-16 surrogate pair; a string-byte slice could halve one.
       const orgName = '🚀'.repeat(20);
       const result = buildOrgCouponName(orgName, '$500.00 off');

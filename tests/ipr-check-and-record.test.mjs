@@ -162,23 +162,7 @@ describe('recording a signature when another repo pushed first', () => {
   const tmpRoots = [];
 
   let restoreEnv = () => {};
-
-  beforeAll(() => {
-    // Every git call here, the script's included, inherits process.env. Inside
-    // a git hook, GIT_DIR and friends would point it at the enclosing
-    // repository, and caller global/system config (hooks path, signing) would
-    // run on every call. Use the fixture environment: no GIT_* variables, no
-    // global or system config. The script sets its own commit identity, so the
-    // fixture identity is left out.
-    restoreEnv = gitObjectFixture.isolateGitEnv({ identity: false });
-  });
-
-  afterAll(() => restoreEnv());
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    for (const dir of tmpRoots.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
-  });
+  let template;
 
   const g = (cwd, ...args) =>
     execFileSync('git', ['-c', 'user.name=seed', '-c', 'user.email=seed@example.com', ...args], {
@@ -189,21 +173,55 @@ describe('recording a signature when another repo pushed first', () => {
 
   const seedSignature = { name: 'seed', id: 1, created_at: '2026-01-01T00:00:00Z', method: 'pr_comment' };
 
-  // A bare "origin" seeded with one signature, plus two shallow clones taken at
-  // the same commit, the way two workflow runs check out main.
-  function setupRemote() {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ipr-ledger-'));
-    tmpRoots.push(root);
-    g(root, 'init', '-q', '--bare', '-b', 'main', 'origin.git');
-    const remote = `file://${path.join(root, 'origin.git')}`;
-    const seed = path.join(root, 'seed');
-    g(root, 'clone', '-q', remote, 'seed');
+  beforeAll(() => {
+    // Every git call here, the script's included, inherits process.env. Inside
+    // a git hook, GIT_DIR and friends would point it at the enclosing
+    // repository, and caller global/system config (hooks path, signing) would
+    // run on every call. Use the fixture environment: no GIT_* variables, no
+    // global or system config. The script sets its own commit identity, so the
+    // fixture identity is left out.
+    restoreEnv = gitObjectFixture.isolateGitEnv({ identity: false });
+
+    // A bare "origin" seeded with one signature, plus two shallow clones taken
+    // at the same commit, the way two workflow runs check out main. Built once;
+    // setupRemote() copies it for each test.
+    template = fs.mkdtempSync(path.join(os.tmpdir(), 'ipr-ledger-template-'));
+    g(template, 'init', '-q', '--bare', '-b', 'main', 'origin.git');
+    const remote = `file://${path.join(template, 'origin.git')}`;
+    const seed = path.join(template, 'seed');
+    g(template, 'clone', '-q', remote, 'seed');
     writeSignatures({ signedContributors: [seedSignature] }, seed);
     g(seed, 'add', '.');
     g(seed, 'commit', '-q', '-m', 'seed ledger');
     g(seed, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
-    g(root, 'clone', '-q', '--depth=1', remote, 'run-a');
-    g(root, 'clone', '-q', '--depth=1', remote, 'run-b');
+    g(template, 'clone', '-q', '--depth=1', remote, 'run-a');
+    g(template, 'clone', '-q', '--depth=1', remote, 'run-b');
+    fs.rmSync(seed, { recursive: true, force: true });
+  });
+
+  afterAll(() => {
+    restoreEnv();
+    if (template) fs.rmSync(template, { recursive: true, force: true });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const dir of tmpRoots.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // A private copy of the template. Each clone's origin URL names the bare
+  // repository by absolute path, so it is pointed at the copy's own origin.
+  function setupRemote() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ipr-ledger-'));
+    tmpRoots.push(root);
+    fs.cpSync(template, root, { recursive: true });
+    for (const clone of ['run-a', 'run-b']) {
+      const config = path.join(root, clone, '.git', 'config');
+      const text = fs.readFileSync(config, 'utf8');
+      const from = `file://${path.join(template, 'origin.git')}`;
+      if (!text.includes(from)) throw new Error(`${config} does not name ${from}`);
+      fs.writeFileSync(config, text.replaceAll(from, `file://${path.join(root, 'origin.git')}`));
+    }
     return {
       root,
       runA: path.join(root, 'run-a'),

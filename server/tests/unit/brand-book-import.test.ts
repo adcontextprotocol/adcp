@@ -79,6 +79,15 @@ async function png(width: number, height: number, color = { r: 26, g: 77, b: 143
   return sharp({ create: { width, height, channels: 3, background: color } }).png().toBuffer();
 }
 
+/** `count` square PNGs, each a different solid color, so none de-duplicate. */
+async function distinctPngs(count: number, size: number): Promise<Buffer[]> {
+  return Promise.all(Array.from({ length: count }, (_, i) => png(size, size, {
+    r: i % 256,
+    g: Math.floor(i / 256) % 256,
+    b: 255 - (i % 256),
+  })));
+}
+
 function proposal(overrides: Partial<BrandBookProposal> = {}): BrandBookProposal {
   return {
     brand_name: 'Acme',
@@ -141,12 +150,23 @@ describe('PPTX extraction', () => {
 
 describe('prepareCandidates', () => {
   it('decodes a bounded number of raw images however many a file carries', async () => {
-    const image = await png(60, 60);
-    const raw = Array.from({ length: 200 }, (_, i) => ({ data: image, page: i + 1 }));
-    const started = Date.now();
+    const images = await distinctPngs(200, 60);
+    const touched = new Set<number>();
+    const raw = images.map((image, i) => ({
+      get data() {
+        touched.add(i);
+        return image;
+      },
+      page: i + 1,
+    }));
     const candidates = await prepareCandidates(raw);
-    expect(candidates.length).toBeLessThanOrEqual(16);
-    expect(Date.now() - started).toBeLessThan(10_000);
+    // 64 is MAX_RAW_IMAGES (MAX_CANDIDATES * 4) in brand-book-import.ts.
+    // Only the first 64 entries are read, so later entries cost nothing.
+    expect(touched.size).toBeGreaterThan(0);
+    expect(Math.max(...touched)).toBeLessThan(64);
+    // 16 is MAX_CANDIDATES. The images are distinct, so de-duplication alone
+    // cannot keep the output at 16.
+    expect(candidates).toHaveLength(16);
   });
 
   it('drops tiny images, de-duplicates, and assigns stable ids', async () => {

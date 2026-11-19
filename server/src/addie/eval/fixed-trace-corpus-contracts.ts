@@ -23,6 +23,9 @@ import {
   type FixedTraceTuningSemanticAuthorityEntry,
 } from './fixed-trace-corpus-authority.js';
 import { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
+import { memoizedByString } from './fixed-trace-string-memo.js';
+
+const canonicalTextMemo = new Map<string, FixedTraceCanonicalText>();
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -134,11 +137,11 @@ function decodeHtmlEntities(value: string): { value: string; changed: boolean; m
 
 export interface FixedTraceCanonicalText {
   /** Lowercase, deobfuscated text suitable for bounded policy matching. */
-  text: string;
+  readonly text: string;
   /** Separator-free form for protected multi-token identity and marker matching. */
-  compact: string;
+  readonly compact: string;
   /** Malformed or still-encoded data is rejected by consumers rather than ignored. */
-  malformedPercentEncoding: boolean;
+  readonly malformedPercentEncoding: boolean;
 }
 
 /**
@@ -147,6 +150,13 @@ export interface FixedTraceCanonicalText {
  * encoding, while malformed or further-encoded input remains fail-closed.
  */
 export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText {
+  // A pure function of `value` (inline patterns, frozen tables, a fixed
+  // locale), recomputed otherwise for every leaf of every suite variant. The
+  // result is shared, so it is frozen.
+  return memoizedByString(canonicalTextMemo, value, computeCanonicalFixedTraceText);
+}
+
+function computeCanonicalFixedTraceText(value: string): FixedTraceCanonicalText {
   let text = value.normalize('NFKC');
   let malformedPercentEncoding = false;
   for (let round = 0; round < MAX_PERCENT_DECODE_ROUNDS; round++) {
@@ -172,11 +182,11 @@ export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText 
     .replace(/\[\s*(?:\.|dot)\s*\]|\(\s*(?:\.|dot)\s*\)|\{\s*(?:\.|dot)\s*\}/g, '.')
     .replace(/\b(?:dot|period)\b/g, '.')
     .replace(/[\[\]{}()]/g, '');
-  return {
+  return Object.freeze({
     text,
     compact: text.replace(/[^a-z0-9]+/g, ''),
     malformedPercentEncoding,
-  };
+  });
 }
 
 /**
