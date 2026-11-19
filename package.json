@@ -279,6 +279,7 @@
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
     "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
     "@types/escape-html": "^1.0.4",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.3.0",
