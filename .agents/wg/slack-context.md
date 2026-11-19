@@ -7,48 +7,42 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-11-15
+- Generated: 2026-11-16
 - Window: last 14 days
 - Channels: 22 public WG channels swept (4 private excluded)
 
 ---
 
-### 3.3 release readiness and open PR queue
+### 3.3 GA release readiness and versioning rules
 - **Status:** active
-- **Summary:** The 3.3 GA is close, with a short list of open items heading into the weekend. A DOOH PR and an enum-replacement PR are each awaiting maintainer approval or re-approval, a reporting PR is waiting on a timer-based objection window before being marked ready, and a 3.2.x governance backport is awaiting review. The working group's 3.3 GA agenda also covers status against the GA criteria: SDKs on beta.4, storyboards green, closed-schema triage PRs under review with consent closing Nov 13, and a release docs refresh to follow.
-- **Related:** #8736, #8915, #8793, #8149, #8980, #8600, #8501
+- **Summary:** The working group is closing out 3.3 against the GA criteria: SDKs are on beta.4, storyboards are green, and closed-schema triage PRs are up with a consent window closing Nov 13. A versioning discussion is underway on whether cross-release translation in SDKs should be normative. One proposal does this, a counter-proposal offers three rules instead (minors only add, and only to open schemas; replacing a field means adding the new one alongside), and a concession has been posted to reconcile them. Decisions on this were slated for the Nov 9 working group session, with 4.0 planning opening in the final minutes. Several 3.3 PRs (DOOH, enum replacements, reporting, 3.2.x governance backport) are waiting on maintainer approvals or review.
+- **Related:** #8519, #8704, #8600, #8501, #8736, #8915, #8793, #8149, #8980
 - **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1794605247121259, https://agenticads.slack.com/archives/C09BK148CLU/p1793989289197729
-
-### Versioning rules for 3.x and 4.x
-- **Status:** active
-- **Summary:** One proposal would make cross-release translation in SDKs normative, and an objection to all three of its items is on the record, with an alternative offered. A concession now posted on the original proposal would adopt the alternative's three rules for the rest of 3.x and all of 4.x. Under these rules a minor release only adds, and only to open schemas, and replacing a field follows a defined add-then-deprecate pattern. The working group is asked to confirm the approach as a decision item, and the last part of the session opens 4.0 planning.
-- **Related:** #8519, #8704
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1793989289197729
 
 ### Campaign governance documentation coherence
 - **Status:** active
-- **Summary:** A read-through of the campaign-governance docs against main and the live 3.2.8 build found that the task, audit-trail, and safety-model pages contradict the specification in multiple places, the spec contradicts its own schemas in a couple of places, and several behaviors every governance agent must implement are undefined. Examples include a budget cut below committed spend being rejected on one page but accepted-then-flagged on another, audit mode being described as always approving while human-review-required plans must escalate, and a schema that rejects a case the prose says the agent should handle. Three issues were filed across the spec repo and the Python SDK repo following a working group conversation.
+- **Summary:** A review of the campaign-governance docs found that task, audit-trail, and safety-model pages contradict the specification in several places, the spec contradicts its own schemas in a couple of spots, and a number of behaviors every governance agent must implement are undefined. Examples include inconsistent handling of budget cuts below committed spend, audit mode semantics versus mandatory escalation for plans requiring human review, and a schema that rejects a case the prose says is valid. Issues were filed against the spec repo and the Python SDK repo.
 - **Related:** #8733
 - **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1793805096456139
 
-### Averaged daily budget targets vs hard caps
+### Beta SDK version pinning and capabilities discovery
 - **Status:** active
-- **Summary:** For the issue on replacing a hard daily cap with an averaged target, a contributor proposed drafting a small acceptance matrix covering discovery, authorization, and readback. The approach should preserve the existing constraint-relaxation rules and make the accepted window and timezone explicit on readback. The contributor asked whether that slice would be useful.
+- **Summary:** A reader built on the 3.3 beta SDK pinned a prerelease version in its capabilities call and failed outright when the seller returned a version-unsupported error, rather than retrying unpinned. Beta guidance says prerelease pins should only be sent to peers advertising that exact value, never negotiate down, and that buyers should retry unpinned on version-unsupported errors; the stable SDK already behaves this way. A related point is that the capabilities task is expected to be readable without credentials, so sellers locking down auth should still allow anonymous probes.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1794418915773829
+
+### Averaged daily budget targets and acceptance matrix
+- **Status:** active
+- **Summary:** A contributor proposed drafting a small acceptance matrix covering discovery through authorization and readback for replacing a hard daily cap with an averaged target. The proposal calls for preserving existing constraint-relaxation rules and making the accepted window and timezone explicit on readback.
 - **Related:** #8685
 - **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1793645362619399
 
-### Capabilities discovery and prerelease version pinning in the 3.3 beta SDK
-- **Status:** active
-- **Summary:** A beta-based reader pinned its capabilities call to a prerelease version, received VERSION_UNSUPPORTED from a seller that only supports 3.0, and never retried unpinned, so registration checks failed. The 3.3 beta guidance says prerelease pins should be sent only to peers advertising that exact value, never negotiate down, and that buyers should re-call unpinned on VERSION_UNSUPPORTED, which the stable SDK does. A related point raised was that the capabilities call is expected to be readable without credentials, since readers probe anonymously.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1794418915773829
-
-### Synthetic population-model approach to audience planning
+### Synthetic population-model approach to audience signals
 - **Status:** parked
-- **Summary:** A member suggested evaluating a fully synthetic alternative to ID-based programmatic: buy-side planning on a large population model, passing virtual IDs to the sell side, which maps its audiences to them, avoiding match-rate and consent-state problems. A neutral party could provide the model, with others enriching attributes. A follow-up noted that cross-media reach and frequency planning on such a model, independent of media currency, would ease sell-side work, and agreed it merits a working group.
+- **Summary:** A member proposed an alternative to ID-based audience matching: buyers plan reach and frequency on a large population model, pass virtual IDs to sellers, and sellers map their audiences to those IDs, sidestepping match-rate and consent-state problems. A neutral party would provide the model, with others enriching attributes. A follow-up agreed the topic merits its own working group and noted that buy-side planning already happens independently of media currency.
 - **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1793902771260599, https://agenticads.slack.com/archives/C09BF378H8A/p1793913489046689
 
-### Documentation site redesign proposals
+### Website redesign proposals
 - **Status:** active
-- **Summary:** Several proposals for redesigning the project's public site pages, including the main page and a story page, were posted for member review.
-- **Related:** #8990, #8994, #8999
-- **Thread:** https://agenticads.slack.com/archives/C09PK59GUCB/p1794601322954509, https://agenticads.slack.com/archives/C09PK59GUCB/p1794605518294669, https://agenticads.slack.com/archives/C09PK59GUCB/p1794607683281879
+- **Summary:** Several proposals for redesigning the project's website pages (main page, story page, and a related proposal) were posted for member review. These concern documentation and site presentation rather than protocol schemas.
+- **Related:** #8999, #8994, #8990
+- **Thread:** https://agenticads.slack.com/archives/C09PK59GUCB/p1794607683281879, https://agenticads.slack.com/archives/C09PK59GUCB/p1794605518294669, https://agenticads.slack.com/archives/C09PK59GUCB/p1794601322954509

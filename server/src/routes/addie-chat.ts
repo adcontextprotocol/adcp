@@ -59,6 +59,7 @@ import {
 import { matchRuleIdFromMessage } from "../addie/home/builders/rules/prompt-rules.js";
 import { recordPromptClicked } from "../db/addie-prompt-telemetry-db.js";
 import {
+  getKnowledgeReadiness,
   isKnowledgeReady,
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
@@ -587,8 +588,9 @@ async function initializeChatClient(): Promise<void> {
 
   // Directory tools are registered globally (above) — skip here.
 
-  // Brand tools (research, resolve, save, list brands)
-  const brandHandlers = createBrandToolHandlers();
+  // Brand tools (research, resolve, save, list brands). This set is only
+  // served to signed-in users, so research_brand may create registry records.
+  const brandHandlers = createBrandToolHandlers({ authenticated: true });
   for (const tool of BRAND_TOOLS) {
     const handler = brandHandlers.get(tool.name);
     if (handler) {
@@ -626,6 +628,11 @@ async function initializeChatClient(): Promise<void> {
 /** Readiness probe: knowledge and tool registration must finish before traffic. */
 export function isWebChatReady(): boolean {
   return initialized && claudeClient !== null && isKnowledgeReady();
+}
+
+/** What web chat readiness is waiting on, for /ready diagnostics. */
+export function webChatReadiness(): Record<string, unknown> {
+  return { toolsRegistered: initialized, client: claudeClient !== null, knowledge: getKnowledgeReadiness() };
 }
 
 /** Get the chat client, initializing it first if necessary. */

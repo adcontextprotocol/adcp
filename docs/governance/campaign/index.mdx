@@ -28,7 +28,7 @@ Without a governance layer on the buy side:
 
 Campaign Governance fills this gap with three mechanisms: **plans** that define what's allowed (independent of the agent), **seller-side governance checks** that verify purchases independently of the buyer, and a **policy registry** that standardizes compliance rules across governance agents.
 
-Governance supports incremental adoption — organizations configure their governance agent to start in audit mode (log everything, approve everything), move to advisory (flag violations without blocking), and eventually enforce (block on violations). See the [safety model](/docs/governance/campaign/safety-model) for the adoption path. Mode is internal to the governance agent, not a protocol field.
+Governance supports incremental adoption — organizations configure their governance agent to start in audit mode (log findings without blocking on them), move to advisory (flag violations without blocking), and eventually enforce (block on violations). See the [safety model](/docs/governance/campaign/safety-model) for the adoption path and for the two outcomes that hold in every mode. Mode is internal to the governance agent, not a protocol field.
 
 ### Industry precedent
 
@@ -143,8 +143,8 @@ Governance agents support incremental adoption through their internal mode confi
 
 In practice, organizations configure their governance agent to progress through three stages:
 
-1. **Audit** — Log everything, approve everything. The governance agent evaluates fully but always returns `approved` with findings attached. The organization reviews findings to assess false positive rates and calibrate policies.
-2. **Advisory** — Approve with prominent findings and recommended corrections. The decision is still unambiguously `approved`; humans review findings post-hoc.
+1. **Audit** — Log findings without blocking on them. The governance agent evaluates fully but returns `approved` with findings attached, except in two cases that hold in every mode: plans with `human_review_required: true` escalate, and a failed `approved_sellers` or `delegations` evaluation is `denied`. The organization reviews findings to assess false positive rates and calibrate policies.
+2. **Advisory** — Approve with prominent findings and recommended corrections. The decision is still `approved`; humans review findings post-hoc. The same two exceptions apply.
 3. **Enforce** — Block on violations. The default for production governance.
 
 This works the same way for a single brand buying direct and for a holding company with 35 brands and multiple agency partners.

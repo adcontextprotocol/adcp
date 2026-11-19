@@ -108,6 +108,7 @@ import {
 import { notifyVerificationChange } from "../notifications/compliance.js";
 import { resolveOwnerMembership, tierLabel, type OwnerMembership } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
+import { hasA2AAgentCard } from "../lib/a2a-agent-card.js";
 import { isSupportedBadgeVersion, isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
@@ -259,6 +260,7 @@ import {
   runWithComplianceRefreshAuthorizationWatchdog,
 } from "../services/compliance-refresh-authorization.js";
 import { getSandboxBrand } from "../services/sandbox-brands.js";
+import { decideEnrichmentPersistence } from "../services/enrichment-persistence-guard.js";
 import { publicEditorName } from "./registry-revision-access.js";
 
 const RegistryAdminAuthorizationUnavailableSchema = z.object({
@@ -5971,7 +5973,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : undefined;
       const sourceType = enrichment.raw ? 'enriched' : undefined;
 
-      if (enrichment.raw && enrichment.manifest) {
+      // Anyone may look a domain up, but only an identified caller may add
+      // the answer to the public registry, and never under a reserved name
+      // or a subdomain (#9024). The response is the same either way.
+      const persistence = enrichment.raw && enrichment.manifest
+        ? decideEnrichmentPersistence({
+            requestedDomain: enrichment.domain,
+            brandfetchDomain: enrichment.raw.domain,
+            authenticated: includeContext,
+            existingRecord: existing,
+          })
+        : null;
+      if (persistence && !persistence.persist) {
+        logger.info({ domain, reason: persistence.reason }, 'Enrichment result returned without saving it');
+      }
+
+      if (enrichment.raw && enrichment.manifest && persistence?.persist) {
         brandDb.upsertDiscoveredBrand({
           domain: enrichment.domain,
           brand_name: enrichment.manifest.name,
@@ -12181,19 +12198,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const agentName = agentInfo.name && agentInfo.name !== "discovery-client" ? agentInfo.name : hostname;
 
       const protocols: string[] = [agentInfo.protocol];
-      try {
-        if (agentInfo.protocol === "mcp") {
-          const a2aUrl = new URL("/.well-known/agent.json", url).toString();
-          const a2aResponse = await sdkSafeFetch(a2aUrl, {
-            headers: { Accept: "application/json" },
-            signal: AbortSignal.timeout(3000),
-          });
-          if (a2aResponse.ok) {
-            protocols.push("a2a");
-          }
-        }
-      } catch {
-        // Ignore A2A check failures
+      if (agentInfo.protocol === "mcp" && await hasA2AAgentCard(url)) {
+        protocols.push("a2a");
       }
 
       let stats: { format_count?: number; product_count?: number; publisher_count?: number } = {};

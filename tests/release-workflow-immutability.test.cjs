@@ -298,6 +298,38 @@ assert.strictEqual(
   'The read-only verification job must authenticate its GitHub Release absence check.'
 );
 
+{
+  // The documented supersession dispatch (used for 3.2.0-rc.5 and
+  // 3.3.0-rc.1) must name exactly the inputs this workflow declares.
+  const releasing = fs.readFileSync(path.join(repoRoot, 'RELEASING.md'), 'utf8');
+  const sectionStart = releasing.indexOf('### Superseding an unpublishable committed prerelease');
+  assert.notStrictEqual(sectionStart, -1, 'RELEASING.md must document prerelease supersession.');
+  const section = releasing.slice(sectionStart);
+  const dispatch = section.match(/gh workflow run release\.yml --ref main \\\n((?:\s+-f [a-z_]+=\S+(?: \\)?\n)+)/);
+  assert(dispatch, 'RELEASING.md must give the exact supersession dispatch command.');
+  const documentedInputs = Object.fromEntries(
+    [...dispatch[1].matchAll(/-f ([a-z_]+)=(\S+)/g)].map(([, name, value]) => [name, value])
+  );
+  assert.deepStrictEqual(
+    documentedInputs,
+    { release_commit: '"$MAIN_SHA"', prepare_next: 'true' },
+    'The supersession dispatch must target the exact current main SHA in prepare_next mode.'
+  );
+  for (const name of Object.keys(documentedInputs)) {
+    assert(
+      Object.hasOwn(workflowConfig.on.workflow_dispatch.inputs, name),
+      `RELEASING.md dispatches release.yml with undeclared input ${name}.`
+    );
+  }
+}
+
+assert(
+  artifactDetection.indexOf('node scripts/check-release-supersession.cjs verify') !== -1 &&
+    artifactDetection.indexOf('node scripts/check-release-supersession.cjs verify') <
+      artifactDetection.indexOf('node scripts/check-release-state.cjs current'),
+  'A supersession dispatch must re-verify the reviewed marker before the strict branch fence and Changesets.'
+);
+
 assert.strictEqual(
   verificationJob.outputs.target_commit,
   '${{ steps.release-target.outputs.commit }}',

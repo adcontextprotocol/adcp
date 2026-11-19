@@ -74,7 +74,8 @@ import { setupBrandEnrichmentRoutes } from '../../src/routes/admin/brand-enrichm
 // Hyphen separator: brand-enrichment validates the domain against
 // /^[a-z0-9.-]+\.[a-z]{2,}$/ — underscores are rejected.
 const SUFFIX = `${process.pid}-${Date.now()}`;
-const TEST_DOMAIN = `classifier-route-${SUFFIX}.example.com`;
+// Not a reserved name: enrichBrand refuses to save `*.example.com` (#9024).
+const TEST_DOMAIN = `classifier-route-${SUFFIX}.com`;
 
 function classifyBrandResponse(input: unknown) {
   return {

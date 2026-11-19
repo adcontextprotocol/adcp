@@ -11,8 +11,8 @@
     "enforce"
   ],
   "enumDescriptions": {
-    "audit": "Log all checks, never block. Findings are recorded but the governance agent always returns approved.",
-    "advisory": "Flag issues and return findings, but do not block execution. Human reviews happen post-hoc.",
+    "audit": "Log all checks. Findings are recorded and the governance agent returns approved, except in two cases that hold in every mode: plans with human_review_required: true escalate, and a failed approved_sellers or delegations evaluation is denied.",
+    "advisory": "Flag issues and return findings, but do not block execution. Human reviews happen post-hoc. The same two exceptions apply as in audit mode.",
     "enforce": "Block on denied or escalated. Require resolution before proceeding."
   }
 }

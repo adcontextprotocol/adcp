@@ -216,6 +216,7 @@
         "match_keys": {
           "type": "array",
           "minItems": 1,
+          "description": "Identifiers the onboarder matched on. `full_name` replaces `name`, which is deprecated in 3.3 and removed in 4.0; receivers treat the two as the same key.",
           "items": {
             "$ref": "/schemas/enums/signal-match-key.json"
           }

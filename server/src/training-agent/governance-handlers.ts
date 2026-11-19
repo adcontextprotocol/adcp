@@ -257,6 +257,48 @@ function sessionBuyCommitments(session: SessionState, plan: GovernancePlanState)
 }
 
 /**
+ * The pre-approved action an intent check acts on, for an `execute_only`
+ * delegate (specification.mdx "Delegation"; enums/delegation-authority.json).
+ * A pre-approved action is one whose opaque action binding already holds an
+ * approved intent check in this plan's lifecycle. The intent check names it
+ * either through the media buy that binding governs (`payload.media_buy_id`,
+ * or the `media_buy_id` of an update or cancellation proposal), or, for
+ * `accept_proposal`, through a proposal an approved intent check already
+ * authorized.
+ */
+function findPreApprovedAction(
+  session: SessionState,
+  plan: GovernancePlanState,
+  mediaBuyId: string | undefined,
+  proposalId: string | undefined,
+): { intent: GovernanceCheckState; via: 'media_buy' | 'proposal' } | undefined {
+  const onPlan = (entry: { planId: string; planOwnerAgentUrl?: string }) =>
+    entry.planId === plan.planId && entry.planOwnerAgentUrl === plan.ownerAgentUrl;
+  const checks = [...session.governanceChecks.values()].filter(onPlan);
+  const isApprovedIntent = (check: GovernanceCheckState) =>
+    check.binding === 'proposed' && check.status === 'approved' && check.governanceBindingId !== undefined;
+  if (mediaBuyId) {
+    const buyKey = mediaBuyId.slice(0, 255);
+    const bindingIds = new Set<string>();
+    for (const check of checks) {
+      if (check.mediaBuyId?.slice(0, 255) === buyKey && check.governanceBindingId) bindingIds.add(check.governanceBindingId);
+    }
+    for (const outcome of session.governanceOutcomes.values()) {
+      if (onPlan(outcome) && outcome.mediaBuyId === buyKey && outcome.governanceBindingId) {
+        bindingIds.add(outcome.governanceBindingId);
+      }
+    }
+    const intent = checks.find(check => isApprovedIntent(check) && bindingIds.has(check.governanceBindingId!));
+    if (intent) return { intent, via: 'media_buy' };
+  }
+  if (proposalId) {
+    const intent = checks.find(check => isApprovedIntent(check) && check.authorizedProposalId === proposalId);
+    if (intent) return { intent, via: 'proposal' };
+  }
+  return undefined;
+}
+
+/**
  * Evaluate one action against the plan's budget periods and translate the
  * result into critical findings. The action's flight is resolved even when the
  * plan has no periods, so the ledger keeps the flight of every dated
@@ -512,6 +554,8 @@ interface GovernanceCanonicalProposal {
   proposal_status: string;
   commercial_terms: Record<string, unknown>;
   terms_digest: string;
+  /** The existing buy an update or cancellation proposal changes. */
+  media_buy_id?: unknown;
 }
 
 interface CheckPayload {
@@ -522,13 +566,16 @@ interface CheckPayload {
     budget?: number;
     channels?: string[];
     canceled?: boolean;
+    targeting_overlay?: { geo_regions?: unknown };
   }>;
   new_packages?: Array<{ budget?: number }>;
   budget?: number | { total?: number };
   total_budget?: number | { amount?: number };
-  geo?: { countries?: string[] };
-  targeting?: { countries?: string[] };
+  geo?: { countries?: string[]; regions?: unknown };
+  targeting?: { countries?: string[]; geo_regions?: unknown };
+  targeting_overlay?: { geo_regions?: unknown };
   countries?: string[];
+  regions?: unknown;
   channels?: string[];
   channel?: string;
   start_time?: string;
@@ -630,7 +677,7 @@ interface PlannedDeliveryInput {
   media_buy_id?: string;
   proposal_id?: string;
   proposal_terms_digest?: string;
-  geo?: { countries?: string[] };
+  geo?: { countries?: string[]; regions?: unknown };
   channels?: string[];
   start_time?: string;
   end_time?: string;
@@ -816,7 +863,7 @@ export const GOVERNANCE_TOOLS = [
                   required: ['policy'],
                 },
               },
-              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Governance enforcement mode. Defaults to enforce.' },
+              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Training-agent test control, not an AdCP sync_plans field: sets the governance mode this sandbox applies to the plan. Production governance agents configure mode out of band. Defaults to enforce.' },
               approved_sellers: { type: ['array', 'null'], description: 'Seller allowlist. null = unrestricted, [] = deny all, [...urls] = only listed sellers.' },
               delegations: {
                 type: 'array',
@@ -1276,6 +1323,20 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
         }
       }
     }
+
+    // A re-sync may not reduce budget.total below what is already committed
+    // to the plan. The prior plan stays in force.
+    if (existing
+      && plan.budget.total < existing.budget.total
+      && exceedsBound(existing.committedBudget, plan.budget.total)) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `plan ${plan.plan_id} budget.total ${plan.budget.total} is below the $${existing.committedBudget} already committed to it`,
+          field: `plans[${i}].budget.total`,
+        }],
+      };
+    }
   }
 
   for (const [planIndex, plan] of input.plans.entries()) {
@@ -1432,11 +1493,21 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       : sellerCredentialPlanScopeError(ctx, planId);
     if (credentialError) return credentialError;
   }
+  // A presented governance_context, and its match with plan_id, is verified
+  // before plan access is resolved. A context this agent did not issue, or
+  // one issued for another plan, is a credential failure: PERMISSION_DENIED
+  // whether or not plan_id names a plan (specification.mdx "Governance-agent
+  // obligations"; error-code.json PERMISSION_DENIED). An intent-shaped request
+  // that carries a context is malformed instead, and is rejected below.
+  const intentShapedRequest = req.tool !== undefined && req.payload !== undefined;
+  if (governanceContext && !priorCheck && !intentShapedRequest) {
+    return { errors: [{ code: 'PERMISSION_DENIED', message: 'governance_context was not issued by this governance agent or is no longer known.' }] };
+  }
   if (!planId) {
     return { errors: [{ code: 'PLAN_NOT_FOUND', message: 'No plan could be resolved from plan_id or governance_context.' }] };
   }
   if (req.plan_id && priorCheck && req.plan_id !== priorCheck.planId) {
-    return { errors: [{ code: 'VALIDATION_ERROR', message: 'plan_id does not match the governance_context binding.' }] };
+    return { errors: [{ code: 'PERMISSION_DENIED', message: 'governance_context was issued for a different plan than plan_id.' }] };
   }
   if (req.plan_id && priorConsultationCheck && req.plan_id !== priorConsultationCheck.planId) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'plan_id does not match the consultation_context.' }] };
@@ -1707,7 +1778,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 
   if (binding === 'committed' && !priorCheck) {
     return {
-      errors: [{ code: 'VALIDATION_ERROR', message: 'governance_context is unknown or expired.' }],
+      errors: [{ code: 'PERMISSION_DENIED', message: 'governance_context was not issued by this governance agent or is no longer known.' }],
     };
   }
 
@@ -1724,14 +1795,42 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     };
   }
 
+  // An authenticated caller that fails an authority gate before plan
+  // evaluation gets a denied verdict, not an error: the attempt has a check_id
+  // and, when the plan owner is known, an entry in that plan's audit log. The
+  // record carries no governance_context and no action binding, and the
+  // response reveals nothing about the plan. The denial does not depend on the
+  // plan's mode.
+  const denyBeforeEvaluation = (
+    finding: GovernanceFinding,
+    explanation: string,
+    extra: Partial<Pick<GovernanceCheckState, 'planOwnerAgentUrl' | 'tool'>> = {},
+  ) => {
+    const checkId = `chk_${randomUUID().slice(0, 8)}`;
+    const check: GovernanceCheckState = {
+      checkId,
+      planId,
+      binding,
+      status: 'denied',
+      caller,
+      tool,
+      phase,
+      findings: [finding],
+      explanation,
+      mode: 'enforce',
+      categoriesEvaluated: [finding.categoryId],
+      policiesEvaluated: [],
+      purchaseType,
+      timestamp: new Date().toISOString(),
+      ...extra,
+    };
+    session.governanceChecks.set(checkId, check);
+    return buildCheckResponse(check, governanceServedVersion(ctx));
+  };
+
   if (
     binding === 'committed'
-    && (
-      !priorCheck?.targetAudience
-      || authenticatedCaller === undefined
-      || authenticatedCaller !== priorCheck.targetAudience
-      || claimedCaller !== priorCheck.targetAudience
-    )
+    && (!priorCheck?.targetAudience || authenticatedCaller === undefined)
   ) {
     return {
       errors: [{
@@ -1739,6 +1838,18 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
         message: 'Execution governance caller must authenticate as the service audience bound by the prior approved context.',
       }],
     };
+  }
+
+  if (binding === 'committed' && authenticatedCaller !== priorCheck?.targetAudience) {
+    const explanation = `Caller ${caller} is not the service audience bound by the approved intent.`;
+    return denyBeforeEvaluation(
+      { categoryId: 'seller_compliance', severity: 'critical', explanation },
+      `Denied: ${explanation}`,
+      {
+        ...(priorCheck?.planOwnerAgentUrl ? { planOwnerAgentUrl: priorCheck.planOwnerAgentUrl } : {}),
+        tool: priorCheck?.tool,
+      },
+    );
   }
 
   if (
@@ -1869,27 +1980,17 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     };
   }
 
+  // One response for a plan that does not exist and for a plan the caller
+  // cannot access (error-code.json PLAN_NOT_FOUND, uniform-response rule).
+  // Nothing is stored and no check_id is issued.
   if (!plan) {
-    const checkId = `chk_${randomUUID().slice(0, 8)}`;
-    const check: GovernanceCheckState = {
-      checkId,
-      planId,
-      governanceContext,
-      binding,
-      status: 'denied',
-      caller,
-      tool,
-      phase,
-      findings: [{ categoryId: 'plan_lookup', severity: 'critical', explanation: `Plan not found: ${planId}` }],
-      explanation: `Plan not found: ${planId}. Call sync_plans first.`,
-      mode: 'enforce',
-      categoriesEvaluated: ['plan_lookup'],
-      policiesEvaluated: [],
-      purchaseType,
-      timestamp: new Date().toISOString(),
+    return {
+      errors: [{
+        code: 'PLAN_NOT_FOUND',
+        message: 'No plan with this plan_id exists or is accessible to the caller. Call sync_plans first.',
+        field: 'plan_id',
+      }],
     };
-    session.governanceChecks.set(checkId, check);
-    return buildCheckResponse(check, governanceServedVersion(ctx));
   }
 
   const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
@@ -1897,9 +1998,12 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       delegation.agentUrl === authenticatedCaller
       && (!delegation.expiresAt || new Date(delegation.expiresAt) >= new Date())));
   if (binding === 'proposed' && !ownerOrDelegated) {
-    return {
-      errors: [{ code: 'PERMISSION_DENIED', message: 'The authenticated buyer does not own this plan and has no active delegation.' }],
-    };
+    const explanation = `Buyer-side caller ${caller} is not the plan owner and holds no current delegation on this plan.`;
+    return denyBeforeEvaluation(
+      { categoryId: 'delegation_authority', severity: 'critical', explanation },
+      `Denied: ${explanation}`,
+      { planOwnerAgentUrl: plan.ownerAgentUrl },
+    );
   }
 
   const originalIntentCheck = priorCheck?.binding === 'proposed'
@@ -2123,6 +2227,44 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       }
     }
 
+    // Delegation authority level. An execute_only delegate acts only on a
+    // pre-approved action, which includes accept_proposal for it; an intent
+    // check that would open a new action or increase committed spend is
+    // denied. The finding is a delegations failure, so it is denied in every
+    // governance mode (adcp#8733 A4, C2).
+    if (callerDelegation?.authority === 'execute_only') {
+      const proposalMediaBuyId = req.proposal?.proposal_kind !== 'new_media_buy'
+        ? req.proposal?.media_buy_id
+        : undefined;
+      const targetMediaBuyId = typeof policyPayload.media_buy_id === 'string'
+        ? policyPayload.media_buy_id
+        : typeof proposalMediaBuyId === 'string'
+          ? proposalMediaBuyId
+          : undefined;
+      const preApproved = findPreApprovedAction(session, plan, targetMediaBuyId, req.proposal?.proposal_id);
+      if (!preApproved) {
+        findings.push({
+          categoryId: 'delegation_authority',
+          severity: 'critical',
+          explanation: `Delegated agent ${caller} has execute_only authority and may act only on a pre-approved action; this ${tool} intent would open a new governed action.`,
+        });
+      } else {
+        // Acting on a pre-approved media buy, any positive commitment is new
+        // spend on top of it. Re-authorizing a pre-approved proposal may carry
+        // what that proposal's approved intent already authorized, no more.
+        const preApprovedCommitment = preApproved.via === 'proposal' ? preApproved.intent.authorizedBudget ?? 0 : 0;
+        if (payloadBudget !== undefined && payloadBudget > preApprovedCommitment) {
+          findings.push({
+            categoryId: 'delegation_authority',
+            severity: 'critical',
+            explanation: preApproved.via === 'proposal'
+              ? `Delegated agent ${caller} has execute_only authority and cannot increase committed spend: this ${tool} intent commits $${payloadBudget}, more than the $${preApprovedCommitment} the pre-approved proposal authorized.`
+              : `Delegated agent ${caller} has execute_only authority and cannot increase committed spend: this ${tool} intent adds $${payloadBudget} to pre-approved media buy ${targetMediaBuyId}.`,
+          });
+        }
+      }
+    }
+
     // Budget compliance
     categoriesEvaluated.push('budget_authority');
     if (payloadBudget !== undefined) {
@@ -2207,6 +2349,37 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
           categoryId: 'geo_compliance',
           severity: 'critical',
           explanation: `Unauthorized markets: ${unauthorized.join(', ')}. Plan allows: ${plan.countries.join(', ')}.`,
+        });
+      }
+    }
+
+    // A regions-restricted plan admits only actions that target its regions.
+    // No geography, or country-level geography only, targets the whole country
+    // and is outside the plan, as is a region the plan does not list. At intent
+    // that is a counterproposal naming the region constraint. A modification
+    // that states no regions keeps the buy's existing geography, so only the
+    // regions it states are compared.
+    if (plan.regions?.length) {
+      const planRegions = plan.regions;
+      const planRegionSet = new Set(planRegions);
+      const isModification = typeof policyPayload.media_buy_id === 'string'
+        || (req.proposal !== undefined && req.proposal.proposal_kind !== 'new_media_buy');
+      const regionScopes = req.proposal
+        ? extractProposalRegionScopes(req.proposal)
+        : extractRegionScopes(policyPayload);
+      for (const scope of regionScopes) {
+        const outside = scope.regions.filter(region => !planRegionSet.has(region));
+        const countryWide = scope.regions.length === 0;
+        if (countryWide ? isModification : outside.length === 0) continue;
+        const inPlan = scope.regions.filter(region => planRegionSet.has(region));
+        const reason = countryWide
+          ? `Plan is restricted to regions ${planRegions.join(', ')}; an action without region-level targeting targets the whole country.`
+          : `Regions ${outside.join(', ')} are outside the plan's regions ${planRegions.join(', ')}.`;
+        findings.push({ categoryId: 'geo_compliance', severity: 'warning', explanation: reason });
+        conditions.push({
+          field: scope.field,
+          requiredValue: inPlan.length > 0 ? inPlan : [...planRegions],
+          reason,
         });
       }
     }
@@ -2350,6 +2523,31 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
           categoryId: 'geo_compliance',
           severity: 'critical',
           explanation: `Planned delivery includes unauthorized markets: ${unauthorized.join(', ')}.`,
+        });
+      }
+    }
+
+    // On a regions-restricted plan, a purchase must state region-level
+    // delivery inside the plan's regions: none, or country-level only, delivers
+    // country-wide and is denied. A modification that states no regions keeps
+    // the buy's existing geography, as at intent, and a delivery check reports
+    // on a commitment already authorized, so for both only the regions stated
+    // are compared.
+    if (plan.regions?.length) {
+      const planRegionSet = new Set(plan.regions);
+      const pdRegions = stringList(plannedDelivery.geo?.regions) ?? [];
+      const outside = pdRegions.filter(region => !planRegionSet.has(region));
+      if (pdRegions.length === 0 && phase === 'purchase') {
+        findings.push({
+          categoryId: 'geo_compliance',
+          severity: 'critical',
+          explanation: `Planned delivery states no region-level geography, so it delivers country-wide; the plan is restricted to regions ${plan.regions.join(', ')}.`,
+        });
+      } else if (outside.length > 0) {
+        findings.push({
+          categoryId: 'geo_compliance',
+          severity: 'critical',
+          explanation: `Planned delivery includes regions outside the plan: ${outside.join(', ')}. Plan allows: ${plan.regions.join(', ')}.`,
         });
       }
     }
@@ -2585,9 +2783,15 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 
   // Apply governance mode — but mode CANNOT neuter human_review_required.
   // Annex III / Art 22 obligations override advisory/audit downgrades.
+  // Mode also cannot approve an authority failure (adcp#8733 A4): a failed
+  // approved_sellers or delegations evaluation is denied in every mode.
   const mode = plan.mode;
+  const authorityFailed = criticalFindings.some(finding =>
+    finding.categoryId === 'seller_compliance' || finding.categoryId === 'delegation_authority');
   if (!plan.humanReviewRequired) {
-    if (mode === 'advisory' && (status === 'denied' || status === 'conditions')) {
+    if (authorityFailed) {
+      // Leave the denial in place.
+    } else if (mode === 'advisory' && (status === 'denied' || status === 'conditions')) {
       status = 'approved';
     } else if (mode === 'audit') {
       status = 'approved';
@@ -2598,7 +2802,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     findings.push({
       categoryId: 'human_review_override',
       severity: 'info',
-      explanation: `plan.mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
+      explanation: `governance mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
     });
   }
 
@@ -4236,6 +4440,63 @@ function extractFromPayload(payload: CheckPayload): ExtractedFields {
     channels: extractChannels(payload),
     flight: extractFlight(payload),
   };
+}
+
+/** One place an action states its region-level geography. */
+interface RegionScope {
+  /** Request path a `conditions` entry names, rooted at the check_governance arguments. */
+  field: string;
+  /** ISO 3166-2 codes stated there. Empty means country-level or no geography. */
+  regions: string[];
+}
+
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined;
+}
+
+/**
+ * The region-level geography of an intent payload. Top-level geography covers
+ * the whole action; otherwise each live package is its own scope, because a
+ * package without `targeting_overlay.geo_regions` delivers country-wide.
+ */
+function extractRegionScopes(payload: CheckPayload): RegionScope[] {
+  const topLevel: Array<[string, unknown]> = [
+    ['payload.geo.regions', payload.geo?.regions],
+    ['payload.targeting.geo_regions', payload.targeting?.geo_regions],
+    ['payload.targeting_overlay.geo_regions', payload.targeting_overlay?.geo_regions],
+    ['payload.regions', payload.regions],
+  ];
+  for (const [field, value] of topLevel) {
+    const regions = stringList(value);
+    if (regions) return [{ field, regions }];
+  }
+  const packages = (payload.packages ?? [])
+    .map((pkg, index) => ({ pkg, index }))
+    .filter(({ pkg }) => pkg && !pkg.canceled);
+  if (packages.length > 0) {
+    return packages.map(({ pkg, index }) => ({
+      field: `payload.packages.${index}.targeting_overlay.geo_regions`,
+      regions: stringList(pkg.targeting_overlay?.geo_regions) ?? [],
+    }));
+  }
+  return [{ field: 'payload.geo.regions', regions: [] }];
+}
+
+/** The region-level geography of each purchase in a proposal being accepted. */
+function extractProposalRegionScopes(proposal: GovernanceCanonicalProposal): RegionScope[] {
+  const purchases = Array.isArray(proposal.commercial_terms.purchases) ? proposal.commercial_terms.purchases : [];
+  const scopes = purchases.flatMap((purchase, index) => {
+    if (!purchase || typeof purchase !== 'object' || Array.isArray(purchase)) return [];
+    const targeting = (purchase as Record<string, unknown>).targeting_overlay;
+    const geoRegions = targeting && typeof targeting === 'object' && !Array.isArray(targeting)
+      ? (targeting as Record<string, unknown>).geo_regions
+      : undefined;
+    return [{
+      field: `proposal.commercial_terms.purchases.${index}.targeting_overlay.geo_regions`,
+      regions: stringList(geoRegions) ?? [],
+    }];
+  });
+  return scopes.length > 0 ? scopes : [{ field: 'proposal.commercial_terms.purchases', regions: [] }];
 }
 
 function extractBudget(payload: CheckPayload): { amount: number; fieldPath: string } | undefined {

@@ -49,6 +49,7 @@ import {
 } from '../../db/registry-review-queue-db.js';
 import { notifyRegistryReviewResolved } from '../../notifications/registry.js';
 import { isUuid } from '../../utils/uuid.js';
+import { humanAdminUserId } from './human-admin.js';
 
 const logger = createLogger('admin-registry-review');
 
@@ -68,15 +69,8 @@ const propertyDb = new PropertyDatabase();
  * callers. Reads stay open to it so ops scripts can watch the backlog.
  */
 function resolveModerator(req: Request, res: Response): RegistryReviewModerator | null {
-  const isStaticAdminKey = (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
-  const userId = req.user?.id;
-  if (
-    isStaticAdminKey
-    || (req as Request & { apiKey?: unknown }).apiKey
-    || !userId
-    || userId === 'admin_api_key'
-    || userId.startsWith('api_key_')
-  ) {
+  const userId = humanAdminUserId(req);
+  if (!userId) {
     res.status(403).json({
       error: 'Human admin session required',
       message: 'Registry moderation actions are recorded against a moderator identity, so they cannot be taken with an API key.',

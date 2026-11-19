@@ -189,10 +189,14 @@ function transformPublishedSchemaText(content, version) {
 // artifacts remain available, but non-selectable releases must never win
 // latest/major/minor aliases. 3.2.0 is the permanently withdrawn June 2026
 // accidental cut; 3.2 GA ships as 3.2.1 (.changeset/withdrawn-release.json).
+// 3.2.0-rc.5 and 3.3.0-rc.1 are committed candidates that were superseded
+// without publication (RELEASING.md, "Superseding an unpublishable committed
+// prerelease").
 const RELEASE_STATUS_OVERRIDES = new Map([
   ['3.1.3', 'withdrawn'],
   ['3.2.0-rc.5', 'unpublished'],
   ['3.2.0', 'unpublished'],
+  ['3.3.0-rc.1', 'unpublished'],
 ]);
 
 function isSelectableRelease(version) {

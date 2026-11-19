@@ -241,6 +241,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // controller through reporting-write-destination.json and
 // reporting-delivery-method.json; after the #8501 withdrawals the controller
 // measures 1_330_813 bytes, within the bound.
+// Reserved-word enum replacements (#8791) add a replacement value and its
+// deprecation metadata to enums in the controller closure; merged with the
+// above they stay within 1_388_000.
 // Naming five repeated scalar subschemas (#8525) brings the
 // controller to 1_378_383 bytes, and the further repeated
 // scalar concepts to 1_401_918, repeated enums to 1_412_332, and every remaining
@@ -248,7 +251,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and building the incomplete scope from the product incomplete scope to
 // 1_453_708, all measured before match keys. With match keys on top, the
 // controller measures 1_461_855 bytes; bound it at 1_462_000.
-const PARITY_COMPILE_LIMIT = 1_462_000;
+// Merged with main's withdrawals and the reserved-word enum replacements, the
+// controller measures 1_424_038 bytes; bound it at 1_425_000.
+const PARITY_COMPILE_LIMIT = 1_425_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

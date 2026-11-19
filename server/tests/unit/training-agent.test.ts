@@ -18966,8 +18966,8 @@ describe('sync_plans input validation', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
     });
-    expect(result.status).toBe('denied');
-    expect(result.explanation).toContain('Plan not found');
+    expect(result.code).toBe('PLAN_NOT_FOUND');
+    expect(result.field).toBe('plan_id');
   });
 });
 
@@ -18990,9 +18990,11 @@ describe('check_governance delegation enforcement', () => {
     budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     countries: ['US', 'GB', 'DE'],
+    // These cases open new actions, which an execute_only delegate cannot do;
+    // training-agent-governance-delegation-authority.test.ts covers that level.
     delegations: [{
       agent_url: 'https://delegated.example',
-      authority: 'execute_only',
+      authority: 'full',
       budget_limit: { amount: 25000, currency: 'USD' },
       markets: ['US', 'GB'],
     }],

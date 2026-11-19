@@ -49,7 +49,7 @@ describe('Brandfetch DB caching', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    handlers = createBrandToolHandlers();
+    handlers = createBrandToolHandlers({ authenticated: true });
   });
 
   describe('research_brand', () => {
@@ -206,6 +206,58 @@ describe('Brandfetch DB caching', () => {
 
       expect(result.cached).toBe(false);
       expect(mockFetchBrandData).toHaveBeenCalled();
+    });
+  });
+
+  describe('research_brand registry write rules (#9024)', () => {
+    const settle = () => new Promise(resolve => setTimeout(resolve, 10));
+
+    function brandfetchHit(domain: string, brandDomain = domain) {
+      return {
+        success: true,
+        domain,
+        raw: { id: 'bf_1', name: 'Nova Brands', domain: brandDomain },
+        manifest: { name: 'Nova Brands', url: `https://${brandDomain}` },
+        highQuality: true,
+      };
+    }
+
+    it('does not create a record from an anonymous conversation, and answers the same', async () => {
+      mockGetDiscoveredBrandByDomain.mockResolvedValue(null);
+      mockFetchBrandData.mockResolvedValue(brandfetchHit('novabrands.com'));
+
+      const anonymous = createBrandToolHandlers().get('research_brand')!;
+      const anonymousResult = JSON.parse(await anonymous({ domain: 'novabrands.com' }));
+      await settle();
+      expect(mockUpsertDiscoveredBrand).not.toHaveBeenCalled();
+
+      const signedIn = createBrandToolHandlers({ authenticated: true }).get('research_brand')!;
+      const signedInResult = JSON.parse(await signedIn({ domain: 'novabrands.com' }));
+      await settle();
+      expect(mockUpsertDiscoveredBrand).toHaveBeenCalledTimes(1);
+      expect(anonymousResult).toEqual(signedInResult);
+    });
+
+    it('does not save a subdomain as its own brand', async () => {
+      mockGetDiscoveredBrandByDomain.mockResolvedValue(null);
+      mockFetchBrandData.mockResolvedValue(brandfetchHit('e2e-1787388722440-443399.novabrands.com', 'novabrands.com'));
+
+      const result = JSON.parse(await handlers.get('research_brand')!({ domain: 'e2e-1787388722440-443399.novabrands.com' }));
+      await settle();
+
+      expect(result).toMatchObject({ success: true, brand: { name: 'Nova Brands' } });
+      expect(mockUpsertDiscoveredBrand).not.toHaveBeenCalled();
+    });
+
+    it('does not save a reserved name', async () => {
+      mockGetDiscoveredBrandByDomain.mockResolvedValue(null);
+      mockFetchBrandData.mockResolvedValue(brandfetchHit('novabrands-ai-9384.example.org'));
+
+      const result = JSON.parse(await handlers.get('research_brand')!({ domain: 'novabrands-ai-9384.example.org' }));
+      await settle();
+
+      expect(result.success).toBe(true);
+      expect(mockUpsertDiscoveredBrand).not.toHaveBeenCalled();
     });
   });
 
