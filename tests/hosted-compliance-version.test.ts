@@ -44,15 +44,17 @@ describe('hosted compliance target selection', () => {
     expect(compareSemver(target.version, '3.1.24')).toBeGreaterThanOrEqual(0);
   });
 
-  it('treats stable 3.2 as public badge eligible and 3.2 prereleases as diagnostic only', () => {
+  it('treats stable 3.2 as public badge eligible and prereleases as diagnostic only', () => {
     const stable = hostedComplianceTarget('3.2');
-    const rc = hostedComplianceTarget('3.2-rc');
+    const rc = hostedComplianceTarget('3.1-rc');
 
     expect(badgeEligibleVersionsForHostedComplianceTarget(stable)).toEqual(['3.2']);
     expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.1', '3.2'], stable)).toBe(true);
     expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.1'], stable)).toBe(false);
     expect(badgeEligibleVersionsForHostedComplianceTarget(rc)).toEqual([]);
-    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.2-rc.7'], rc)).toBe(false);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.1-rc.14'], rc)).toBe(false);
+    // The 3.2.0 prereleases are no longer hosted at all.
+    expect(() => hostedComplianceTarget('3.2-rc')).toThrow();
   });
 
   it('selects the 3.1 GA target when an agent advertises both 3.0 and 3.1', () => {
