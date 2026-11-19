@@ -96,20 +96,92 @@ function isEsmContextFile(file) {
   return ESM_CONTEXT_FILE.test(file) && !file.endsWith('.d.ts');
 }
 
+// Work counters, instrumentation only: actual repository file reads, the
+// distinct files asked for, git ls-files listings, and every file handed to
+// ts.createSourceFile. The tree-pass work test asserts on them.
+const work = { reads: 0, requested: new Set(), listings: 0, parsed: new Set() };
+
+// ---------------------------------------------------------------------------
+// Target prefilter
+//
+// Checks 1, 2 and 4 look for module specifiers (and check 4 for createRequire)
+// that a file can hold only if their text appears in it. TypeScript cooks
+// escapes in string literals and identifiers ('\x40adcp/sdk' is '@adcp/sdk'),
+// so the test runs on the source with every escape decoded. No escape contains
+// a quote except an identity escape that ends at one, so decoding never runs
+// across a literal's opening delimiter: each cooked literal and identifier is
+// a substring of the decoded text, and a raw occurrence of a target survives
+// decoding. A file the prefilter rejects cannot have a violation of that
+// check, so the check returns [] without parsing it.
+// ---------------------------------------------------------------------------
+
+// \xHH, \uHHHH, \u{H+}, legacy octal (\0-\3 plus up to two octal digits, \4-\7
+// plus one), line continuations (LF, CR, CRLF, U+2028, U+2029) removed, and any
+// other escaped character as itself. A malformed \x or \u decodes to x or u,
+// which keeps every character after it: still a superset for targets with no
+// backslash.
+const ESCAPE = /\\(?:x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|([0-3][0-7]{0,2}|[4-7][0-7]?)|(\r\n|[\n\r\u2028\u2029])|([\s\S]))/g;
+
+function decodeEscapes(source) {
+  return source.replace(ESCAPE, (raw, hex, braced, u4, octal, continuation, other) => {
+    if (hex !== undefined) return String.fromCharCode(parseInt(hex, 16));
+    if (braced !== undefined) return parseInt(braced, 16) <= 0x10ffff ? String.fromCodePoint(parseInt(braced, 16)) : raw;
+    if (u4 !== undefined) return String.fromCharCode(parseInt(u4, 16));
+    if (octal !== undefined) return String.fromCharCode(parseInt(octal, 8));
+    if (continuation !== undefined) return '';
+    return other;
+  });
+}
+
+// One decoded text per file and source text.
+const decodedCache = new Map();
+function decodedText(file, source) {
+  if (!source.includes('\\')) return source;
+  const hit = decodedCache.get(file);
+  if (hit && hit.source === source) return hit.text;
+  const text = decodeEscapes(source);
+  decodedCache.set(file, { source, text });
+  return text;
+}
+
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+// Check 1: an import or re-export whose StringLiteral specifier is exactly
+// '@adcp/sdk'; the closing quote is never escaped.
+const BARREL_SPECIFIER = /@adcp\/sdk['"]/;
+// Check 2: a specifier equal to a deferred package or under it.
+const DEFERRED_SPECIFIER = new RegExp(`(?:${DEFERRED_PACKAGES.map(escapeRegExp).join('|')})['"/]`);
+
+function mayHoldBarrelImport(file, source) {
+  return BARREL_SPECIFIER.test(decodedText(file, source));
+}
+
+function mayHoldDeferredImport(file, source) {
+  return DEFERRED_SPECIFIER.test(decodedText(file, source));
+}
+
+// Check 4: a call needs a createRequire-made function and an '@adcp/sdk...'
+// literal argument.
+function mayReachCommonJsSdk(file, source) {
+  const text = decodedText(file, source);
+  return text.includes('createRequire') && text.includes('@adcp/sdk');
+}
+
 // One parse per file and source text. The tree checks read the same files;
 // a file's import list and its check 4 result come from one syntax tree, and
-// only those results are kept, not the tree.
+// only those results are kept, not the tree. No check reads node.parent, so
+// the parser does not set it.
 const factsCache = new Map();
 let parseCount = 0;
 function fileFacts(file, source) {
   const hit = factsCache.get(file);
   if (hit && hit.source === source) return hit;
   parseCount += 1;
-  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
+  work.parsed.add(file);
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, false, scriptKind(file));
   const facts = {
     source,
     imports: importsOf(sf),
-    commonJsSdkReach: isEsmContextFile(file) ? commonJsSdkReachOf(file, sf) : [],
+    commonJsSdkReach: isEsmContextFile(file) && mayReachCommonJsSdk(file, source) ? commonJsSdkReachOf(file, sf) : [],
   };
   factsCache.set(file, facts);
   return facts;
@@ -178,6 +250,7 @@ function importsOf(sf) {
 
 /** Check 1. `sdk` = { barrel, subpaths: { [subpath]: module } }. */
 function checkBarrelImports(file, source, sdk) {
+  if (!mayHoldBarrelImport(file, source)) return [];
   const violations = [];
   for (const imp of staticValueImports(file, source)) {
     if (imp.spec !== '@adcp/sdk' || !imp.names || imp.names.length === 0) continue;
@@ -210,7 +283,7 @@ function applyAllowlist(violationsByFile, allowlist) {
 
 /** Check 2. */
 function checkDeferredPackageImports(file, source) {
-  if (!file.startsWith('server/src/')) return [];
+  if (!file.startsWith('server/src/') || !mayHoldDeferredImport(file, source)) return [];
   return staticValueImports(file, source)
     .filter((imp) => DEFERRED_PACKAGES.some((pkg) => imp.spec === pkg || imp.spec.startsWith(`${pkg}/`)))
     .map((imp) => `${file}:${imp.line}: static value import of ${imp.spec}`);
@@ -263,7 +336,7 @@ function isSdkSpecifier(spec) {
 
 /** Check 4. */
 function checkCommonJsSdkReach(file, source) {
-  if (!isEsmContextFile(file)) return [];
+  if (!isEsmContextFile(file) || !mayReachCommonJsSdk(file, source)) return [];
   return fileFacts(file, source).commonJsSdkReach;
 }
 
@@ -346,19 +419,35 @@ function commonJsSdkReachOf(file, sf) {
 // Repository access
 // ---------------------------------------------------------------------------
 
+// One listing per scope per process; callers get their own copy.
+const listings = new Map();
 function trackedCodeFiles(scope = SCOPE) {
-  // Directory pathspecs, not 'dir/**/*.ts' globs, so top-level files count.
-  // lint-allow-caller-git: lists the enclosing checkout's own files
-  const out = execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', ...scope], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return out.split('\0').filter((f) => f && CODE_FILE.test(f) && !f.endsWith('.d.ts'));
+  const key = scope.join('\0');
+  if (!listings.has(key)) {
+    work.listings += 1;
+    // Directory pathspecs, not 'dir/**/*.ts' globs, so top-level files count.
+    // lint-allow-caller-git: lists the enclosing checkout's own files
+    const out = execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', ...scope], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    listings.set(key, out.split('\0').filter((f) => f && CODE_FILE.test(f) && !f.endsWith('.d.ts')));
+  }
+  return [...listings.get(key)];
 }
 
+// One read per file per process: the tree checks, the allowlist checks and
+// the setup walk all ask for the same files.
+const sourceCache = new Map();
 function readRepoFile(file) {
+  work.requested.add(file);
+  if (sourceCache.has(file)) return sourceCache.get(file);
+  work.reads += 1;
+  let source;
   try {
-    return fs.readFileSync(path.join(ROOT, file), 'utf8');
+    source = fs.readFileSync(path.join(ROOT, file), 'utf8');
   } catch {
-    return undefined;
+    source = undefined;
   }
+  sourceCache.set(file, source);
+  return source;
 }
 
 /** setupFiles of server/vitest.config.ts, repo-relative. */
@@ -384,25 +473,151 @@ function report(title, violations) {
 }
 
 // ---------------------------------------------------------------------------
+// Tree pipelines: each tree check over a file list and a reader, so the tree
+// tests, the work-count test and the negative control run the same code.
+// ---------------------------------------------------------------------------
+
+function barrelTreeViolations(files, read, sdk) {
+  const byFile = files.map((f) => [f, checkBarrelImports(f, read(f), sdk)]);
+  return applyAllowlist(byFile, BARREL_ALLOWLIST).violations;
+}
+
+function staleBarrelAllowlist(read, sdk) {
+  const byFile = [...BARREL_ALLOWLIST].map((f) => [f, checkBarrelImports(f, read(f) ?? '', sdk)]);
+  return applyAllowlist(byFile, BARREL_ALLOWLIST).stale;
+}
+
+function deferredTreeViolations(files, read) {
+  return files.flatMap((f) => checkDeferredPackageImports(f, read(f)));
+}
+
+function cjsReachTreeViolations(files, read) {
+  const byFile = files.map((f) => [f, checkCommonJsSdkReach(f, read(f))]);
+  return applyAllowlist(byFile, CJS_SDK_ALLOWLIST).violations;
+}
+
+function staleCjsAllowlist(read) {
+  const byFile = [...CJS_SDK_ALLOWLIST].map((f) => [f, checkCommonJsSdkReach(f, read(f) ?? '')]);
+  return applyAllowlist(byFile, CJS_SDK_ALLOWLIST).stale;
+}
+
+// Reference escape decoder for the work-count oracle, independent of the
+// prefilter it audits: \xHH, \uHHHH, \u{H+}, legacy octal (\0-\3 plus up to two
+// octal digits, \4-\7 plus one), line continuations (LF, CR, CRLF, U+2028,
+// U+2029) removed, a malformed \x or \u kept raw, any other char as identity.
+function referenceDecode(source) {
+  return source.replace(
+    /\\(?:x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|([0-3][0-7]{0,2}|[4-7][0-7]?)|(\r\n|[\n\r\u2028\u2029])|([xu])|([\s\S]))/g,
+    (raw, hex, braced, u4, octal, continuation, malformed, other) => {
+      if (hex) return String.fromCharCode(parseInt(hex, 16));
+      if (braced) return parseInt(braced, 16) <= 0x10ffff ? String.fromCodePoint(parseInt(braced, 16)) : raw;
+      if (u4) return String.fromCharCode(parseInt(u4, 16));
+      if (octal) return String.fromCharCode(parseInt(octal, 8));
+      if (continuation) return '';
+      if (malformed) return raw;
+      return other;
+    },
+  );
+}
+
+const DEFERRED_TARGET = new RegExp(`(?:${DEFERRED_PACKAGES.map((p) => p.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|')})['"/]`);
+
+/** Whether `text` can hold a target of check 1, 2 or 4 for `file` (the design's prefilter conditions). */
+function textMayHoldTarget(file, text) {
+  return /@adcp\/sdk['"]/.test(text)
+    || (file.startsWith('server/src/') && DEFERRED_TARGET.test(text))
+    || (isEsmContextFile(file) && text.includes('createRequire') && text.includes('@adcp/sdk'));
+}
+
+/** Oracle read straight from disk so it does not move the work counters. */
+function fileMayHoldTarget(file) {
+  let raw;
+  try {
+    raw = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  } catch {
+    return false;
+  }
+  return textMayHoldTarget(file, raw) || textMayHoldTarget(file, referenceDecode(raw));
+}
+
+/** Files that seed one violation per check, each spelled with an escape so only a decoding prefilter keeps them. */
+function seededViolationOverlay() {
+  return {
+    'server/src/zz-seeded-barrel.ts': "import { canonicalize } from '\\x40adcp/sdk';\nexport const c = canonicalize;\n",
+    'server/src/zz-seeded-deferred.ts': "import { parseHTML } from 'linked\\u006fm';\nexport const p = parseHTML;\n",
+    'scripts/zz-seeded-cjs.ts': "import { createRequire } from 'node:module';\nconst sdk = createRequire(import.meta.url)('\\u{40}adcp/sdk');\nexport default sdk;\n",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Tree checks
 // ---------------------------------------------------------------------------
 
+test('tree pass work: each file read once, each scope listed once, only files that can hold a target parsed', async () => {
+  const sdk = await loadSdk();
+  const before = { reads: work.reads, listings: work.listings, parsed: work.parsed.size };
+  // The tree tests' pipelines, called as the tree tests call them.
+  const files = trackedCodeFiles();
+  barrelTreeViolations(files, readRepoFile, sdk);
+  staleBarrelAllowlist(readRepoFile, sdk);
+  deferredTreeViolations(trackedCodeFiles(), readRepoFile);
+  const setupChain = new Set();
+  checkSetupSupertest(serverSetupFiles(), (f) => {
+    const source = readRepoFile(f);
+    if (source !== undefined) setupChain.add(f);
+    return source;
+  });
+  const esmFiles = trackedCodeFiles(ESM_CONTEXT_SCOPE);
+  cjsReachTreeViolations(esmFiles, readRepoFile);
+  staleCjsAllowlist(readRepoFile);
+
+  const treeFiles = new Set([...files, ...esmFiles]);
+  const pass = { reads: work.reads - before.reads, listings: work.listings - before.listings, parsed: work.parsed.size - before.parsed };
+  const repoFiles = new Set([...treeFiles, ...BARREL_ALLOWLIST, ...CJS_SDK_ALLOWLIST, ...setupChain]);
+  const parsedRepoFiles = [...work.parsed].filter((f) => repoFiles.has(f));
+  const needless = parsedRepoFiles.filter((f) => !setupChain.has(f) && !fileMayHoldTarget(f)).sort();
+  const summary = `this pass: ${pass.reads} reads over ${treeFiles.size} tracked files `
+    + `(${files.length} in SCOPE, ${esmFiles.length} in ESM_CONTEXT_SCOPE), ${pass.listings} git ls-files listings, ${pass.parsed} newly parsed; `
+    + `process totals: ${work.reads} reads of ${work.requested.size} distinct files, ${work.listings} listings, `
+    + `${parsedRepoFiles.length} repository files parsed, ${needless.length} of them unable to hold a target and outside the setup chain`
+    + `${needless.length ? ` (e.g. ${needless.slice(0, 5).join(', ')})` : ''}`;
+  assert.deepEqual(
+    { reads: work.reads, listings: work.listings, needlessParses: needless.length },
+    { reads: work.requested.size, listings: 2, needlessParses: 0 },
+    summary,
+  );
+});
+
+test('negative control: the tree pipelines over the tracked tree plus seeded files report exactly the seeded violations', async () => {
+  const sdk = await loadSdk();
+  const overlay = seededViolationOverlay();
+  const read = (f) => (Object.hasOwn(overlay, f) ? overlay[f] : readRepoFile(f));
+  const seededIn = (scope) => Object.keys(overlay).filter((f) => scope.some((dir) => f.startsWith(`${dir}/`)));
+  assert.deepEqual(barrelTreeViolations([...trackedCodeFiles(), ...seededIn(SCOPE)], read, sdk), [
+    'server/src/zz-seeded-barrel.ts:1: @adcp/sdk barrel import of canonicalize -> @adcp/sdk/utils',
+  ]);
+  assert.deepEqual(deferredTreeViolations([...trackedCodeFiles(), ...seededIn(SCOPE)], read), [
+    'server/src/zz-seeded-deferred.ts:1: static value import of linkedom',
+  ]);
+  assert.deepEqual(cjsReachTreeViolations([...trackedCodeFiles(ESM_CONTEXT_SCOPE), ...seededIn(ESM_CONTEXT_SCOPE)], read), [
+    "scripts/zz-seeded-cjs.ts:2: createRequire(import.meta.url)('@adcp/sdk') loads the CommonJS @adcp/sdk build",
+  ]);
+});
+
 test('tree: no @adcp/sdk barrel value import whose names all have a narrower subpath', async () => {
   const sdk = await loadSdk();
-  const byFile = trackedCodeFiles().map((f) => [f, checkBarrelImports(f, readRepoFile(f), sdk)]);
-  const { violations } = applyAllowlist(byFile, BARREL_ALLOWLIST);
+  const violations = barrelTreeViolations(trackedCodeFiles(), readRepoFile, sdk);
   assert.deepEqual(violations, [], report('Import these names from the narrower @adcp/sdk subpath', violations));
 });
 
 test('tree: the barrel allowlist is shrink-only (every entry still needs its exemption)', async () => {
   const sdk = await loadSdk();
-  const byFile = [...BARREL_ALLOWLIST].map((f) => [f, checkBarrelImports(f, readRepoFile(f) ?? '', sdk)]);
-  const { stale } = applyAllowlist(byFile, BARREL_ALLOWLIST);
+  const stale = staleBarrelAllowlist(readRepoFile, sdk);
   assert.deepEqual(stale, [], `Remove these entries from BARREL_ALLOWLIST: ${stale.join(', ')}`);
 });
 
 test('tree: server/src has no static value import of the deferred heavy packages', () => {
-  const violations = trackedCodeFiles().flatMap((f) => checkDeferredPackageImports(f, readRepoFile(f)));
+  const violations = deferredTreeViolations(trackedCodeFiles(), readRepoFile);
   assert.deepEqual(violations, [], report('Load these through server/src/utils/deferred-modules.ts or await import()', violations));
 });
 
@@ -414,8 +629,7 @@ test('tree: the server unit setup file does not statically load supertest', () =
 });
 
 test('tree: ESM-context files reach @adcp/sdk only through its ESM entry points', () => {
-  const byFile = trackedCodeFiles(ESM_CONTEXT_SCOPE).map((f) => [f, checkCommonJsSdkReach(f, readRepoFile(f))]);
-  const { violations } = applyAllowlist(byFile, CJS_SDK_ALLOWLIST);
+  const violations = cjsReachTreeViolations(trackedCodeFiles(ESM_CONTEXT_SCOPE), readRepoFile);
   assert.deepEqual(violations, [], report(
     "Import @adcp/sdk (static import, import(), or import.meta.resolve); createRequire picks the CommonJS build",
     violations,
@@ -423,8 +637,7 @@ test('tree: ESM-context files reach @adcp/sdk only through its ESM entry points'
 });
 
 test('tree: the CommonJS SDK allowlist is shrink-only (every entry still needs its exemption)', () => {
-  const byFile = [...CJS_SDK_ALLOWLIST].map((f) => [f, checkCommonJsSdkReach(f, readRepoFile(f) ?? '')]);
-  const { stale } = applyAllowlist(byFile, CJS_SDK_ALLOWLIST);
+  const stale = staleCjsAllowlist(readRepoFile);
   assert.deepEqual(stale, [], `Remove these entries from CJS_SDK_ALLOWLIST: ${stale.join(', ')}`);
 });
 
@@ -688,4 +901,63 @@ test('check 4 allowlist suppresses listed files and reports entries that no long
   ], allowlist);
   assert.deepEqual(result.violations, ["tests/c.node.mjs:2: createRequire(import.meta.url)('@adcp/sdk') loads the CommonJS @adcp/sdk build"]);
   assert.deepEqual(result.stale, ['tests/b.node.mjs']);
+});
+
+// ---------------------------------------------------------------------------
+// Meta-tests: escaped specifiers (what a target prefilter must still let
+// through: TypeScript cooks every escape form into the literal's text)
+// ---------------------------------------------------------------------------
+
+// Each form spells the specifier's '@' with an escape, or splits the literal
+// with a line continuation right after it.
+const ESCAPE_FORMS = [
+  ['hex \\x40', '\\x40'],
+  ['unicode \\u0040', '\\u0040'],
+  ['code point with leading zeros \\u{000040}', '\\u{000040}'],
+  ['legacy octal \\100', '\\100'],
+  ['identity \\@', '\\@'],
+  ['continuation LF', '@\\\n'],
+  ['continuation CR', '@\\\r'],
+  ['continuation CRLF', '@\\\r\n'],
+  ['continuation U+2028', '@\\\u2028'],
+  ['continuation U+2029', '@\\\u2029'],
+];
+
+function escapeAt(spec, spelling) {
+  return spec.replace('@', () => spelling);
+}
+
+test('checks 1, 2 and 4 flag specifiers spelled with every escape form', async () => {
+  const sdk = await loadSdk();
+  const actual = {};
+  const expected = {};
+  ESCAPE_FORMS.forEach(([form, spelling], i) => {
+    const file = `server/src/escape-form-fixture-${i}.ts`;
+    actual[form] = {
+      barrel: checkBarrelImports(file, `import { canonicalize } from '${escapeAt('@adcp/sdk', spelling)}';\n`, sdk),
+      deferred: checkDeferredPackageImports(file, `import { KeyManagementServiceClient } from '${escapeAt('@google-cloud/kms', spelling)}';\n`),
+      cjs: checkCommonJsSdkReach(file, `import { createRequire } from 'node:module';\nconst sdk = createRequire(import.meta.url)('${escapeAt('@adcp/sdk', spelling)}');\n`),
+    };
+    expected[form] = {
+      barrel: [`${file}:1: @adcp/sdk barrel import of canonicalize -> @adcp/sdk/utils`],
+      deferred: [`${file}:1: static value import of @google-cloud/kms`],
+      cjs: [`${file}:2: createRequire(import.meta.url)('@adcp/sdk') loads the CommonJS @adcp/sdk build`],
+    };
+  });
+  assert.deepEqual(actual, expected);
+});
+
+test('check 4 flags a createRequire spelled with a unicode escape in the identifier', () => {
+  const file = 'server/src/escape-identifier-fixture.ts';
+  const source = [
+    "import { \\u0063reateRequire } from 'node:module';",
+    "import * as nodeModule from 'node:module';",
+    "const sdk = \\u0063reateRequire(import.meta.url)('\\x40adcp/sdk');",
+    "const testing = nodeModule.\\u{63}reateRequire(import.meta.url)('@adcp/sdk/testing');",
+  ].join('\n');
+  assert.ok(!source.includes('createRequire'), 'fixture must not spell createRequire plainly');
+  assert.deepEqual(checkCommonJsSdkReach(file, source), [
+    `${file}:3: \\u0063reateRequire(import.meta.url)('@adcp/sdk') loads the CommonJS @adcp/sdk build`,
+    `${file}:4: nodeModule.\\u{63}reateRequire(import.meta.url)('@adcp/sdk/testing') loads the CommonJS @adcp/sdk build`,
+  ]);
 });

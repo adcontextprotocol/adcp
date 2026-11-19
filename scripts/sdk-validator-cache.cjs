@@ -30,4 +30,4 @@ function validatorCacheEnv(env, repoRoot) {
   return { ADCP_VALIDATOR_CACHE_DIR: path.join(repoRoot, CACHE_DIR) };
 }
 
-module.exports = { validatorCacheEnv };
+module.exports = { isCi, validatorCacheEnv };

@@ -38,13 +38,25 @@
  * Fix a violation by moving the binding to a module with no imports from the
  * cycle (a leaf) and importing it from there. A re-export left in the old
  * module does not help: the importer must import from the leaf directly.
+ *
+ * Cost: a module's analysis (a TypeScript pass for type elision, then its
+ * imports, exports and evaluation-time uses) is most of the run. lint() keeps
+ * each module's record in a cache file across processes (openCache) and
+ * reuses a record only when every input it was computed from is unchanged:
+ * the module's source text, the resolution of every relative specifier it
+ * resolved, this script's source and the TypeScript build. The cache lives in
+ * ADCP_LINT_CACHE_DIR (default <repo>/node_modules/.cache/adcp-lint); '' turns
+ * it off, and CI runs uncached, as the SDK validator cache does.
  */
 
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
+
+const { isCi } = require('./sdk-validator-cache.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SRC_ROOT = 'server/src';
@@ -65,22 +77,41 @@ function hasModifier(node, kind) {
   return Boolean(ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((m) => m.kind === kind));
 }
 
+function sha256(text) {
+  return crypto.createHash('sha256').update(text).digest('hex');
+}
+
 /**
  * Builds the analyser over a source reader. `read(file)` returns the source of
- * a posix path, or undefined when no such module exists.
+ * a posix path, or undefined when no such module exists. `cache` is an
+ * optional record store (openCache) shared across processes: a module whose
+ * stored record still matches its source text and the resolution of every
+ * specifier it resolved is not analysed again. `stats` counts the modules
+ * analysed and the records reused.
  */
-function createAnalyzer(read) {
+function createAnalyzer(read, { cache } = {}) {
   const modules = new Map();
+  const stats = { analysed: 0, reused: 0 };
+  // Every resolve() made from `resolving` while it is analysed: spec -> target | null.
+  let resolving = null;
+  let resolutions = null;
 
   function resolve(fromFile, spec) {
     if (!spec.startsWith('.')) return null;
+    const recording = fromFile === resolving ? resolutions : null;
+    if (recording?.has(spec)) return recording.get(spec);
     const base = path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), spec));
     const stem = base.replace(/\.(?:[cm]?js|jsx)$/, '');
+    let target = null;
     for (const suffix of RESOLVE_SUFFIXES) {
       const candidate = `${suffix === '' ? base : stem}${suffix}`;
-      if (MODULE_FILE.test(candidate) && read(candidate) !== undefined) return candidate;
+      if (MODULE_FILE.test(candidate) && read(candidate) !== undefined) {
+        target = candidate;
+        break;
+      }
     }
-    return null;
+    recording?.set(spec, target);
+    return target;
   }
 
   /**
@@ -88,6 +119,12 @@ function createAnalyzer(read) {
    * source file, and the module specifiers that survive type elision, in source
    * order. The specifiers are read from the transformed tree, which is then
    * replaced by an empty file so the printer has nothing to emit.
+   *
+   * transpileModule sets noCheck, so TypeScript marks which import bindings are
+   * referenced on the original source file before any transformer runs; import
+   * elision reads only those marks. The before-transformer therefore hands the
+   * transformers just the import and export declarations: elision is the same,
+   * and the rest of the module is not transformed only to be thrown away.
    */
   function parseModule(file, source) {
     let sf;
@@ -96,7 +133,10 @@ function createAnalyzer(read) {
       fileName: file,
       compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, isolatedModules: true, jsx: ts.JsxEmit.Preserve },
       transformers: {
-        before: [() => (original) => { sf = original; return original; }],
+        before: [() => (original) => {
+          sf = original;
+          return ts.factory.updateSourceFile(original, original.statements.filter((st) => ts.isImportDeclaration(st) || ts.isExportDeclaration(st)));
+        }],
         after: [() => (transformed) => {
           for (const st of transformed.statements) {
             if (ts.isImportDeclaration(st) && ts.isStringLiteral(st.moduleSpecifier)) specifiers.push(st.moduleSpecifier.text);
@@ -119,9 +159,57 @@ function createAnalyzer(read) {
     return deps;
   }
 
+  /**
+   * A module's record: { file, imports, locals, exports, stars, deps, uses }.
+   * From the cache when the stored record's source hash matches and every
+   * specifier it resolved still resolves to the same target; otherwise
+   * analysed, and stored with those inputs.
+   */
   function analyzeModule(file) {
     if (modules.has(file)) return modules.get(file);
-    const { sf, specifiers } = parseModule(file, read(file));
+    const source = read(file);
+    const sourceHash = cache && source !== undefined ? sha256(source) : null;
+    const stored = sourceHash && cache.get(file);
+    if (stored && stored.sourceHash === sourceHash && stored.resolutions.every(([spec, target]) => resolve(file, spec) === target)) {
+      stats.reused += 1;
+      const mod = {
+        file,
+        imports: new Map(stored.imports),
+        locals: new Map(stored.locals),
+        exports: new Map(stored.exports),
+        stars: stored.stars,
+        deps: stored.deps,
+        uses: stored.uses,
+      };
+      modules.set(file, mod);
+      return mod;
+    }
+    stats.analysed += 1;
+    resolving = file;
+    resolutions = new Map();
+    try {
+      const mod = analyzeSource(file, source);
+      if (sourceHash) {
+        cache.set(file, {
+          sourceHash,
+          resolutions: [...resolutions],
+          imports: [...mod.imports],
+          locals: [...mod.locals],
+          exports: [...mod.exports],
+          stars: mod.stars,
+          deps: mod.deps,
+          uses: mod.uses,
+        });
+      }
+      return mod;
+    } finally {
+      resolving = null;
+      resolutions = null;
+    }
+  }
+
+  function analyzeSource(file, source) {
+    const { sf, specifiers } = parseModule(file, source);
     const lineOf = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
     const imports = new Map(); // local -> { file, imported, line }
     const locals = new Map(); // local -> 'function' | 'value'
@@ -194,9 +282,10 @@ function createAnalyzer(read) {
       }
     }
 
-    const mod = { file, sf, lineOf, imports, locals, exports, stars, localFunctions, deps: runtimeDeps(file, specifiers), uses: null };
+    // The tree is needed only to find the uses; the record keeps none of it.
+    const uses = evaluationUses({ sf, lineOf, imports, localFunctions });
+    const mod = { file, imports, locals, exports, stars, deps: runtimeDeps(file, specifiers), uses };
     modules.set(file, mod);
-    mod.uses = evaluationUses(mod);
     return mod;
   }
 
@@ -381,7 +470,76 @@ function createAnalyzer(read) {
     return found;
   }
 
-  return { analyzeModule, evaluate, resolveBinding };
+  return { analyzeModule, evaluate, resolveBinding, stats };
+}
+
+/**
+ * A record store backed by one JSON file: { version, records: { file: record } }.
+ * Records saved under another `version` are ignored. save() writes the loaded
+ * records (minus those `keep(file)` rejects) and the new ones together, through
+ * a temp file renamed into place, so concurrent writers never leave a torn
+ * file. A failed write leaves the lint result unchanged and only warns.
+ */
+function openCache({ file, version }) {
+  let loaded = {};
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (data && data.version === version && data.records && typeof data.records === 'object') loaded = data.records;
+  } catch {
+    // No cache yet, or an unreadable one: start empty.
+  }
+  const added = new Map();
+  return {
+    get(f) {
+      return added.get(f) ?? (Object.hasOwn(loaded, f) ? loaded[f] : undefined);
+    },
+    set(f, record) {
+      added.set(f, record);
+    },
+    save({ keep = () => true } = {}) {
+      if (added.size === 0) return;
+      const records = {};
+      for (const [f, record] of Object.entries(loaded)) if (!added.has(f) && keep(f)) records[f] = record;
+      for (const [f, record] of added) records[f] = record;
+      const tmp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(tmp, JSON.stringify({ version, records }));
+        fs.renameSync(tmp, file);
+        loaded = records;
+        added.clear();
+      } catch (err) {
+        fs.rmSync(tmp, { force: true });
+        process.emitWarning(`lint-module-eval-cycles: cache not saved to ${file}: ${err.message}`);
+      }
+    },
+  };
+}
+
+// Records depend on this script's code and on the TypeScript build that did
+// the elision pass: every file whose module exports this `ts` object (the
+// typescript package may be a shim that re-exports another one).
+const CACHE_FORMAT = 1;
+function cacheVersion() {
+  const tsFiles = Object.values(require.cache)
+    .filter((m) => m && m.exports === ts)
+    .map((m) => fs.realpathSync(m.filename))
+    .sort();
+  return sha256(JSON.stringify([CACHE_FORMAT, ts.version, tsFiles, fs.readFileSync(__filename, 'utf8')]));
+}
+
+/** The repository reader's store, or null when ADCP_LINT_CACHE_DIR is '' or CI runs. */
+let defaultCache;
+function repoCache() {
+  if (defaultCache !== undefined) return defaultCache;
+  const dir = process.env.ADCP_LINT_CACHE_DIR;
+  if (dir === '' || (dir === undefined && isCi(process.env))) {
+    defaultCache = null;
+  } else {
+    const root = dir ?? path.join(ROOT, 'node_modules', '.cache', 'adcp-lint');
+    defaultCache = openCache({ file: path.join(root, 'module-eval-cycles.json'), version: cacheVersion() });
+  }
+  return defaultCache;
 }
 
 function holeKey(h) {
@@ -395,14 +553,15 @@ function holeKey(h) {
  */
 // One analyser per reader: a module is parsed and analysed once per process,
 // however many scans (entry sets) read it through the same reader.
+// The first scan through a reader picks the analyser's record store.
 const analyzers = new WeakMap();
-function analyzerFor(read) {
-  if (!analyzers.has(read)) analyzers.set(read, createAnalyzer(read));
+function analyzerFor(read, cache) {
+  if (!analyzers.has(read)) analyzers.set(read, createAnalyzer(read, { cache }));
   return analyzers.get(read);
 }
 
-function scan({ entries, read }) {
-  const analyzer = analyzerFor(read);
+function scan({ entries, read, cache }) {
+  const analyzer = analyzerFor(read, cache);
   const byKey = new Map();
   for (const entry of entries) {
     for (const hole of analyzer.evaluate(entry)) {
@@ -444,8 +603,16 @@ function readRepoFile(file) {
   return source;
 }
 
-function lint({ entries = scopeFiles(), read = readRepoFile } = {}) {
-  return scan({ entries, read });
+/**
+ * Violations over `entries` (default: every module in scope). With the
+ * repository reader and no `cache` given, records come from and go back to
+ * the repository store (repoCache); a caller that passes `cache` saves it.
+ */
+function lint({ entries = scopeFiles(), read = readRepoFile, cache } = {}) {
+  const store = cache === undefined && read === readRepoFile ? repoCache() : cache;
+  const violations = scan({ entries, read, cache: store ?? undefined });
+  if (store && cache === undefined) store.save({ keep: (f) => readRepoFile(f) !== undefined });
+  return violations;
 }
 
 function formatViolation(h) {
@@ -466,4 +633,4 @@ if (require.main === module) {
   process.exit(1);
 }
 
-module.exports = { createAnalyzer, formatViolation, holeKey, lint, scan, scopeFiles };
+module.exports = { createAnalyzer, formatViolation, holeKey, lint, openCache, scan, scopeFiles };

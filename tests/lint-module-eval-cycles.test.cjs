@@ -10,14 +10,25 @@
  *      evaluation-time positions, and the negative cases (a function
  *      reference only, a read inside a function body, an entry order that
  *      finishes the definer first, a cycle that exists only in types).
+ *   3. Type-elision parity: which imports survive as runtime dependencies,
+ *      per import form.
+ *   4. The module record cache (openCache): a fresh process reuses records
+ *      whose inputs are unchanged and re-analyses exactly the ones whose
+ *      source, resolutions or cache version changed, with violations identical
+ *      to an uncached run; plus a negative control over the real tree.
  */
 
 'use strict';
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
-const { createAnalyzer, formatViolation, holeKey, lint, scan, scopeFiles } = require('../scripts/lint-module-eval-cycles.cjs');
+const { createAnalyzer, formatViolation, holeKey, lint, openCache, scan, scopeFiles } = require('../scripts/lint-module-eval-cycles.cjs');
+
+const ROOT = path.resolve(__dirname, '..');
 
 /** Violations for an in-memory module graph { path: source }, entered at `entries` (default: every module). */
 function holes(files, entries = Object.keys(files)) {
@@ -234,4 +245,259 @@ test('the analyser resolves .js specifiers to .ts sources and directory imports 
   const analyzer = createAnalyzer((f) => files[f]);
   assert.deepEqual(analyzer.analyzeModule('src/a.ts').deps, ['src/dir/index.ts']);
   assert.deepEqual(analyzer.resolveBinding('src/dir/index.ts', 'x'), { definer: 'src/dir/index.ts', kind: 'value', chain: ['src/dir/index.ts'] });
+});
+
+// ---------------------------------------------------------------------------
+// Type-elision parity: runtime dependencies per import form
+// ---------------------------------------------------------------------------
+
+test('the analyser keeps exactly the imports that survive type elision, for every import form', () => {
+  const cases = {
+    'type-only import': "import type { T } from './t.js';\nexport const v: T = 1 as T;",
+    'type-only specifier': "import { type T } from './t.js';\nexport const v: T = 1 as T;",
+    'unused import': "import { u } from './u.js';\nexport const v = 1;",
+    'import used only in a type': "import { u } from './u.js';\nexport const v: typeof u = 1;",
+    'export-from': "export { r } from './r.js';",
+    'type-only export-from': "export type { r } from './r.js';",
+    'side-effect import': "import './s.js';",
+    'namespace import, used': "import * as ns from './n.js';\nexport const v = ns.x;",
+    'namespace import, unused': "import * as ns from './n.js';\nexport const v = 1;",
+    'default import': "import d from './d.js';\nexport const v = d;",
+    'JSX element': ["import { Comp } from './c.js';\nexport const el = <Comp />;", 'src/m.tsx'],
+    'enum member read': "import { Kind } from './k.js';\nexport const v = Kind.A;",
+    'local export { X }': "import { X } from './x.js';\nexport { X };",
+    'export default X': "import { X } from './x.js';\nexport default X;",
+    'class decorator': "import { dec } from './dec.js';\n@dec\nexport class C {}",
+    'member decorator': "import { dec } from './dec.js';\nexport class C { @dec method() {} }",
+  };
+  const expected = {
+    'type-only import': [],
+    'type-only specifier': [],
+    'unused import': [],
+    'import used only in a type': [],
+    'export-from': ['src/r.ts'],
+    'type-only export-from': [],
+    'side-effect import': ['src/s.ts'],
+    'namespace import, used': ['src/n.ts'],
+    'namespace import, unused': [],
+    'default import': ['src/d.ts'],
+    'JSX element': ['src/c.ts'],
+    'enum member read': ['src/k.ts'],
+    'local export { X }': ['src/x.ts'],
+    'export default X': ['src/x.ts'],
+    'class decorator': ['src/dec.ts'],
+    'member decorator': ['src/dec.ts'],
+  };
+  const actual = {};
+  for (const [name, spec] of Object.entries(cases)) {
+    const [source, file] = Array.isArray(spec) ? spec : [spec, 'src/m.ts'];
+    const files = { [file]: source };
+    for (const target of ['t', 'u', 'r', 's', 'n', 'd', 'c', 'k', 'x', 'dec']) files[`src/${target}.ts`] = 'export const placeholder = 1;\n';
+    actual[name] = createAnalyzer((f) => files[f]).analyzeModule(file).deps;
+  }
+  assert.deepEqual(actual, expected);
+});
+
+// ---------------------------------------------------------------------------
+// Module record cache
+// ---------------------------------------------------------------------------
+
+/** Runs `fn(dir)` with a fresh temp directory for a cache file, removed afterwards. */
+function withCacheDir(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-lint-cycles-cache-'));
+  try {
+    return fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Opens the disk store; a missing export fails as an assertion, not a TypeError. */
+function openStore(file, version = 'test-version-1') {
+  assert.equal(typeof openCache, 'function', 'scripts/lint-module-eval-cycles.cjs must export openCache({ file, version })');
+  return openCache({ file, version });
+}
+
+/**
+ * One simulated process: a new reader over `files` (so a new analyser, since
+ * analysers are kept per reader) evaluated at every entry, with `store` as its
+ * record cache (none when omitted). Returns the sorted distinct violations and
+ * the analyser's work counts.
+ */
+function runProcess(files, store, entries = Object.keys(files)) {
+  const read = (f) => files[f];
+  const analyzer = store ? createAnalyzer(read, { cache: store }) : createAnalyzer(read);
+  const found = new Set();
+  for (const entry of entries) for (const hole of analyzer.evaluate(entry)) found.add(holeKey(hole));
+  assert.ok(analyzer.stats, 'createAnalyzer must return stats { analysed, reused }');
+  return { holes: [...found].sort(), analysed: analyzer.stats.analysed, reused: analyzer.stats.reused };
+}
+
+/** Four modules: the a.ts/b.ts cycle (b.ts body as given) plus a leaf c.ts and d.ts, which imports it. */
+function cachedTree(bImports = "import { SCHEMA } from './a.js';", bBody = 'export const TOOLS = [SCHEMA];', leaf = 'export const LEAF = 1;\n') {
+  return {
+    ...cycle(bImports, bBody),
+    'src/c.ts': leaf,
+    'src/d.ts': "import { LEAF } from './c.js';\nexport const USES_LEAF = [LEAF];\n",
+  };
+}
+const CACHED_TREE_HOLES = ['src/b.ts:1 reads SCHEMA from in-progress src/a.ts'];
+
+test('cache: a fresh analyser over an unchanged tree reuses every saved record, analyses nothing and finds the same violations', () => {
+  withCacheDir((dir) => {
+    const file = path.join(dir, 'module-eval-cycles.json');
+    const files = cachedTree();
+    const uncached = runProcess(files);
+    const coldStore = openStore(file);
+    const cold = runProcess(files, coldStore);
+    coldStore.save();
+    const warm = runProcess(files, openStore(file));
+    assert.deepEqual({ uncached, cold, warm }, {
+      uncached: { holes: CACHED_TREE_HOLES, analysed: 4, reused: 0 },
+      cold: { holes: CACHED_TREE_HOLES, analysed: 4, reused: 0 },
+      warm: { holes: CACHED_TREE_HOLES, analysed: 0, reused: 4 },
+    });
+  });
+});
+
+test('cache: an edited module is re-analysed alone and its new violation replaces the old one', () => {
+  withCacheDir((dir) => {
+    const file = path.join(dir, 'module-eval-cycles.json');
+    const store = openStore(file);
+    runProcess(cachedTree(), store);
+    store.save();
+    const edited = cachedTree("import { helper } from './a.js';", 'export const FALLBACK = helper();');
+    const warm = runProcess(edited, openStore(file));
+    assert.deepEqual(warm, { holes: ['src/b.ts:1 calls helper from in-progress src/a.ts'], analysed: 1, reused: 3 });
+    assert.deepEqual(warm.holes, runProcess(edited).holes, 'cached and uncached runs must agree');
+  });
+});
+
+test('cache: a new file that changes an unchanged importer\'s resolution re-analyses the importer and the new violation appears', () => {
+  withCacheDir((dir) => {
+    const file = path.join(dir, 'module-eval-cycles.json');
+    // a.ts never changes. './dir' resolves to dir/index.ts until dir.ts exists
+    // (dir.ts is tried before dir/index.ts); './later.js' resolves to nothing
+    // until later.ts exists.
+    const base = {
+      'src/a.ts': "import { x } from './dir';\nimport { y } from './later.js';\nexport const SCHEMA = { type: 'object' };\nexport const ALL = [x, y];\n",
+      'src/dir/index.ts': 'export const x = 1;\n',
+    };
+    const first = openStore(file);
+    assert.deepEqual(runProcess(base, first), { holes: [], analysed: 2, reused: 0 });
+    first.save();
+
+    const withDirFile = { ...base, 'src/dir.ts': "import { SCHEMA } from './a.js';\nexport const x = [SCHEMA];\n" };
+    const second = openStore(file);
+    const afterDirFile = runProcess(withDirFile, second);
+    second.save();
+    assert.ok(afterDirFile.holes.includes('src/dir.ts:1 reads SCHEMA from in-progress src/a.ts'), JSON.stringify(afterDirFile.holes));
+    assert.deepEqual(afterDirFile, { ...runProcess(withDirFile), analysed: 2, reused: 1 },
+      'a.ts (its target changed) and the new dir.ts are analysed; dir/index.ts is reused');
+
+    const withLater = { ...withDirFile, 'src/later.ts': "import { SCHEMA } from './a.js';\nexport const y = SCHEMA;\n" };
+    const afterLater = runProcess(withLater, openStore(file));
+    assert.ok(afterLater.holes.includes('src/later.ts:1 reads SCHEMA from in-progress src/a.ts'), JSON.stringify(afterLater.holes));
+    assert.deepEqual(afterLater, { ...runProcess(withLater), analysed: 2, reused: 2 },
+      'a.ts (an unresolved specifier now resolves) and the new later.ts are analysed; dir.ts and dir/index.ts are reused');
+  });
+});
+
+test('cache: a store opened with a different version ignores the saved records', () => {
+  withCacheDir((dir) => {
+    const file = path.join(dir, 'module-eval-cycles.json');
+    const files = cachedTree();
+    const v1 = openStore(file, 'version-1');
+    runProcess(files, v1);
+    v1.save();
+    assert.deepEqual(runProcess(files, openStore(file, 'version-2')), { holes: CACHED_TREE_HOLES, analysed: 4, reused: 0 });
+  });
+});
+
+test('cache: saving after a scan of a subset of entries keeps the records of modules it did not reach', () => {
+  withCacheDir((dir) => {
+    const file = path.join(dir, 'module-eval-cycles.json');
+    const full = openStore(file);
+    runProcess(cachedTree(), full);
+    full.save();
+    // A second process edits the leaf and scans only from it.
+    const edited = cachedTree(undefined, undefined, 'export const LEAF = 2;\n');
+    const subset = openStore(file);
+    assert.deepEqual(runProcess(edited, subset, ['src/c.ts']), { holes: [], analysed: 1, reused: 0 });
+    subset.save();
+    assert.deepEqual(runProcess(edited, openStore(file)), { holes: CACHED_TREE_HOLES, analysed: 0, reused: 4 });
+  });
+});
+
+test('cache: the store starts empty without a file and saves into a directory it creates, leaving no temp file', () => {
+  withCacheDir((dir) => {
+    const cacheDir = path.join(dir, 'node_modules', '.cache', 'adcp-lint');
+    const file = path.join(cacheDir, 'module-eval-cycles.json');
+    const store = openStore(file);
+    assert.equal(store.get('src/a.ts'), undefined);
+    runProcess(cachedTree(), store);
+    store.save();
+    assert.deepEqual(fs.readdirSync(cacheDir), ['module-eval-cycles.json']);
+    assert.doesNotThrow(() => JSON.parse(fs.readFileSync(file, 'utf8')), 'the store file must be JSON');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Negative control: a seeded cycle in the real tree, through the warm store
+// ---------------------------------------------------------------------------
+
+const SEEDED_ENTRY = 'server/src/zz-seeded-cycle-a.ts';
+const SEEDED_HOLES = ['server/src/zz-seeded-cycle-b.ts:1 reads SEEDED from in-progress server/src/zz-seeded-cycle-a.ts'];
+
+/** Two new server/src modules forming a cycle; the entry also imports a real module subgraph (formats.ts). */
+function seededCycleOverlay() {
+  return {
+    [SEEDED_ENTRY]: [
+      "import { useSeeded } from './zz-seeded-cycle-b.js';",
+      "import { FormatsService } from './formats.js';",
+      'export const SEEDED = { formats: FormatsService };',
+      'export function touch() { return useSeeded; }',
+    ].join('\n'),
+    'server/src/zz-seeded-cycle-b.ts': [
+      "import { SEEDED } from './zz-seeded-cycle-a.js';",
+      'export const COPY = [SEEDED];',
+      'export function useSeeded() { return 1; }',
+    ].join('\n'),
+  };
+}
+
+/** A new reader over the checkout with `overlay` files laid on top. */
+function overlayReader(overlay) {
+  return (file) => {
+    if (Object.hasOwn(overlay, file)) return overlay[file];
+    try {
+      return fs.readFileSync(path.join(ROOT, file), 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+test('negative control: a cycle seeded into the real tree is reported through the warm store, and lint passes its cache through', () => {
+  withCacheDir((dir) => {
+    const file = path.join(dir, 'module-eval-cycles.json');
+    const overlay = seededCycleOverlay();
+    const runReal = (store) => {
+      const analyzer = createAnalyzer(overlayReader(overlay), { cache: store });
+      const holes = analyzer.evaluate(SEEDED_ENTRY).map(holeKey).sort();
+      assert.ok(analyzer.stats, 'createAnalyzer must return stats { analysed, reused }');
+      return { holes, analysed: analyzer.stats.analysed, reused: analyzer.stats.reused };
+    };
+    const coldStore = openStore(file);
+    const cold = runReal(coldStore);
+    coldStore.save();
+    assert.equal(cold.reused, 0);
+    assert.ok(cold.analysed >= 3, `expected the seeded modules and real ones, analysed ${cold.analysed}`);
+    assert.deepEqual(cold.holes, SEEDED_HOLES);
+    assert.deepEqual(runReal(openStore(file)), { holes: SEEDED_HOLES, analysed: 0, reused: cold.analysed });
+
+    const lintStore = openStore(path.join(dir, 'lint.json'));
+    assert.deepEqual(lint({ entries: [SEEDED_ENTRY], read: overlayReader(overlay), cache: lintStore }).map(holeKey), SEEDED_HOLES);
+    assert.notEqual(lintStore.get(SEEDED_ENTRY), undefined, 'lint({ cache }) must hand the store to the analyser');
+  });
 });
