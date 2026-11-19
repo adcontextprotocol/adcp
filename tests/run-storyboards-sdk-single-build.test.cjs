@@ -9,8 +9,9 @@
  * validator caches, and the CJS copy repeats the schema-root work.
  *
  * The guard spawns the real storyboard discovery child (the same invocation
- * scripts/run-storyboards-isolated.mjs uses, candidate mode as the pre-push
- * hook runs it) under tests/helpers/sdk-build-trace.mjs and asserts:
+ * scripts/run-storyboards-isolated.mjs uses, candidate mode and the shared
+ * validator cache as the pre-push hook runs it) under
+ * tests/helpers/sdk-build-trace.mjs and asserts:
  *   - ESM edges into the SDK are recorded (the hook works);
  *   - no edge from outside node_modules/@adcp/sdk/ resolves to the CJS build;
  *   - no edge at all resolves to the CJS schema loader
@@ -38,18 +39,24 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { fileURLToPath, pathToFileURL } = require('node:url');
-const { ensureBuiltSchemas } = require('../scripts/built-schemas.cjs');
+const { ensureBuiltCompliance, ensureBuiltSchemas } = require('../scripts/built-schemas.cjs');
+const { runChild } = require('./fixtures/storyboard-process-reaper.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const TRACE_HELPER = pathToFileURL(path.join(__dirname, 'helpers', 'sdk-build-trace.mjs')).href;
 const COMPLIANCE_DIR = path.join(REPO_ROOT, 'dist', 'compliance', 'latest');
 const SCHEMA_ROOT = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
+// scripts/run-storyboards-matrix.sh's default ADCP_VALIDATOR_CACHE_DIR, and
+// .husky/pre-push's default NODE_COMPILE_CACHE: the caches every pre-push
+// storyboard child and every server-suite worker gets.
+const VALIDATOR_CACHE_DIR = path.join(REPO_ROOT, 'node_modules', '.cache', 'adcp-sdk-validators');
+const COMPILE_CACHE_DIR = path.join(REPO_ROOT, 'node_modules', '.cache', 'node-compile-cache');
 const SDK_PACKAGE = '/node_modules/@adcp/sdk/';
 const CJS_SCHEMA_LOADER = /\/node_modules\/@adcp\/sdk\/dist\/lib\/validation\/schema-loader\.js$/;
 const CJS_INDEX_ENTRY = /\/node_modules\/@adcp\/sdk\/dist\/lib\/(?:.+\/)?index\.js$/;
@@ -111,24 +118,14 @@ function traceFile(t) {
   return path.join(directory, 'edges.jsonl');
 }
 
-function runTraced(t, nodeArgs, env, timeout) {
+// Asynchronous, so the runner's --test-timeout bounds the child.
+async function runTraced(t, nodeArgs, env) {
   const file = traceFile(t);
-  const result = spawnSync(process.execPath, ['--import', TRACE_HELPER, ...nodeArgs], {
+  const result = await runChild(t, process.execPath, ['--import', TRACE_HELPER, ...nodeArgs], {
     cwd: REPO_ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    timeout,
     env: { ...process.env, ...env, ADCP_SDK_BUILD_TRACE_FILE: file },
   });
   return { result, edges: readTrace(file) };
-}
-
-function ensureComplianceBundle() {
-  if (fs.existsSync(path.join(COMPLIANCE_DIR, 'index.json'))) return;
-  execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts', 'build-compliance.cjs')], {
-    cwd: REPO_ROOT,
-    stdio: ['ignore', 'ignore', 'inherit'],
-  });
 }
 
 function evalModule(source) {
@@ -139,12 +136,14 @@ function evalModule(source) {
 // The guard
 // ---------------------------------------------------------------------------
 
-test('a candidate-mode storyboard discovery child loads only the ESM @adcp/sdk build', { timeout: 180_000 }, (t) => {
+test('a candidate-mode storyboard discovery child loads only the ESM @adcp/sdk build', async (t) => {
+  // The pre-push matrix ensures both builds before any child starts; so does
+  // the test:run-storyboards-schema-root script, so these are cache hits there.
   ensureBuiltSchemas();
-  ensureComplianceBundle();
+  ensureBuiltCompliance();
   // As scripts/run-storyboards-isolated.mjs launches children, with the
   // environment the pre-push matrix gives the sales tenant in candidate mode.
-  const { result, edges } = runTraced(t, [
+  const { result, edges } = await runTraced(t, [
     '--import', 'tsx',
     'server/tests/manual/run-storyboards.ts',
     '--list-applicable-json',
@@ -156,10 +155,11 @@ test('a candidate-mode storyboard discovery child loads only the ESM @adcp/sdk b
     ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1',
     ADCP_COMPLIANCE_DIR: COMPLIANCE_DIR,
     ADCP_SCHEMA_ROOT: SCHEMA_ROOT,
-  }, 170_000);
+    ADCP_VALIDATOR_CACHE_DIR: VALIDATOR_CACHE_DIR,
+    NODE_COMPILE_CACHE: COMPILE_CACHE_DIR,
+  });
 
   const output = `${result.stdout.slice(-4000)}\n${result.stderr.slice(-4000)}`;
-  assert.equal(result.error, undefined, output);
   assert.equal(result.status, 0, output);
   assert.match(result.stdout, /^ADCP_STORYBOARD_LIST \{/m, output);
 
@@ -257,23 +257,25 @@ function esmEdgesFrom(edges, moduleName) {
   return esmEdgesFromOutsideSdk(edges).filter((line) => line.startsWith(`${moduleName}: `));
 }
 
-test('a training-agent process serving a creative33 request and a preview-pinned request loads only the ESM @adcp/sdk build', { timeout: 150_000 }, (t) => {
+test('a training-agent process serving a creative33 request and a preview-pinned request loads only the ESM @adcp/sdk build', async (t) => {
   ensureBuiltSchemas();
-  const { result, edges } = runTraced(t, ['--import', 'tsx', ...trainingAgentRouteChild()], {
+  const { result, edges } = await runTraced(t, ['--import', 'tsx', ...trainingAgentRouteChild()], {
     NODE_ENV: 'test',
     LOG_LEVEL: 'silent',
     PUBLIC_TEST_AGENT_TOKEN: ROUTE_CHILD_TOKEN,
-    ADCP_VALIDATOR_CACHE_DIR: '',
+    // The caches a server-suite worker gets (vitest.config.ts files): the
+    // schema-root checks read the SDK's entries instead of every document.
+    ADCP_VALIDATOR_CACHE_DIR: VALIDATOR_CACHE_DIR,
+    NODE_COMPILE_CACHE: COMPILE_CACHE_DIR,
     // Candidate mode off, preview on, creative33 on (NODE_ENV=test enables
     // it): an inherited value must not turn a registration path into a no-op.
     ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: undefined,
     ADCP_TRAINING_CANDIDATE_VERSION: undefined,
     TRAINING_AGENT_DISABLE_ADCP_PREVIEW: undefined,
     ENABLE_ADCP_3_3_CREATIVE_ROUTE: undefined,
-  }, 140_000);
+  });
 
   const output = `${result.stdout.slice(-4000)}\n${result.stderr.slice(-4000)}`;
-  assert.equal(result.error, undefined, output);
   assert.equal(result.status, 0, output);
   const line = result.stdout.split('\n').find((entry) => entry.startsWith(ROUTE_CHILD_PREFIX));
   assert.ok(line, output);
@@ -308,11 +310,11 @@ test('a training-agent process serving a creative33 request and a preview-pinned
 // Meta-tests: the trace helper and the edge classification
 // ---------------------------------------------------------------------------
 
-test('trace meta-test: a createRequire of @adcp/sdk/testing is reported as a CommonJS edge', { timeout: 60_000 }, (t) => {
-  const { result, edges } = runTraced(t, evalModule([
+test('trace meta-test: a createRequire of @adcp/sdk/testing is reported as a CommonJS edge', async (t) => {
+  const { result, edges } = await runTraced(t, evalModule([
     "import { createRequire } from 'node:module';",
     "createRequire(import.meta.url)('@adcp/sdk/testing');",
-  ].join('\n')), {}, 55_000);
+  ].join('\n')), {});
 
   assert.equal(result.status, 0, result.stderr);
   const offenders = cjsEdgesFromOutsideSdk(edges);
@@ -324,8 +326,8 @@ test('trace meta-test: a createRequire of @adcp/sdk/testing is reported as a Com
     `the CJS testing entry loads the CJS schema loader, which must be reported:\n${forbidden.join('\n')}`);
 });
 
-test('trace meta-test: an ESM import of @adcp/sdk/testing is reported as ESM only', { timeout: 60_000 }, (t) => {
-  const { result, edges } = runTraced(t, evalModule("await import('@adcp/sdk/testing');"), {}, 55_000);
+test('trace meta-test: an ESM import of @adcp/sdk/testing is reported as ESM only', async (t) => {
+  const { result, edges } = await runTraced(t, evalModule("await import('@adcp/sdk/testing');"), {});
 
   assert.equal(result.status, 0, result.stderr);
   assert.ok(esmEdgesFromOutsideSdk(edges).some((line) => /testing\/index\.mjs$/.test(line)),

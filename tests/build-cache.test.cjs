@@ -22,22 +22,29 @@
  * stat and write. A file the build reads that the digest does not cover would
  * let a stale tree pass as current; the guard fails on it.
  *
- * Nothing here asserts on wall-clock time.
+ * Every CLI run is asynchronous (runChild), so the runner's --test-timeout
+ * bounds it. Nothing here asserts on wall-clock time.
  */
 
 const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, before, describe, it } = require('node:test');
+const { runChild } = require('./fixtures/storyboard-process-reaper.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const TRACER = path.join(__dirname, 'helpers', 'fs-access-tracer.cjs');
 const REAL_NODE_MODULES = fs.realpathSync(path.join(REPO_ROOT, 'node_modules'));
 const TMP_ROOTS = [...new Set([os.tmpdir(), fs.realpathSync(os.tmpdir())])];
-const BUILD_TIMEOUT_MS = 15 * 60 * 1000;
+// Kills any CLI run still alive when the file ends (a timed-out hook or test).
+const teardown = { kills: [], after(kill) { this.kills.push(kill); } };
+// The hooks and tests that run a real build. Alone on noetis-b-vm,
+// build-schemas takes 17 s and build-compliance 28 s; at load 96 the
+// compliance build took over 120 s. Every other case keeps the runner's 30 s
+// (tp-jyw.33).
+const REAL_BUILD_TIMEOUT_MS = 5 * 60 * 1000;
 
 const TARGETS = {
   schemas: {
@@ -126,7 +133,7 @@ function makeRepoCopy() {
 let traceCount = 0;
 
 /** Runs the cache CLI in the copy. With trace: true, every Node process in the run records its file accesses. */
-function cli(args, { env = cleanEnv(), trace = false } = {}) {
+async function cli(args, { env = cleanEnv(), trace = false } = {}) {
   let traceDir = null;
   const runEnv = { ...env };
   if (trace) {
@@ -136,12 +143,9 @@ function cli(args, { env = cleanEnv(), trace = false } = {}) {
     runEnv.NODE_OPTIONS = `--require ${TRACER}`;
     runEnv.FS_TRACE_DIR = traceDir;
   }
-  const result = spawnSync(process.execPath, [abs('scripts/built-schemas.cjs'), ...args], {
+  const result = await runChild(teardown, process.execPath, [abs('scripts/built-schemas.cjs'), ...args], {
     cwd: root,
     env: runEnv,
-    encoding: 'utf8',
-    maxBuffer: 256 * 1024 * 1024,
-    timeout: BUILD_TIMEOUT_MS,
   });
   const run = {
     args,
@@ -171,21 +175,21 @@ function readTrace(dir) {
   return entries;
 }
 
-function status(target, env) {
-  const run = cli(['status', target], env ? { env } : {});
+async function status(target, env) {
+  const run = await cli(['status', target], env ? { env } : {});
   assert.equal(run.code, 0, `status exits 0\n${run.describe()}`);
   const match = /^(fresh|stale)\b[ \t:;-]*(.*)$/m.exec(run.stdout);
   assert.ok(match, `status prints fresh or stale on stdout\n${run.describe()}`);
   return { state: match[1], reason: match[2].trim(), run };
 }
 
-function assertFresh(target, why, env) {
-  const result = status(target, env);
+async function assertFresh(target, why, env) {
+  const result = await status(target, env);
   assert.equal(result.state, 'fresh', `${target} is fresh ${why}\n${result.run.describe()}`);
 }
 
-function assertStale(target, why, env) {
-  const result = status(target, env);
+async function assertStale(target, why, env) {
+  const result = await status(target, env);
   assert.equal(result.state, 'stale', `${target} is stale ${why}\n${result.run.describe()}`);
   assert.ok(result.reason.length > 0, `a stale status names its reason\n${result.run.describe()}`);
   return result;
@@ -247,17 +251,17 @@ const edits = {
 };
 
 /** status: fresh -> edit -> stale -> revert -> fresh. */
-function assertInputClass(target, edit, { env } = {}) {
-  assertFresh(target, 'before the edit');
+async function assertInputClass(target, edit, { env } = {}) {
+  await assertFresh(target, 'before the edit');
   let staleEnv;
   let revert = () => {};
   if (edit) revert = edit();
   try {
     staleEnv = env ? cleanEnv(env) : undefined;
-    return assertStale(target, 'after the edit', staleEnv);
+    return await assertStale(target, 'after the edit', staleEnv);
   } finally {
     revert();
-    assertFresh(target, 'after reverting the edit');
+    await assertFresh(target, 'after reverting the edit');
   }
 }
 
@@ -404,6 +408,7 @@ before(() => {
 });
 
 after(() => {
+  for (const kill of teardown.kills) kill();
   if (root) fs.rmSync(root, { recursive: true, force: true });
   if (traceRoot) fs.rmSync(traceRoot, { recursive: true, force: true });
 });
@@ -412,24 +417,24 @@ for (const target of Object.keys(TARGETS)) {
   const { script, stamp, lockDir } = TARGETS[target];
 
   describe(`build cache: ${target}`, () => {
-    before(() => {
+    before(async () => {
       // The one real build of this target, traced for the read-set guard.
-      firstBuild[target] = cli(['ensure', target], { trace: true });
+      firstBuild[target] = await cli(['ensure', target], { trace: true });
       // Builds that rewrite their own inputs (symbol links in docs, the source
       // registry on a version bump) are stamped with the digest taken at their
       // start, so they converge after one more build. Settle that here; when
       // nothing was rewritten this is a cache hit.
-      cli(['ensure', target]);
-    });
+      await cli(['ensure', target]);
+    }, { timeout: REAL_BUILD_TIMEOUT_MS });
 
-    it(`the first ensure ${target} reports a miss, runs ${script} and stamps the result`, () => {
+    it(`the first ensure ${target} reports a miss, runs ${script} and stamps the result`, async () => {
       const run = firstBuild[target];
       assert.equal(run.code, 0, run.describe());
       assert.equal(run.cacheLines.length, 1, `one build-cache line\n${run.describe()}`);
       assert.match(run.cacheLines[0], missLine(target), run.describe());
       assert.match(fs.readFileSync(abs(stamp), 'utf8'), /^[0-9a-f]{64}\n?$/, `${stamp} holds a sha256 digest`);
       assert.equal(fs.existsSync(abs(lockDir)), false, `${lockDir} is released`);
-      assertFresh(target, 'after the build');
+      await assertFresh(target, 'after the build');
     });
 
     it(`read-set guard: the ${target} build reads only its declared inputs, its outputs, the temp dir and node_modules`, () => {
@@ -443,19 +448,29 @@ for (const target of Object.keys(TARGETS)) {
       assert.deepEqual(violations(target, trace), [], 'every access is covered by the target input set or is an output');
     });
 
-    it(`read-set guard: editing any script the ${target} build reads makes ${target} stale`, () => {
+    it(`read-set guard: editing any script the ${target} build reads makes ${target} stale`, async () => {
       const scripts = [...new Set(relContentReads(firstBuild[target].trace).filter((rel) => under(rel, 'scripts')))].sort();
       assert.ok(scripts.includes(script), `the build read ${script}; read: ${JSON.stringify(scripts)}`);
-      assertFresh(target, 'before editing scripts');
-      for (const rel of scripts) {
+      await assertFresh(target, 'before editing scripts');
+      // status hashes the path and content of every input file it reads, so a
+      // script whose content one traced status run reads is one whose edit
+      // makes the target stale (some 80 scripts for compliance, one status
+      // run instead of one per script).
+      const digestRun = await cli(['status', target], { trace: true });
+      assert.equal(digestRun.code, 0, digestRun.describe());
+      const digested = new Set(relContentReads(digestRun.trace.filter((e) => e.op === 'read')));
+      assert.deepEqual(scripts.filter((rel) => !digested.has(rel)), [], 'status hashes every script the build reads');
+      // End to end through the CLI: the build script and the first other
+      // script the build reads.
+      for (const rel of [script, scripts.find((other) => other !== script)].filter(Boolean)) {
         const revert = edits.append(rel, '\n// build-cache test edit\n');
         try {
-          assertStale(target, `after editing ${rel}, which the build reads`);
+          await assertStale(target, `after editing ${rel}, which the build reads`);
         } finally {
           revert();
         }
       }
-      assertFresh(target, 'after reverting every script edit');
+      await assertFresh(target, 'after reverting every script edit');
     });
 
     describe(`status ${target}: fresh -> edit -> stale -> revert -> fresh, per input class`, () => {
@@ -489,27 +504,27 @@ for (const target of Object.keys(TARGETS)) {
       }[target];
 
       for (const [name, edit] of Object.entries(classes)) {
-        it(name, () => {
-          assertInputClass(target, edit);
+        it(name, async () => {
+          await assertInputClass(target, edit);
         });
       }
 
-      it('SOURCE_DATE_EPOCH', () => {
-        assertInputClass(target, null, { env: { SOURCE_DATE_EPOCH: '1700000000' } });
+      it('SOURCE_DATE_EPOCH', async () => {
+        await assertInputClass(target, null, { env: { SOURCE_DATE_EPOCH: '1700000000' } });
       });
 
-      it('linked dependency in node_modules', () => {
-        const result = assertInputClass(target, edits.linkDependencies);
+      it('linked dependency in node_modules', async () => {
+        const result = await assertInputClass(target, edits.linkDependencies);
         assert.match(result.reason, /linked dependency/, result.run.describe());
       });
     });
 
-    it(`ensure ${target} on unchanged inputs prints the hit line, spawns no build, writes nothing and leaves the outputs byte-identical`, () => {
-      assertFresh(target, 'before the hit');
+    it(`ensure ${target} on unchanged inputs prints the hit line, spawns no build, writes nothing and leaves the outputs byte-identical`, async () => {
+      await assertFresh(target, 'before the hit');
       const stampBefore = fs.readFileSync(abs(stamp), 'utf8');
       const outputsBefore = snapshotOutputs(target);
 
-      const run = cli(['ensure', target], { trace: true });
+      const run = await cli(['ensure', target], { trace: true });
 
       assert.equal(run.code, 0, run.describe());
       assert.equal(run.cacheLines.length, 1, `one build-cache line\n${run.describe()}`);
@@ -536,8 +551,8 @@ for (const target of Object.keys(TARGETS)) {
 }
 
 describe('build cache: several targets', () => {
-  it('ensure schemas compliance prints one hit line per target, in order, when both are current', () => {
-    const run = cli(['ensure', 'schemas', 'compliance']);
+  it('ensure schemas compliance prints one hit line per target, in order, when both are current', async () => {
+    const run = await cli(['ensure', 'schemas', 'compliance']);
     assert.equal(run.code, 0, run.describe());
     assert.equal(run.cacheLines.length, 2, run.describe());
     assert.match(run.cacheLines[0], hitLine('schemas'), run.describe());
@@ -557,21 +572,21 @@ describe('build cache: rebuilds and failed builds', () => {
   for (const target of Object.keys(rebuildEdits)) {
     const { stamp, sentinel } = TARGETS[target];
 
-    it(`ensure ${target} after one input edit reports a miss, runs the build and stamps the new inputs`, () => {
-      assertFresh(target, 'before the edit');
+    it(`ensure ${target} after one input edit reports a miss, runs the build and stamps the new inputs`, { timeout: REAL_BUILD_TIMEOUT_MS }, async () => {
+      await assertFresh(target, 'before the edit');
       assert.ok(fs.existsSync(abs(sentinel)), `${sentinel} exists after the first build`);
       const stampBefore = fs.readFileSync(abs(stamp), 'utf8');
       edits.append(rebuildEdits[target]); // kept: the rebuilt tree is the new baseline
       fs.rmSync(abs(sentinel)); // an output only a real build writes back
 
-      const run = cli(['ensure', target]);
+      const run = await cli(['ensure', target]);
 
       assert.equal(run.code, 0, run.describe());
       assert.equal(run.cacheLines.length, 1, run.describe());
       assert.match(run.cacheLines[0], missLine(target), run.describe());
       assert.ok(fs.existsSync(abs(sentinel)), `the build ran and rewrote ${sentinel}`);
       assert.notEqual(fs.readFileSync(abs(stamp), 'utf8'), stampBefore, 'the stamp records the new inputs');
-      assertFresh(target, 'after the rebuild');
+      await assertFresh(target, 'after the rebuild');
     });
   }
 
@@ -581,22 +596,20 @@ describe('build cache: rebuilds and failed builds', () => {
   })) {
     const { lockDir, script } = TARGETS[target];
 
-    it(`a failing ${target} build (broken source) exits with the build's status from ensure and from ${script}, and leaves no ${lockDir}`, () => {
+    it(`a failing ${target} build (broken source) exits with the build's status from ensure and from ${script}, and leaves no ${lockDir}`, { timeout: REAL_BUILD_TIMEOUT_MS }, async () => {
       edits.addFile(broken.rel, broken.content); // kept: last case for this target
 
-      const ensured = cli(['ensure', target]);
+      const ensured = await cli(['ensure', target]);
       assert.equal(ensured.cacheLines.length, 1, ensured.describe());
       assert.match(ensured.cacheLines[0], missLine(target), ensured.describe());
       assert.notEqual(ensured.code, 0, `ensure fails when the build fails\n${ensured.describe()}`);
       assert.equal(fs.existsSync(abs(lockDir)), false, `ensure leaves no ${lockDir}`);
 
-      const explicit = spawnSync(process.execPath, [abs(script)], {
-        cwd: root, env: cleanEnv(), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: BUILD_TIMEOUT_MS,
-      });
+      const explicit = await runChild(teardown, process.execPath, [abs(script)], { cwd: root, env: cleanEnv() });
       assert.equal(explicit.status, 1, `node ${script} exits 1 on the broken source\n${(explicit.stderr ?? '').slice(-2000)}`);
       assert.equal(ensured.code, explicit.status, 'ensure exits with the build exit status');
       assert.equal(fs.existsSync(abs(lockDir)), false, `the explicit build leaves no ${lockDir}`);
-      assertStale(target, 'after a failed build');
+      await assertStale(target, 'after a failed build');
     });
   }
 });

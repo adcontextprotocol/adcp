@@ -905,16 +905,37 @@ and format-identity guards, the staged-file-scoped server unit suite, and
   are opt-in: `ADDIE_ROUTER_LIVE_TESTS=1` plus `ANTHROPIC_API_KEY`. Having the
   key in your shell is not enough on its own; they are an eval, not a gate.
 
-`.husky/pre-push` runs the storyboard matrix
-(`scripts/run-storyboards-matrix.sh`) when training-agent or compliance
-source changed. Treat the local run as **advisory**: the
-`training-agent-storyboards.yml` workflow is the authoritative gate.
+`.husky/pre-push` runs the storyboard matrices
+(`scripts/run-storyboards-prepush.sh`: the current-source matrix
+`scripts/run-storyboards-matrix.sh` and the 3.0 compatibility matrix
+`scripts/run-storyboards-3-0-compat.sh` together) when training-agent,
+compliance or storyboard-script sources changed. Treat the local run as
+**advisory**: the `training-agent-storyboards.yml` workflow is the
+authoritative gate.
 
 - The matrix grades the working tree, not the pushed ref. The hook skips it
   when tracked files have uncommitted changes and says so; commit or stash to
   run it against HEAD, or run the script directly.
-- `ADCP_SKIP_STORYBOARD_MATRIX=1 git push` skips it explicitly (for example
-  on a loaded sandbox where the ~3 minute run stretches to tens of minutes).
+- `ADCP_SKIP_STORYBOARD_MATRIX=1 git push` skips it explicitly.
+- Every training-agent process of both surfaces (each single-process tenant,
+  and each discovery and storyboard worker of current `/sales` and
+  `/creative-builder`) runs from one queue, `scripts/run-storyboards-queue.mjs`.
+  Those two tenants keep a timeout, RSS, output and envelope check per
+  storyboard, and run in workers of fixed batches of
+  `STORYBOARD_STORYBOARDS_PER_PROCESS` consecutive storyboards (default 12);
+  any failure ends the worker, and the rest of the batch runs in a fresh one.
+  `STORYBOARD_STORYBOARDS_PER_PROCESS=1` gives every storyboard its own fresh
+  process, CI's model. `ADCP_STORYBOARD_JOBS`
+  sets how many run at once. The default fills the physical cores (macOS
+  performance cores; elsewhere all CPUs but two, halved for SMT) at 1.35
+  cores per process, with at most one process per 3 GiB of memory: 14 on a
+  40-CPU Linux machine, 7 on a laptop with 10 performance cores; `ADCP_STORYBOARD_JOBS=1` runs them one
+  after another. Tenants are graded in order from their logs, which carry the
+  same text a serial run writes; the 3.0 output follows the current one.
+- Every tenant log is kept, passing or failing, at
+  `test-results/storyboards/<floor set>/<tenant>.log` (`ADCP_STORYBOARD_LOG_DIR`
+  moves the directory). Each run overwrites its floor set's logs, so two runs
+  can be compared storyboard by storyboard.
 - The matrix builds `dist/schemas/latest` and `dist/compliance/latest`
   only when their inputs changed: `node scripts/built-schemas.cjs ensure
   schemas compliance` compares a digest of every file each build reads with
@@ -922,7 +943,14 @@ source changed. Treat the local run as **advisory**: the
   A build that fails stops the matrix. `ADCP_BUILD_CACHE=0` forces the builds;
   a linked dependency in `node_modules` (`npm link`, `file:`) always does.
   Running `scripts/build-*.cjs` directly always builds.
-- The matrix snapshots the current `dist/schemas/latest` into a
+- The matrix sets `ADCP_VALIDATOR_CACHE_DIR` to
+  `node_modules/.cache/adcp-sdk-validators` unless it is already set, and the
+  queue passes it to every training-agent process, so only the first process
+  compiles each @adcp/sdk validator. Set it to an empty string to turn the
+  cache off.
+- The current surface's schema and compliance builds finish before any
+  training agent starts, because every training agent reads
+  `dist/schemas/latest`. The matrix snapshots `dist/schemas/latest` into a
   temporary directory before running tenants, so a concurrent
   `npm run build:schemas` in the same tree cannot fail the SDK's schema-root
   version check mid-run.

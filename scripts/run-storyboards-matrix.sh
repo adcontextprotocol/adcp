@@ -3,9 +3,18 @@
 # CI uses. Mirrors .github/workflows/training-agent-storyboards.yml — keep
 # the (tenant, min_clean, min_passed) tuples below in sync if CI floors move.
 #
-# Used by the pre-push hook (.husky/pre-push) when changes touch
-# server/src/training-agent/** or static/compliance/source/**. Total runtime
-# is ~3 minutes — too slow for pre-commit, fine for pre-push.
+# The pre-push hook runs it through scripts/run-storyboards-prepush.sh when
+# changes touch the training agent, the compliance source or these scripts.
+#
+# Every training-agent process (each single-process tenant, and each
+# discovery and storyboard child of the isolated tenants) runs from one queue,
+# scripts/run-storyboards-queue.mjs, at most ADCP_STORYBOARD_JOBS at a time
+# (1 runs them one after another). Tenants are then graded here, one by one in
+# the order below, from their logs.
+#
+# Phases, for the queue: --prepare <state-dir> builds and selects the bundles
+# and writes the tenant plan; --grade <state-dir> grades the tenant logs.
+# Without either, the script runs all three phases itself.
 
 set -uo pipefail
 
@@ -14,19 +23,54 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Storyboard processes share compiled schema validators and schema-root
 # document identities through @adcp/sdk's opt-in on-disk cache, so only the
-# first process compiles them. Every storyboard process of this script (and of
-# run-storyboards-3-0-compat.sh, which runs through it) inherits the variable.
-# Each worktree keeps its own cache; set the variable to another absolute path
-# to move it, or to an empty string to turn the cache off.
+# first process compiles them. The tenant plan carries the variable to every
+# training-agent process the queue starts, for this script and for
+# run-storyboards-3-0-compat.sh, which runs through it. Each worktree keeps its
+# own cache; set the variable to another absolute path to move it, or to an
+# empty string to turn the cache off.
 export ADCP_VALIDATOR_CACHE_DIR="${ADCP_VALIDATOR_CACHE_DIR-${REPO_ROOT}/node_modules/.cache/adcp-sdk-validators}"
 
-schema_snapshot=""
-cleanup_schema_snapshot() {
-  if [ -n "${schema_snapshot}" ] && [ -d "${schema_snapshot}" ]; then
-    rm -rf "${schema_snapshot}"
+MODE="run"
+STATE_DIR=""
+for ((arg_index = 1; arg_index <= $#; arg_index += 1)); do
+  case "${!arg_index}" in
+    --prepare|--grade)
+      MODE="${!arg_index#--}"
+      next_index=$((arg_index + 1))
+      STATE_DIR="${!next_index:-}"
+      if [ -z "${STATE_DIR}" ] || [ ! -d "${STATE_DIR}" ]; then
+        echo "::error::${!arg_index} requires an existing state directory"
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+queue_pid=""
+cleanup_run_state() {
+  # The queue owns a prepared state directory; a full run owns its own.
+  if [ "${MODE}" = "run" ] && [ -n "${STATE_DIR}" ] && [ -d "${STATE_DIR}" ]; then
+    rm -rf "${STATE_DIR}"
   fi
 }
-trap cleanup_schema_snapshot EXIT
+trap cleanup_run_state EXIT
+stop_queue() {
+  trap - INT TERM HUP
+  if [ -n "${queue_pid}" ]; then
+    kill -TERM "${queue_pid}" 2>/dev/null
+    wait "${queue_pid}" 2>/dev/null
+  fi
+  exit "$1"
+}
+trap 'stop_queue 130' INT
+trap 'stop_queue 143' TERM
+trap 'stop_queue 129' HUP
+if [ "${MODE}" = "run" ]; then
+  STATE_DIR=$(mktemp -d -t "storyboards-matrix-state.XXXXXX") || {
+    echo "::error::mktemp failed while creating the matrix state directory"
+    exit 1
+  }
+fi
 
 CURRENT_SOURCE=1
 COMPLIANCE_DIR=""
@@ -47,12 +91,18 @@ Usage: scripts/run-storyboards-matrix.sh [options]
 Options:
   --compliance-dir <dir>         Run against an explicit compliance bundle directory.
   --latest-3.0                   Run against the latest released dist/compliance/3.0.x bundle.
+  --prepare <state-dir>          Only build and select the bundles and write the tenant plan
+                                 (used by scripts/run-storyboards-queue.mjs).
+  --grade <state-dir>            Only grade the tenant logs of a prepared, queued run.
   -h, --help                     Show this help.
 USAGE
 }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --prepare|--grade)
+      shift 2
+      ;;
     --compliance-dir)
       if [ -z "${2:-}" ]; then
         echo "::error::--compliance-dir requires a directory argument"
@@ -112,7 +162,7 @@ NODE
         exit 1
       fi
       if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/compliance/${latest_3_0}/index.json" 2>/dev/null; then
-        bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
+        bundle_tmp=$(mktemp -d "${STATE_DIR}/3-0-compat.XXXXXX")
         git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}"
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
         node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}"
@@ -121,7 +171,7 @@ NODE
           SCHEMA_ROOT="${bundle_tmp}/dist/schemas/${latest_3_0}"
         fi
       else
-        bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
+        bundle_tmp=$(mktemp -d "${STATE_DIR}/3-0-compat.XXXXXX")
         mkdir -p "${bundle_tmp}/dist/compliance"
         cp -R "${REPO_ROOT}/dist/compliance/${latest_3_0}" "${bundle_tmp}/dist/compliance/${latest_3_0}"
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
@@ -151,11 +201,26 @@ NODE
   esac
 done
 
-if [ "${CURRENT_SOURCE}" -eq 1 ]; then
+if [ "${MODE}" = "grade" ]; then
+  # Grading reads the plan --prepare wrote; nothing is built or selected.
+  # shellcheck source=/dev/null
+  . "${STATE_DIR}/state.sh"
+elif [ "${CURRENT_SOURCE}" -eq 1 ]; then
   echo "Building current compliance and schema bundles."
-  node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure schemas || exit 1
-  node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure compliance || exit 1
-  COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/latest"
+  # ADCP_STORYBOARD_TEST_SKIP_BUILDS is for this script's own tests (fake
+  # runners); the pre-push path never sets it. Each build runs only when its
+  # inputs changed, and a failed build stops the matrix. With the builds
+  # skipped, ADCP_STORYBOARD_TEST_BUILT_DIST may name a directory that stands
+  # in for dist/ (schemas/latest and compliance/latest), so the fake runs need
+  # no real build; it is ignored unless the builds are skipped.
+  BUILT_DIST="${REPO_ROOT}/dist"
+  if [ "${ADCP_STORYBOARD_TEST_SKIP_BUILDS:-}" != "1" ]; then
+    node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure schemas || exit 1
+    node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure compliance || exit 1
+  elif [ -n "${ADCP_STORYBOARD_TEST_BUILT_DIST:-}" ]; then
+    BUILT_DIST="${ADCP_STORYBOARD_TEST_BUILT_DIST}"
+  fi
+  COMPLIANCE_DIR="${BUILT_DIST}/compliance/latest"
   if [ -z "${SCHEMA_ROOT}" ]; then
     # Snapshot the freshly built schema bundle. The SDK's schema loader
     # asserts that every schema id under the root matches the requested
@@ -165,15 +230,15 @@ if [ "${CURRENT_SOURCE}" -eq 1 ]; then
     # a moment, which aborts a tenant mid-run with "does not match the
     # requested version ... found latest (latest)" (#7478). Reading from an
     # immutable copy keeps the run independent of later rebuilds.
-    if [ ! -f "${REPO_ROOT}/dist/schemas/latest/index.json" ]; then
+    if [ ! -f "${BUILT_DIST}/schemas/latest/index.json" ]; then
       echo "::error::dist/schemas/latest was not built; cannot snapshot the schema root"
       exit 1
     fi
-    schema_snapshot=$(mktemp -d -t "storyboards-schema-root.XXXXXX") || {
+    schema_snapshot=$(mktemp -d "${STATE_DIR}/schema-root.XXXXXX") || {
       echo "::error::mktemp failed while creating the schema root snapshot"
       exit 1
     }
-    cp -R "${REPO_ROOT}/dist/schemas/latest/." "${schema_snapshot}/" || {
+    cp -R "${BUILT_DIST}/schemas/latest/." "${schema_snapshot}/" || {
       echo "::error::Failed to snapshot dist/schemas/latest into ${schema_snapshot}"
       exit 1
     }
@@ -182,7 +247,7 @@ if [ "${CURRENT_SOURCE}" -eq 1 ]; then
   fi
 fi
 
-if [ -n "${COMPLIANCE_DIR}" ]; then
+if [ "${MODE}" != "grade" ] && [ -n "${COMPLIANCE_DIR}" ]; then
   if [ "${COMPLIANCE_DIR#/}" = "${COMPLIANCE_DIR}" ]; then
     COMPLIANCE_DIR="${REPO_ROOT}/${COMPLIANCE_DIR}"
   fi
@@ -241,7 +306,7 @@ NODE
   fi
 fi
 
-if [ -n "${SCHEMA_ROOT}" ]; then
+if [ "${MODE}" != "grade" ] && [ -n "${SCHEMA_ROOT}" ]; then
   if [ "${SCHEMA_ROOT#/}" = "${SCHEMA_ROOT}" ]; then
     SCHEMA_ROOT="${REPO_ROOT}/${SCHEMA_ROOT}"
   fi
@@ -252,7 +317,18 @@ if [ -n "${SCHEMA_ROOT}" ]; then
   export ADCP_SCHEMA_ROOT="${SCHEMA_ROOT}"
 fi
 
-echo "Using explicit compliance and schema roots (${LABEL})."
+if [ "${MODE}" != "grade" ]; then
+  echo "Using explicit compliance and schema roots (${LABEL})."
+
+  # One log per tenant, kept whether the tenant passes or fails, so a run's
+  # per-storyboard rows can be compared with another run's. Each run of a
+  # floor set overwrites that floor set's logs, so the directory never grows.
+  LOG_DIR="${ADCP_STORYBOARD_LOG_DIR:-${REPO_ROOT}/test-results/storyboards}/${FLOOR_SET}"
+  mkdir -p "${LOG_DIR}" && LOG_DIR="$(cd "${LOG_DIR}" && pwd)" || {
+    echo "::error::Cannot create the storyboard log directory ${LOG_DIR}"
+    exit 1
+  }
+fi
 
 # tenant:min_clean:min_passed — kept in sync with the matrix.include block in
 # .github/workflows/training-agent-storyboards.yml.
@@ -432,31 +508,73 @@ storyboard_executed_exactly() {
   ' "${log_file}"
 }
 
+if [ "${MODE}" != "grade" ]; then
+  # The plan for the queue: one log per tenant and how its storyboards run.
+  # Current /sales and /creative-builder are isolated: each storyboard keeps its
+  # own timeout, RSS, output and envelope checks, and runs in a worker process
+  # with at most STORYBOARD_STORYBOARDS_PER_PROCESS-1 earlier storyboards of a
+  # fixed batch (default 12; 1 gives each storyboard its own fresh process, as
+  # CI does). Every other tenant runs in one process.
+  TENANT_LOGS=()
+  plan_args=()
+  for entry in "${TENANTS[@]}"; do
+    tenant="${entry%%:*}"
+    log="${LOG_DIR}/${tenant}.log"
+    TENANT_LOGS+=("${log}")
+    tenant_mode=monolithic
+    if { [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; } \
+      || [ "${tenant}" = "creative-builder" ]; then
+      tenant_mode=isolated
+    fi
+    plan_args+=("${tenant}" "${tenant_mode}" "${log}")
+  done
+  PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
+    node "${REPO_ROOT}/scripts/run-storyboards-queue.mjs" --write-plan "${STATE_DIR}" "${LABEL}" \
+      --timeout-ms "${STORYBOARD_TIMEOUT_MS:-180000}" \
+      --storyboards-per-process "${STORYBOARD_STORYBOARDS_PER_PROCESS:-12}" \
+      -- "${plan_args[@]}" || exit 1
+  {
+    printf 'FLOOR_SET=%q\n' "${FLOOR_SET}"
+    printf 'LABEL=%q\n' "${LABEL}"
+    printf 'LOG_DIR=%q\n' "${LOG_DIR}"
+    printf 'TENANT_LOGS=('
+    printf '%q ' "${TENANT_LOGS[@]}"
+    printf ')\n'
+  } > "${STATE_DIR}/state.sh"
+fi
+if [ "${MODE}" = "prepare" ]; then
+  exit 0
+fi
+if [ "${MODE}" = "run" ]; then
+  echo "Running ${#TENANTS[@]} tenant suites from one queue."
+  node "${REPO_ROOT}/scripts/run-storyboards-queue.mjs" --state "${STATE_DIR}" &
+  queue_pid=$!
+  wait "${queue_pid}" || {
+    echo "::error::The storyboard queue failed"
+    exit 1
+  }
+  queue_pid=""
+fi
+
+tenant_index=0
 for entry in "${TENANTS[@]}"; do
   tenant="${entry%%:*}"
   rest="${entry#*:}"
   min_clean="${rest%%:*}"
   min_passed="${rest##*:}"
+  log="${TENANT_LOGS[${tenant_index}]}"
+  # The queue records the exit status of each tenant's run; nonzero for an
+  # isolated tenant means an infrastructure failure in its orchestration.
+  orchestrator_failure=0
+  if [ "$(cat "${STATE_DIR}/status-${tenant_index}" 2>/dev/null || echo 1)" != "0" ]; then
+    orchestrator_failure=1
+  fi
+  tenant_index=$((tenant_index + 1))
 
   echo ""
   echo "──────────────────────────────────────────────"
   echo "Storyboards · /${tenant}  (floors: ${min_clean} clean, ${min_passed} steps)"
   echo "──────────────────────────────────────────────"
-
-  log=$(mktemp -t "storyboards-${tenant}.XXXXXX.log")
-  orchestrator_failure=0
-
-  if { [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; } \
-    || [ "${tenant}" = "creative-builder" ]; then
-    TENANT_PATH="${tenant}" \
-      PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
-      bash scripts/run-storyboards-isolated-shards.sh \
-        --shard-count 8 --max-parallel 2 --timeout-ms 180000 > "${log}" 2>&1 || orchestrator_failure=1
-  else
-    TENANT_PATH="${tenant}" \
-      PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
-      npx tsx server/tests/manual/run-storyboards.ts > "${log}" 2>&1 || true
-  fi
 
   clean=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/[0-9]+ clean$/\1/p' "${log}" | tail -1)
   passed=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed .*/\1/p' "${log}" | tail -1)
@@ -627,7 +745,6 @@ for entry in "${TENANTS[@]}"; do
   echo "  ${status} clean=${clean} passed=${passed} applicable=${applicable} n/a=${scope_not_applicable} quarantined=${quarantined}"
 
   if [ "${status}" = "✓" ]; then
-    rm -f "${log}"
     SUMMARY="${SUMMARY}\n  /${tenant}: ✓ ${clean} clean, ${passed} steps; ${applicable}/${corpus} applicable, ${scope_not_applicable} N/A, ${quarantined} quarantined"
   else
     REGRESSED=1
@@ -643,6 +760,8 @@ echo "════════════════════════�
 echo "Storyboard matrix summary (${LABEL})"
 echo "══════════════════════════════════════════════"
 printf '%b\n' "${SUMMARY}"
+echo ""
+echo "Tenant logs: ${LOG_DIR}"
 echo ""
 
 if [ "${REGRESSED}" -ne 0 ]; then
