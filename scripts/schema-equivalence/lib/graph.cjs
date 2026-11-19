@@ -617,7 +617,8 @@ function normalizeValues(kw) {
   }
   for (const k of ['minLength', 'minItems', 'minProperties']) if (kw[k] === 0) delete kw[k];
   if (kw.uniqueItems === false) delete kw.uniqueItems;
-  if (Array.isArray(kw.type) && kw.type.every(t => TYPE_NAMES.has(t))) {
+  // Not next to Ajv's `nullable`, which reads `type`.
+  if (Array.isArray(kw.type) && kw.type.every(t => TYPE_NAMES.has(t)) && kw.nullable === undefined) {
     const values = Object.prototype.hasOwnProperty.call(kw, 'const') ? [kw.const] : Array.isArray(kw.enum) ? kw.enum : null;
     if (values && values.every(v => {
       const t = jsonType(v);
