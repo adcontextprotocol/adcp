@@ -89,10 +89,12 @@ async function verifyProtocolOffloads(
   if (!Array.isArray(index?.versions)) throw new Error("Invalid R2 protocol discovery");
   const published = new Set(index.versions.map((entry) => entry?.tarball));
   // A release cut in this tree reaches R2 only after its tag is published, so
-  // a required archive that R2 does not list yet stays local. Any other archive
-  // must already be in R2.
+  // a required archive that R2 does not list yet stays local, as does a
+  // committed candidate superseded without publication, which never reaches
+  // R2. Any other archive must already be in R2.
+  const unpublished = unpublishedReleaseVersions(repoRoot);
   if (candidates.some((name) => !published.has(`/protocol/${name}`)
-    && !schemaVersions.has(name.slice(0, -4)))) {
+    && !schemaVersions.has(name.slice(0, -4)) && !unpublished.has(name.slice(0, -4)))) {
     throw new Error("Protocol offload candidate is absent from R2 discovery");
   }
   const files = candidates.filter((name) => published.has(`/protocol/${name}`));
@@ -213,6 +215,15 @@ function publishedComplianceVersions(repoRoot) {
     throw new Error(`${manifestPath} published_versions must be unique`);
   }
   return new Set(versions);
+}
+
+// Committed candidates that release discovery marks unpublished (RELEASING.md,
+// "Superseding an unpublishable committed prerelease").
+function unpublishedReleaseVersions(repoRoot) {
+  const index = readJson(join(repoRoot, "dist", "schemas", "index.json"));
+  return new Set((index?.versions ?? [])
+    .filter((entry) => entry?.published === false)
+    .map((entry) => assertVersion(entry.version, "dist/schemas/index.json")));
 }
 
 function schemaDiscoveryAliasTargets(repoRoot) {

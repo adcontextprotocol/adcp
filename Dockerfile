@@ -163,10 +163,19 @@ WORKDIR /app
 
 # unzip is used by the Tranco ingestion path at runtime. Alpine bundled it via
 # busybox; Debian slim does not. ca-certificates is present in the base image
-# but reinstalled here as belt-and-suspenders for TLS trust.
+# but reinstalled here as belt-and-suspenders for TLS trust. The upgrade picks
+# up Debian security fixes published after the pinned base image was built
+# (apt 2.6.2 and tzdata 2026f are newer than the ones in this digest).
 RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends unzip ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+
+# The npm bundled with Node 24.22.1 (11.19.1) ships vulnerable copies of
+# undici, ip-address, brace-expansion and postcss-selector-parser. Replace it
+# with a release that bundles fixed versions before it installs the app.
+RUN npm install -g npm@11.21.3 \
+ && npm cache clean --force
 
 COPY package*.json ./
 

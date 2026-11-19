@@ -40,7 +40,7 @@ function htmlToSlackMrkdwn(html: string): string {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,
-  }) as unknown as DocumentFragment;
+  });
   return domToSlackMrkdwn(dom).replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -69,7 +69,7 @@ function htmlToPlainText(html: string): string {
     ALLOWED_TAGS: ['p', 'br', 'a', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,
-  }) as unknown as DocumentFragment;
+  });
   return domToPlainText(dom).replace(/\n{3,}/g, '\n\n').trim();
 }
 

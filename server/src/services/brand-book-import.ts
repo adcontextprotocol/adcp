@@ -108,7 +108,7 @@ export async function sourceFromUrl(rawUrl: string): Promise<BrandBookSource> {
 }
 
 function htmlToText(html: string): string {
-  const { document } = getLinkedom().parseHTML(html) as unknown as { document: Document };
+  const { document } = getLinkedom().parseHTML(html) as unknown as { document: ConstructorParameters<typeof Readability>[0] };
   const article = new Readability(document).parse();
   const body = (document as unknown as { body?: { textContent?: string | null } }).body;
   const text = article?.textContent ?? body?.textContent ?? '';
