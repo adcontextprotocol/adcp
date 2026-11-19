@@ -12,6 +12,14 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Storyboard processes share compiled schema validators and schema-root
+# document identities through @adcp/sdk's opt-in on-disk cache, so only the
+# first process compiles them. Every storyboard process of this script (and of
+# run-storyboards-3-0-compat.sh, which runs through it) inherits the variable.
+# Each worktree keeps its own cache; set the variable to another absolute path
+# to move it, or to an empty string to turn the cache off.
+export ADCP_VALIDATOR_CACHE_DIR="${ADCP_VALIDATOR_CACHE_DIR-${REPO_ROOT}/node_modules/.cache/adcp-sdk-validators}"
+
 schema_snapshot=""
 cleanup_schema_snapshot() {
   if [ -n "${schema_snapshot}" ] && [ -d "${schema_snapshot}" ]; then
