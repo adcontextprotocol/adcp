@@ -1,6 +1,7 @@
 /**
  * Per-caller simulated market for an inventory tenant: the engine's state,
- * plus the media buys the tenant has built from its bookings.
+ * the media buys the tenant has built from its bookings, and the caller's
+ * creative library.
  *
  * One market per caller and tenant. Every account the caller holds books
  * into the same market, so the caller's own buys compete for inventory.
@@ -11,6 +12,7 @@
  */
 import { loadSandbox, sandboxNowMs } from '../account-sandbox.js';
 import { InventorySimulation, type SeasonSeed, type SimulationState } from './engine/index.js';
+import type { AssignmentRecord, CreativeRecord } from './creatives.js';
 
 const MARKET_DOC_PREFIX = 'inventory_market\u001f';
 
@@ -28,6 +30,8 @@ export interface PackageRecord {
   end_time: string;
   paused: boolean;
   canceled: boolean;
+  /** Creatives from the caller's library that this package serves. */
+  creative_assignments?: AssignmentRecord[];
 }
 
 export interface MediaBuyRecord {
@@ -50,6 +54,8 @@ export interface MarketDocument extends Record<string, unknown> {
   sim: SimulationState;
   media_buys: MediaBuyRecord[];
   next_id: number;
+  /** The caller's creative library (`creatives.ts`), absent until it syncs one. */
+  creatives?: CreativeRecord[];
 }
 
 export interface OpenMarket {

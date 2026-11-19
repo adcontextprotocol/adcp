@@ -20,7 +20,7 @@ Both play the *inventory* role from [#8993](https://github.com/adcontextprotocol
 | Ad server | `https://test-agent.adcontextprotocol.org/inventory-adserver/mcp` | Display, pre-roll video and a homepage takeover on two sites, guaranteed and in a first-price auction |
 | Content platform | `https://test-agent.adcontextprotocol.org/inventory-content/mcp` | Exclusive sponsorships of a weekly podcast, a weekly newsletter and a fortnightly creator series |
 
-Authenticate with the same bearer tokens as the rest of the test agent; see the [quickstart](/docs/quickstart). Each tenant speaks the media buy protocol as it is, with no new tasks:
+Authenticate with the same bearer tokens as the rest of the test agent; see the [quickstart](/docs/quickstart). Each tenant serves the media buy and creative tasks as they are, with no new tasks:
 
 - [`get_products`](/docs/media-buy/task-reference/get_products) returns each product with a `forecast` for the flight in `filters.start_date` and `filters.end_date` (30 days from now when omitted). `filters.countries` narrows the forecast. `filters.delivery_type` and `filters.channels` filter the products. Both `brief` and `wholesale` buying modes are served, so a storefront can read either tenant as a wholesale catalogue.
 - [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) books each package:
@@ -28,12 +28,23 @@ Authenticate with the same bearer tokens as the rest of the test agent; see the 
   - The takeover and the sponsorships take every impression of what they cover.
   - Auction packages bid `bid_price`, first-price, above the floor.
   - `targeting_overlay.geo_countries` (`US`, `CA`) narrows a package.
-- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) pauses, resumes and cancels a buy or a package, and changes a package's `budget`, `impressions` or `bid_price`, or the buy's `end_time`.
-- [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) and [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) report what was booked and what was delivered. They include `by_package`, `daily_breakdown` and `pacing_index` for guaranteed packages.
+  - A package's `creatives` (uploaded inline) and `creative_assignments` (from your library) are assigned to it.
+- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) pauses, resumes and cancels a buy or a package, and changes a package's `budget`, `impressions` or `bid_price`, or the buy's `end_time`. A package's `creatives` or `creative_assignments` replace its assignments.
+- [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) and [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) report what was booked and what was delivered. They include `by_package`, `daily_breakdown` and `pacing_index` for guaranteed packages. In `get_media_buys`, each package lists its `creative_approvals`.
+- [`sync_creatives`](/docs/creative/task-reference/sync_creatives), [`list_creatives`](/docs/creative/task-reference/list_creatives) and [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) manage the creatives you traffic your buys with. See [Creatives](#creatives).
 
 Everything you book is private to your credential. All the accounts you use with one credential book into the same simulated market on each tenant, so your own buys compete for inventory. A `get_products` call that names an `account` returns `cache_scope: "account"`, with forecasts net of your bookings. One without an `account` returns the public card, `cache_scope: "public"`, with forecasts against an empty market.
 
 Neither tenant requires operator authentication, so a storefront can call them with its own credential. The publishers use `.example` domains, so a registry or DNS check of their properties fails. That is expected in this sandbox.
+
+## Creatives
+
+Both tenants keep a creative library for each account. Sync creatives to it with `sync_creatives`, or upload them inline on a package, and assign them to the packages you have bought.
+
+- **Formats.** `list_creative_formats` returns only the formats the tenant serves: display, pre-roll video and the takeover image on the ad server; the podcast spot, newsletter sponsorship and creator brief on the content platform. Copy a format's `format_id` from a product's `format_options`. A creative can only be assigned to a package whose product serves its format. Otherwise the request fails with `FORMAT_NOT_SUPPORTED`.
+- **Assignments.** `assignment_operations` supports `assign`, `unassign` and `replace`. A request's operations apply together or not at all. The deprecated `assignments` field still works, and reports each failed assignment in the creative's `assignment_errors`. Merges, assignment-level trackers and landing pages, installment scoping and placement routing are rejected with `UNSUPPORTED_FEATURE`.
+- **Review and delivery.** Every creative is approved as soon as it arrives. Delivery does not wait for a creative: an unassigned package delivers exactly as the simulation forecast. The creatives exist to test trafficking, not to gate serving.
+- **Scope.** Creatives are private to the account that synced them, like the buys they are assigned to. Each account holds up to 200 creatives of up to 32 KiB each; reference hosted media by URL. `reset_state` clears them with the rest of your market.
 
 ## Move the clock
 
