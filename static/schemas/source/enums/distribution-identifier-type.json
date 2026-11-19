@@ -32,15 +32,15 @@
     "snapchat_handle",
     "x_user_id",
     "x_handle",
-    "linkedin_member_id",
-    "linkedin_member_handle",
-    "linkedin_organization_id",
-    "linkedin_organization_handle",
     "imdb_id",
     "gracenote_id",
     "eidr_id",
     "domain",
-    "substack_id"
+    "substack_id",
+    "linkedin_member_id",
+    "linkedin_member_handle",
+    "linkedin_organization_id",
+    "linkedin_organization_handle"
   ],
   "enumDescriptions": {
     "apple_podcast_id": "Apple Podcasts collection ID identifying a show whether it publishes audio or video episodes",
@@ -70,14 +70,14 @@
     "snapchat_handle": "Snapchat username such as @example. Useful as a discovery alias; the profile ID is preferred for canonical matching.",
     "x_user_id": "X (formerly Twitter) numeric user ID. Preferred canonical identifier for X accounts; handles are discovery aliases that should resolve to this when possible.",
     "x_handle": "X (formerly Twitter) username such as @example. Useful as a discovery alias; the user ID is preferred for canonical matching.",
-    "linkedin_member_id": "LinkedIn member ID: the stable ID from a person URN (urn:li:person:...), sent as the ID only. Preferred canonical identifier for LinkedIn member profiles; handles are discovery aliases that should resolve to this when possible.",
-    "linkedin_member_handle": "LinkedIn member profile vanity name from linkedin.com/in/<handle>, such as @example. Useful as a discovery alias; the member ID is preferred for canonical matching.",
-    "linkedin_organization_id": "LinkedIn organization ID: the stable ID from an organization URN (urn:li:organization:...), sent as the ID only. Preferred canonical identifier for LinkedIn company or showcase pages; handles are discovery aliases that should resolve to this when possible.",
-    "linkedin_organization_handle": "LinkedIn company or showcase page vanity name from linkedin.com/company/<handle>, such as @example. Useful as a discovery alias; the organization ID is preferred for canonical matching.",
     "imdb_id": "IMDb title ID — platform-independent cross-reference",
     "gracenote_id": "Gracenote TMS ID — industry standard for TV metadata",
     "eidr_id": "EIDR (Entertainment Identifier Registry) — ISO 10528 for audiovisual content",
     "domain": "Show's own website domain",
-    "substack_id": "Substack publication identifier"
+    "substack_id": "Substack publication identifier",
+    "linkedin_member_id": "LinkedIn member ID: the stable ID from a person URN (urn:li:person:...), sent as the ID only. Preferred canonical identifier for LinkedIn member profiles; handles are discovery aliases that should resolve to this when possible.",
+    "linkedin_member_handle": "LinkedIn member profile vanity name from linkedin.com/in/<handle>, such as @example. Useful as a discovery alias; the member ID is preferred for canonical matching.",
+    "linkedin_organization_id": "LinkedIn organization ID: the stable ID from an organization URN (urn:li:organization:...), sent as the ID only. Preferred canonical identifier for LinkedIn company or showcase pages; handles are discovery aliases that should resolve to this when possible.",
+    "linkedin_organization_handle": "LinkedIn company or showcase page vanity name from linkedin.com/company/<handle>, such as @example. Useful as a discovery alias; the organization ID is preferred for canonical matching."
   }
 }
