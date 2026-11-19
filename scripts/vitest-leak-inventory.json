@@ -11,12 +11,6 @@
  },
  "isolated_allowlist": [
   {
-   "file": "tests/unit/addie/matched-pair-ni/exact-inference.test.ts",
-   "id": "VL-07-001",
-   "class": "known-not-yet-fixed",
-   "how": "unit-alone project: fresh process, one file at a time, after the shared projects"
-  },
-  {
    "file": "tests/unit/native-auth-http-wiring.test.ts",
    "id": "VL-10-002",
    "class": "unknown",
@@ -520,7 +514,7 @@
    "class": "other",
    "mechanism": "exact-inference.test.ts resolves its child on the worker message while progress events travel on another port; under load the result can arrive first. Not a sharing leak: it also failed in an isolated run.",
    "shared_state": "n/a",
-   "status": "allowlisted in unit-alone (fresh process, after the shared projects) until the test waits for both channels",
+   "status": "fixed: the poisoned-matrix harness reads trace events only after the authorization port closes, and the test decides by events (WorkBudget charge counts, poison-entry flags, exit codes) instead of wall-clock windows; the file runs in unit-first, sharing a worker",
    "fix_pattern": "new",
    "one_fix_covers_all": false,
    "records": [
@@ -20999,7 +20993,7 @@
   },
   {
    "file": "tests/unit/addie/matched-pair-ni/exact-inference.test.ts",
-   "project": "unit-shared",
+   "project": "unit-first",
    "cls": "other",
    "role": "load-sensitive",
    "root_cause": "RC-07",
@@ -21034,11 +21028,8 @@
    ],
    "fix_pattern": "new",
    "effort": "M",
-   "isolated": {
-    "class": "known-not-yet-fixed",
-    "how": "unit-alone project: fresh process, one file at a time, after the shared projects"
-   },
-   "status": "isolated (allowlist; not a leak)",
+   "isolated": null,
+   "status": "fixed (see RC-07); unit-alone removed",
    "blast_radius": [],
    "id": "VL-07-001"
   },

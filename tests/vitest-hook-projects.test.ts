@@ -58,7 +58,12 @@ const HOOK_NODE_TEST_FILES = [
   'tests/lint-callapi-state-change.test.cjs',
 ].sort();
 
-const SERVER_PROJECTS = ['shared', 'fresh', 'isolated', 'alone'] as const;
+// server/vitest.config.ts's unit-<name> projects, all in the server group
+// (group 1). unit-first holds the file that must start first in that group.
+const SERVER_PROJECTS = ['shared', 'fresh', 'isolated', 'first'] as const;
+// vitest's BaseSequencer orders files by groupOrder, then by project name, so
+// the project whose name sorts first in a group has its files queued first.
+const FIRST_SERVER_FILES = ['server/tests/unit/addie/matched-pair-ni/exact-inference.test.ts'];
 const PRECOMMIT_PROJECTS = new Set([
   'precommit:root', 'precommit:node-tests', 'precommit:checks',
   ...SERVER_PROJECTS.map((name) => `precommit:server-${name}`),
@@ -301,6 +306,13 @@ describe("vitest list --project 'precommit:*' (the hook's file selection)", () =
       expect(filesOf(listing, `precommit:server-${name}`), `precommit:server-${name} = unit-${name}`)
         .toEqual(filesOf(serverConfig, `unit-${name}`));
     }
+    // (e) the first-queued server project holds exactly the files that must
+    // start first, and its name sorts first among the group-1 projects listed.
+    expect(filesOf(listing, 'precommit:server-first'), 'precommit:server-first = the files queued first in the server group')
+      .toEqual(FIRST_SERVER_FILES);
+    const serverProjectNames = projects.filter((name) => name.startsWith('precommit:server-')).sort();
+    expect(serverProjectNames[0], `precommit:server-first sorts first among ${serverProjectNames.join(', ')}`)
+      .toBe('precommit:server-first');
   });
 
   it('skip server plan: no server project lists a file; root, node-tests and checks are unchanged', async () => {

@@ -28,10 +28,10 @@ const { compileCacheEnv } = require('../scripts/node-compile-cache.cjs') as {
   compileCacheEnv(env: NodeJS.ProcessEnv, repoRoot: string): Record<string, string>;
 };
 
-// Unit test files that cannot share a worker yet. Both lists may only
-// shrink: every entry names its record in scripts/vitest-leak-inventory.json
-// and its class (unknown cause / known, not yet fixed / needs a fresh
-// process). Fix the file, then remove the entry in the same commit.
+// Unit test files that cannot share a worker yet. The list may only shrink:
+// every entry names its record in scripts/vitest-leak-inventory.json and its
+// class (unknown cause / known, not yet fixed / needs a fresh process). Fix
+// the file, then remove the entry in the same commit.
 //
 // A fresh process per file, alongside the shared projects. A file that leaks
 // state goes here (the polluter, not only its victims).
@@ -39,11 +39,13 @@ export const ISOLATED_UNIT_FILES: Record<string, string> = {
   'tests/unit/native-auth-http-wiring.test.ts':
     'VL-10-002, unknown cause: its vi.mock of @workos-inc/node survives the next file\'s module reset',
 };
-// A fresh process per file, one at a time after the shared projects, for
-// files that fail under CPU load.
-export const ALONE_UNIT_FILES: Record<string, string> = {
+// Scheduling only: long files that pass in `unit-fresh` and start first, so
+// their run overlaps the rest of the suite instead of ending it. Never a
+// place for a file that leaks state or fails under load; the value says why
+// the file is long.
+export const FIRST_UNIT_FILES: Record<string, string> = {
   'tests/unit/addie/matched-pair-ni/exact-inference.test.ts':
-    'VL-07-001, known, not yet fixed: its child-process checks race under CPU load (failed 2 of 5 runs at 12 workers)',
+    'about 22 s: n=25 exact computations in-process and in three cold processes',
 };
 
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
@@ -117,12 +119,12 @@ interface ServerProjectsOptions {
 
 /**
  * The server projects' own options (without serverTestBase()). Project
- * `test.sequence.groupOrder` is 0 for the shared projects and 1 for the
- * ones that run after them.
+ * `test.sequence.groupOrder` is 0 for the unit projects and 1 for `serial`,
+ * which runs after them.
  */
 export function serverProjects({ prefix = '', unitFilter = () => true, serial = true }: ServerProjectsOptions = {}) {
   const unitFiles = [...testFiles('tests/unit'), ...testFiles('src')]
-    .filter((file) => !(file in ISOLATED_UNIT_FILES) && !(file in ALONE_UNIT_FILES));
+    .filter((file) => !(file in ISOLATED_UNIT_FILES) && !(file in FIRST_UNIT_FILES));
   const freshFiles = new Set(unitFiles.filter((file) => NEEDS_FRESH_MODULES.test(readFileSync(path.join(SERVER_ROOT, file), 'utf8'))));
   const keep = (files: string[]) => only(files.filter(unitFilter));
   const projects: { name: string; test: ServerProjectOptions }[] = [
@@ -135,30 +137,24 @@ export function serverProjects({ prefix = '', unitFilter = () => true, serial = 
       test: { include: keep(unitFiles.filter((file) => !freshFiles.has(file))), isolate: false },
     },
     {
+      // vitest queues the files of a group by project name, so this
+      // project's files start first. The options are unit-fresh's.
+      name: 'unit-first',
+      test: { include: keep(Object.keys(FIRST_UNIT_FILES)), isolate: false, setupFiles: ['./tests/setup/fresh-module-graph.ts'] },
+    },
+    {
       // Reused workers too, but every file starts from a fresh module graph,
       // so its mocks and pre-import state reach every module it imports and
       // no later file inherits them. A worker only runs files of its own
       // project, so these resets never reach the `unit-shared` workers.
       // vitest queues projects by name: this one, which holds the longest
-      // files, starts first.
+      // files, starts right after unit-first.
       name: 'unit-fresh',
       test: { include: keep([...freshFiles]), isolate: false, setupFiles: ['./tests/setup/fresh-module-graph.ts'] },
     },
     {
       name: 'unit-isolated',
       test: { include: keep(Object.keys(ISOLATED_UNIT_FILES)), isolate: true },
-    },
-    {
-      // After the shared projects, so a load-sensitive file sees an idle
-      // machine. Shares groupOrder 1 with `serial`; the two never have
-      // files in the same run.
-      name: 'unit-alone',
-      test: {
-        include: keep(Object.keys(ALONE_UNIT_FILES)),
-        isolate: true,
-        fileParallelism: false,
-        sequence: { groupOrder: 1 },
-      },
     },
   ];
   if (serial) {

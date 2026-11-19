@@ -14,8 +14,7 @@ import { serverProjects, serverTestBase } from './server/vitest.projects.ts';
 //   0  light checks: the root suite, the hook's node:test files, typecheck
 //      and the other command checks (vitest's default, CPUs - 1 workers);
 //   1  the server unit suite (CPUs - 2, capped by memory; as
-//      scripts/precommit-server-unit.cjs sized it);
-//   2  the server's load-sensitive files, one at a time.
+//      scripts/precommit-server-unit.cjs sized it).
 // A failure in a group skips the groups after it
 // (scripts/vitest-hook-reporter.mjs); a group itself runs to the end.
 //
@@ -37,9 +36,9 @@ const { NODE_TEST_FILES } = require('./scripts/vitest-node-test-files.cjs') as {
 
 const ROOT = import.meta.dirname;
 const SERVER_PREFIX = 'precommit:server-';
-// server/vitest.config.ts's unit-shared, unit-fresh, unit-isolated and
-// unit-alone, as named here.
-const SERVER_PROJECT_NAMES = ['shared', 'fresh', 'isolated', 'alone'].map((name) => `${SERVER_PREFIX}${name}`);
+// server/vitest.config.ts's unit-shared, unit-first, unit-fresh and
+// unit-isolated, as named here.
+const SERVER_PROJECT_NAMES = ['shared', 'first', 'fresh', 'isolated'].map((name) => `${SERVER_PREFIX}${name}`);
 
 /** The --project patterns on the command line (vitest matches `*` as any run of characters). */
 function projectPatterns(argv = process.argv): RegExp[] {
@@ -130,7 +129,6 @@ if (SERVER_PROJECT_NAMES.some(requested)) {
   const workers = resolveWorkerCount();
   for (const project of serverProjects({ prefix: SERVER_PREFIX, unitFilter, serial: false })) {
     const base = serverTestBase();
-    const group = (project.sequence?.groupOrder ?? 0) + 1;
     projects.push({
       test: {
         ...base,
@@ -138,8 +136,9 @@ if (SERVER_PROJECT_NAMES.some(requested)) {
         // server/vitest.config.ts's projects extend its root options, which
         // concatenates setup files; here they are listed whole.
         setupFiles: [...base.setupFiles, ...(project.setupFiles ?? [])],
-        maxWorkers: group === 1 ? workers : 1,
-        sequence: { groupOrder: group },
+        maxWorkers: workers,
+        // Every server unit project is in group 1, after the light checks.
+        sequence: { groupOrder: 1 },
       },
     });
   }
