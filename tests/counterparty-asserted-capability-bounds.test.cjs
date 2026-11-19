@@ -206,7 +206,7 @@ describe('counterparty-asserted capability arrays are bounded', () => {
           : node.items;
         const pattern = items.pattern || '';
         // The domain pattern shared by both known instances.
-        if (pattern.includes('[a-z0-9-]*[a-z0-9]') && pattern.includes('\\.')) {
+        if (/\[a-z0-9-\](?:\*|\{0,61\})\[a-z0-9\]/.test(pattern) && pattern.includes('\\.')) {
           found.push(pointer);
         }
       }

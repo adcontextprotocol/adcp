@@ -1290,7 +1290,7 @@
         },
         "domain-name": {
           "$ref": "/schemas/core/domain-name.json",
-          "description": "Lowercase DNS domain name without a scheme, path, or trailing dot, such as example.com."
+          "description": "Lowercase DNS domain name without a scheme, path, or trailing dot, such as example.com. Each label is at most 63 characters and the name at most 253, as RFC 1035 limits them."
         },
         "https-url": {
           "$ref": "/schemas/core/https-url.json",

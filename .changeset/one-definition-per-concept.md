@@ -14,7 +14,7 @@ Sites that meant the same thing as a named schema, and stated a different constr
 - `mraid_versions` in `get_adcp_capabilities` accepts only `2.0` or `3.0`, the values of `enums/mraid-version.json`, instead of any MAJOR.MINOR. An MRAID version is 2.0 or 3.0 at every site, as 3.2.8's `html5` format published `mraid_version`. This is a correction under DR-0036: it applies the rule that 3.2.8 already published for the concept.
 - `reporting_profile` and `delivery_config_id` sites gain their named pattern. Webhook `token` sites gain a 4,096-character limit, suggestions gain a 1,000-character limit, and the `request_proposals` rejection `reason` gains a 2,000-character limit.
 - Trademark and brand claim `countries` require an uppercase ISO 3166-1 alpha-2 code, and the targeting modification selector `system` requires a postal system from `enums/postal-system.json`.
-- `core/domain-name.json` states the 253-character DNS limit, so every domain name site gains it. `upstream_source_domain` also requires a lowercase domain.
+- `core/domain-name.json` states the RFC 1035 limits, 253 characters for the name and 63 for each label, so every domain name site gains them. `upstream_source_domain`, where `format: hostname` already set both limits, also requires a lowercase domain without a trailing dot.
 
 **Looser, where the stricter copy rejected a published value:**
 
