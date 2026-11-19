@@ -13,6 +13,7 @@ import express from 'express';
 import { parse as parseYaml } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { jsonBodyLimitForPath } from '../../src/utils/json-body-limit.js';
 
@@ -30,7 +31,6 @@ let unlimitedBase = '';
 const closers: Array<() => Promise<void>> = [];
 
 async function serve(disableRateLimit: boolean): Promise<string> {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit }));
@@ -46,7 +46,6 @@ async function serve(disableRateLimit: boolean): Promise<string> {
  * is reachable both under `/api/training-agent` and bare (host-based routing).
  */
 async function serveWithTransportCaps(): Promise<{ bare: string; mounted: string }> {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use((req, res, next) => express.json({ limit: jsonBodyLimitForPath(req.path) })(req, res, next));
   const router = createTrainingAgentRouter({ disableRateLimit: true });

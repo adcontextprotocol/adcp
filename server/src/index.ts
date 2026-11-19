@@ -6,6 +6,7 @@ import { getDatabaseConfig } from "./config.js";
 import { initializeAddieBolt } from "./addie/index.js";
 import { logger } from "./logger.js";
 import { preloadDeferredModules } from "./utils/deferred-modules.js";
+import { warmTrainingAgentCatalog } from "./training-agent/task-handlers.js";
 
 // Validate environment variables before starting server
 validateEnvironment();
@@ -14,6 +15,9 @@ async function main() {
   // Modules load these packages on first use so tests that never call them
   // skip the cost; the server still loads them all before it starts.
   await preloadDeferredModules();
+  // The training agent's tool definitions build their brand catalog and
+  // product-discovery schemas on first use; build them before serving.
+  warmTrainingAgentCatalog();
 
   // Run migrations on startup if RUN_MIGRATIONS is set
   if (process.env.RUN_MIGRATIONS === 'true') {

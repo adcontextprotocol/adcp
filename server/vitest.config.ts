@@ -15,6 +15,11 @@ const { resolveWorkerCount } = createRequire(import.meta.url)('../scripts/server
 const { validatorCacheEnv } = createRequire(import.meta.url)('../scripts/sdk-validator-cache.cjs') as {
   validatorCacheEnv(env: NodeJS.ProcessEnv, repoRoot: string): Record<string, string>;
 };
+// Workers share Node's compile cache with the pre-push hook
+// (scripts/node-compile-cache.cjs).
+const { compileCacheEnv } = createRequire(import.meta.url)('../scripts/node-compile-cache.cjs') as {
+  compileCacheEnv(env: NodeJS.ProcessEnv, repoRoot: string): Record<string, string>;
+};
 
 // Unit test files that cannot share a worker yet. Both lists may only
 // shrink: every entry names its record in scripts/vitest-leak-inventory.json
@@ -64,7 +69,7 @@ export default defineConfig({
     root: ROOT,
     setupFiles: ['./tests/setup/revenue-tracking-env.ts', './tests/setup/conductor-loopback-setup.ts'],
     globalSetup: ['./tests/setup/built-schemas.ts'],
-    env: validatorCacheEnv(process.env, path.dirname(ROOT)),
+    env: { ...validatorCacheEnv(process.env, path.dirname(ROOT)), ...compileCacheEnv(process.env, path.dirname(ROOT)) },
     testTimeout: 30000,
     pool: 'forks',
     maxWorkers: resolveWorkerCount({ reservedCpus: 1 }),

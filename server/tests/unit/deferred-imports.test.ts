@@ -29,7 +29,10 @@ const PACKAGE_MATCHERS: Record<string, RegExp> = {
   '@google-cloud/kms': /\/node_modules\/@google-cloud\/kms\//,
   '@adcp/sdk barrel': /\/node_modules\/@adcp\/sdk\/dist\/lib\/index\.m?js$/,
   supertest: /\/node_modules\/supertest\//,
+  '@google-cloud/storage': /\/node_modules\/@google-cloud\/storage\//,
+  '@adcp/reporting-storage': /\/node_modules\/@adcp\/reporting-storage\//,
 };
+const DURABLE_REPORTING = ['@google-cloud/storage', '@adcp/reporting-storage'];
 const DEFERRED_FIVE = ['isomorphic-dompurify', 'linkedom', 'pdf-parse', 'mammoth', '@google-cloud/kms'];
 
 type ProbeResult = {
@@ -183,6 +186,137 @@ describe('first use loads a deferred dependency and behaves as before', () => {
     expect(result.atImport, 'the helper itself must not load what it defers').toEqual([]);
     expect(result.output).toBe('preloaded');
     expect(result.afterUse).toEqual(expect.arrayContaining(DEFERRED_FIVE));
+  });
+});
+
+describe('building the training agent does not load the durable reporting stack', () => {
+  // gcs-reporting.ts (pg, @google-cloud/storage, @adcp/reporting-storage)
+  // serves only the reporting routes and tools; its runtime exists only after
+  // server boot initializes it (server/src/http.ts). Building the router, as
+  // every training-agent test's setup does, must not evaluate it.
+  it('createTrainingAgentRouter() evaluates neither package', async () => {
+    const result = await probe('server/src/training-agent/index.ts', {
+      use: 'async (mod) => { mod.createTrainingAgentRouter({ disableRateLimit: true }); (await import("./server/src/training-agent/state.ts")).stopSessionCleanup(); return "built"; }',
+      env: { PUBLIC_TEST_AGENT_TOKEN: 'test-token', TRAINING_REPORTING_GCS_ENABLED: undefined },
+    });
+    expect(result.importError).toBeUndefined();
+    expect(result.useError).toBeUndefined();
+    expect(result.output).toBe('built');
+    expect(result.atImport.filter((name) => DURABLE_REPORTING.includes(name)), 'evaluated by importing the training agent').toEqual([]);
+    expect(result.afterUse.filter((name) => DURABLE_REPORTING.includes(name)), 'evaluated by building the router').toEqual([]);
+  });
+
+  it.each([
+    'server/src/training-agent/gcs-reporting-routes.ts',
+    'server/src/training-agent/gcs-reporting-tools.ts',
+  ])('importing %s evaluates neither package', async (modulePath) => {
+    const result = await probe(modulePath, { env: { PUBLIC_TEST_AGENT_TOKEN: 'test-token' } });
+    expect(result.importError).toBeUndefined();
+    expect(result.atImport.filter((name) => DURABLE_REPORTING.includes(name))).toEqual([]);
+  });
+
+  it('the first reporting call loads the runtime module and, with reporting off, finds no runtime', async () => {
+    const result = await probe('server/src/training-agent/gcs-reporting-runtime.ts', {
+      use: 'async (mod) => String(await mod.loadTrainingGcsReporting())',
+      env: { TRAINING_REPORTING_GCS_ENABLED: undefined },
+    });
+    expect(result.importError).toBeUndefined();
+    expect(result.useError).toBeUndefined();
+    expect(result.atImport.filter((name) => DURABLE_REPORTING.includes(name)), 'loaded before first use').toEqual([]);
+    expect(result.output).toBe('undefined');
+    expect(result.afterUse).toEqual(expect.arrayContaining(DURABLE_REPORTING));
+  });
+});
+
+describe('building the training agent leaves brand data and product-discovery schemas for first use', () => {
+  // brand-handlers.ts reads the SDK's sandbox brands (YAML test kits) and
+  // task-handlers.ts bundles seven product-discovery request schemas, both
+  // only for tool definitions and brand handlers. The probe records file reads
+  // after the router is built: if import or construction had already loaded
+  // them, the first full tool list would read nothing (both are cached).
+  const PRODUCT_DISCOVERY = [
+    'list-products-request', 'request-proposals-request', 'refine-proposals-request', 'decline-proposals-request',
+    'buy-products-request', 'accept-proposal-request', 'control-media-buy-request',
+  ].map((name) => `media-buy/${name}.json`);
+
+  it('the first full tool list reads them; tool names and a second list do not', async () => {
+    const result = await probe('server/src/training-agent/index.ts', {
+      use: `async (mod) => {
+        mod.createTrainingAgentRouter({ disableRateLimit: true });
+        (await import("./server/src/training-agent/state.ts")).stopSessionCleanup();
+        const tasks = await import("./server/src/training-agent/task-handlers.ts");
+        const fs = (await import("node:fs")).default;
+        const { syncBuiltinESMExports } = await import("node:module");
+        let reads = [];
+        const original = fs.readFileSync;
+        fs.readFileSync = function (file, ...rest) { reads.push(String(file)); return original.call(this, file, ...rest); };
+        syncBuiltinESMExports();
+        const take = () => { const taken = reads; reads = []; return taken; };
+        const names = tasks.visibleTrainingToolNamesForContext({});
+        const afterNames = take();
+        const first = JSON.stringify(tasks.visibleToolsForContext({}));
+        const afterFirst = take();
+        const second = JSON.stringify(tasks.visibleToolsForContext({}));
+        const afterSecond = take();
+        return { names: names.length, same: first === second, afterNames, afterFirst, afterSecond };
+      }`,
+      env: { PUBLIC_TEST_AGENT_TOKEN: 'test-token', TRAINING_REPORTING_GCS_ENABLED: undefined },
+    });
+    expect(result.importError).toBeUndefined();
+    expect(result.useError).toBeUndefined();
+    const output = result.output as { names: number; same: boolean; afterNames: string[]; afterFirst: string[]; afterSecond: string[] };
+    const testKits = (files: string[]) => files.filter((file) => /\/test-kits\/[^/]+\.ya?ml$/.test(file));
+    const discovery = (files: string[]) => PRODUCT_DISCOVERY.filter((name) => files.some((file) => file.endsWith(name)));
+    expect(output.names).toBeGreaterThan(0);
+    expect(testKits(output.afterNames), 'tool names read the sandbox test kits').toEqual([]);
+    expect(discovery(output.afterNames), 'tool names read product-discovery schemas').toEqual([]);
+    expect(testKits(output.afterFirst).length, 'the first full list reads the sandbox test kits').toBeGreaterThan(0);
+    expect(discovery(output.afterFirst), 'the first full list reads every product-discovery schema').toEqual(PRODUCT_DISCOVERY);
+    expect(testKits(output.afterSecond), 'the second list reads the test kits again').toEqual([]);
+    expect(discovery(output.afterSecond), 'the second list reads product-discovery schemas again').toEqual([]);
+    expect(output.same, 'both lists serialize identically').toBe(true);
+  });
+
+  it('building routers starts no tenant-registry init; the boot prewarm starts one per registry', async () => {
+    // Every registry init awaits the memoized schema bundle before it logs
+    // 'Tenant registry init starting'. Awaiting the same promise afterwards,
+    // plus one macrotask, lets any init that construction started log first.
+    // The prewarmed router is the positive control; its inits end with the
+    // child process.
+    const result = await probe('server/src/training-agent/index.ts', {
+      use: `async (mod) => {
+        let starts = 0;
+        (await import("./server/src/logger.ts")).setLogHook((level, message) => {
+          if (message === "Tenant registry init starting") starts += 1;
+        });
+        const { ensureTrainingAgentSchemaBundle } = await import("./server/src/training-agent/schema-compat.ts");
+        const settle = async () => { await ensureTrainingAgentSchemaBundle(); await new Promise((resolve) => setImmediate(resolve)); };
+        for (const disableRateLimit of [true, true, false]) mod.createTrainingAgentRouter({ disableRateLimit });
+        await settle();
+        const built = starts;
+        starts = 0;
+        mod.createTrainingAgentRouter({ disableRateLimit: true, prewarmTenantRegistries: true });
+        await settle();
+        const prewarmed = starts;
+        const tenants = await import("./server/src/training-agent/tenants/router.ts");
+        (await import("./server/src/training-agent/state.ts")).stopSessionCleanup();
+        return {
+          built,
+          prewarmed,
+          profiles: tenants.PROPOSAL_NEGOTIATION_PROFILE_ROUTES.length,
+          profilesEnabled: tenants.proposalNegotiationProfilesEnabled(),
+        };
+      }`,
+      env: { LOG_LEVEL: 'info', PUBLIC_TEST_AGENT_TOKEN: 'test-token', TRAINING_REPORTING_GCS_ENABLED: undefined },
+    });
+    expect(result.importError).toBeUndefined();
+    expect(result.useError).toBeUndefined();
+    const output = result.output as { built: number; prewarmed: number; profiles: number; profilesEnabled: boolean };
+    expect(output.built, 'tenant-registry inits started by building three routers').toBe(0);
+    expect(
+      output.prewarmed,
+      'tenant-registry inits started by one router built with prewarmTenantRegistries: true (main plus each enabled proposal profile)',
+    ).toBe(1 + (output.profilesEnabled ? output.profiles : 0));
   });
 });
 

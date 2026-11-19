@@ -1763,35 +1763,25 @@ export function proposalNegotiationProfilesEnabled(
   return env.NODE_ENV !== 'production';
 }
 
-export function mountTenantRoutes(
-  parent: Router,
-  tenantIds: readonly string[],
-  middleware: TenantRouteMiddleware = {},
+/**
+ * Server boot: start the tenant-registry inits before traffic arrives. On a
+ * fresh Fly machine the cold init takes 30–60s — longer than the post-deploy
+ * smoke's 16s retry budget — which made every deploy fail the smoke even
+ * though production was healthy minutes later (#4060). Prewarming shifts that
+ * work to before traffic arrives and lets the smoke catch real init bugs
+ * (#3854 in-memory task registry, #3869 noopJwksValidator under
+ * NODE_ENV=production) without false-failing on cold-start latency.
+ *
+ * Fire-and-forget: per-request handlers await the same in-flight promise via
+ * `holder.get()`, so a slow init still serves correctly. Errors are logged;
+ * the holder resets `pendingInit` on rejection so the next request retries.
+ */
+function prewarmRegistries(
+  holder: RegistryHolder,
+  profileHolders: ReadonlyMap<string, RegistryHolder>,
+  previewHolder: RegistryHolder | undefined,
+  storyboardCompat: TrainingContext['storyboardCompat'],
 ): void {
-  const holder = createRegistryHolder({ storyboardCompat: middleware.storyboardCompat });
-  const profileHolders = new Map(
-    PROPOSAL_NEGOTIATION_PROFILE_ROUTES.map(({ profile }) => [
-      profile,
-      createRegistryHolder({
-        storyboardCompat: middleware.storyboardCompat,
-        proposalNegotiationProfile: profile,
-      }),
-    ]),
-  );
-  // Eagerly start the 6-tenant registry init at mount time (server boot)
-  // instead of waiting for the first request. On a fresh Fly machine the
-  // cold init takes 30–60s — longer than the post-deploy smoke's 16s
-  // retry budget — which made every deploy fail the smoke even though
-  // production was healthy minutes later. Pre-warming shifts that work
-  // to before traffic arrives and lets the smoke catch real init bugs
-  // (#3854 in-memory task registry, #3869 noopJwksValidator under
-  // NODE_ENV=production) without false-failing on cold-start latency.
-  //
-  // The promise is fire-and-forget here: per-request handlers await the
-  // same in-flight promise via `holder.get()`, so a slow init still
-  // serves correctly — the eager call only ensures the work has started.
-  // Errors are logged; the holder resets `pendingInit` on rejection so
-  // the next request retries.
   holder.get().catch((err) => {
     logger.error(
       {
@@ -1804,13 +1794,46 @@ export function mountTenantRoutes(
       'Eager tenant registry init failed at boot; per-request init will retry',
     );
   });
-  if (middleware.storyboardCompat?.version !== '3.0' && proposalNegotiationProfilesEnabled()) {
+  if (storyboardCompat?.version !== '3.0' && proposalNegotiationProfilesEnabled()) {
     for (const [profile, profileHolder] of profileHolders) {
       profileHolder.get().catch(err => {
         logger.error({ err, profile }, 'Proposal-profile tenant registry prewarm failed');
       });
     }
   }
+  if (previewHolder && process.env.NODE_ENV === 'production') {
+    holder.get().then(() => previewHolder.get()).catch(err => {
+      logger.error({ err }, 'Preview tenant registry prewarm failed; the first preview request will retry');
+    });
+  }
+}
+
+/** Boot policy for {@link mountTenantRoutes}, separate from the per-route middleware. */
+export interface MountTenantRoutesOptions {
+  /**
+   * Start the tenant-registry inits now instead of on the first request.
+   * Server boot sets it (http.ts); building a router for a test or a tool
+   * does not, so it starts no registry work its requests don't need.
+   */
+  prewarm?: boolean;
+}
+
+export function mountTenantRoutes(
+  parent: Router,
+  tenantIds: readonly string[],
+  middleware: TenantRouteMiddleware = {},
+  options: MountTenantRoutesOptions = {},
+): void {
+  const holder = createRegistryHolder({ storyboardCompat: middleware.storyboardCompat });
+  const profileHolders = new Map(
+    PROPOSAL_NEGOTIATION_PROFILE_ROUTES.map(({ profile }) => [
+      profile,
+      createRegistryHolder({
+        storyboardCompat: middleware.storyboardCompat,
+        proposalNegotiationProfile: profile,
+      }),
+    ]),
+  );
   // The hosted 3.3 preview (#8181) has its own registry, so stable requests
   // keep exactly the stable configuration: the SDK shapes every response
   // down from its configured ceiling. Built on the first preview-pinned
@@ -1818,11 +1841,10 @@ export function mountTenantRoutes(
   const previewHolder = TRAINING_AGENT_SERVES_HOSTED_PREVIEW && middleware.storyboardCompat?.version !== '3.0'
     ? createRegistryHolder({ storyboardCompat: middleware.storyboardCompat, preview: true, tenantIds })
     : undefined;
-  if (previewHolder && process.env.NODE_ENV === 'production') {
-    holder.get().then(() => previewHolder.get()).catch(err => {
-      logger.error({ err }, 'Preview tenant registry prewarm failed; the first preview request will retry');
-    });
-  }
+  // Every handler awaits its holder's get(), which builds the registry on
+  // first use, so without the prewarm a registry is built only when a
+  // request needs it.
+  if (options.prewarm) prewarmRegistries(holder, profileHolders, previewHolder, middleware.storyboardCompat);
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);

@@ -6,7 +6,7 @@ HUSKY_INIT="${XDG_CONFIG_HOME:-$HOME/.config}/husky/init.sh"
 export PATH="node_modules/.bin:$PATH"
 # Node's on-disk compile cache for every Node process this hook starts
 # (the storyboard runs' tsx-loaded server code, @adcp/sdk and the build scripts).
-export NODE_COMPILE_CACHE="${NODE_COMPILE_CACHE:-$PWD/node_modules/.cache/node-compile-cache}"
+export NODE_COMPILE_CACHE="${NODE_COMPILE_CACHE-$PWD/node_modules/.cache/node-compile-cache}"
 
 # Verify version sync before pushing
 npm run verify-version-sync

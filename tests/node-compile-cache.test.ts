@@ -1,12 +1,16 @@
-// The shared Node compile cache, on the pre-push storyboard path only:
-//   - .husky/pre-push exports NODE_COMPILE_CACHE for everything it starts:
-//     its export line, run in sh from a repository root, yields
-//     <root>/node_modules/.cache/node-compile-cache, or a preset value.
-// The pre-commit hook and the root vitest config do not set it: vitest runs
-// test files and inlined source through its own module runner, which the
-// cache does not cover, and no saving was measurable there.
-// Each case runs the real line and asserts what the process sees; nothing
-// here asserts on time.
+// The shared Node compile cache, one rule for both entry points:
+//   - .husky/pre-push exports NODE_COMPILE_CACHE for everything it starts;
+//   - server/vitest.config.ts puts it in test.env, which vitest merges into
+//     every fork's environment at spawn, so server-suite workers compile the
+//     modules Node loads natively (externalized node_modules, the SDK among
+//     them) once across workers and runs. Inlined repository source goes
+//     through vitest's module runner and is not covered.
+// Both resolve <root>/node_modules/.cache/node-compile-cache when the variable
+// is unset; a preset path wins and '' passes through (Node treats '' as off),
+// the validator cache's rule. NODE_DISABLE_COMPILE_CACHE is Node's own off
+// switch, and the config adds nothing when it is set.
+// Each case runs the real line or loads the real config and asserts what the
+// process sees; nothing here asserts on time.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import gitObjectFixture from './helpers/git-object-fixture.cjs';
+import vitestConfigEnv from './helpers/vitest-config-env.cjs';
 
 const { fixtureEnv } = gitObjectFixture;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -69,5 +74,31 @@ describe.each(HOOKS)('.husky/%s: NODE_COMPILE_CACHE', (hook) => {
     const root = fixtureRepo();
     const preset = join(root, 'preset-compile-cache');
     expect(exported(root, cleanEnv({ NODE_COMPILE_CACHE: preset }))).toBe(preset);
+  });
+
+  it("keeps NODE_COMPILE_CACHE='' (cache off)", () => {
+    const root = fixtureRepo();
+    expect(exported(root, cleanEnv({ NODE_COMPILE_CACHE: '' }))).toBe('');
+  });
+});
+
+describe('server/vitest.config.ts: NODE_COMPILE_CACHE', () => {
+  const CONFIG = 'server/vitest.config.ts';
+  function resolvedTestEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+    const result = vitestConfigEnv.resolvedTestEnv(CONFIG, env, fixtureRepo());
+    expect(result.status, result.stderr).toBe(0);
+    return result.env;
+  }
+
+  it('defaults to <root>/node_modules/.cache/node-compile-cache, the path .husky/pre-push exports', () => {
+    expect(resolvedTestEnv(cleanEnv())).toMatchObject({ NODE_COMPILE_CACHE: join(REPO_ROOT, DEFAULT_CACHE) });
+  });
+
+  it.each([
+    ["''", { NODE_COMPILE_CACHE: '' }],
+    ['a custom absolute path', { NODE_COMPILE_CACHE: join(tmpdir(), 'custom-node-compile-cache') }],
+    ['NODE_DISABLE_COMPILE_CACHE=1', { NODE_DISABLE_COMPILE_CACHE: '1' }],
+  ])('adds no override when the shell sets %s', (_label, extra) => {
+    expect(resolvedTestEnv(cleanEnv(extra))).not.toHaveProperty('NODE_COMPILE_CACHE');
   });
 });

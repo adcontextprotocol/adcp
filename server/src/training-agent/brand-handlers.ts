@@ -621,16 +621,41 @@ function loadAdvertiserBrands(): BrandEntry[] {
   return brands;
 }
 
-const ADVERTISER_BRANDS = loadAdvertiserBrands();
+interface BrandCatalog {
+  brandMap: ReadonlyMap<string, AnyBrand>;
+  creatorBrandMap: ReadonlyMap<string, AnyBrand>;
+  allBrandIds: string;
+}
 
-const BRAND_MAP = new Map<string, AnyBrand>([
-  ...TALENT.map(t => [t.brand_id, t] as [string, AnyBrand]),
-  ...ADVERTISER_BRANDS.map(b => [b.brand_id, b] as [string, AnyBrand]),
-]);
+let brandCatalogMemo: BrandCatalog | undefined;
 
-const CREATOR_BRAND_MAP = new Map<string, AnyBrand>(
-  creatorBrandEntries().map(brand => [brand.brand_id, brand as AnyBrand]),
-);
+/**
+ * The talent and sandbox advertiser brands, built on first use: the
+ * advertiser brands come from the SDK's compliance test kits (YAML), which
+ * only brand handlers and the get_brand_identity description read.
+ * warmTrainingAgentCatalog() builds it at production boot.
+ */
+function brandCatalog(): BrandCatalog {
+  if (!brandCatalogMemo) {
+    const brandMap = new Map<string, AnyBrand>([
+      ...TALENT.map(t => [t.brand_id, t] as [string, AnyBrand]),
+      ...loadAdvertiserBrands().map(b => [b.brand_id, b] as [string, AnyBrand]),
+    ]);
+    brandCatalogMemo = {
+      brandMap,
+      creatorBrandMap: new Map<string, AnyBrand>(
+        creatorBrandEntries().map(brand => [brand.brand_id, brand as AnyBrand]),
+      ),
+      allBrandIds: [...brandMap.keys()].join(', '),
+    };
+  }
+  return brandCatalogMemo;
+}
+
+/** Builds the brand catalog now (production boot; tests build it on first use). */
+export function warmBrandCatalog(): void {
+  brandCatalog();
+}
 
 // Fields that are always returned (public, not selectable)
 const PUBLIC_FIELDS = ['description', 'industries', 'keller_type', 'logos', 'tagline'] as const;
@@ -638,8 +663,6 @@ const AUTHORIZED_FIELDS = ['colors', 'fonts', 'visual_guidelines', 'tone', 'voic
 const ALL_FIELDS = [...PUBLIC_FIELDS, ...AUTHORIZED_FIELDS] as const;
 
 // ── Tool definitions ──────────────────────────────────────────────
-
-const ALL_BRAND_IDS = [...BRAND_MAP.keys()].join(', ');
 
 export const BRAND_TOOLS = [
   {
@@ -669,7 +692,11 @@ export const BRAND_TOOLS = [
   },
   {
     name: 'get_brand_identity',
-    description: `Get brand identity data. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: ${ALL_BRAND_IDS}.`,
+    // A getter, so reading tool names or task support does not build the
+    // brand catalog; serializing the definition does.
+    get description() {
+      return `Get brand identity data. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: ${brandCatalog().allBrandIds}.`;
+    },
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -840,7 +867,7 @@ export function handleSearchBrands(args: ToolArgs, ctx: TrainingContext) {
     .filter(term => term.length > 2 && !['and', 'the', 'with', 'brand', 'brands'].includes(term));
   const requestedIndustries = new Set((req.industries ?? []).map(value => value.toLowerCase()));
 
-  const matches = [...BRAND_MAP.values()]
+  const matches = [...brandCatalog().brandMap.values()]
     .map((brand, rosterIndex) => {
       const searchable = [
         brand.brand_id,
@@ -944,7 +971,8 @@ export function handleGetBrandIdentity(
 
   // Creator identities behind CreatorLoop collections resolve by id only;
   // search_brands keeps its roster.
-  const talent = BRAND_MAP.get(brandId) ?? CREATOR_BRAND_MAP.get(brandId);
+  const { brandMap, creatorBrandMap } = brandCatalog();
+  const talent = brandMap.get(brandId) ?? creatorBrandMap.get(brandId);
   if (!talent) {
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }

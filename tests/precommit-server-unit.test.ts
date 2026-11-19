@@ -103,6 +103,13 @@ describe('precommit server unit planner', () => {
     });
   });
 
+  it('runs the full server unit suite for the compile cache helper server/vitest.config.ts requires', () => {
+    expect(planServerUnitRun(['scripts/node-compile-cache.cjs'])).toEqual({
+      kind: 'full',
+      files: [],
+    });
+  });
+
   it('runs the full server unit suite for C2PA cert generation helper changes', () => {
     expect(planServerUnitRun(['scripts/generate-c2pa-cert.sh'])).toEqual({
       kind: 'full',

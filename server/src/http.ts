@@ -2113,7 +2113,7 @@ export class HTTPServer {
     handleEmailLinkVerification(this.app);
 
     // Mount training agent (embedded AdCP sales agent for testing and certification)
-    const trainingAgentRouter = createTrainingAgentRouter();
+    const trainingAgentRouter = createTrainingAgentRouter({ prewarmTenantRegistries: true });
     this.app.use('/api/training-agent', trainingAgentRouter);
 
     // Mount reference creative agent (canonical format definitions and preview rendering)

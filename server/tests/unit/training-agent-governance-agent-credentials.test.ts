@@ -13,18 +13,19 @@
  *   `iss` = the training agent URL the storyboards register, that URL
  *   serves MCP, and the revocation list names the same issuer (B3).
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import express from 'express';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PUBLIC_TOKEN = 'test-token';
 
-// Generated per run so no key material lives in the repository.
-const { CREDENTIAL_SECRET } = vi.hoisted(() => {
-  const secret = require('node:crypto').randomBytes(32).toString('hex') as string;
-  process.env.TRAINING_GOVERNANCE_CREDENTIAL_SECRET = secret;
-  return { CREDENTIAL_SECRET: secret };
+// Generated per run so no key material lives in the repository. The key is
+// derived on every mint and verify (governance-agent-credentials.ts), so a
+// stub before each test is enough; unstubEnvs undoes it after the file.
+const CREDENTIAL_SECRET = randomBytes(32).toString('hex');
+beforeEach(() => {
+  vi.stubEnv('TRAINING_GOVERNANCE_CREDENTIAL_SECRET', CREDENTIAL_SECRET);
 });
 
 import {

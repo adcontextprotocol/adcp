@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { AdcpError } from '@adcp/sdk/server';
-import { getTrainingGcsReporting } from './gcs-reporting.js';
+import { loadTrainingGcsReporting } from './gcs-reporting-runtime.js';
 
 const id = z.string().min(1).max(200).regex(/^[A-Za-z0-9_.:-]+$/);
 const provisioning = z.object({ account_id: id, source_config_id: id, destination_ref: id }).strict();
@@ -14,7 +14,7 @@ export function trainingGcsReportingRouter(): Router {
   router.post('/destinations', async (req, res) => {
     try {
       const input = provisioning.parse(req.body);
-      const runtime = getTrainingGcsReporting();
+      const runtime = await loadTrainingGcsReporting();
       if (!runtime) return res.status(503).json({ error: 'REPORTING_DISABLED' });
       const grant = await runtime.provision(res.locals.trainingPrincipal, input.account_id, input.source_config_id, input.destination_ref);
       return res.status(200).json({ grant, buyer: await runtime.buyerConfiguration(res.locals.trainingPrincipal, input.account_id, input.destination_ref), capabilities: runtime.service.capabilities });
@@ -22,7 +22,7 @@ export function trainingGcsReportingRouter(): Router {
   });
   router.get('/destinations/:accountId/:destination', async (req, res) => {
     try {
-      const runtime = getTrainingGcsReporting();
+      const runtime = await loadTrainingGcsReporting();
       if (!runtime) return res.status(503).json({ error: 'REPORTING_DISABLED' });
       const grant = await runtime.grant(res.locals.trainingPrincipal, id.parse(req.params.accountId), id.parse(req.params.destination), 1);
       if (!grant) return res.status(404).json({ error: 'ACCOUNT_NOT_FOUND' });
@@ -31,7 +31,7 @@ export function trainingGcsReportingRouter(): Router {
   });
   router.delete('/destinations/:accountId/:destination', async (req, res) => {
     try {
-      const runtime = getTrainingGcsReporting();
+      const runtime = await loadTrainingGcsReporting();
       if (!runtime) return res.status(503).json({ error: 'REPORTING_DISABLED' });
       const revoked = await runtime.revoke(res.locals.trainingPrincipal, id.parse(req.params.accountId), id.parse(req.params.destination), 1);
       return res.json({ revoked });
@@ -39,7 +39,7 @@ export function trainingGcsReportingRouter(): Router {
   });
   router.put('/notifications/:accountId', async (req, res) => {
     try {
-      const runtime = getTrainingGcsReporting();
+      const runtime = await loadTrainingGcsReporting();
       if (!runtime) return res.status(503).json({ error: 'REPORTING_DISABLED' });
       return res.json(await runtime.replaceNotifications(res.locals.trainingPrincipal, id.parse(req.params.accountId), notifications.parse(req.body)));
     } catch (error) { return fail(res, error); }

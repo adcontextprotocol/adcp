@@ -12,15 +12,14 @@
 // the cache holds (the SDK owns its read and write paths).
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import vitestConfigEnv from './helpers/vitest-config-env.cjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_CACHE = join(REPO_ROOT, 'node_modules', '.cache', 'adcp-sdk-validators');
-const TSX_LOADER = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
 const CONFIGS = ['server/vitest.config.ts', 'vitest.config.ts'];
 
 const dirs: string[] = [];
@@ -48,16 +47,9 @@ function cleanEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
 
 /** Loads the real config in a fresh node process and returns its resolved test.env ({} when unset). */
 function resolvedTestEnv(config: string, env: NodeJS.ProcessEnv): Record<string, string> {
-  const script = [
-    "const { pathToFileURL } = await import('node:url');",
-    'const { default: config } = await import(pathToFileURL(process.argv[1]).href);',
-    'process.stdout.write(JSON.stringify({ env: config.test?.env ?? {} }));',
-  ].join('\n');
-  const result = spawnSync(process.execPath, ['--import', TSX_LOADER, '--input-type=module', '-e', script, join(REPO_ROOT, config)], {
-    cwd: scratchDir(), env, encoding: 'utf8',
-  });
+  const result = vitestConfigEnv.resolvedTestEnv(config, env, scratchDir());
   expect(result.status, result.stderr).toBe(0);
-  return (JSON.parse(result.stdout) as { env: Record<string, string> }).env;
+  return result.env;
 }
 
 describe.each(CONFIGS)('%s: ADCP_VALIDATOR_CACHE_DIR', (config) => {

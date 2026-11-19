@@ -962,11 +962,15 @@ authoritative gate.
   temporary directory before running tenants, so a concurrent
   `npm run build:schemas` in the same tree cannot fail the SDK's schema-root
   version check mid-run.
-- The pre-push hook sets `NODE_COMPILE_CACHE` to
-  `node_modules/.cache/node-compile-cache` unless it is already set, so the
-  storyboard processes reuse compiled code across processes.
-  `NODE_DISABLE_COMPILE_CACHE=1` turns it off. The pre-commit hook does not
-  set it: vitest's module runner bypasses the cache.
+- The pre-push hook and the server unit suite's vitest config
+  (`server/vitest.config.ts`, through `scripts/node-compile-cache.cjs`) set
+  `NODE_COMPILE_CACHE` to `node_modules/.cache/node-compile-cache` unless it
+  is already set, so storyboard processes and server-suite workers reuse
+  compiled code across processes and runs. `NODE_COMPILE_CACHE=''` or
+  `NODE_DISABLE_COMPILE_CACHE=1` turns it off; CI keeps it on, because Node
+  checks every entry against its module's source. In vitest workers it covers
+  modules Node loads natively (the SDK and other externalized packages), not
+  repository source, which vitest's module runner evaluates.
 
 ## PR Preparation Checklist
 

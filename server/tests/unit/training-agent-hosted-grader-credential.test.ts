@@ -18,18 +18,15 @@
  * under the token `iss`, and points at a governance-only JWKS on its own
  * origin.
  */
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import express from 'express';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.hoisted(() => {
-  process.env.TRAINING_GOVERNANCE_CREDENTIAL_SECRET = require('node:crypto').randomBytes(32).toString('hex') as string;
-});
 
 import {
   GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS,
@@ -51,6 +48,13 @@ import { clearSessions, stopSessionCleanup } from '../../src/training-agent/stat
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 
 const SELLER = 'https://seller.hosted-grader-7758.example/mcp';
+// Generated per run so no key material lives in the repository. The key is
+// derived on every mint and verify (governance-agent-credentials.ts), so a
+// stub before each test is enough; unstubEnvs undoes it after the file.
+const CREDENTIAL_SECRET = randomBytes(32).toString('hex');
+beforeEach(() => {
+  vi.stubEnv('TRAINING_GOVERNANCE_CREDENTIAL_SECRET', CREDENTIAL_SECRET);
+});
 
 let base = '';
 let close: () => Promise<void> = async () => {};
@@ -292,7 +296,7 @@ describe('hosted-grader governance credential (adcp#7758)', () => {
       expect(verifyHostedGraderCredential(grader)).toBeNull();
       expect(() => mintHostedGraderCredential({ nonce })).toThrow(/not configured/);
     } finally {
-      vi.unstubAllEnvs();
+      vi.stubEnv('TRAINING_GOVERNANCE_CREDENTIAL_SECRET', CREDENTIAL_SECRET);
     }
   });
 });

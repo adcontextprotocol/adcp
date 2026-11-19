@@ -243,6 +243,9 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
     // production throttling is outside this exhaustive functional matrix and
     // must not turn it into an order-dependent request-count test.
     disableRateLimit: true,
+    // A server boot, like http.ts: the registries build while the harness
+    // starts, as they did before router construction stopped prewarming.
+    prewarmTenantRegistries: true,
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
