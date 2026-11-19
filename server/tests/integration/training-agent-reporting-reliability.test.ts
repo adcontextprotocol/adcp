@@ -1,4 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// These tests call the training agent with the documented public token,
+// which it accepts when PUBLIC_TEST_AGENT_TOKEN is unset. The shared setup
+// file sets that variable for every file, so unset it before the training
+// agent reads it at import.
+vi.hoisted(() => {
+  vi.stubEnv('PUBLIC_TEST_AGENT_TOKEN', undefined);
+});
+
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
