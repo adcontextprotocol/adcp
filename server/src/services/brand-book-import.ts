@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /**
  * Brand-book import: turn a brand guidelines PDF, PPTX, or web page into
  * proposed brand.json fields for the builder to review.
@@ -110,7 +109,7 @@ export async function sourceFromUrl(rawUrl: string): Promise<BrandBookSource> {
 }
 
 function htmlToText(html: string): string {
-  const { document } = parseHTML(html) as unknown as { document: Document };
+  const { document } = parseHTML(html) as unknown as { document: ConstructorParameters<typeof Readability>[0] };
   const article = new Readability(document).parse();
   const body = (document as unknown as { body?: { textContent?: string | null } }).body;
   const text = article?.textContent ?? body?.textContent ?? '';

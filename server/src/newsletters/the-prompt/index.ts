@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /**
  * The Prompt — Addie's Weekly Newsletter
  *
@@ -152,7 +151,7 @@ function htmlToMarkdown(html: string): string {
     ALLOWED_TAGS: ['p', 'br', 'a', 'strong', 'em', 'li'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,
-  }) as unknown as DocumentFragment;
+  });
   return domToMarkdown(dom).replace(/\n{3,}/g, '\n\n').trim();
 }
 
