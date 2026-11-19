@@ -12,7 +12,10 @@
  *
  * `ensureBuiltSchemas()` rebuilds the tree when the build inputs changed since
  * the last build. It holds a lock directory while it builds, so concurrent
- * test processes build once and wait for each other.
+ * test processes build once and wait for each other. The holder records its
+ * host and pid in the lock and keeps the lock's mtime fresh from a heartbeat
+ * thread; a waiter takes over a lock whose holder is gone (killed, or its
+ * container stopped) at once on the same host, else after LOCK_STALE_MS.
  *
  * The same input-digest cache covers dist/compliance/latest
  * (`ensureBuiltCompliance()`), and the CLI at the end of this file serves
@@ -24,14 +27,21 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { Worker } = require('node:worker_threads');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
 const BUILT_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const BUILT_ORIGIN = 'https://adcontextprotocol.org/schemas/latest/';
-const LOCK_STALE_MS = 10 * 60 * 1000;
+// A lock holder refreshes the lock directory's mtime every HEARTBEAT_MS. A
+// lock whose mtime is older than LOCK_STALE_MS has no live holder.
+const HEARTBEAT_MS = 2 * 1000;
+const LOCK_STALE_MS = 30 * 1000;
+// Inside the lock directory: `<hostname>\n<pid>\n` of the process that took it.
+const LOCK_OWNER_FILE = 'owner';
 const STAMP_NAME = '.build-inputs.sha256';
 // ADCP_BUILD_CACHE=0 makes ensure always build.
 const FORCE_ENV = 'ADCP_BUILD_CACHE';
@@ -189,24 +199,73 @@ function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-// Lock directories this process holds. They are removed on exit too, so a
-// build that ends in process.exit() does not leave its lock behind.
-const heldLocks = new Set();
+// Lock directories this process holds, each with its heartbeat's stop. They
+// are removed on exit too, so a build that ends in process.exit() does not
+// leave its lock behind.
+const heldLocks = new Map();
 process.on('exit', () => {
-  for (const dir of heldLocks) fs.rmSync(dir, { recursive: true, force: true });
+  for (const dir of heldLocks.keys()) fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// Runs on its own thread, so the lock stays fresh while the holder's main
+// thread is blocked (ensureBuilt waits in spawnSync for the whole build).
+const HEARTBEAT_SOURCE = `
+const fs = require('node:fs');
+const { workerData } = require('node:worker_threads');
+setInterval(() => {
+  const now = new Date();
+  try {
+    fs.utimesSync(workerData.dir, now, now);
+  } catch {
+    // Released between two beats.
+  }
+}, workerData.ms);
+`;
+
+/** Keeps `lockDir`'s mtime fresh until the returned function is called. */
+function startHeartbeat(lockDir) {
+  const worker = new Worker(HEARTBEAT_SOURCE, { eval: true, workerData: { dir: lockDir, ms: HEARTBEAT_MS } });
+  worker.unref();
+  return () => {
+    worker.terminate();
+  };
+}
+
+/**
+ * Whether the lock at `lockDir` has no live holder: its owner record names
+ * this host and a pid that no longer exists, or its heartbeat stopped (the
+ * mtime is older than LOCK_STALE_MS). A holder killed with SIGKILL, or with
+ * its container, leaves its directory behind; this is how waiters see it.
+ */
+function lockIsDead(lockDir) {
+  let owner = null;
+  try {
+    owner = fs.readFileSync(path.join(lockDir, LOCK_OWNER_FILE), 'utf8').split('\n');
+  } catch {
+    // An older holder wrote no owner record, or the holder has not written it yet.
+  }
+  if (owner && owner[0] === os.hostname() && /^\d+$/.test(owner[1] ?? '')) {
+    try {
+      process.kill(Number(owner[1]), 0);
+    } catch (error) {
+      if (error.code === 'ESRCH') return true;
+    }
+  }
+  return Date.now() - fs.statSync(lockDir).mtimeMs > LOCK_STALE_MS;
+}
 
 function acquireLock(lockDir) {
   fs.mkdirSync(path.dirname(lockDir), { recursive: true });
   for (;;) {
     try {
       fs.mkdirSync(lockDir);
-      heldLocks.add(lockDir);
+      fs.writeFileSync(path.join(lockDir, LOCK_OWNER_FILE), `${os.hostname()}\n${process.pid}\n`);
+      heldLocks.set(lockDir, startHeartbeat(lockDir));
       return;
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       try {
-        if (Date.now() - fs.statSync(lockDir).mtimeMs > LOCK_STALE_MS) fs.rmSync(lockDir, { recursive: true, force: true });
+        if (lockIsDead(lockDir)) fs.rmSync(lockDir, { recursive: true, force: true });
       } catch {
         // Another process released it between the two calls.
       }
@@ -216,6 +275,7 @@ function acquireLock(lockDir) {
 }
 
 function releaseLock(lockDir) {
+  heldLocks.get(lockDir)?.();
   fs.rmSync(lockDir, { recursive: true, force: true });
   heldLocks.delete(lockDir);
 }
@@ -223,18 +283,21 @@ function releaseLock(lockDir) {
 /**
  * Runs `fn`, a target's build, while holding that target's lock, so two
  * builds never interleave; scripts/build-*.cjs take it. A build that ensure
- * starts inherits the held lock. The input digest is taken here, at the
- * start, for writeBuildStamp.
+ * starts inherits the held lock and beats for it too, so the lock stays live
+ * while the build runs even if its parent's heartbeat stops. The input digest
+ * is taken here, at the start, for writeBuildStamp.
  */
 async function withBuildLock(fn, name = 'schemas') {
   const target = targetOf(name);
   const held = process.env[target.lockHeldEnv] === '1';
+  const stopHeartbeat = held ? startHeartbeat(target.lockDir) : null;
   if (!held) acquireLock(target.lockDir);
   try {
     startDigests.set(name, buildInputsDigest(name));
     return await fn();
   } finally {
-    if (!held) releaseLock(target.lockDir);
+    if (held) stopHeartbeat();
+    else releaseLock(target.lockDir);
   }
 }
 

@@ -30,14 +30,21 @@
  * Every CLI run is asynchronous (runChild), so the runner's --test-timeout
  * bounds it, real builds included: node:test applies it to each hook and
  * each test. Nothing here asserts on wall-clock time.
+ *
+ * The lock-liveness cases at the end drive the exported withBuildLock of the
+ * copy's scripts/built-schemas.cjs from child processes. A lock whose holder
+ * is gone must never block a waiter for longer than the liveness bound
+ * (30 s), which is also this file's --test-timeout, so a waiter that sits
+ * out a dead lock fails on the timeout. See the lock protocol there.
  */
 
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { after, before, describe, it } = require('node:test');
+const { after, afterEach, before, beforeEach, describe, it } = require('node:test');
 const { runChild } = require('./fixtures/storyboard-process-reaper.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -736,4 +743,210 @@ describe('build cache: rebuilds and failed builds', () => {
       await assertStale(target, 'after a failed build');
     });
   }
+});
+
+describe('build lock: liveness of the schemas lock (withBuildLock in child processes)', () => {
+  /*
+   * The lock protocol these cases pin (scripts/built-schemas.cjs):
+   *
+   * - The lock is the directory dist/schemas/.latest-build.lock (mkdir is
+   *   the atomic take). Its holder writes the owner record, a file named
+   *   `owner` inside the lock directory, containing exactly
+   *   `<hostname>\n<pid>\n` (os.hostname() and process.pid of the holder).
+   * - While it holds the lock, the holder keeps the lock directory's mtime
+   *   fresh from a heartbeat worker thread every 2 s, also while its main
+   *   thread is blocked (spawnSync, Atomics.wait).
+   * - A waiter breaks the lock at once when the owner record names this host
+   *   and a pid that no longer exists; otherwise (another host, or no owner
+   *   record) when the lock directory's mtime is older than the liveness
+   *   bound, 30 s. A live holder is never broken.
+   *
+   * Every waiter here would otherwise spin until the old 10-minute stale
+   * bound, so a waiter that does not break a dead lock fails on the
+   * runner's --test-timeout (30 s), not on a clock read here.
+   */
+  const { setTimeout: delay } = require('node:timers/promises');
+  const { lockDir } = TARGETS.schemas;
+  const OWNER_FILE = 'owner';
+  const PAST_LIVENESS_BOUND_MS = 31_000;
+  const HOLDER_BLOCK_MS = 7_000; // three heartbeats of the holder's blocked main thread
+
+  // A child that takes the schemas lock through the copy's withBuildLock and
+  // logs JSON lines to an events file: waiting, acquired (with the owner
+  // record it finds inside the lock), blocking (main thread blocked in
+  // Atomics.wait), releasing (still inside fn), released or failed.
+  const LOCK_CHILD = `
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const [modulePath, lockDir, events, label, blockMs] = process.argv.slice(1);
+    const log = (what, extra = {}) => fs.appendFileSync(events, JSON.stringify({ label, what, pid: process.pid, ...extra }) + '\\n');
+    const { withBuildLock } = require(modulePath);
+    log('waiting');
+    withBuildLock(async () => {
+      let owner = null;
+      try { owner = fs.readFileSync(path.join(lockDir, 'owner'), 'utf8'); } catch {}
+      log('acquired', { owner });
+      if (Number(blockMs) > 0) {
+        log('blocking');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(blockMs));
+      }
+      log('releasing');
+    }, 'schemas').then(
+      () => log('released'),
+      (error) => { log('failed', { message: String((error && error.stack) || error) }); process.exitCode = 1; },
+    );
+  `;
+
+  // Children of the current case; killed after each case, also a timed-out one.
+  const runs = { kills: [], after(kill) { this.kills.push(kill); } };
+  let eventFiles = 0;
+
+  function clear() {
+    for (const kill of runs.kills.splice(0)) kill();
+    if (root) fs.rmSync(abs(lockDir), { recursive: true, force: true });
+  }
+  beforeEach(clear);
+  afterEach(clear);
+  after(clear);
+
+  function eventsFile(name) {
+    eventFiles += 1;
+    return path.join(traceRoot, `lock-${eventFiles}-${name}.jsonl`);
+  }
+
+  function readEvents(file) {
+    if (!fs.existsSync(file)) return [];
+    return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  }
+
+  const indexOf = (events, label, what) => events.findIndex((e) => e.label === label && e.what === what);
+
+  function lockChild(label, events, { blockMs = 0 } = {}) {
+    return runChild(runs, process.execPath,
+      ['-e', LOCK_CHILD, abs('scripts/built-schemas.cjs'), abs(lockDir), events, label, String(blockMs)],
+      { cwd: root, env: cleanEnv() });
+  }
+
+  /** Polls `probe` every 100 ms until it returns a truthy value; the test timeout bounds it. */
+  async function until(probe) {
+    for (;;) {
+      const value = probe();
+      if (value) return value;
+      await delay(100);
+    }
+  }
+
+  /** The pid of a process on this host that has already exited. */
+  function exitedPid() {
+    const result = spawnSync(process.execPath, ['-e', '']);
+    assert.equal(result.status, 0, 'the short-lived child exits 0');
+    return result.pid;
+  }
+
+  /** A lock directory left behind by a holder that never released it. */
+  function orphanLock({ owner, ageMs = 0 }) {
+    fs.mkdirSync(abs(lockDir), { recursive: true });
+    if (owner) fs.writeFileSync(path.join(abs(lockDir), OWNER_FILE), `${owner.host}\n${owner.pid}\n`);
+    if (ageMs) age(ageMs);
+  }
+
+  function age(ms) {
+    const then = new Date(Date.now() - ms);
+    fs.utimesSync(abs(lockDir), then, then);
+  }
+
+  function describeRun(run, events) {
+    return `exit ${run.status}${run.signal ? ` (${run.signal})` : ''}\n--- events\n` +
+      `${readEvents(events).map((e) => JSON.stringify(e)).join('\n')}\n--- stderr (tail)\n${(run.stderr ?? '').slice(-2000)}`;
+  }
+
+  /** The child took the lock, found its own owner record in it, and released it. */
+  function assertTookAndReleased(run, events, label) {
+    const log = readEvents(events);
+    assert.equal(run.status, 0, `${label} exits 0\n${describeRun(run, events)}`);
+    const acquired = log.find((e) => e.label === label && e.what === 'acquired');
+    assert.ok(acquired, `${label} acquired the lock\n${describeRun(run, events)}`);
+    assert.ok(indexOf(log, label, 'released') > indexOf(log, label, 'acquired'), `${label} released the lock\n${describeRun(run, events)}`);
+    assert.equal(acquired.owner, `${os.hostname()}\n${acquired.pid}\n`,
+      `while ${label} holds the lock, ${lockDir}/${OWNER_FILE} names its host and pid\n${describeRun(run, events)}`);
+    assert.equal(fs.existsSync(abs(lockDir)), false, `${lockDir} is removed on release`);
+  }
+
+  it('an orphaned lock whose owner record names this host and an exited pid is taken at once, even with a fresh mtime', async () => {
+    orphanLock({ owner: { host: os.hostname(), pid: exitedPid() } });
+    const events = eventsFile('dead-pid');
+    // Keep the orphan's mtime fresh, so only the owner check can break it.
+    const keepFresh = setInterval(() => {
+      try {
+        const now = new Date();
+        fs.utimesSync(abs(lockDir), now, now);
+      } catch {
+        // The waiter took or released it in between.
+      }
+    }, 500);
+    let run;
+    try {
+      run = await lockChild('waiter', events);
+    } finally {
+      clearInterval(keepFresh);
+    }
+    assertTookAndReleased(run, events, 'waiter');
+  });
+
+  it('an orphaned lock from another host is not taken while its mtime is fresh, and is taken once its mtime is older than the 30 s bound', async () => {
+    // The pid has exited here, which says nothing about another host.
+    const owner = { host: `${os.hostname()}-other.invalid`, pid: exitedPid() };
+    orphanLock({ owner });
+    const foreign = `${owner.host}\n${owner.pid}\n`;
+    const events = eventsFile('other-host');
+    const done = lockChild('waiter', events);
+    await until(() => indexOf(readEvents(events), 'waiter', 'waiting') >= 0);
+    // A dozen polls of the waiter, and a heartbeat period, with the foreign lock fresh.
+    await delay(3_000);
+    assert.equal(indexOf(readEvents(events), 'waiter', 'acquired'), -1, 'the waiter does not take a fresh lock from another host');
+    assert.equal(fs.readFileSync(path.join(abs(lockDir), OWNER_FILE), 'utf8'), foreign, 'the foreign lock is left in place');
+
+    age(PAST_LIVENESS_BOUND_MS);
+    assertTookAndReleased(await done, events, 'waiter');
+  });
+
+  it('an orphaned lock with no owner record (left by an older holder) is taken once its mtime is older than the 30 s bound', async () => {
+    orphanLock({ ageMs: PAST_LIVENESS_BOUND_MS });
+    const events = eventsFile('no-owner');
+    assertTookAndReleased(await lockChild('waiter', events), events, 'waiter');
+  });
+
+  it('a holder whose main thread is blocked keeps the lock mtime advancing, and a waiter takes the lock only after the holder released it', async () => {
+    const events = eventsFile('heartbeat');
+    const holderDone = lockChild('holder', events, { blockMs: HOLDER_BLOCK_MS });
+    await until(() => indexOf(readEvents(events), 'holder', 'blocking') >= 0);
+    // From here until 'releasing' the holder's main thread is blocked in Atomics.wait.
+    const mtimes = [fs.statSync(abs(lockDir)).mtimeMs];
+    const waiterDone = lockChild('waiter', events);
+    await until(() => {
+      try {
+        mtimes.push(fs.statSync(abs(lockDir)).mtimeMs);
+      } catch {
+        // Released between the event and the stat.
+      }
+      return indexOf(readEvents(events), 'holder', 'releasing') >= 0;
+    });
+    const [holder, waiter] = await Promise.all([holderDone, waiterDone]);
+    const log = readEvents(events);
+
+    assert.equal(holder.status, 0, `holder exits 0\n${describeRun(holder, events)}`);
+    assert.equal(waiter.status, 0, `waiter exits 0\n${describeRun(waiter, events)}`);
+    const order = ['holder acquired', 'waiter waiting', 'holder releasing', 'waiter acquired', 'waiter released']
+      .map((step) => [step, indexOf(log, ...step.split(' '))]);
+    assert.ok(order.every(([, index]) => index >= 0), `every step is logged: ${JSON.stringify(order)}\n${describeRun(waiter, events)}`);
+    assert.deepEqual(order.map(([step]) => step), [...order].sort((a, b) => a[1] - b[1]).map(([step]) => step),
+      `the waiter took the lock only after the holder released it\n${describeRun(waiter, events)}`);
+
+    const advances = mtimes.filter((mtime, i) => i > 0 && mtime > mtimes[i - 1]).length;
+    assert.ok(advances >= 2,
+      `the lock mtime advanced ${advances} times while the holder's main thread was blocked for ${HOLDER_BLOCK_MS} ms ` +
+        `(heartbeat every 2 s from a worker thread); ${mtimes.length} samples, first ${mtimes[0]}, last ${mtimes.at(-1)}`);
+    assertTookAndReleased(holder, events, 'holder');
+    assertTookAndReleased(waiter, events, 'waiter');
+  });
 });

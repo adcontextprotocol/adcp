@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -27,35 +27,28 @@ vi.mock('../../server/src/compliance/storyboard-cache.js', () => ({
 
 const require = createRequire(import.meta.url);
 const { buildTo } = require('../../scripts/build-compliance.cjs');
-const { canonicalizePublishedSchemaUris } = require('../../scripts/build-schemas.cjs');
-const { BUILT_DIR, builtSchemaFiles, ensureBuiltSchemas, readBuiltSchema } = require('../../scripts/built-schemas.cjs');
+// Responses validate against the published tree, dist/schemas/latest, whose
+// $ids are the published https://adcontextprotocol.org/schemas/latest/ URIs
+// the SDK requires. The root suite's globalSetup (tests/setup/built-schemas.ts,
+// which lists this file) builds the tree before any worker starts when its
+// inputs changed. The SDK resolves a schema root by path and keys each
+// document's identity on its inode, size, mtime and ctime, so a rebuild in
+// place is seen.
+const { BUILT_DIR: schemaDir } = require('../../scripts/built-schemas.cjs');
 const { version } = require('../../package.json');
 const sourceDir = path.resolve('static/compliance/source');
 const url = 'https://agent.example/mcp';
 let bundleDir: string;
-let schemaDir: string;
 let loadPublished: typeof import('@adcp/sdk/testing').getComplianceStoryboardById;
 
 beforeAll(async () => {
   bundleDir = mkdtempSync(path.join(tmpdir(), 'authored-tool-gates-'));
   buildTo(bundleDir, version, sourceDir);
-  schemaDir = mkdtempSync(path.join(tmpdir(), 'authored-tool-schemas-'));
-  // The SDK requires published schema IDs. Copy the published schemas
-  // (dist/schemas/latest) into a disposable tree with this version's URIs;
-  // no checked-in release artifacts change.
-  ensureBuiltSchemas();
-  for (const file of builtSchemaFiles() as string[]) {
-    const location = path.join(schemaDir, path.relative(BUILT_DIR, file));
-    mkdirSync(path.dirname(location), { recursive: true });
-    writeFileSync(location, JSON.stringify(canonicalizePublishedSchemaUris(readBuiltSchema(file), version)));
-  }
   loadPublished = (await vi.importActual<typeof import('@adcp/sdk/testing')>('@adcp/sdk/testing'))
     .getComplianceStoryboardById;
-  // Builds dist/schemas/latest first when its sources changed.
-}, 180_000);
+});
 afterAll(() => {
   rmSync(bundleDir, { recursive: true, force: true });
-  rmSync(schemaDir, { recursive: true, force: true });
 });
 
 function load(name: string, surface: string): Storyboard {

@@ -17,6 +17,9 @@ export default defineConfig({
     // Cap individual test hangs at 10 s so a single stalled test doesn't
     // silently consume the entire 60 s precommit budget with no test name.
     testTimeout: 10000,
+    // Builds dist/schemas/latest once, before any worker starts, for runs
+    // that include a file that reads it (BUILT_SCHEMA_FILES there).
+    globalSetup: ['./tests/setup/built-schemas.ts'],
     env: validatorCacheEnv(process.env, import.meta.dirname),
     exclude: [
       '**/node_modules/**',
