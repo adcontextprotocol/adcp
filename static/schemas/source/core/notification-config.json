@@ -118,89 +118,71 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Single subscriber receiving creative lifecycle events",
-      "data": {
-        "subscriber_id": "buyer-primary",
-        "url": "https://buyer.example/webhooks/adcp/creative",
-        "event_types": [
-          "creative.status_changed",
-          "creative.purged"
-        ],
-        "active": true
-      }
+      "subscriber_id": "buyer-primary",
+      "url": "https://buyer.example/webhooks/adcp/creative",
+      "event_types": [
+        "creative.status_changed",
+        "creative.purged"
+      ],
+      "active": true
     },
     {
-      "description": "Audit bus subscriber (one of multiple entries on the same account; the array lives on the account, this is a single item)",
-      "data": {
-        "subscriber_id": "audit-bus",
-        "url": "https://audit.buyer.example/adcp/ingest",
-        "event_types": [
-          "creative.status_changed",
-          "creative.purged"
-        ],
-        "active": true
-      }
+      "subscriber_id": "audit-bus",
+      "url": "https://audit.buyer.example/adcp/ingest",
+      "event_types": [
+        "creative.status_changed",
+        "creative.purged"
+      ],
+      "active": true
     },
     {
-      "description": "Account lifecycle subscriber",
-      "data": {
-        "subscriber_id": "account-lifecycle",
-        "url": "https://buyer.example/webhooks/adcp/accounts",
-        "event_types": [
-          "account.status_changed"
-        ],
-        "active": true
-      }
+      "subscriber_id": "account-lifecycle",
+      "url": "https://buyer.example/webhooks/adcp/accounts",
+      "event_types": [
+        "account.status_changed"
+      ],
+      "active": true
     },
     {
-      "description": "Wholesale feed mirror subscriber receiving product and signal change payloads",
-      "data": {
-        "subscriber_id": "wholesale-feed-sync",
-        "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
-        "event_types": [
-          "product.created",
-          "product.updated",
-          "product.priced",
-          "product.removed",
-          "signal.created",
-          "signal.updated",
-          "signal.priced",
-          "signal.removed",
-          "wholesale_feed.bulk_change"
-        ],
-        "product_payload_view": "canonical",
-        "active": true
-      }
+      "subscriber_id": "wholesale-feed-sync",
+      "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
+      "event_types": [
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "wholesale_feed.bulk_change"
+      ],
+      "product_payload_view": "canonical",
+      "active": true
     },
     {
-      "description": "Collection card mirror subscriber (experimental, media_buy.collection_catalog); bootstraps and repairs through list_collections",
-      "data": {
-        "subscriber_id": "card-mirror",
-        "url": "https://buyer.example/webhooks/adcp/collection-cards",
-        "event_types": [
-          "collection_card.updated",
-          "collection_card.removed",
-          "collection_catalog.bulk_change"
-        ],
-        "active": true
-      }
+      "subscriber_id": "card-mirror",
+      "url": "https://buyer.example/webhooks/adcp/collection-cards",
+      "event_types": [
+        "collection_card.updated",
+        "collection_card.removed",
+        "collection_catalog.bulk_change"
+      ],
+      "active": true
     },
     {
-      "description": "Legacy Bearer authentication (deprecated, 4.0 removal)",
-      "data": {
-        "subscriber_id": "buyer-primary",
-        "url": "https://buyer.example/webhooks/adcp",
-        "event_types": [
-          "creative.status_changed"
+      "subscriber_id": "buyer-primary",
+      "url": "https://buyer.example/webhooks/adcp",
+      "event_types": [
+        "creative.status_changed"
+      ],
+      "authentication": {
+        "schemes": [
+          "Bearer"
         ],
-        "authentication": {
-          "schemes": [
-            "Bearer"
-          ],
-          "credentials": "AbCdEf0123456789AbCdEf0123456789"
-        },
-        "active": true
-      }
+        "credentials": "AbCdEf0123456789AbCdEf0123456789"
+      },
+      "active": true
     }
   ]
 }

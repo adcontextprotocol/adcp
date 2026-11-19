@@ -41,16 +41,10 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Preferred response shape",
-      "data": {
-        "challenge": "example-challenge-token-000000000000"
-      }
+      "challenge": "example-challenge-token-000000000000"
     },
     {
-      "description": "Backward-compatible response shape",
-      "data": {
-        "token": "example-challenge-token-000000000000"
-      }
+      "token": "example-challenge-token-000000000000"
     }
   ]
 }

@@ -206,48 +206,42 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Creative modified on a connected platform",
-      "data": {
-        "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
-        "recorded_at": "2026-08-24T11:58:04Z",
-        "occurred_at": "2026-08-24T11:57:41Z",
-        "resource": {
-          "type": "creative",
-          "account_id": "acc_luma_shared",
-          "resource_id": "cr_8421"
-        },
-        "action": "updated",
-        "origin": {
-          "kind": "connected_platform",
-          "connection_id": "conn_social_primary"
-        },
-        "resource_revision": 12,
-        "changed_paths": ["/name", "/assets/0"],
-        "repair": {
-          "task": "list_creatives"
-        }
+      "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
+      "recorded_at": "2026-08-24T11:58:04Z",
+      "occurred_at": "2026-08-24T11:57:41Z",
+      "resource": {
+        "type": "creative",
+        "account_id": "acc_luma_shared",
+        "resource_id": "cr_8421"
+      },
+      "action": "updated",
+      "origin": {
+        "kind": "connected_platform",
+        "connection_id": "conn_social_primary"
+      },
+      "resource_revision": 12,
+      "changed_paths": ["/name", "/assets/0"],
+      "repair": {
+        "task": "list_creatives"
       }
     },
     {
-      "description": "Budget changed through update_media_buy, as served to the principal that sent the request",
-      "data": {
-        "change_id": "chg_01K38H2R5D7B0V9N3C4S8E6J1P",
-        "recorded_at": "2026-08-24T12:04:19Z",
-        "resource": {
-          "type": "media_buy",
-          "account_id": "acc_luma_shared",
-          "resource_id": "mb_5512"
-        },
-        "action": "updated",
-        "origin": {
-          "kind": "adcp"
-        },
-        "idempotency_key": "9f2c1d7e-3b5a-4c68-8e10-a7d4b2f6c901",
-        "resource_revision": 7,
-        "changed_paths": ["/packages/0/budget"],
-        "repair": {
-          "task": "get_media_buys"
-        }
+      "change_id": "chg_01K38H2R5D7B0V9N3C4S8E6J1P",
+      "recorded_at": "2026-08-24T12:04:19Z",
+      "resource": {
+        "type": "media_buy",
+        "account_id": "acc_luma_shared",
+        "resource_id": "mb_5512"
+      },
+      "action": "updated",
+      "origin": {
+        "kind": "adcp"
+      },
+      "idempotency_key": "9f2c1d7e-3b5a-4c68-8e10-a7d4b2f6c901",
+      "resource_revision": 7,
+      "changed_paths": ["/packages/0/budget"],
+      "repair": {
+        "task": "get_media_buys"
       }
     }
   ]

@@ -144,27 +144,21 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Active account: one buy's products carry no matching offering, and an earlier capacity refusal has ended",
-      "data": {
-        "subscription_id": "analytics-daily",
-        "subscription_version": 1,
-        "status": "active",
-        "excluded": [
-          { "media_buy_id": "mb_dooh_test", "reason": "offering_unsupported", "from": "2026-11-03T05:00:00Z" },
-          { "reason": "capacity", "from": "2026-11-03T05:00:00Z", "until": "2026-11-10T05:00:00Z" }
-        ]
-      }
+      "subscription_id": "analytics-daily",
+      "subscription_version": 1,
+      "status": "active",
+      "excluded": [
+        { "media_buy_id": "mb_dooh_test", "reason": "offering_unsupported", "from": "2026-11-03T05:00:00Z" },
+        { "reason": "capacity", "from": "2026-11-03T05:00:00Z", "until": "2026-11-10T05:00:00Z" }
+      ]
     },
     {
-      "description": "Account taken by an account-level sync_accounts delivery config",
-      "data": {
-        "subscription_id": "pacing-hourly",
-        "subscription_version": 2,
-        "status": "excluded",
-        "excluded": [
-          { "reason": "overridden", "from": "2026-11-05T00:00:00Z", "overridden_by": { "delivery_config_id": "acme-pacing" } }
-        ]
-      }
+      "subscription_id": "pacing-hourly",
+      "subscription_version": 2,
+      "status": "excluded",
+      "excluded": [
+        { "reason": "overridden", "from": "2026-11-05T00:00:00Z", "overridden_by": { "delivery_config_id": "acme-pacing" } }
+      ]
     }
   ]
 }

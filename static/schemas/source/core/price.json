@@ -25,27 +25,18 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "One-time purchase price",
-      "data": {
-        "amount": 29.99,
-        "currency": "USD"
-      }
+      "amount": 29.99,
+      "currency": "USD"
     },
     {
-      "description": "Hotel nightly rate",
-      "data": {
-        "amount": 189,
-        "currency": "EUR",
-        "period": "night"
-      }
+      "amount": 189,
+      "currency": "EUR",
+      "period": "night"
     },
     {
-      "description": "Annual salary",
-      "data": {
-        "amount": 85000,
-        "currency": "USD",
-        "period": "year"
-      }
+      "amount": 85000,
+      "currency": "USD",
+      "period": "year"
     }
   ]
 }

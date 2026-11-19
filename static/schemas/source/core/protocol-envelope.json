@@ -73,105 +73,90 @@
   },
   "examples": [
     {
-      "description": "Synchronous task response with immediate results",
-      "data": {
-        "context_id": "ctx_abc123",
-        "status": "completed",
-        "message": "Found 3 products matching your criteria for CTV inventory in California",
-        "timestamp": "2025-10-14T14:25:30Z",
-        "payload": {
-          "products": [
-            {
-              "product_id": "ctv_premium_ca",
-              "name": "CTV Premium - California",
-              "description": "Premium connected TV inventory across California",
-              "pricing": {
-                "model": "cpm",
-                "amount": 45.0,
-                "currency": "USD"
-              }
+      "context_id": "ctx_abc123",
+      "status": "completed",
+      "message": "Found 3 products matching your criteria for CTV inventory in California",
+      "timestamp": "2025-10-14T14:25:30Z",
+      "payload": {
+        "products": [
+          {
+            "product_id": "ctv_premium_ca",
+            "name": "CTV Premium - California",
+            "description": "Premium connected TV inventory across California",
+            "pricing": {
+              "model": "cpm",
+              "amount": 45.0,
+              "currency": "USD"
             }
-          ]
-        }
-      }
-    },
-    {
-      "description": "Asynchronous task response with pending operation",
-      "data": {
-        "context_id": "ctx_def456",
-        "task_id": "task_789",
-        "status": "submitted",
-        "message": "Media buy creation submitted. Processing will take approximately 5-10 minutes. You'll receive updates via webhook.",
-        "timestamp": "2025-10-14T14:30:00Z",
-        "push_notification_config": {
-          "url": "https://buyer.example.com/webhooks/adcp",
-          "authentication": {
-            "schemes": [
-              "HMAC-SHA256"
-            ],
-            "credentials": "shared_secret_exchanged_during_onboarding_min_32_chars"
           }
-        },
-        "payload": {
-          "account": { "account_id": "acct_123" }
-        }
+        ]
       }
     },
     {
-      "description": "Task response requiring user input",
-      "data": {
-        "context_id": "ctx_ghi789",
-        "task_id": "task_101",
-        "status": "input-required",
-        "message": "This media buy requires manual approval. Please review the terms and confirm to proceed.",
-        "timestamp": "2025-10-14T14:32:15Z",
-        "payload": {
-          "media_buy_id": "mb_123456",
-          "packages": [
-            {
-              "package_id": "pkg_001"
-            }
+      "context_id": "ctx_def456",
+      "task_id": "task_789",
+      "status": "submitted",
+      "message": "Media buy creation submitted. Processing will take approximately 5-10 minutes. You'll receive updates via webhook.",
+      "timestamp": "2025-10-14T14:30:00Z",
+      "push_notification_config": {
+        "url": "https://buyer.example.com/webhooks/adcp",
+        "authentication": {
+          "schemes": [
+            "HMAC-SHA256"
           ],
-          "errors": [
-            {
-              "code": "APPROVAL_REQUIRED",
-              "message": "Budget exceeds auto-approval threshold",
-              "severity": "warning"
-            }
-          ]
+          "credentials": "shared_secret_exchanged_during_onboarding_min_32_chars"
         }
+      },
+      "payload": {
+        "account": { "account_id": "acct_123" }
       }
     },
     {
-      "description": "Idempotent replay — same key and payload as a prior request within the replay window",
-      "data": {
-        "context_id": "ctx_abc123",
-        "status": "completed",
-        "message": "Returning cached response for idempotency_key (already processed)",
-        "timestamp": "2025-10-14T14:35:00Z",
-        "replayed": true,
-        "payload": {
-          "media_buy_id": "mb_01HW7J8K9P0Q1R2S3T4U5V6W7X"
-        }
+      "context_id": "ctx_ghi789",
+      "task_id": "task_101",
+      "status": "input-required",
+      "message": "This media buy requires manual approval. Please review the terms and confirm to proceed.",
+      "timestamp": "2025-10-14T14:32:15Z",
+      "payload": {
+        "media_buy_id": "mb_123456",
+        "packages": [
+          {
+            "package_id": "pkg_001"
+          }
+        ],
+        "errors": [
+          {
+            "code": "APPROVAL_REQUIRED",
+            "message": "Budget exceeds auto-approval threshold",
+            "severity": "warning"
+          }
+        ]
       }
     },
     {
-      "description": "Failed task response with error details",
-      "data": {
-        "context_id": "ctx_jkl012",
-        "status": "failed",
-        "message": "Unable to create media buy due to invalid targeting parameters",
-        "timestamp": "2025-10-14T14:28:45Z",
-        "payload": {
-          "errors": [
-            {
-              "code": "INVALID_TARGETING",
-              "message": "Geographic targeting codes are invalid",
-              "field": "targeting.geo_countries",
-              "severity": "error"
-            }
-          ]
-        }
+      "context_id": "ctx_abc123",
+      "status": "completed",
+      "message": "Returning cached response for idempotency_key (already processed)",
+      "timestamp": "2025-10-14T14:35:00Z",
+      "replayed": true,
+      "payload": {
+        "media_buy_id": "mb_01HW7J8K9P0Q1R2S3T4U5V6W7X"
+      }
+    },
+    {
+      "context_id": "ctx_jkl012",
+      "status": "failed",
+      "message": "Unable to create media buy due to invalid targeting parameters",
+      "timestamp": "2025-10-14T14:28:45Z",
+      "payload": {
+        "errors": [
+          {
+            "code": "INVALID_TARGETING",
+            "message": "Geographic targeting codes are invalid",
+            "field": "targeting.geo_countries",
+            "severity": "error"
+          }
+        ]
       }
     }
   ],

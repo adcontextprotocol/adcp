@@ -68,19 +68,16 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Seller review finished and matched an existing account",
-      "data": {
-        "idempotency_key": "6d1f0b7e-2c4a-4e8f-9b3d-5a7c1e9f2b40",
-        "notification_id": "areq_01K4F8M2Q7:resolved",
-        "notification_type": "account_request.changed",
-        "fired_at": "2026-10-19T14:30:05Z",
-        "subscriber_id": "buyer-events",
-        "agent_url": "https://sales.streamhaus.example/adcp",
-        "request_id": "areq_01K4F8M2Q7",
-        "previous_state": "in_review",
-        "state": "resolved",
-        "changed_at": "2026-10-19T14:30:00Z"
-      }
+      "idempotency_key": "6d1f0b7e-2c4a-4e8f-9b3d-5a7c1e9f2b40",
+      "notification_id": "areq_01K4F8M2Q7:resolved",
+      "notification_type": "account_request.changed",
+      "fired_at": "2026-10-19T14:30:05Z",
+      "subscriber_id": "buyer-events",
+      "agent_url": "https://sales.streamhaus.example/adcp",
+      "request_id": "areq_01K4F8M2Q7",
+      "previous_state": "in_review",
+      "state": "resolved",
+      "changed_at": "2026-10-19T14:30:00Z"
     }
   ]
 }

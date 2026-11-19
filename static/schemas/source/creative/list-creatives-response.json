@@ -730,187 +730,181 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Library query with creatives and variables",
-      "data": {
-        "status": "completed",
-        "query_summary": {
-          "total_matching": 2,
-          "returned": 2,
-          "filters_applied": [
-            "concept_ids=concept_holiday_2026",
-            "statuses=approved"
+      "status": "completed",
+      "query_summary": {
+        "total_matching": 2,
+        "returned": 2,
+        "filters_applied": [
+          "concept_ids=concept_holiday_2026",
+          "statuses=approved"
+        ]
+      },
+      "pagination": {
+        "has_more": false,
+        "total_count": 2
+      },
+      "creatives": [
+        {
+          "creative_id": "ft_88201",
+          "name": "Holiday Sale - Medium Rectangle",
+          "format_kind": "image",
+          "status": "approved",
+          "status_as_of": "2026-03-01T06:00:00Z",
+          "created_date": "2026-01-10T14:00:00Z",
+          "updated_date": "2026-02-20T09:30:00Z",
+          "assets": {
+            "banner_image": {
+              "asset_type": "image",
+              "url": "https://cdn.example.com/holiday_300x250.png",
+              "width": 300,
+              "height": 250
+            },
+            "clickthrough_url": {
+              "asset_type": "url",
+              "url": "https://acmecorp.example.com/holiday-sale"
+            }
+          },
+          "tags": [
+            "holiday_2026",
+            "display"
+          ],
+          "concept_id": "concept_holiday_2026",
+          "concept_name": "Holiday 2026 Campaign",
+          "variables": [
+            {
+              "variable_id": "headline_text",
+              "name": "Headline",
+              "variable_type": "text",
+              "default_value": "Holiday Sale - 50% Off",
+              "required": true
+            },
+            {
+              "variable_id": "hero_image",
+              "name": "Hero Image",
+              "variable_type": "image",
+              "required": false
+            }
           ]
         },
-        "pagination": {
-          "has_more": false,
-          "total_count": 2
-        },
-        "creatives": [
-          {
-            "creative_id": "ft_88201",
-            "name": "Holiday Sale - Medium Rectangle",
-            "format_kind": "image",
-            "status": "approved",
-            "status_as_of": "2026-03-01T06:00:00Z",
-            "created_date": "2026-01-10T14:00:00Z",
-            "updated_date": "2026-02-20T09:30:00Z",
-            "assets": {
-              "banner_image": {
-                "asset_type": "image",
-                "url": "https://cdn.example.com/holiday_300x250.png",
-                "width": 300,
-                "height": 250
-              },
-              "clickthrough_url": {
-                "asset_type": "url",
-                "url": "https://acmecorp.example.com/holiday-sale"
-              }
+        {
+          "creative_id": "ft_88202",
+          "name": "Holiday Sale - Leaderboard",
+          "format_kind": "image",
+          "status": "approved",
+          "created_date": "2026-01-10T14:30:00Z",
+          "updated_date": "2026-02-20T09:35:00Z",
+          "assets": {
+            "banner_image": {
+              "asset_type": "image",
+              "url": "https://cdn.example.com/holiday_728x90.png",
+              "width": 728,
+              "height": 90
             },
-            "tags": [
-              "holiday_2026",
-              "display"
-            ],
-            "concept_id": "concept_holiday_2026",
-            "concept_name": "Holiday 2026 Campaign",
-            "variables": [
-              {
-                "variable_id": "headline_text",
-                "name": "Headline",
-                "variable_type": "text",
-                "default_value": "Holiday Sale - 50% Off",
-                "required": true
-              },
-              {
-                "variable_id": "hero_image",
-                "name": "Hero Image",
-                "variable_type": "image",
-                "required": false
-              }
-            ]
+            "clickthrough_url": {
+              "asset_type": "url",
+              "url": "https://acmecorp.example.com/holiday-sale"
+            }
           },
-          {
-            "creative_id": "ft_88202",
-            "name": "Holiday Sale - Leaderboard",
-            "format_kind": "image",
-            "status": "approved",
-            "created_date": "2026-01-10T14:30:00Z",
-            "updated_date": "2026-02-20T09:35:00Z",
-            "assets": {
-              "banner_image": {
-                "asset_type": "image",
-                "url": "https://cdn.example.com/holiday_728x90.png",
-                "width": 728,
-                "height": 90
-              },
-              "clickthrough_url": {
-                "asset_type": "url",
-                "url": "https://acmecorp.example.com/holiday-sale"
-              }
-            },
-            "tags": [
-              "holiday_2026",
-              "display"
-            ],
-            "concept_id": "concept_holiday_2026",
-            "concept_name": "Holiday 2026 Campaign",
-            "variables": []
-          }
-        ],
-        "format_summary": {
-          "display_static_300x250": 1,
-          "display_static_728x90": 1
-        },
-        "status_summary": {
-          "approved": 2,
-          "pending_review": 0,
-          "rejected": 0,
-          "archived": 0
+          "tags": [
+            "holiday_2026",
+            "display"
+          ],
+          "concept_id": "concept_holiday_2026",
+          "concept_name": "Holiday 2026 Campaign",
+          "variables": []
         }
+      ],
+      "format_summary": {
+        "display_static_300x250": 1,
+        "display_static_728x90": 1
+      },
+      "status_summary": {
+        "approved": 2,
+        "pending_review": 0,
+        "rejected": 0,
+        "archived": 0
       }
     },
     {
-      "description": "Library query with webhook_activity and a purged tombstone",
-      "data": {
-        "status": "completed",
-        "query_summary": {
-          "total_matching": 2,
-          "returned": 2,
-          "filters_applied": [
-            "include_purged=true",
-            "include_webhook_activity=true"
+      "status": "completed",
+      "query_summary": {
+        "total_matching": 2,
+        "returned": 2,
+        "filters_applied": [
+          "include_purged=true",
+          "include_webhook_activity=true"
+        ]
+      },
+      "pagination": {
+        "has_more": false,
+        "total_count": 2
+      },
+      "creatives": [
+        {
+          "creative_id": "ft_88201",
+          "name": "Holiday Sale - Medium Rectangle",
+          "format_kind": "image",
+          "status": "rejected",
+          "created_date": "2026-01-10T14:00:00Z",
+          "updated_date": "2026-05-18T14:18:42Z",
+          "webhook_activity": [
+            {
+              "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+              "notification_id": "cs_ft88201_2026_05_18a",
+              "subscriber_id": "buyer-primary",
+              "fired_at": "2026-05-18T14:20:00Z",
+              "completed_at": "2026-05-18T14:20:00Z",
+              "notification_type": "creative.status_changed",
+              "attempt": 1,
+              "status": "success",
+              "url": "https://buyer.example/webhooks/adcp/creative",
+              "http_status_code": 200,
+              "response_time_ms": 142,
+              "payload_size_bytes": 612,
+              "error_message": null
+            }
           ]
         },
-        "pagination": {
-          "has_more": false,
-          "total_count": 2
-        },
-        "creatives": [
-          {
-            "creative_id": "ft_88201",
-            "name": "Holiday Sale - Medium Rectangle",
-            "format_kind": "image",
-            "status": "rejected",
-            "created_date": "2026-01-10T14:00:00Z",
-            "updated_date": "2026-05-18T14:18:42Z",
-            "webhook_activity": [
-              {
-                "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
-                "notification_id": "cs_ft88201_2026_05_18a",
-                "subscriber_id": "buyer-primary",
-                "fired_at": "2026-05-18T14:20:00Z",
-                "completed_at": "2026-05-18T14:20:00Z",
-                "notification_type": "creative.status_changed",
-                "attempt": 1,
-                "status": "success",
-                "url": "https://buyer.example/webhooks/adcp/creative",
-                "http_status_code": 200,
-                "response_time_ms": 142,
-                "payload_size_bytes": 612,
-                "error_message": null
-              }
-            ]
+        {
+          "creative_id": "ft_87100",
+          "name": "Holiday Sale - Leaderboard (purged)",
+          "format_kind": "image",
+          "status": "approved",
+          "created_date": "2025-11-01T10:00:00Z",
+          "updated_date": "2026-05-18T02:59:48Z",
+          "purge": {
+            "kind": "soft",
+            "at": "2026-05-18T02:59:48Z",
+            "reason_code": "retention_expired"
           },
-          {
-            "creative_id": "ft_87100",
-            "name": "Holiday Sale - Leaderboard (purged)",
-            "format_kind": "image",
-            "status": "approved",
-            "created_date": "2025-11-01T10:00:00Z",
-            "updated_date": "2026-05-18T02:59:48Z",
-            "purge": {
-              "kind": "soft",
-              "at": "2026-05-18T02:59:48Z",
-              "reason_code": "retention_expired"
-            },
-            "webhook_activity": [
-              {
-                "idempotency_key": "whk_01HW9H4X5ZTQ8R0O2P4S6U8V0X",
-                "notification_id": "cp_ft87100_retention",
-                "subscriber_id": "buyer-primary",
-                "fired_at": "2026-05-18T03:00:00Z",
-                "completed_at": "2026-05-18T03:00:00Z",
-                "notification_type": "creative.purged",
-                "attempt": 1,
-                "status": "success",
-                "url": "https://buyer.example/webhooks/adcp/creative",
-                "http_status_code": 200,
-                "response_time_ms": 178,
-                "payload_size_bytes": 484,
-                "error_message": null
-              }
-            ]
-          }
-        ],
-        "format_summary": {
-          "display_static_300x250": 1,
-          "display_static_728x90": 1
-        },
-        "status_summary": {
-          "approved": 1,
-          "pending_review": 0,
-          "rejected": 1,
-          "archived": 0
+          "webhook_activity": [
+            {
+              "idempotency_key": "whk_01HW9H4X5ZTQ8R0O2P4S6U8V0X",
+              "notification_id": "cp_ft87100_retention",
+              "subscriber_id": "buyer-primary",
+              "fired_at": "2026-05-18T03:00:00Z",
+              "completed_at": "2026-05-18T03:00:00Z",
+              "notification_type": "creative.purged",
+              "attempt": 1,
+              "status": "success",
+              "url": "https://buyer.example/webhooks/adcp/creative",
+              "http_status_code": 200,
+              "response_time_ms": 178,
+              "payload_size_bytes": 484,
+              "error_message": null
+            }
+          ]
         }
+      ],
+      "format_summary": {
+        "display_static_300x250": 1,
+        "display_static_728x90": 1
+      },
+      "status_summary": {
+        "approved": 1,
+        "pending_review": 0,
+        "rejected": 1,
+        "archived": 0
       }
     }
   ]

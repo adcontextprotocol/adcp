@@ -117,22 +117,19 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Account requires payment action",
-      "data": {
-        "idempotency_key": "whk_01K18GM0Z7J3Q6WBH7DYK2R4VM",
-        "notification_id": "acctchg_acc_glow_20260719T100712Z",
-        "notification_type": "account.status_changed",
-        "fired_at": "2026-07-19T10:07:15Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_glow_pending",
-        "previous_status": "pending_approval",
-        "status": "payment_required",
-        "observed_at": "2026-07-19T10:07:12Z",
-        "reason_code": "setup_required",
-        "setup": {
-          "message": "Complete advertiser billing setup.",
-          "expires_at": "2026-07-30T00:00:00Z"
-        }
+      "idempotency_key": "whk_01K18GM0Z7J3Q6WBH7DYK2R4VM",
+      "notification_id": "acctchg_acc_glow_20260719T100712Z",
+      "notification_type": "account.status_changed",
+      "fired_at": "2026-07-19T10:07:15Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_glow_pending",
+      "previous_status": "pending_approval",
+      "status": "payment_required",
+      "observed_at": "2026-07-19T10:07:12Z",
+      "reason_code": "setup_required",
+      "setup": {
+        "message": "Complete advertiser billing setup.",
+        "expires_at": "2026-07-30T00:00:00Z"
       }
     }
   ]

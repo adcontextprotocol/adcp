@@ -140,15 +140,12 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Registry subscriber receiving capability-change invalidations",
-      "data": {
-        "subscriber_id": "registry-cache",
-        "url": "https://registry.example/webhooks/adcp/capabilities",
-        "event_types": [
-          "capabilities.changed"
-        ],
-        "active": true
-      }
+      "subscriber_id": "registry-cache",
+      "url": "https://registry.example/webhooks/adcp/capabilities",
+      "event_types": [
+        "capabilities.changed"
+      ],
+      "active": true
     }
   ]
 }

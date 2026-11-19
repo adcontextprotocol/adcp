@@ -96,37 +96,31 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Retention-driven soft purge (tombstone available on list_creatives)",
-      "data": {
-        "idempotency_key": "whk_01HW9H4X5ZTQ8R0O2P4S6U8V0X",
-        "notification_id": "cp_ft87100_retention",
-        "notification_type": "creative.purged",
-        "fired_at": "2026-05-18T03:00:00Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_acme_pinnacle",
-        "creative_id": "ft_87100",
-        "purge_kind": "soft",
-        "purged_at": "2026-05-18T02:59:48Z",
-        "reason_code": "retention_expired",
-        "reason_detail": "Creative inactive for 365 days; retention sweep applied.",
-        "initiator": "system"
-      }
+      "idempotency_key": "whk_01HW9H4X5ZTQ8R0O2P4S6U8V0X",
+      "notification_id": "cp_ft87100_retention",
+      "notification_type": "creative.purged",
+      "fired_at": "2026-05-18T03:00:00Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_acme_pinnacle",
+      "creative_id": "ft_87100",
+      "purge_kind": "soft",
+      "purged_at": "2026-05-18T02:59:48Z",
+      "reason_code": "retention_expired",
+      "reason_detail": "Creative inactive for 365 days; retention sweep applied.",
+      "initiator": "system"
     },
     {
-      "description": "Legal erasure (hard purge, no tombstone)",
-      "data": {
-        "idempotency_key": "whk_01HW9J5Y6AURP9S1Q3R5T7V9X1Y",
-        "notification_id": "cp_ft86200_erasure",
-        "notification_type": "creative.purged",
-        "fired_at": "2026-05-18T11:30:00Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_acme_pinnacle",
-        "creative_id": "ft_86200",
-        "purge_kind": "hard",
-        "purged_at": "2026-05-18T11:29:55Z",
-        "reason_code": "legal_erasure",
-        "initiator": "seller"
-      }
+      "idempotency_key": "whk_01HW9J5Y6AURP9S1Q3R5T7V9X1Y",
+      "notification_id": "cp_ft86200_erasure",
+      "notification_type": "creative.purged",
+      "fired_at": "2026-05-18T11:30:00Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_acme_pinnacle",
+      "creative_id": "ft_86200",
+      "purge_kind": "hard",
+      "purged_at": "2026-05-18T11:29:55Z",
+      "reason_code": "legal_erasure",
+      "initiator": "seller"
     }
   ]
 }

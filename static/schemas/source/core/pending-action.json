@@ -42,22 +42,16 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Seller sales ops matching the request against existing advertiser records",
-      "data": {
-        "waiting_on": "seller",
-        "kind": "review",
-        "message": "Checking for an existing Renault France relationship. Usually one business day."
-      }
+      "waiting_on": "seller",
+      "kind": "review",
+      "message": "Checking for an existing Renault France relationship. Usually one business day."
     },
     {
-      "description": "No relationship exists; a buyer-side human must register",
-      "data": {
-        "waiting_on": "buyer",
-        "kind": "sign_up",
-        "url": "https://advertisers.streamhaus.example/register?ref=areq_01K4F8",
-        "message": "Register WPP Media France as an advertiser and accept the StreamHaus terms.",
-        "expires_at": "2026-11-15T00:00:00Z"
-      }
+      "waiting_on": "buyer",
+      "kind": "sign_up",
+      "url": "https://advertisers.streamhaus.example/register?ref=areq_01K4F8",
+      "message": "Register WPP Media France as an advertiser and accept the StreamHaus terms.",
+      "expires_at": "2026-11-15T00:00:00Z"
     }
   ]
 }

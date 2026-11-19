@@ -118,37 +118,31 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Senior engineering role",
-      "data": {
-        "job_id": "eng-sr-2025-042",
-        "title": "Senior Software Engineer",
-        "company_name": "Acme Corp",
-        "description": "We're looking for a senior engineer to lead our platform team. You'll design and build distributed systems serving millions of daily requests.",
-        "location": "Amsterdam, NL",
-        "employment_type": "full_time",
-        "experience_level": "senior",
-        "salary": { "min": 80000, "max": 110000, "currency": "EUR", "period": "year" },
-        "date_posted": "2025-06-01",
-        "valid_through": "2025-08-01",
-        "apply_url": "https://acmecorp.com/careers/eng-sr-2025-042",
-        "job_functions": ["engineering"],
-        "industries": ["technology"],
-        "tags": ["visa-sponsorship", "equity"]
-      }
+      "job_id": "eng-sr-2025-042",
+      "title": "Senior Software Engineer",
+      "company_name": "Acme Corp",
+      "description": "We're looking for a senior engineer to lead our platform team. You'll design and build distributed systems serving millions of daily requests.",
+      "location": "Amsterdam, NL",
+      "employment_type": "full_time",
+      "experience_level": "senior",
+      "salary": { "min": 80000, "max": 110000, "currency": "EUR", "period": "year" },
+      "date_posted": "2025-06-01",
+      "valid_through": "2025-08-01",
+      "apply_url": "https://acmecorp.com/careers/eng-sr-2025-042",
+      "job_functions": ["engineering"],
+      "industries": ["technology"],
+      "tags": ["visa-sponsorship", "equity"]
     },
     {
-      "description": "Remote contract role",
-      "data": {
-        "job_id": "mkt-contract-099",
-        "title": "Content Marketing Specialist",
-        "company_name": "Nova Brands",
-        "description": "6-month contract to develop and execute content strategy across owned channels.",
-        "location": "Remote",
-        "employment_type": "contract",
-        "salary": { "min": 5000, "max": 7000, "currency": "USD", "period": "month" },
-        "apply_url": "https://novabrands.com/careers/mkt-099",
-        "tags": ["remote", "contract"]
-      }
+      "job_id": "mkt-contract-099",
+      "title": "Content Marketing Specialist",
+      "company_name": "Nova Brands",
+      "description": "6-month contract to develop and execute content strategy across owned channels.",
+      "location": "Remote",
+      "employment_type": "contract",
+      "salary": { "min": 5000, "max": 7000, "currency": "USD", "period": "month" },
+      "apply_url": "https://novabrands.com/careers/mkt-099",
+      "tags": ["remote", "contract"]
     }
   ]
 }

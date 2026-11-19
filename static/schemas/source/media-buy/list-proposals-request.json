@@ -84,20 +84,14 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Read the open proposals for one opportunity after a proposal.created notification",
-      "data": {
-        "account": { "account_id": "acc_nova_za" },
-        "opportunity_ids": ["opp_nova_za_q4"],
-        "dispositions": ["available"]
-      }
+      "account": { "account_id": "acc_nova_za" },
+      "opportunity_ids": ["opp_nova_za_q4"],
+      "dispositions": ["available"]
     },
     {
-      "description": "Catch-up scan for the live offers against one accepted media buy, for example after missed proposal.offered notifications",
-      "data": {
-        "account": { "account_id": "acc_nova_za" },
-        "media_buy_ids": ["mb_nova_za_0412"],
-        "dispositions": ["available"]
-      }
+      "account": { "account_id": "acc_nova_za" },
+      "media_buy_ids": ["mb_nova_za_0412"],
+      "dispositions": ["available"]
     }
   ]
 }

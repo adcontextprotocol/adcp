@@ -135,56 +135,50 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "German agency with full B2B details",
-      "data": {
-        "legal_name": "Pinnacle Media GmbH",
-        "vat_id": "DE123456789",
-        "registration_number": "HRB 12345",
-        "address": {
-          "street": "Friedrichstrasse 100",
-          "city": "Berlin",
-          "postal_code": "10117",
-          "country": "DE"
-        },
-        "contacts": [
-          {
-            "role": "billing",
-            "name": "Sam Adeyemi",
-            "email": "billing@pinnacle-media.com",
-            "phone": "+49 30 12345678"
-          }
-        ],
-        "bank": {
-          "account_holder": "Pinnacle Media GmbH",
-          "iban": "DE89370400440532013000",
-          "bic": "COBADEFFXXX"
+      "legal_name": "Pinnacle Media GmbH",
+      "vat_id": "DE123456789",
+      "registration_number": "HRB 12345",
+      "address": {
+        "street": "Friedrichstrasse 100",
+        "city": "Berlin",
+        "postal_code": "10117",
+        "country": "DE"
+      },
+      "contacts": [
+        {
+          "role": "billing",
+          "name": "Sam Adeyemi",
+          "email": "billing@pinnacle-media.com",
+          "phone": "+49 30 12345678"
         }
+      ],
+      "bank": {
+        "account_holder": "Pinnacle Media GmbH",
+        "iban": "DE89370400440532013000",
+        "bic": "COBADEFFXXX"
       }
     },
     {
-      "description": "US advertiser with EIN and domestic bank details",
-      "data": {
-        "legal_name": "Acme Corporation",
-        "tax_id": "12-3456789",
-        "address": {
-          "street": "123 Main St",
-          "city": "New York",
-          "postal_code": "10001",
-          "region": "NY",
-          "country": "US"
-        },
-        "contacts": [
-          {
-            "role": "billing",
-            "name": "AP Department",
-            "email": "ap@acme-corp.com"
-          }
-        ],
-        "bank": {
-          "account_holder": "Acme Corporation",
-          "routing_number": "021000021",
-          "account_number": "123456789"
+      "legal_name": "Acme Corporation",
+      "tax_id": "12-3456789",
+      "address": {
+        "street": "123 Main St",
+        "city": "New York",
+        "postal_code": "10001",
+        "region": "NY",
+        "country": "US"
+      },
+      "contacts": [
+        {
+          "role": "billing",
+          "name": "AP Department",
+          "email": "ap@acme-corp.com"
         }
+      ],
+      "bank": {
+        "account_holder": "Acme Corporation",
+        "routing_number": "021000021",
+        "account_number": "123456789"
       }
     }
   ]

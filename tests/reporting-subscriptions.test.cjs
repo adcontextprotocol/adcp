@@ -58,7 +58,7 @@ test('schema examples validate', () => {
     ['core/reporting-subscription-coverage.json', '/schemas/core/reporting-subscription-coverage.json'],
   ]) {
     const v = validate(id);
-    for (const example of read(file).examples) assert.ok(v(example.data), `${file}: ${example.description}: ${JSON.stringify(v.errors)}`);
+    for (const [i, example] of read(file).examples.entries()) assert.ok(v(example), `${file}: examples[${i}]: ${JSON.stringify(v.errors)}`);
   }
 });
 
@@ -418,7 +418,7 @@ test('principal.changed announces reporting subscription changes', () => {
   assert.ok(webhook.properties.reason.enum.includes('reporting_subscription_changed'));
   assert.match(read('core/reporting-subscription-state.json').properties.accounts_unauthorized.description, /reporting_subscription_changed/);
   const hook = validate('/schemas/core/principal-changed-webhook.json');
-  const doc = { ...webhook.examples[0].data, reason: 'reporting_subscription_changed' };
+  const doc = { ...webhook.examples[0], reason: 'reporting_subscription_changed' };
   delete doc.destination_id;
   assert.ok(hook(doc), JSON.stringify(hook.errors));
 });

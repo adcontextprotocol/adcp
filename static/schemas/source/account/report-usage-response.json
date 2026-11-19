@@ -39,25 +39,19 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "All records accepted",
-      "data": {
-        "status": "completed",
-        "accepted": 2
-      }
+      "status": "completed",
+      "accepted": 2
     },
     {
-      "description": "Partial acceptance — one record failed validation",
-      "data": {
-        "status": "completed",
-        "accepted": 1,
-        "errors": [
-          {
-            "code": "INVALID_PRICING_OPTION",
-            "message": "pricing_option_id 'po_unknown' does not exist on this account",
-            "field": "usage[1].pricing_option_id"
-          }
-        ]
-      }
+      "status": "completed",
+      "accepted": 1,
+      "errors": [
+        {
+          "code": "INVALID_PRICING_OPTION",
+          "message": "pricing_option_id 'po_unknown' does not exist on this account",
+          "field": "usage[1].pricing_option_id"
+        }
+      ]
     }
   ]
 }

@@ -132,24 +132,21 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Caught up after acquiring a latest checkpoint",
-      "data": {
-        "adcp_version": "3.2",
-        "status": "completed",
-        "changes": [],
-        "cursor": "eyJhY2NvdW50IjoiYWNjX2x1bWFfc2hhcmVkIiwic2VxIjo0Mn0",
-        "has_more": false,
-        "available_since": "2026-05-26T00:00:00Z",
-        "generated_at": "2026-08-24T12:00:00Z",
-        "source_coverage": [
-          {
-            "source_id": "seller",
-            "kind": "seller",
-            "status": "current",
-            "resource_types": ["account", "media_buy", "creative"]
-          }
-        ]
-      }
+      "adcp_version": "3.2",
+      "status": "completed",
+      "changes": [],
+      "cursor": "eyJhY2NvdW50IjoiYWNjX2x1bWFfc2hhcmVkIiwic2VxIjo0Mn0",
+      "has_more": false,
+      "available_since": "2026-05-26T00:00:00Z",
+      "generated_at": "2026-08-24T12:00:00Z",
+      "source_coverage": [
+        {
+          "source_id": "seller",
+          "kind": "seller",
+          "status": "current",
+          "resource_types": ["account", "media_buy", "creative"]
+        }
+      ]
     }
   ]
 }

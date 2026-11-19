@@ -1660,201 +1660,165 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "List supported scenarios",
-      "data": {
-        "scenario": "list_scenarios",
-        "account": {
-          "sandbox": true
-        }
+      "scenario": "list_scenarios",
+      "account": {
+        "sandbox": true
       }
     },
     {
-      "description": "Force a creative to rejected status",
-      "data": {
-        "scenario": "force_creative_status",
-        "params": {
-          "creative_id": "cr-123",
-          "status": "rejected",
-          "rejection_reason": "Brand safety policy violation"
-        },
-        "account": {
-          "sandbox": true
-        }
+      "scenario": "force_creative_status",
+      "params": {
+        "creative_id": "cr-123",
+        "status": "rejected",
+        "rejection_reason": "Brand safety policy violation"
+      },
+      "account": {
+        "sandbox": true
       }
     },
     {
-      "description": "Force account suspension",
-      "data": {
-        "scenario": "force_account_status",
-        "params": {
-          "account_id": "acct-456",
-          "status": "suspended"
-        },
-        "account": {
-          "sandbox": true
-        }
+      "scenario": "force_account_status",
+      "params": {
+        "account_id": "acct-456",
+        "status": "suspended"
+      },
+      "account": {
+        "sandbox": true
       }
     },
     {
-      "description": "Force the next create_media_buy call into the submitted arm with a deterministic task_id",
-      "data": {
-        "scenario": "force_create_media_buy_arm",
-        "params": {
-          "arm": "submitted",
-          "task_id": "task_async_signed_io_q2",
-          "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
-        },
-        "account": {
-          "sandbox": true
-        }
+      "scenario": "force_create_media_buy_arm",
+      "params": {
+        "arm": "submitted",
+        "task_id": "task_async_signed_io_q2",
+        "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
+      },
+      "account": {
+        "sandbox": true
       }
     },
     {
-      "description": "Force a previously-submitted create_media_buy task to completion with a result payload",
-      "data": {
-        "scenario": "force_task_completion",
-        "params": {
-          "task_id": "task_async_signed_io_q2",
-          "result": {
-            "media_buy_id": "mb_async_signed_io_q2",
-            "media_buy_status": "active",
-            "confirmed_at": "2026-08-12T12:00:00Z",
-            "revision": 1,
-            "packages": [
-              {
-                "package_id": "pkg-0",
-                "product_id": "async_signed_io_q2",
-                "budget": 30000
-              }
-            ]
-          }
-        },
-        "account": {
-          "sandbox": true
-        }
-      }
-    },
-    {
-      "description": "Simulate session timeout",
-      "data": {
-        "scenario": "force_session_status",
-        "params": {
-          "session_id": "sess-abc",
-          "status": "terminated",
-          "termination_reason": "session_timeout"
-        },
-        "account": {
-          "sandbox": true
-        }
-      }
-    },
-    {
-      "description": "Simulate delivery data",
-      "data": {
-        "scenario": "simulate_delivery",
-        "params": {
-          "media_buy_id": "mb-789",
-          "delivery_date": "2026-02-05",
-          "impressions": 10000,
-          "clicks": 150,
-          "plays": 240,
-          "dooh_metrics": {
-            "loop_plays": 240,
-            "screens_used": 12,
-            "screen_time_seconds": 1440
-          },
-          "reported_spend": {
-            "amount": 150,
-            "currency": "USD"
-          }
-        },
-        "account": {
-          "sandbox": true
-        }
-      }
-    },
-    {
-      "description": "Make the seller create a later proposal for an open, consented opportunity",
-      "data": {
-        "scenario": "simulate_later_proposal",
-        "params": {
-          "account_id": "acc_nova_za",
-          "opportunity_id": "opp_nova_za_q4"
-        },
-        "account": {
-          "sandbox": true
-        }
-      }
-    },
-    {
-      "description": "Simulate budget consumption to 95%",
-      "data": {
-        "scenario": "simulate_budget_spend",
-        "params": {
-          "media_buy_id": "mb-789",
-          "spend_percentage": 95
-        },
-        "account": {
-          "sandbox": true
-        }
-      }
-    },
-    {
-      "description": "Seed a product fixture so subsequent storyboard steps can reference it by ID",
-      "data": {
-        "scenario": "seed_product",
-        "params": {
-          "product_id": "test-product",
-          "fixture": {
-            "delivery_type": "non_guaranteed",
-            "channels": [
-              "display"
-            ],
-            "pricing_options": [
-              {
-                "pricing_option_id": "test-pricing",
-                "pricing_model": "cpm",
-                "currency": "USD",
-                "floor_price": 1
-              }
-            ]
-          }
-        },
-        "account": {
-          "sandbox": true
-        }
-      }
-    },
-    {
-      "description": "Seed an approved creative fixture",
-      "data": {
-        "scenario": "seed_creative",
-        "params": {
-          "creative_id": "campaign_hero_video",
-          "fixture": {
-            "status": "approved",
-            "format_id": {
-              "id": "video_30s"
+      "scenario": "force_task_completion",
+      "params": {
+        "task_id": "task_async_signed_io_q2",
+        "result": {
+          "media_buy_id": "mb_async_signed_io_q2",
+          "media_buy_status": "active",
+          "confirmed_at": "2026-08-12T12:00:00Z",
+          "revision": 1,
+          "packages": [
+            {
+              "package_id": "pkg-0",
+              "product_id": "async_signed_io_q2",
+              "budget": 30000
             }
-          }
-        },
-        "account": {
-          "sandbox": true
+          ]
         }
+      },
+      "account": {
+        "sandbox": true
       }
     },
     {
-      "description": "Query upstream traffic recorded since a storyboard step's request timestamp",
-      "data": {
-        "scenario": "query_upstream_traffic",
-        "params": {
-          "since_timestamp": "2026-05-02T14:30:00Z",
-          "endpoint_pattern": "POST *",
-          "limit": 100
+      "scenario": "force_session_status",
+      "params": {
+        "session_id": "sess-abc",
+        "status": "terminated",
+        "termination_reason": "session_timeout"
+      },
+      "account": {
+        "sandbox": true
+      }
+    },
+    {
+      "scenario": "simulate_delivery",
+      "params": {
+        "media_buy_id": "mb-789",
+        "delivery_date": "2026-02-05",
+        "impressions": 10000,
+        "clicks": 150,
+        "plays": 240,
+        "dooh_metrics": {
+          "loop_plays": 240,
+          "screens_used": 12,
+          "screen_time_seconds": 1440
         },
-        "account": {
-          "sandbox": true
+        "reported_spend": {
+          "amount": 150,
+          "currency": "USD"
         }
+      },
+      "account": {
+        "sandbox": true
+      }
+    },
+    {
+      "scenario": "simulate_later_proposal",
+      "params": {
+        "account_id": "acc_nova_za",
+        "opportunity_id": "opp_nova_za_q4"
+      },
+      "account": {
+        "sandbox": true
+      }
+    },
+    {
+      "scenario": "simulate_budget_spend",
+      "params": {
+        "media_buy_id": "mb-789",
+        "spend_percentage": 95
+      },
+      "account": {
+        "sandbox": true
+      }
+    },
+    {
+      "scenario": "seed_product",
+      "params": {
+        "product_id": "test-product",
+        "fixture": {
+          "delivery_type": "non_guaranteed",
+          "channels": [
+            "display"
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "test-pricing",
+              "pricing_model": "cpm",
+              "currency": "USD",
+              "floor_price": 1
+            }
+          ]
+        }
+      },
+      "account": {
+        "sandbox": true
+      }
+    },
+    {
+      "scenario": "seed_creative",
+      "params": {
+        "creative_id": "campaign_hero_video",
+        "fixture": {
+          "status": "approved",
+          "format_id": {
+            "id": "video_30s"
+          }
+        }
+      },
+      "account": {
+        "sandbox": true
+      }
+    },
+    {
+      "scenario": "query_upstream_traffic",
+      "params": {
+        "since_timestamp": "2026-05-02T14:30:00Z",
+        "endpoint_pattern": "POST *",
+        "limit": 100
+      },
+      "account": {
+        "sandbox": true
       }
     }
   ]

@@ -126,20 +126,17 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Agent-level endpoint proof-of-control challenge",
-      "data": {
-        "type": "webhook.challenge",
-        "scope": "agent",
-        "challenge": "example-challenge-token-000000000000",
-        "subscriber_id": "registry-cache",
-        "seller_agent_url": "https://seller.example/adcp",
-        "delivery_auth": {
-          "mode": "rfc9421"
-        },
-        "event_types": [
-          "capabilities.changed"
-        ]
-      }
+      "type": "webhook.challenge",
+      "scope": "agent",
+      "challenge": "example-challenge-token-000000000000",
+      "subscriber_id": "registry-cache",
+      "seller_agent_url": "https://seller.example/adcp",
+      "delivery_auth": {
+        "mode": "rfc9421"
+      },
+      "event_types": [
+        "capabilities.changed"
+      ]
     }
   ]
 }
