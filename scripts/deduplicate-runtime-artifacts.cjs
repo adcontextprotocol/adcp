@@ -18,7 +18,12 @@ function collectFiles(directory, files) {
 function snapshot(filename) {
   // Open first: metadata and content must describe the same inode, even if a
   // path changes after directory enumeration. Never follow a substituted link.
-  const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  // Windows has no O_NOFOLLOW (the constant is undefined and the open would
+  // follow links), so reject a link by lstat there before opening.
+  if (fs.constants.O_NOFOLLOW === undefined && !fs.lstatSync(filename).isFile()) {
+    throw new Error(`Artifact is not a regular file: ${filename}`);
+  }
+  const fd = fs.openSync(filename, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
   try {
     const stat = fs.fstatSync(fd);
     if (!stat.isFile()) throw new Error(`Artifact is not a regular file: ${filename}`);

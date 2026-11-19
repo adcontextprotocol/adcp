@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
+import { tscPath } from "../scripts/typecheck-fixed-trace-rollout-tests.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const requiredTypecheck = "tsc --project server/tsconfig.json --noEmit && npm run typecheck:fixed-trace-rollout-tests";
@@ -40,11 +41,13 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
     // This is deliberately the production compiler command, without the root
     // script wrapper. It succeeds for the current source, which demonstrates
     // why the independent root manifest assertion is necessary.
+    // Same launcher as the gate script: node + the tsc bin, no `.cmd` shim.
     const compiler = spawnSync(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["tsc", "--project", "server/tsconfig.json", "--noEmit", "--pretty", "false"],
+      process.execPath,
+      [tscPath, "--project", "server/tsconfig.json", "--noEmit", "--pretty", "false"],
       { cwd: root, encoding: "utf8" },
     );
+    expect(compiler.error).toBeUndefined();
     expect(compiler.status, `${compiler.stdout}${compiler.stderr}`).toBe(0);
 
     const orphaned = {
