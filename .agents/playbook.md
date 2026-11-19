@@ -948,6 +948,14 @@ authoritative gate.
   queue passes it to every training-agent process, so only the first process
   compiles each @adcp/sdk validator. Set it to an empty string to turn the
   cache off.
+- The server unit suite and `test:unit` use the same cache:
+  `server/vitest.config.ts` and `vitest.config.ts` default
+  `ADCP_VALIDATOR_CACHE_DIR` to the same path through `test.env`
+  (`scripts/sdk-validator-cache.cjs`), with the same unset and empty-string
+  rule. They set no default in CI (`CI` set to anything other than `''`,
+  `false` or `0`), so CI compiles every validator live. To rule the cache out
+  of a failure that only happens locally, rerun with
+  `ADCP_VALIDATOR_CACHE_DIR=''`.
 - The current surface's schema and compliance builds finish before any
   training agent starts, because every training agent reads
   `dist/schemas/latest`. The matrix snapshots `dist/schemas/latest` into a

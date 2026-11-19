@@ -10,6 +10,11 @@ const ROOT = import.meta.dirname;
 const { resolveWorkerCount } = createRequire(import.meta.url)('../scripts/server-unit-workers.cjs') as {
   resolveWorkerCount(options?: { reservedCpus?: number }): number;
 };
+// Workers share the @adcp/sdk validator cache with the storyboard matrix,
+// except in CI (scripts/sdk-validator-cache.cjs).
+const { validatorCacheEnv } = createRequire(import.meta.url)('../scripts/sdk-validator-cache.cjs') as {
+  validatorCacheEnv(env: NodeJS.ProcessEnv, repoRoot: string): Record<string, string>;
+};
 
 // Unit test files that cannot share a worker yet. Both lists may only
 // shrink: every entry names its record in scripts/vitest-leak-inventory.json
@@ -59,6 +64,7 @@ export default defineConfig({
     root: ROOT,
     setupFiles: ['./tests/setup/revenue-tracking-env.ts', './tests/setup/conductor-loopback-setup.ts'],
     globalSetup: ['./tests/setup/built-schemas.ts'],
+    env: validatorCacheEnv(process.env, path.dirname(ROOT)),
     testTimeout: 30000,
     pool: 'forks',
     maxWorkers: resolveWorkerCount({ reservedCpus: 1 }),

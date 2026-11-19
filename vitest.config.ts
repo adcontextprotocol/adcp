@@ -1,4 +1,11 @@
+import { createRequire } from 'node:module';
 import { defineConfig } from 'vitest/config';
+
+// Workers share the @adcp/sdk validator cache with the storyboard matrix,
+// except in CI (scripts/sdk-validator-cache.cjs).
+const { validatorCacheEnv } = createRequire(import.meta.url)('./scripts/sdk-validator-cache.cjs') as {
+  validatorCacheEnv(env: NodeJS.ProcessEnv, repoRoot: string): Record<string, string>;
+};
 
 export default defineConfig({
   test: {
@@ -10,6 +17,7 @@ export default defineConfig({
     // Cap individual test hangs at 10 s so a single stalled test doesn't
     // silently consume the entire 60 s precommit budget with no test name.
     testTimeout: 10000,
+    env: validatorCacheEnv(process.env, import.meta.dirname),
     exclude: [
       '**/node_modules/**',
       '**/dist/**',

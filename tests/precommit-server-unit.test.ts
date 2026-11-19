@@ -96,6 +96,13 @@ describe('precommit server unit planner', () => {
     });
   });
 
+  it('runs the full server unit suite for the SDK validator cache helper the vitest configs require', () => {
+    expect(planServerUnitRun(['scripts/sdk-validator-cache.cjs'])).toEqual({
+      kind: 'full',
+      files: [],
+    });
+  });
+
   it('runs the full server unit suite for C2PA cert generation helper changes', () => {
     expect(planServerUnitRun(['scripts/generate-c2pa-cert.sh'])).toEqual({
       kind: 'full',

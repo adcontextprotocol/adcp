@@ -31,6 +31,7 @@ const FULL_SERVER_UNIT_PATTERNS = [
   /^static\/registry\//,
   /^server\/vitest\.config\.ts$/,
   /^scripts\/server-unit-workers\.cjs$/,
+  /^scripts\/sdk-validator-cache\.cjs$/,
   /^server\/tsconfig\.json$/,
   /^vitest\.config\.ts$/,
   /^package\.json$/,
