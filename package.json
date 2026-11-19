@@ -127,7 +127,7 @@
     "test:test-spawn-tooling": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-spawn-tooling.test.cjs",
     "test:test-builds": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-builds.test.cjs",
     "test:test-git-env": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-git-env.test.cjs",
-    "test:git-env-isolation": "node --test --test-force-exit tests/git-env-isolation.test.cjs",
+    "test:git-env-isolation": "node --test --test-timeout=30000 tests/git-env-isolation.test.cjs tests/git-env-isolation-guard.test.cjs",
     "test:sdk-shims": "node --test --test-force-exit --test-timeout=30000 tests/lint-sdk-shims.test.cjs tests/sdk-runtime-compat.test.cjs",
     "test:tenant-routing": "vitest run --config server/vitest.config.ts server/src/training-agent/tenants/tenant-smoke.test.ts",
     "test:creative33-sandbox": "vitest run --config server/vitest.config.ts server/tests/unit/training-agent-creative33-buyer.test.ts server/tests/unit/training-agent-creative33-routing.test.ts server/tests/unit/training-agent-creative33-platform.test.ts",

@@ -40,6 +40,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const ts = require('typescript');
+const { checkoutGitEnv } = require('./helpers/git-object-fixture.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCOPE = ['server/src', 'server/tests', 'tests', 'scripts'];
@@ -427,7 +428,7 @@ function trackedCodeFiles(scope = SCOPE) {
     work.listings += 1;
     // Directory pathspecs, not 'dir/**/*.ts' globs, so top-level files count.
     // lint-allow-caller-git: lists the enclosing checkout's own files
-    const out = execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', ...scope], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const out = execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', ...scope], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: checkoutGitEnv() });
     listings.set(key, out.split('\0').filter((f) => f && CODE_FILE.test(f) && !f.endsWith('.d.ts')));
   }
   return [...listings.get(key)];

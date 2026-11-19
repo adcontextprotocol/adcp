@@ -16,7 +16,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import gitObjectFixture from './helpers/git-object-fixture.cjs';
 import vitestConfigEnv from './helpers/vitest-config-env.cjs';
+
+const { checkoutGitEnv } = gitObjectFixture;
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_CACHE = join(REPO_ROOT, 'node_modules', '.cache', 'adcp-sdk-validators');
@@ -90,7 +93,7 @@ describe('every vitest config in the repository', () => {
 
   it('is one of the configs checked above', () => {
     // lint-allow-caller-git: lists the enclosing checkout's own files
-    const result = spawnSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const result = spawnSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: checkoutGitEnv() });
     expect(result.status, result.stderr).toBe(0);
     const configs = result.stdout.split('\n').filter((file) => VITEST_CONFIG.test(file)).sort();
     expect(configs).toEqual([...CONFIGS].sort());

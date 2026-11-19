@@ -6,10 +6,14 @@ const os = require("node:os");
 const { execFileSync, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { isolateGitEnv } = require("./helpers/git-object-fixture.cjs");
+const { provideGnuTools } = require("./helpers/gnu-tools.cjs");
 
 // Fixture git (and every step spawned from process.env) must not see a hook's
 // GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
 isolateGitEnv({ identity: false });
+// The fence runs every git call under GNU `timeout`; macOS gets a shim
+// (tests/helpers/gnu-tools.cjs).
+provideGnuTools();
 const root = path.resolve(__dirname, "..");
 const workflow = YAML.parse(
   fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8"),

@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { execFileSync } = require('child_process');
+const { checkoutGitEnv } = require('./helpers/git-object-fixture.cjs');
 
 const DOCS_JSON = path.join(__dirname, '../docs.json');
 
@@ -354,7 +355,7 @@ test('default navigation matches the stable release branch surface', () => {
     releaseConfig = JSON.parse(execFileSync(
       'git',
       ['show', `${stableRef}:docs.json`],
-      { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+      { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: checkoutGitEnv() }
     ));
   } catch {
     if (process.env.REQUIRE_STABLE_DOCS_REF === '1') {
@@ -375,7 +376,7 @@ test('default navigation matches the stable release branch surface', () => {
     && releaseDefault.version === '3.1') {
     // lint-allow-caller-git: resolves the stable ref in the enclosing checkout
     const releaseSha = execFileSync('git', ['rev-parse', stableRef], {
-      cwd: rootDir, encoding: 'utf8'
+      cwd: rootDir, encoding: 'utf8', env: checkoutGitEnv()
     }).trim();
     // This is the v3.2.1 tag target, pinned here because broken-links CI
     // checks out shallowly and does not fetch release tags.

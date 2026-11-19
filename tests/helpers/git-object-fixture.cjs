@@ -85,4 +85,12 @@ function gitFixture({ filePath, content, missing = 'none' }) {
   return { repo, runGit, cleanup: () => fs.rmSync(repo, { recursive: true, force: true }) };
 }
 
-module.exports = { fixtureEnv, gitFixture, isolateGitEnv };
+// For a test that reads the enclosing checkout on purpose
+// (lint-allow-caller-git): the environment without GIT_*, so git finds the
+// checkout from its working directory. In a real hook the dropped GIT_DIR names
+// this same checkout; under tests/git-env-isolation.test.cjs it names a
+// throwaway repository, and the read would see that one instead.
+function checkoutGitEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+}
+module.exports = { checkoutGitEnv, fixtureEnv, gitFixture, isolateGitEnv };

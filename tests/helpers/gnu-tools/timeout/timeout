@@ -1,0 +1,7 @@
+#!/bin/sh
+# GNU timeout for hosts without it; see tests/helpers/gnu-tools.cjs.
+# Homebrew coreutils installs it as gtimeout; otherwise the Node version.
+if command -v gtimeout >/dev/null 2>&1; then
+  exec gtimeout "$@"
+fi
+exec node "$(dirname "$0")/../gnu-timeout.cjs" "$@"

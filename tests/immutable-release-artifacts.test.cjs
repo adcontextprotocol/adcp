@@ -8,7 +8,12 @@ const {
   parseNameStatus,
   pathExistsAtRef,
 } = require('../scripts/check-immutable-release-artifacts.cjs');
-const { gitFixture } = require('./helpers/git-object-fixture.cjs');
+const { checkoutGitEnv, gitFixture } = require('./helpers/git-object-fixture.cjs');
+
+// The real-repository checks below read the enclosing checkout through the
+// script's own git calls, which inherit this process's environment.
+const checkoutEnv = checkoutGitEnv();
+for (const key of Object.keys(process.env)) if (!Object.hasOwn(checkoutEnv, key)) delete process.env[key];
 
 function hasBasePath(paths) {
   const basePaths = new Set(paths);

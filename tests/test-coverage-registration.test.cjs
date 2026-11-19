@@ -32,6 +32,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const YAML = require('yaml');
+const { checkoutGitEnv } = require('./helpers/git-object-fixture.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const WORKFLOWS_DIR = path.join(ROOT, '.github', 'workflows');
@@ -67,6 +68,7 @@ function listTestFiles() {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    env: checkoutGitEnv(),
   });
   const files = new Set();
   for (const file of output.split('\0')) {
@@ -444,7 +446,12 @@ async function vitestList(query) {
   } catch (error) {
     throw new Error(`vitest list failed for ${query.source}: ${error.stderr || error.message}`);
   }
-  return stdout.split('\n').map((line) => line.trim()).filter((line) => VITEST_DEFAULT_INCLUDE.test(line));
+  // A config that declares projects prefixes each file with its project name
+  // ("[unit-shared] server/tests/..."); server/vitest.config.ts does. Not
+  // --json: it takes the next argument as an output file, which here would
+  // be a test file.
+  return stdout.split('\n').map((line) => line.trim().replace(/^\[[^\]]+\]\s+/, ''))
+    .filter((line) => VITEST_DEFAULT_INCLUDE.test(line));
 }
 
 function ciSteps() {

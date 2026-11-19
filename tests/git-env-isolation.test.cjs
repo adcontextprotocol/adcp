@@ -15,8 +15,20 @@
  * environment, the way a hook would, and asserts that the throwaway
  * repository's config, index files, HEADs and refs are byte-for-byte
  * unchanged. The environment also carries a caller git config (a hooks path,
- * set the way a shell profile sets it); the fixtures must not run its hooks. The test files' own pass/fail is theirs to report; this file
- * checks only that they did not write to the caller's repository.
+ * set the way a shell profile sets it); the fixtures must not run its hooks.
+ * Each file must also pass under that environment: a file that fails or
+ * stops early proves nothing about the calls it never made.
+ *
+ * Each file gets one test, registered when its run ends, so a test never waits
+ * for other files. The run itself is bounded by this file's own test timeout
+ * (--test-timeout, N). A node:test child runs with the same N, which bounds its
+ * asynchronous tests, and with tests/helpers/test-progress-hooks.cjs, which
+ * records each test's start and end as it happens. The guard kills the
+ * child's process group after N with no test starting or ending: a test that
+ * blocks synchronously (node:test cannot time those out), a hang at load, in a
+ * hook or at exit. A vitest child records the same lines through
+ * tests/helpers/vitest-progress-reporter.mjs; vitest bounds each test itself.
+ * tests/git-env-isolation-guard.test.cjs checks each fault on a fixture.
  */
 
 'use strict';
@@ -25,6 +37,7 @@ const { execFileSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { isDeepStrictEqual } = require('node:util');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -33,7 +46,22 @@ const { gitTestFiles } = require('../scripts/lint-test-git-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SELF = path.relative(ROOT, __filename);
-const FILE_TIMEOUT_MS = 15 * 60 * 1000;
+const PROGRESS_HOOKS = path.join(__dirname, 'helpers', 'test-progress-hooks.cjs');
+const VITEST_PROGRESS = path.join(__dirname, 'helpers', 'vitest-progress-reporter.mjs');
+
+/** This file's own --test-timeout in ms (node --test passes it to each file); 0 when unbounded. */
+function ownTestBound() {
+  const argv = process.execArgv;
+  for (let i = 0; i < argv.length; i++) {
+    const match = /^--test-timeout(?:=(.*))?$/.exec(argv[i]);
+    if (match) {
+      const value = Number(match[1] ?? argv[i + 1]);
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+  }
+  return 0;
+}
+const BOUND_MS = ownTestBound();
 // Hooks a fixture's commits, checkouts, merges, pushes and ref updates fire.
 const CALLER_HOOKS = ['pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit', 'post-checkout', 'post-merge',
   'pre-push', 'pre-receive', 'update', 'post-receive', 'post-update', 'reference-transaction', 'post-rewrite', 'pre-rebase'];
@@ -82,10 +110,47 @@ function snapshot({ repo, gitDir }) {
   return { bytes, refs, worktrees: listFiles(path.join(common, 'worktrees')) };
 }
 
+/** The command for one file; both kinds record test progress in TEST_PROGRESS_FILE. */
 function commandFor(file) {
-  if (file.endsWith('.cjs')) return [process.execPath, ['--test', '--test-force-exit', file]];
-  return [process.execPath, [path.join(ROOT, 'node_modules/vitest/vitest.mjs'), 'run', '--dir', 'tests/', file]];
+  if (file.endsWith('.cjs')) {
+    return { command: process.execPath, args: [`--require=${PROGRESS_HOOKS}`, '--test', '--test-force-exit',
+      ...(BOUND_MS > 0 ? [`--test-timeout=${BOUND_MS}`] : []), file] };
+  }
+  return { command: process.execPath, args: [path.join(ROOT, 'node_modules/vitest/vitest.mjs'), 'run',
+    '--dir', 'tests/', '--reporter=default', `--reporter=${VITEST_PROGRESS}`, file] };
 }
+
+/** The last line of the progress file and when it was written (ms), or null. */
+function lastProgressOf(progressFile) {
+  if (!fs.existsSync(progressFile)) return null;
+  // Complete lines only: the child may be part-way through appending one.
+  const text = fs.readFileSync(progressFile, 'utf8');
+  const lines = text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean);
+  if (lines.length === 0) return null;
+  const line = lines.at(-1);
+  return { at: Number(line.slice(0, line.indexOf(' '))), line: line.slice(line.indexOf(' ') + 1), times: lines.map((l) => Number(l.slice(0, l.indexOf(' ')))) };
+}
+
+// Children run in their own process groups so a stalled one is killed with
+// everything it started. If this runner is interrupted, they go with it.
+const liveGroups = new Set();
+function killGroup(pid) {
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw error;
+  }
+}
+function killLiveGroups() {
+  for (const pid of liveGroups) killGroup(pid);
+}
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    killLiveGroups();
+    process.kill(process.pid, signal);
+  });
+}
+process.once('exit', killLiveGroups);
 
 /** Runs one test file with the parent's linked-worktree hook environment. */
 function runUnderHookEnv(file, parent) {
@@ -100,52 +165,99 @@ function runUnderHookEnv(file, parent) {
   env.GIT_CONFIG_COUNT = '1';
   env.GIT_CONFIG_KEY_0 = 'core.hooksPath';
   env.GIT_CONFIG_VALUE_0 = parent.callerHooks;
-  const [command, args] = commandFor(file);
+  const progressFile = path.join(parent.root, 'progress.log');
+  env.TEST_PROGRESS_FILE = progressFile;
+  const { command, args } = commandFor(file);
   return new Promise((resolve) => {
-    const child = spawn(command, args, { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    liveGroups.add(child.pid);
     let output = '';
+    let stalled = false;
+    let timer;
+    const started = Date.now();
+    // Kill the group after BOUND_MS with no test starting or ending. At each
+    // expiry the timer re-arms for whatever is left since the last progress
+    // line, so the bound is exact without polling. It stays armed after
+    // 'exit' until 'close', so a grandchild holding the pipes open is killed.
+    const lastActivity = () => Math.max(started, lastProgressOf(progressFile)?.at || 0);
+    const arm = (delay) => {
+      timer = setTimeout(() => {
+        const left = lastActivity() + BOUND_MS - Date.now();
+        if (left > 0) return arm(left);
+        stalled = true;
+        killGroup(child.pid);
+      }, delay);
+    };
+    if (BOUND_MS > 0) arm(BOUND_MS);
     child.stdout.on('data', (chunk) => { output = (output + chunk).slice(-4000); });
     child.stderr.on('data', (chunk) => { output = (output + chunk).slice(-4000); });
-    const timer = setTimeout(() => child.kill('SIGKILL'), FILE_TIMEOUT_MS);
-    child.once('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, output }); });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      liveGroups.delete(child.pid);
+      // Whatever the child left in its group goes with it.
+      killGroup(child.pid);
+      const ended = Date.now();
+      const last = lastProgressOf(progressFile);
+      const marks = [started, ...(last?.times ?? []), ended];
+      const longestSilence = Math.max(...marks.slice(1).map((time, i) => time - marks[i]));
+      resolve({ code, signal, output, stalled, lastProgress: last?.line ?? '', progressLines: last?.times.length ?? 0, wallMs: ended - started, longestSilence });
+    });
   });
 }
 
-// GIT_ENV_ISOLATION_FILES=a,b limits a run to those files (to reproduce one).
+// GIT_ENV_ISOLATION_FILES=a,b runs exactly those files (repository-relative)
+// instead of the discovered ones: to reproduce one, or to run a fixture.
 const only = (process.env.GIT_ENV_ISOLATION_FILES ?? '').split(',').filter(Boolean);
-const files = gitTestFiles().filter((file) => file !== SELF && (only.length === 0 || only.includes(file)));
+const files = only.length > 0 ? only : gitTestFiles().filter((file) => file !== SELF);
 
 test('discovers the real-git test files', () => {
-  assert.ok(only.length > 0 ? files.length === only.length : files.length >= 10, `expected the real-git test files, found ${files.join(', ')}`);
+  if (only.length > 0) {
+    for (const file of only) assert.ok(fs.existsSync(path.join(ROOT, file)), `GIT_ENV_ISOLATION_FILES names a missing file: ${file}`);
+  } else {
+    assert.ok(files.length >= 10, `expected the real-git test files, found ${files.join(', ')}`);
+  }
 });
 
-// Run the files a few at a time, each against its own throwaway parent.
+/** The failures of one file's run: its exit status, the caller repository, the caller's hooks. */
+function problemsOf(file, { code, signal, output, stalled, lastProgress, before, after, callerHooksRan }) {
+  const problems = [];
+  if (code !== 0 || signal !== null) {
+    const how = signal !== null ? `was killed by ${signal}` : `exited with code ${code}`;
+    const why = stalled ? ` after ${BOUND_MS} ms with no test starting or ending (last: ${lastProgress || 'none'})` : '';
+    problems.push(`${file} ${how}${why} under the hook environment.\n${output.slice(-2500)}`);
+  }
+  if (!isDeepStrictEqual(after, before)) {
+    const changed = Object.keys(before.bytes).filter((name) => before.bytes[name] !== after.bytes[name]);
+    if (!isDeepStrictEqual(after.refs, before.refs)) changed.push('refs');
+    if (!isDeepStrictEqual(after.worktrees, before.worktrees)) changed.push('worktrees');
+    problems.push(`${file} wrote to the caller repository through the inherited GIT_DIR/GIT_INDEX_FILE: ${changed.join(', ')} changed.`);
+  }
+  if (callerHooksRan.length > 0) {
+    problems.push(`${file} ran the caller's configured git hooks (core.hooksPath from GIT_CONFIG_COUNT): ${callerHooksRan.join(', ')}.`);
+  }
+  return problems;
+}
+
+// Run the files a few at a time, each against its own throwaway parent. Each
+// file's test is registered when its run ends, so it checks a finished run.
 const queue = files.slice();
-const runs = new Map();
 function next() {
   const file = queue.shift();
   if (!file) return;
   const parent = hookParent();
   const before = snapshot(parent);
-  runs.set(file, runUnderHookEnv(file, parent).then((result) => {
+  runUnderHookEnv(file, parent).then((result) => {
     const after = snapshot(parent);
     const callerHooksRan = fs.existsSync(parent.callerHookLog) ? [...new Set(fs.readFileSync(parent.callerHookLog, 'utf8').split('\n').filter(Boolean))].sort() : [];
     fs.rmSync(parent.root, { recursive: true, force: true });
+    const problems = problemsOf(file, { ...result, before, after, callerHooksRan });
+    test(`${file} passes and leaves the caller repository unchanged under a linked-worktree hook environment`, (t) => {
+      // How close the run came to the bound: the longest stretch with no test
+      // starting or ending (a vitest file's whole run).
+      t.diagnostic(`run ${result.wallMs} ms, ${result.progressLines} progress lines, longest silence ${result.longestSilence} ms, bound ${BOUND_MS || 'none'} ms`);
+      assert.equal(problems.length, 0, problems.join('\n'));
+    });
     next();
-    return { ...result, before, after, callerHooksRan };
-  }));
+  });
 }
 for (let i = 0; i < CONCURRENCY; i++) next();
-
-for (const file of files) {
-  test(`${file} leaves the caller repository of an inherited worktree GIT_DIR unchanged`, { timeout: FILE_TIMEOUT_MS + 60_000 }, async () => {
-    while (!runs.has(file)) await new Promise((resolve) => setTimeout(resolve, 200));
-    const { before, after, code, signal, output } = await runs.get(file);
-    assert.deepEqual(after, before, `${file} (exit ${code}${signal ? `, ${signal}` : ''}) wrote to the caller repository through the inherited GIT_DIR/GIT_INDEX_FILE.\n${output.slice(-1500)}`);
-  });
-  test(`${file} runs fixture git without the caller's git config`, { timeout: FILE_TIMEOUT_MS + 60_000 }, async () => {
-    while (!runs.has(file)) await new Promise((resolve) => setTimeout(resolve, 200));
-    const { callerHooksRan } = await runs.get(file);
-    assert.deepEqual(callerHooksRan, [], `${file} ran the caller's configured git hooks (core.hooksPath from GIT_CONFIG_COUNT)`);
-  });
-}

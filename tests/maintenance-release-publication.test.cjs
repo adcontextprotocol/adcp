@@ -8,10 +8,14 @@ const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { isolateGitEnv } = require("./helpers/git-object-fixture.cjs");
+const { provideGnuTools } = require("./helpers/gnu-tools.cjs");
 
 // Fixture git (and every step spawned from process.env) must not see a hook's
 // GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
 isolateGitEnv({ identity: false });
+// The workflow steps and the publisher call GNU `timeout` and `stat -c`;
+// macOS gets shims (tests/helpers/gnu-tools.cjs).
+provideGnuTools();
 const root = path.resolve(__dirname, "..");
 const release = YAML.parse(
   fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8"),
@@ -107,25 +111,39 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     fs.chmodSync(path.join(dir, "bin", name), 0o755);
   };
   const common = `const fs=require('node:fs'),path=require('node:path');const args=process.argv.slice(2);const read=f=>fs.readFileSync(f,'utf8');const log=s=>fs.appendFileSync(path.join(__dirname,'..','calls'),s+'\\n');const change=()=>fs.writeFileSync('remote',process.env.ADVANCE_TO||'f'.repeat(40));`;
-  executable(
-    "git",
-    common +
-      `
-    if(process.env.ORIGINAL_TREE_ENUMERATION_ERROR && (args[0]==='ls-files'||(args[0]==='ls-tree'&&args.includes('--name-only')))) process.exit(1);
-    if(args[0]==='ls-remote') {
-      if(process.env.REMOTE_ERROR) process.exit(1);
-      if(process.env.REMOVE_SCHEMA_AFTER_PREFLIGHT && fs.readFileSync('/proc/'+process.ppid+'/cmdline','utf8').includes('committed')) {
-        const counter='committed-remote-count',count=(fs.existsSync(counter)?Number(read(counter)):0)+1;fs.writeFileSync(counter,String(count));
-        if(count===4) fs.rmSync('dist/schemas/${version}',{recursive:true});
-      }
-      const ref=args.find(a=>a.startsWith('refs/heads/'));
-      if(ref) { console.log(read('remote')+'\\t'+ref); process.exit(0); }
-      const tag=read('tag'); if(!tag) process.exit(args.includes('--exit-code')?2:0);
-      console.log(tag+'\\trefs/tags/v${version}'); process.exit(0);
-    }
-    const r=require('node:child_process').spawnSync(${JSON.stringify(realGit)},args,{stdio:'inherit'});process.exit(r.status??1);
-  `,
-  );
+  // The publisher and its release fence call git for every object, so the
+  // stub is a shell script that execs the real git; only the remote reads
+  // (ls-remote) and the injected faults are answered here.
+  write("bin/git", [
+    "#!/bin/sh",
+    'if [ -n "$ORIGINAL_TREE_ENUMERATION_ERROR" ]; then',
+    '  case "$1" in',
+    "    ls-files) exit 1 ;;",
+    '    ls-tree) for arg; do [ "$arg" = --name-only ] && exit 1; done ;;',
+    "  esac",
+    "fi",
+    'if [ "$1" = ls-remote ]; then',
+    '  [ -n "$REMOTE_ERROR" ] && exit 1',
+    '  if [ -n "$REMOVE_SCHEMA_AFTER_PREFLIGHT" ] && ps -o args= -p "$PPID" | grep -q committed; then',
+    "    count=$(( $(cat committed-remote-count 2>/dev/null || echo 0) + 1 ))",
+    '    printf %s "$count" > committed-remote-count',
+    `    [ "$count" = 4 ] && rm -rf 'dist/schemas/${version}'`,
+    "  fi",
+    "  for arg; do",
+    '    case "$arg" in refs/heads/*) printf \'%s\\t%s\\n\' "$(cat remote)" "$arg"; exit 0 ;; esac',
+    "  done",
+    "  tag=$(cat tag)",
+    '  if [ -z "$tag" ]; then',
+    "    for arg; do [ \"$arg\" = --exit-code ] && exit 2; done",
+    "    exit 0",
+    "  fi",
+    `  printf '%s\\trefs/tags/v%s\\n' "$tag" '${version}'`,
+    "  exit 0",
+    "fi",
+    `exec ${JSON.stringify(realGit)} "$@"`,
+    "",
+  ].join("\n"));
+  fs.chmodSync(path.join(dir, "bin", "git"), 0o755);
   executable(
     "gh",
     common +

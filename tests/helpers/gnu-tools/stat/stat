@@ -1,0 +1,9 @@
+#!/bin/sh
+# GNU `stat -c '%a' FILE...` (permission bits in octal) on BSD stat, for hosts
+# without GNU stat; see tests/helpers/gnu-tools.cjs. Any other use runs the
+# host's stat unchanged.
+if [ "$1" = "-c" ] && [ "$2" = "%a" ]; then
+  shift 2
+  exec /usr/bin/stat -f '%Lp' "$@"
+fi
+exec /usr/bin/stat "$@"
