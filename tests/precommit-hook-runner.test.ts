@@ -261,10 +261,11 @@ afterEach(() => {
 
 // ------------------------------------------------------------------- oracle
 
-// The command line the hook's plan starts from (scripts/profile-precommit/plan.mjs
-// PLAN_ROOTS): the sequential .husky/pre-commit ran it, and the image check,
-// which is a test of the precommit:checks vitest project since tp-jyw.51.
-const ORACLE_LINES = ['npm run precommit'];
+// The npm call the hook's plan starts from (scripts/profile-precommit/plan.mjs
+// PLAN_ROOTS): the sequential .husky/pre-commit ran `npm run precommit`, and
+// the image check, which is a test of the precommit:checks vitest project
+// since tp-jyw.51.
+const ORACLE_NPM_ARGS = ['run', 'precommit'];
 const ORACLE_CACHE_DIR = join(REPO_ROOT, 'node_modules', '.cache', 'precommit-hook-oracle');
 const NPM_REPLAY = join(REPO_ROOT, 'tests', 'helpers', 'npm-call-replay.cjs');
 
@@ -330,34 +331,33 @@ const shimEnv = (bin: string, log: string, { npmCli = NPM_CLI, queue = '' } = {}
   ...(queue ? { HOOK_SHIM_NPM_QUEUE: queue } : {}),
 });
 
-/** The sorted leaf lines that ORACLE_LINES run in root, one real npm process per npm call. */
+/** The sorted leaf lines that ORACLE_NPM_ARGS run in root, one real npm process per npm call. */
 async function npmProcessExpansion(root: string, bin: string, npmCli = NPM_CLI): Promise<string[]> {
   const log = join(root, 'npm-process-leaves.log');
-  for (const line of ORACLE_LINES) {
-    expect(await runOracle(root, '/bin/sh', ['-c', line], shimEnv(bin, log, { npmCli }), 'npm-process'), line).toBe(0);
-  }
+  const call = ['npm', ...ORACLE_NPM_ARGS].join(' ');
+  expect(await runOracle(root, NODE, [npmCli, ...ORACLE_NPM_ARGS], shimEnv(bin, log, { npmCli }), 'npm-process'), call).toBe(0);
   return lines(log).sort();
 }
 
 /**
- * The sorted leaf lines that ORACLE_LINES run in root, with every npm call
+ * The sorted leaf lines that ORACLE_NPM_ARGS run in root, with every npm call
  * replayed by npm's own code in one process (tests/helpers/npm-call-replay.cjs).
  */
 async function npmReplayExpansion(root: string, bin: string, npmCli = NPM_CLI): Promise<string[]> {
   const log = join(root, 'npm-replay-leaves.log');
   const queue = mkdtempSync(join(root, 'npm-calls-'));
   const env = shimEnv(bin, log, { npmCli, queue });
-  expect(await runOracle(root, NODE, [NPM_REPLAY, npmCli, ...ORACLE_LINES], env, 'npm-replay'), 'npm-call-replay').toBe(0);
+  expect(await runOracle(root, NODE, [NPM_REPLAY, npmCli, ...ORACLE_NPM_ARGS], env, 'npm-replay'), 'npm-call-replay').toBe(0);
   return lines(log).sort();
 }
 
 interface OracleOptions { npmCli?: string; cacheDir?: string }
 
 /**
- * The cache entry for npm's expansion of ORACLE_LINES in root:
+ * The cache entry for npm's expansion of ORACLE_NPM_ARGS in root:
  * cacheDir/<SHA-256>.json over exactly what the expansion depends on, root's
  * package.json scripts and scripts/with-timeout.sh, the npm version at
- * npmCli, ORACLE_LINES, the shims and the replay helper.
+ * npmCli, ORACLE_NPM_ARGS, the shims and the replay helper.
  */
 function oracleCacheEntry(
   root: string, shims: Record<string, string>, { npmCli = NPM_CLI, cacheDir = ORACLE_CACHE_DIR }: OracleOptions = {},
@@ -366,7 +366,7 @@ function oracleCacheEntry(
     scripts: JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts ?? {},
     withTimeout: readFileSync(join(root, 'scripts', 'with-timeout.sh'), 'utf8'),
     npmVersion: JSON.parse(readFileSync(resolve(dirname(npmCli), '..', 'package.json'), 'utf8')).version,
-    lines: ORACLE_LINES,
+    npmArgs: ORACLE_NPM_ARGS,
     shims,
     replay: readFileSync(NPM_REPLAY, 'utf8'),
   })).digest('hex');
@@ -374,7 +374,7 @@ function oracleCacheEntry(
 }
 
 /**
- * The sorted leaf lines that ORACLE_LINES run in root through the shims,
+ * The sorted leaf lines that ORACLE_NPM_ARGS run in root through the shims,
  * under the real npm at npmCli. Read from oracleCacheEntry() when present;
  * on a miss, npm's own code expands it in one process (npmReplayExpansion),
  * instead of the 15 npm processes, one after another, that npm itself starts
@@ -411,7 +411,7 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
     copyFileSync(join(REPO_ROOT, 'scripts', 'with-timeout.sh'), join(root, 'scripts', 'with-timeout.sh'));
     execFileSync('git', ['init', '-q'], { cwd: root });
 
-    // Oracle: what npm runs for the two command lines .husky/pre-commit ran.
+    // Oracle: what npm runs for the `npm run precommit` .husky/pre-commit ran.
     const shimmed = writeLeafShims();
     const { leaves: oracle } = await npmExpansion(root, shimmed);
     // The hook's checks are one vitest run over the root config's
@@ -433,8 +433,8 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
     // The constructs the real precommit chain uses (a nested `npm run` behind
     // the with-timeout wrapper, `&&`), plus what npm does around a script: pre
     // and post scripts, arguments after `--` and a flag before the script name.
-    // `npm run precommit` is recorded by sh and its two calls by a replay, so
-    // both recording paths run. Three real npm processes, one after another,
+    // `npm run precommit` comes from the helper's arguments and its two calls
+    // from the recorder's queue, so both ways a call reaches a replay run. Three real npm processes, one after another,
     // are the reference: one per call.
     writeFileSync(join(root, 'package.json'), JSON.stringify({
       name: 'oracle-replay-fixture', version: '0.0.0', private: true, scripts: {

@@ -281,6 +281,18 @@ function readJsonLines(file) {
   return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
 }
 
+/** Everything written to fd so far, read from offset 0 whatever its position. */
+function readFromStart(fd) {
+  const buffer = Buffer.alloc(fs.fstatSync(fd).size);
+  let length = 0;
+  while (length < buffer.length) {
+    const read = fs.readSync(fd, buffer, length, buffer.length - length, length);
+    if (read === 0) break;
+    length += read;
+  }
+  return buffer.toString('utf8', 0, length);
+}
+
 // Asynchronous, so the runner's --test-timeout bounds a hung orchestrator;
 // teardown kills its process group.
 async function runOrchestrator(t, storyboardIds, extraArgs = [], extraEnv = {}) {
@@ -291,8 +303,10 @@ async function runOrchestrator(t, storyboardIds, extraArgs = [], extraEnv = {}) 
   const descendantPidFile = path.join(directory, 'descendant.pid');
   const startLog = path.join(directory, 'starts.jsonl');
   const outputFile = path.join(directory, 'output.log');
-  const fd = fs.openSync(outputFile, 'w');
+  // Read back through the same descriptor, so the file read is the one created.
+  const fd = fs.openSync(outputFile, 'w+');
   let result;
+  let output;
   try {
     result = await runChild(t, process.execPath, [
       ORCHESTRATOR,
@@ -315,10 +329,10 @@ async function runOrchestrator(t, storyboardIds, extraArgs = [], extraEnv = {}) 
         ...extraEnv,
       },
     });
+    output = readFromStart(fd);
   } finally {
     fs.closeSync(fd);
   }
-  const output = fs.readFileSync(outputFile, 'utf8');
   const events = readJsonLines(startLog);
   const processes = events.filter(entry => entry.event === 'start');
   const workers = processes.filter(entry => entry.role === 'worker');

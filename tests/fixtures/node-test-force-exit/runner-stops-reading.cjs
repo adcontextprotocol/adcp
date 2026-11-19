@@ -47,18 +47,23 @@ test('let the runner read', () => new Promise((resolve) => setTimeout(resolve, 5
 test('runner stops reading', () => {
   if (!underRunner) return;
   const runner = process.ppid;
-  // process.exit() runs 'exit' listeners before it discards the queue.
-  const exited = path.join(os.tmpdir(), `runner-stops-reading-${process.pid}.exited`);
-  process.on('exit', () => fs.writeFileSync(exited, ''));
-  // The shell removes the marker once the resumed runner has reaped this
+  // process.exit() runs 'exit' listeners before it discards the queue. The
+  // marker lives in a private directory; the shell gets every value as an
+  // argument, never as script text.
+  const markerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-stops-reading-'));
+  const exited = path.join(markerDir, 'exited');
+  process.on('exit', () => fs.writeFileSync(exited, '', { flag: 'wx' }));
+  // The shell removes the directory once the resumed runner has reaped this
   // process (at most 5 s later).
   const resume = [
-    `i=0; while [ ! -e '${exited}' ] && [ $i -lt ${maxPolls} ]; do sleep 0.05; i=$((i+1)); done`,
-    `kill -CONT ${runner}`,
-    `i=0; while kill -0 ${process.pid} 2>/dev/null && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done`,
-    `rm -f '${exited}'`,
+    'i=0; while [ ! -e "$1/exited" ] && [ $i -lt "$4" ]; do sleep 0.05; i=$((i+1)); done',
+    'kill -CONT "$2"',
+    'i=0; while kill -0 "$3" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done',
+    'rm -rf "$1"',
   ].join('; ');
-  spawn('/bin/sh', ['-c', resume], { detached: true, stdio: 'ignore' }).unref();
+  spawn('/bin/sh', ['-c', resume, 'resume-runner', markerDir, String(runner), String(process.pid), String(maxPolls)], {
+    detached: true, stdio: 'ignore',
+  }).unref();
   process.kill(runner, 'SIGSTOP');
   // Fill the pipe until a write would block (at most 1 MiB, above any pipe or
   // socket buffer). Newlines reach the runner as plain stdout, which no

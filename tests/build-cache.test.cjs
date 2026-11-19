@@ -203,11 +203,15 @@ async function assertStale(target, why, env) {
   return result;
 }
 
-const scriptPattern = (script) => path.basename(script).replace(/\./g, '\\.');
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const scriptPattern = (script) => escapeRegExp(path.basename(script));
 
 function hitLine(target) {
   const { builtDir, script } = TARGETS[target];
-  return new RegExp(`^build-cache: ${builtDir.replace(/\//g, '\\/')} current \\(inputs ([0-9a-f]{12})\\); skipped (?:scripts/)?${scriptPattern(script)}$`);
+  return new RegExp(`^build-cache: ${escapeRegExp(builtDir)} current \\(inputs ([0-9a-f]{12})\\); skipped (?:scripts/)?${scriptPattern(script)}$`);
 }
 
 function missLine(target) {
@@ -278,10 +282,13 @@ async function assertInputClass(target, edit, { env } = {}) {
 function hashFiles(rel, accept = () => true) {
   const out = new Map();
   const full = abs(rel);
-  if (!fs.existsSync(full)) return out;
-  if (fs.statSync(full).isFile()) {
+  // Read first and branch on the error, so the file read is the one checked.
+  try {
     out.set(rel, crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex'));
     return out;
+  } catch (error) {
+    if (error.code === 'ENOENT') return out;
+    if (error.code !== 'EISDIR') throw error;
   }
   for (const entry of fs.readdirSync(full, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !accept(entry.name)) continue;
