@@ -1,0 +1,11 @@
+{
+  "why": "An added if/then rule keyed by asset_type gets a witness: an object that satisfies the if and violates the then (video requirements on an image).",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

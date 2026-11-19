@@ -1,0 +1,11 @@
+{
+  "why": "A document that gets its own schema where it had none gets a witness: a value of another JSON type.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

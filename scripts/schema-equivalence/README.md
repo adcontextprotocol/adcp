@@ -242,7 +242,8 @@ and property that the roots reach the site under (`selector.system`, not
 `geo.system`). An unbound probe hit is a heuristic, not evidence: the report
 lists it, and it never fails the check.
 
-In directory mode, `--corpus-dir` reads `{ "schema": "rel#ptr", "instance": ... }`
+In directory mode, `--corpus` reads the non-schema corpus from this
+repository's `HEAD`, and `--corpus-dir` reads `{ "schema": "rel#ptr", "instance": ... }`
 files as bound instances and `{ "probe": ... }` files as documents of unbound
 values.
 
@@ -273,7 +274,19 @@ synthesized from the raw schema along the entry's pointer. Pattern candidates
 come from both patterns: minimal and extended samples, one optional part at a
 time (a duration pattern gives `PT` and `P0D`), and long repetitions.
 Lookaheads and lookbehinds generate nothing; the real `RegExp` filters the
-samples. One reverted head, compiled lazily, serves all of a line's roots. At the location the pointer names, it tries
+samples. One reverted head, compiled lazily, serves all of a line's roots.
+
+The search also builds candidates from the changed constraint itself and
+merges them into the valid instance at the location:
+
+- For an added `not`, an instance of the negated schema. For a guard on an
+  either/or pair (`not: {required: [k]}`), the key `k` with a value of each
+  JSON type, so the base matches exactly one branch and the head none.
+- For an added `if`/`then`, an instance that satisfies `if` and violates
+  `then`: wrong-typed values, and values that another branch of the
+  property's own schema accepts (video requirements on an image).
+- For a schema that gains constraints where it had none, a value of each JSON
+  type. At the location the pointer names, it tries
 values derived from the change (values around a bound, the values an enum
 gained or lost, strings that one pattern accepts and the other rejects, a
 property that became required removed, the added or removed branch), then

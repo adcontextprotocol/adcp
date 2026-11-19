@@ -1,0 +1,22 @@
+title: c7-witness-if-then
+changes:
+  - location: group.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: image
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            additionalProperties: false
+            properties:
+              min_width:
+                $at: req-image.json#/properties/min_width
+    direction: tighten
+    side: none

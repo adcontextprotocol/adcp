@@ -244,6 +244,120 @@ function synth(tree, doc, s, segs, depth = 0, choice = 0, props0 = {}) {
   return null;
 }
 
+/**
+ * The raw schema object that holds a branch entry's union: the node at the
+ * entry's location, or, for a conjunction member written behind the
+ * location's `$ref` / `allOf` (pointer ending …/$ref/allOf/2), the object
+ * those segments lead to. Returns { doc, node } or null.
+ */
+function branchHolder(tree, loc, segs) {
+  const key = segs[segs.length - 2];
+  const idx = Number(segs[segs.length - 1]);
+  let node = rawAt(tree, loc);
+  if (isObj(node) && Array.isArray(node[key]) && node[key][idx] !== undefined) return { doc: loc.doc, node };
+  const trail = [];
+  for (let i = segs.length - 3; i >= 1;) {
+    if (segs[i] === '$ref') { trail.unshift('$ref'); i -= 1; }
+    else if (/^\d+$/.test(segs[i]) && segs[i - 1] === 'allOf') { trail.unshift(`allOf/${segs[i]}`); i -= 2; }
+    else break;
+  }
+  let doc = loc.doc;
+  let ptr = loc.ptr;
+  for (const step of trail) {
+    if (step === '$ref') {
+      const t = isObj(node) && typeof node.$ref === 'string' ? refTarget(doc, node.$ref) : null;
+      if (!t) return null;
+      doc = t.doc;
+      ptr = t.ptr;
+    } else ptr = `${ptr}/${step}`;
+    node = rawAt(tree, { doc, ptr });
+  }
+  return isObj(node) ? { doc, node } : null;
+}
+
+/**
+ * Instances that exercise different parts of a schema: for a union, each
+ * branch; for an object, its required properties plus one optional property
+ * at a time. Feeds if/then witnesses (an object valid for video requirements
+ * is not valid for image requirements).
+ */
+function variants(tree, doc, schema, depth = 0) {
+  const { doc: d, schema: s } = derefRaw(tree, doc, schema);
+  if (depth > 3 || !isObj(s)) return [];
+  const out = [];
+  for (const key of ['anyOf', 'oneOf']) {
+    if (Array.isArray(s[key])) for (const b of s[key]) out.push(...variants(tree, d, b, depth + 1));
+  }
+  const base = synth(tree, d, s, [], 0, 0);
+  if (base !== FAIL) out.push(base);
+  if (isObj(s.properties) && isObj(base)) {
+    for (const [k, ps] of Object.entries(s.properties).slice(0, 20)) {
+      if (k in base) continue;
+      const v = synth(tree, d, ps, [], 0, 0);
+      if (v !== FAIL) out.push({ ...base, [k]: v });
+    }
+  }
+  return out.slice(0, 200);
+}
+
+/** Follows a raw schema's `$ref` chain; returns { doc, schema }. */
+function derefRaw(tree, doc, s, depth = 0) {
+  if (depth > 8 || !isObj(s) || typeof s.$ref !== 'string') return { doc, schema: s };
+  const t = refTarget(doc, s.$ref);
+  const target = t && rawAt(tree, t);
+  return target === undefined ? { doc, schema: s } : derefRaw(tree, t.doc, target, depth + 1);
+}
+
+/**
+ * Property schemas visible at a location: its own `properties`, and those of
+ * its parent and the parent's union branches when the location is a branch.
+ */
+function propertyPool(tree, loc) {
+  const pool = {};
+  const add = (docKey, raw) => {
+    const { schema } = derefRaw(tree, docKey, raw);
+    if (isObj(schema) && isObj(schema.properties)) {
+      for (const [k, v] of Object.entries(schema.properties)) if (!(k in pool)) pool[k] = v;
+    }
+  };
+  add(loc.doc, rawAt(tree, loc));
+  const m = /^(.*)\/(anyOf|oneOf|allOf)\/\d+$/.exec(loc.ptr);
+  if (m) {
+    const parent = rawAt(tree, { doc: loc.doc, ptr: m[1] });
+    add(loc.doc, parent);
+    for (const key of ['anyOf', 'oneOf', 'allOf']) {
+      if (isObj(parent) && Array.isArray(parent[key])) parent[key].forEach(b => add(loc.doc, b));
+    }
+  }
+  return pool;
+}
+
+/**
+ * Values that probably violate raw schema `s` (each is confirmed with Ajv
+ * later): a value of every JSON type, objects whose properties get such
+ * values (one level of nesting), and instances of a `not` operand.
+ */
+function violations(tree, doc, s, depth = 0) {
+  if (depth > 4 || !isObj(s)) return [];
+  if (typeof s.$ref === 'string') {
+    const t = refTarget(doc, s.$ref);
+    const target = t && rawAt(tree, t);
+    return target === undefined ? [] : violations(tree, t.doc, target, depth + 1);
+  }
+  const out = [null, 0, 1.5, 'x', true, [], {}];
+  if (isObj(s.properties)) {
+    for (const [name, ps] of Object.entries(s.properties).slice(0, 12)) {
+      for (const v of violations(tree, doc, ps, depth + 1)) out.push({ [name]: v });
+    }
+  }
+  if (isObj(s.not)) {
+    const v = synth(tree, doc, s.not, [], 0, 0);
+    if (v !== FAIL) out.push(v);
+  }
+  for (const m of Array.isArray(s.allOf) ? s.allOf : []) out.push(...violations(tree, doc, m, depth + 1).slice(7));
+  return out;
+}
+
 /** Instance steps a schema pointer names, and whether the path ends in a branch. */
 function instancePath(pointer) {
   const segs = pointer.split('/').slice(1).map(unescapePointer);
@@ -307,6 +421,8 @@ function candidates(entry, ctx) {
   const n = entry.new;
   const out = [];
   const cur = ctx.current;
+  // Constraint-derived objects go first, merged into the valid instance.
+  if (isObj(cur)) for (const o of ctx.overlays || []) out.push({ ...cur, ...o });
   const nums = [o, n].filter(x => typeof x === 'number');
   const around = [...new Set(nums.flatMap(x => [x - 1, x, x + 1, x + 0.5]).concat(nums.length === 2 ? [(nums[0] + nums[1]) / 2] : []))].sort((p, q) => p - q);
   if (['maxLength', 'minLength'].includes(k)) out.push(...lengthVariants(cur, around));
@@ -398,9 +514,13 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
     if (!hybrid.tree) reasons.push(`cannot attribute: ${hybrid.reason}`);
     const hv = hybrid.tree ? new TreeValidator(hybrid.tree, { lazy: true }) : null;
     let firstCompiled = true;
+    let compileError = null;
     for (const entry of hv ? entries : []) {
       const h = await hv.get(`${entry.root}#`);
-      if (typeof h !== 'function') continue;
+      if (typeof h !== 'function') {
+        compileError = h.error;
+        continue;
+      }
       // Declared directions are searched on every root until found; the
       // other direction (an attributed witness the line does not declare)
       // only on the first root that compiles.
@@ -416,6 +536,7 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
       if (declared.every(d => found[d])) break;
     }
     const observed = ['tighten', 'loosen'].filter(d => found[d]);
+    if (hv && firstCompiled && compileError) reasons.push(`cannot attribute: the head with this line reverted does not compile (${compileError})`);
     res.observed = observed;
     res.payloads = observed.map(d => payloadRecord(d, found[d]));
     const missing = declared.filter(d => !found[d]);
@@ -490,19 +611,69 @@ function revertedHead(trees, entry) {
   const segs = entry.pointer.split('/').map(unescapePointer);
   const last = segs[segs.length - 1];
   const UNIONS = ['anyOf', 'oneOf', 'allOf'];
+  const extra = new Map(); // other source files the revert edits
   const branch = /^\d+$/.test(last) && UNIONS.includes(segs[segs.length - 2]) && UNIONS.includes(kw);
+  if (kw === '(schema)') {
+    // The whole node changed (for example `true` became a schema).
+    // A synthetic base node (`true`) has no source location: use the base
+    // file at the same path, or the rendered value.
+    const before = baseRaw !== undefined ? baseRaw
+      : rawAt(trees.base, { doc: loc.doc, ptr: loc.ptr }) !== undefined ? rawAt(trees.base, { doc: loc.doc, ptr: loc.ptr })
+        : typeof entry.old === 'boolean' ? entry.old : undefined;
+    if (before === undefined) return { reason: `no base schema at ${entry.base_location}` };
+    const files = new Map(trees.head.files);
+    const copy = structuredClone(trees.head.files.get(rel));
+    files.set(rel, loc.ptr === '' ? structuredClone(before) : setPointer(copy, loc.ptr, structuredClone(before)));
+    return { tree: { label: `${trees.head.label} with the schema at ${entry.head_location} reverted`, commit: null, files, readDist: trees.head.readDist } };
+  }
   if (branch) {
     const key = segs[segs.length - 2];
     const idx = Number(last);
+    // A conjunction member can be written behind the location's `$ref` or
+    // `allOf` (the pointer ends …/$ref/allOf/2): follow those segments.
+    const trail = [];
+    for (let i = segs.length - 3; i >= 1; ) {
+      if (segs[i] === '$ref') { trail.unshift('$ref'); i -= 1; }
+      else if (/^\d+$/.test(segs[i]) && segs[i - 1] === 'allOf') { trail.unshift(`allOf/${segs[i]}`); i -= 2; }
+      else break;
+    }
+    if (!(Array.isArray(raw[key]) && raw[key][idx] !== undefined) && trail.length) {
+      let docKey = loc.doc;
+      let ptr = loc.ptr;
+      let node = raw;
+      for (const step of trail) {
+        if (step === '$ref') {
+          const t = isObj(node) && typeof node.$ref === 'string' ? refTarget(docKey, node.$ref) : null;
+          if (!t || !t.doc.startsWith('src:')) return { reason: `cannot follow $ref from ${entry.head_location}` };
+          docKey = t.doc;
+          ptr = t.ptr;
+        } else ptr = `${ptr}/${step}`;
+        const d = docKey.slice(4) === rel ? doc : (extra.get(docKey.slice(4)) || extra.set(docKey.slice(4), structuredClone(trees.head.files.get(docKey.slice(4)))).get(docKey.slice(4)));
+        node = getPointer(d, ptr);
+      }
+      if (!isObj(node)) return { reason: `no schema object behind ${entry.head_location}` };
+      return revertBranch(node, key, idx);
+    }
+    return revertBranch(raw, key, idx);
+  }
+  return revertKeyword();
+
+  function revertBranch(target, key, idx) {
     if (has('new') && !has('old')) {
-      if (!Array.isArray(raw[key]) || raw[key][idx] === undefined) return { reason: `${key}/${idx} is not written at ${entry.head_location}` };
-      raw[key].splice(idx, 1);
+      if (!Array.isArray(target[key]) || target[key][idx] === undefined) return { reason: `${key}/${idx} is not written at ${entry.head_location}` };
+      target[key].splice(idx, 1);
+      // An empty allOf is an invalid schema; no members means no keyword.
+      if (target[key].length === 0) delete target[key];
     } else if (has('old') && !has('new')) {
       const b = isObj(baseRaw) && Array.isArray(baseRaw[key]) ? baseRaw[key][idx] : undefined;
       if (b === undefined) return { reason: `${key}/${idx} is not written at ${entry.base_location}` };
-      raw[key] = [...(Array.isArray(raw[key]) ? raw[key] : []), structuredClone(b)];
+      target[key] = [...(Array.isArray(target[key]) ? target[key] : []), structuredClone(b)];
     } else return { reason: `cannot revert a ${key} branch change` };
-  } else if (kw === 'properties' || kw === 'patternProperties' || kw === 'dependencies') {
+    return finish();
+  }
+
+  function revertKeyword() {
+  if (kw === 'properties' || kw === 'patternProperties' || kw === 'dependencies') {
     if (has('new') && !has('old')) {
       if (!isObj(raw[kw]) || raw[kw][last] === undefined) return { reason: `${kw}/${last} is not written at ${entry.head_location}` };
       delete raw[kw][last];
@@ -529,9 +700,23 @@ function revertedHead(trees, entry) {
   } else {
     return { reason: `no revert for keyword ${kw}` };
   }
-  const files = new Map(trees.head.files);
-  files.set(rel, doc);
-  return { tree: { label: `${trees.head.label} with ${kw} reverted at ${entry.head_location}`, commit: null, files, readDist: trees.head.readDist } };
+  return finish();
+  }
+
+  function finish() {
+    const files = new Map(trees.head.files);
+    files.set(rel, doc);
+    for (const [r, d] of extra) files.set(r, d);
+    return { tree: { label: `${trees.head.label} with ${kw} reverted at ${entry.head_location}`, commit: null, files, readDist: trees.head.readDist } };
+  }
+}
+
+function setPointer(doc, ptr, value) {
+  const segs = ptr.split('/').slice(1).map(unescapePointer);
+  let cur = doc;
+  for (const seg of segs.slice(0, -1)) cur = cur[seg];
+  cur[segs[segs.length - 1]] = value;
+  return doc;
 }
 
 async function search(entry, accept, reject, { trees, validators, corpus, corpusStrings }, attributed = () => true) {
@@ -561,25 +746,67 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
   }
   const synthesized = [];
   const patterns = [];
+  const overlays = [];
   for (const [side, label] of [['base', entry.base_location], ['head', entry.head_location]]) {
     const loc = parseLocation(label);
     let raw = rawAt(trees[side], loc);
     if (raw === undefined) continue;
+    const pool = propertyPool(trees[side], loc);
     if (branchEntry) {
-      const idx = Number(entry.pointer.split('/').pop());
-      const key = entry.keyword;
-      raw = isObj(raw) && Array.isArray(raw[key]) ? raw[key][idx] : undefined;
+      const segs = entry.pointer.split('/').map(unescapePointer);
+      const idx = Number(segs[segs.length - 1]);
+      const key = segs[segs.length - 2];
+      const holder = branchHolder(trees[side], loc, segs);
+      raw = holder && Array.isArray(holder.node[key]) ? holder.node[key][idx] : undefined;
+      if (holder) loc.doc = holder.doc;
     } else if (entry.keyword === 'properties') {
       const name = unescapePointer(entry.pointer.split('/').pop());
       raw = isObj(raw) && isObj(raw.properties) ? raw.properties[name] : undefined;
     }
     if (raw === undefined) continue;
     if (isObj(raw) && typeof raw.pattern === 'string') patterns.push(raw.pattern);
-    // What a `not` excludes is a candidate on its own.
+    // Candidates built from the constraint itself, merged into the valid
+    // instance at the location: what a `not` excludes, and an instance that
+    // satisfies an `if` and violates its `then`.
+    // Property values come from the schemas the site and its sibling
+    // branches declare, so the merged instance stays valid elsewhere.
     if (isObj(raw) && isObj(raw.not)) {
-      const v = synth(trees[side], loc.doc, raw.not, [], 0, 0);
-      if (v !== FAIL) synthesized.push(v);
+      // With placeholder values ({}) and with values the site's own
+      // property schemas accept: either can be the one the base admits.
+      for (const [choice, props] of [[0, {}], [0, pool], [1, pool], [2, pool]]) {
+        const v = synth(trees[side], loc.doc, raw.not, [], 0, choice, props);
+        if (v === FAIL) continue;
+        synthesized.push(v);
+        if (isObj(v)) overlays.push(v);
+      }
+      // A guard on an either/or pair (not: {required: [k]}): the witness
+      // carries k with a value the other branch rejects, so the base matches
+      // exactly one branch and the head none.
+      const keys = Array.isArray(raw.not.required) ? raw.not.required.filter(k => typeof k === 'string') : [];
+      for (const g of [null, 'x', 0, true, [], {}]) {
+        if (keys.length) overlays.push(Object.fromEntries(keys.map(k => [k, g])));
+      }
     }
+    if (isObj(raw) && raw.if !== undefined && raw.then !== undefined) {
+      const ifv = synth(trees[side], loc.doc, raw.if, [], 0, 0, pool);
+      if (ifv !== FAIL) {
+        const bads = violations(trees[side], loc.doc, raw.then);
+        // Values another branch of the property's own schema accepts (an
+        // object valid for video requirements but not for image ones).
+        const then = derefRaw(trees[side], loc.doc, raw.then);
+        if (isObj(then.schema) && isObj(then.schema.properties)) {
+          for (const name of Object.keys(then.schema.properties)) {
+            if (pool[name] === undefined) continue;
+            for (const v of variants(trees[side], loc.doc, pool[name])) bads.push({ [name]: v });
+          }
+        }
+        for (const bad of bads) {
+          if (isObj(ifv) && isObj(bad)) overlays.push({ ...ifv, ...bad });
+          else if (!isObj(ifv)) synthesized.push(bad);
+        }
+      }
+    }
+    if (isObj(raw)) for (const bad of violations(trees[side], loc.doc, raw)) if (!isObj(bad)) synthesized.push(bad);
     for (const choice of [0, 1]) {
       const v = synth(trees[side], loc.doc, raw, [], 0, choice);
       if (v !== FAIL) synthesized.push(v);
@@ -594,7 +821,7 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
     if (!va(seed)) continue;
     if (ok(seed)) return { root: entry.root, payload: seed, at: steps };
     const current = getAt(seed, steps);
-    const ctx = { current, synthesized, patterns, corpusStrings };
+    const ctx = { current, synthesized, patterns, corpusStrings, overlays };
     for (const cand of candidates(entry, ctx)) {
       let payload;
       if (cand && typeof cand === 'object' && cand.deleteKey !== undefined) {

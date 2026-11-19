@@ -53,6 +53,7 @@ describe('schema-equivalence CLI fixtures', { concurrency: 8 }, () => {
       if (expect.missing !== undefined) assert.equal(report.manifest.missing.length, expect.missing);
       if (expect.corpusChanges !== undefined) assert.equal(report.corpus.changes.length, expect.corpusChanges);
       if (expect.probeHits !== undefined) assert.equal(report.corpus.probe_hits.length, expect.probeHits, JSON.stringify(report.corpus.probe_hits));
+      if (expect.observed !== undefined) assert.deepEqual(report.witnesses[0].observed, expect.observed);
       if (expect.witnesses !== undefined) {
         assert.equal(report.witnesses.filter(w => w.ok).length, expect.witnesses, JSON.stringify(report.witnesses, null, 1));
       }

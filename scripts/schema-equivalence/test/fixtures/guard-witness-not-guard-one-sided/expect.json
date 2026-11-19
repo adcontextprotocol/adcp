@@ -1,0 +1,15 @@
+{
+  "why": "A not guard on one branch of a oneOf also loosens: an object with both keys valid matched two branches at the base and matches one at the head. Declaring it a tightening only fails.",
+  "exit": 1,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 0,
+  "observed": [
+    "tighten",
+    "loosen"
+  ]
+}

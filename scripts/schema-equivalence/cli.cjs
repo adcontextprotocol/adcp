@@ -195,7 +195,8 @@ async function main() {
     const t0 = Date.now();
     if (refs) corpus = collectCorpus({ repo: REPO, commit: refs.head, baseTree: base, headTree: head });
     else {
-      corpus = collectCorpus({ baseTree: base, headTree: head });
+      // Directory mode: the non-schema corpus comes from this repository's HEAD.
+      corpus = collectCorpus({ repo: REPO, commit: git(REPO, ['rev-parse', 'HEAD']).toString('utf8').trim(), baseTree: base, headTree: head });
       if (values['corpus-dir']) {
         const dirCorpus = loadDirCorpus(path.resolve(values['corpus-dir']));
         corpus.bound.push(...dirCorpus.bound);
