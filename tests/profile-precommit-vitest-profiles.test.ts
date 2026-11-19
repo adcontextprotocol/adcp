@@ -30,6 +30,8 @@ import gitObjectFixture from './helpers/git-object-fixture.cjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROFILER = join(REPO_ROOT, 'scripts', 'profile-precommit.mjs');
+// Runs a command with every process it starts limited to N s of CPU.
+const CPU_LIMIT = join(REPO_ROOT, 'tests', 'fixtures', 'cpu-limit.sh');
 const NODE = process.execPath;
 // Named so it can be found in a profile: it runs only in the test file.
 const MARKER_FUNCTION = 'profiledInForksWorker';
@@ -80,7 +82,7 @@ interface ProfilerRun { status: number | null; signal: NodeJS.Signals | null; st
  */
 function runProfiler(args: string[], cwd: string, cpuSeconds: number): Promise<ProfilerRun> {
   return new Promise((resolveRun) => {
-    const child = spawn('sh', ['-c', `ulimit -t ${cpuSeconds} && exec "$0" "$@"`, NODE, PROFILER, ...args], {
+    const child = spawn(CPU_LIMIT, [String(cpuSeconds), NODE, PROFILER, ...args], {
       cwd, env: childEnv(), detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     });
     profilerGroups.push(child.pid!);

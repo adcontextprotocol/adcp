@@ -36,7 +36,7 @@ import {
   copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import gitObjectFixture from './helpers/git-object-fixture.cjs';
@@ -44,6 +44,8 @@ import gitObjectFixture from './helpers/git-object-fixture.cjs';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const NODE = process.execPath;
 const RUNNER = 'scripts/profile-precommit.mjs';
+// Runs a command with every process it starts limited to N s of CPU.
+const CPU_LIMIT = join(REPO_ROOT, 'tests', 'fixtures', 'cpu-limit.sh');
 
 // ------------------------------------------------------------------ fixtures
 
@@ -74,7 +76,10 @@ const startStray = (name) => new Promise((resolve) => {
   check();
   child.once('exit', () => { if (!started) { console.error(name + ' exited before it started'); process.exit(1); } });
 });
-module.exports = { has, mark, hold, startStray };
+// The values for the leaf at \`file\` (its names), from scripts/leaves.json;
+// the leaf scripts themselves are fixed text.
+const leafConfig = (file) => JSON.parse(fs.readFileSync(path.join(__dirname, 'leaves.json'), 'utf8'))[path.basename(file)];
+module.exports = { has, mark, hold, startStray, leafConfig };
 `;
 
 // A detached descendant that ignores SIGTERM and holds the step's output.
@@ -86,23 +91,31 @@ const STRAY = [
   '',
 ].join('\n');
 
-const LIB = "require('./fixture-lib.cjs')";
+// A fixture leaf: fixed script text, and the values it reads for itself from
+// scripts/leaves.json (keyed by its file name).
+interface Leaf { source: string; config: Record<string, string> }
+const LEAF_PRELUDE = "const lib = require('./fixture-lib.cjs');\nconst config = lib.leafConfig(__filename);\n";
 const leaf = {
-  /** Records that it ran. */
-  marks: (name: string) => `${LIB}.mark(${JSON.stringify(name)});\n`,
+  /** Records that it ran (marker config.name). */
+  marks: (name: string): Leaf => ({ source: `${LEAF_PRELUDE}lib.mark(config.name);\n`, config: { name } }),
   /** Publishes its pid and runs until killed. */
-  holds: (name: string) => `${LIB}.hold(${JSON.stringify(name)});\n`,
+  holds: (name: string): Leaf => ({ source: `${LEAF_PRELUDE}lib.hold(config.name);\n`, config: { name } }),
   /** Starts a detached SIGTERM-ignoring stray on its stdout, then publishes its pid and runs until killed. */
-  holdsWithStray: (name: string, stray: string) =>
-    `const lib = ${LIB};\nlib.startStray(${JSON.stringify(stray)}).then(() => lib.hold(${JSON.stringify(name)}));\n`,
+  holdsWithStray: (name: string, stray: string): Leaf => ({
+    source: `${LEAF_PRELUDE}lib.startStray(config.stray).then(() => lib.hold(config.name));\n`,
+    config: { name, stray },
+  }),
   /** Records its argv in <name>.argv and exits with the number after --code. */
-  exitsWith: (name: string) => [
-    `const lib = ${LIB};`,
-    'const argv = process.argv.slice(2);',
-    `lib.mark(${JSON.stringify(`${name}.argv`)}, JSON.stringify(argv));`,
-    "process.exit(Number(argv[argv.indexOf('--code') + 1]));",
-    '',
-  ].join('\n'),
+  exitsWith: (name: string): Leaf => ({
+    source: [
+      LEAF_PRELUDE,
+      'const argv = process.argv.slice(2);',
+      "lib.mark(config.name + '.argv', JSON.stringify(argv));",
+      "process.exit(Number(argv[argv.indexOf('--code') + 1]));",
+      '',
+    ].join('\n'),
+    config: { name },
+  }),
 };
 
 const IMAGE_CHECK = '#!/bin/bash\ntouch "$(dirname "$0")/../markers/image-check-ran"\nexit 0\n';
@@ -151,7 +164,7 @@ const hookGroups: number[] = [];
 
 interface FixtureOptions {
   scripts: Record<string, string>;
-  files?: Record<string, string>;
+  files?: Record<string, Leaf>;
 }
 
 /**
@@ -175,10 +188,13 @@ function fixtureRoot({ scripts, files = {} }: FixtureOptions): string {
   writeFileSync(join(root, 'scripts', 'stray.cjs'), STRAY);
   writeFileSync(join(root, 'scripts', 'check-image-quality.sh'), IMAGE_CHECK);
   writeFileSync(join(root, 'budget-gate.mjs'), BUDGET_GATE);
-  for (const [rel, content] of Object.entries(files)) {
-    mkdirSync(dirname(join(root, rel)), { recursive: true });
-    writeFileSync(join(root, rel), content);
+  const leaves: Record<string, Record<string, string>> = {};
+  for (const [rel, { source, config }] of Object.entries(files)) {
+    expect(dirname(rel), 'leaf files live in scripts/, beside fixture-lib.cjs and leaves.json').toBe('scripts');
+    writeFileSync(join(root, rel), source);
+    leaves[basename(rel)] = config;
   }
+  writeFileSync(join(root, 'scripts', 'leaves.json'), JSON.stringify(leaves));
   execFileSync('git', ['init', '-q'], { cwd: root });
   return root;
 }
@@ -237,7 +253,7 @@ const TIMEOUT_BANNER = '⏰ TIMEOUT:';
  */
 function runHook(root: string, command: string, args: string[], env: NodeJS.ProcessEnv, guardMs = 5_000): Promise<HookResult> {
   const spawnAt = Date.now();
-  const child = spawn('sh', ['-c', 'ulimit -t 5 && exec "$0" "$@"', command, ...args], { cwd: root, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(CPU_LIMIT, ['5', command, ...args], { cwd: root, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   hookGroups.push(child.pid!);
   let stdout = '';
   let stderr = '';
