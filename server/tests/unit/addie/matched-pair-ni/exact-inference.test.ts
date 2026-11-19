@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, type StdioOptions } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  POISON_LOOP,
   POISONED_WORKER_POISONS,
   POISONED_WORKER_TASKS,
   removeProbeFiles,
@@ -14,6 +15,7 @@ import {
   runRealmProbe,
   terminateLiveWorkers,
   TERMINATION_BOUND_MS,
+  writeChargeCounterPreload,
 } from './realm-probe.mjs';
 import { childLaunchesSince, childLaunchMark, typeScriptToolingIn, type ChildLaunch } from '../../../helpers/child-process-launches.js';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
@@ -56,9 +58,30 @@ function expectOnePlainNodeChildSince(mark: number): void {
 }
 
 /** Shapes returned by realm-probe.mjs. */
-type RealmProbeResult = { readonly code: number | null; readonly timedOut: boolean; readonly error?: string; readonly stderr: string };
+type RealmProbeResult = { readonly code: number | null; readonly timedOut: boolean; readonly poisonEntered: boolean; readonly error?: string; readonly stderr: string };
 type PoisonedWorkerOutcome = { readonly pass: boolean; readonly expected: string; readonly ok?: boolean; readonly events: readonly string[]; readonly error?: string };
 const REALM_PROBE_PATH = fileURLToPath(new URL('./realm-probe.mjs', import.meta.url));
+
+type ChildResult = { readonly error?: Error; readonly status: number | null; readonly signal: NodeJS.Signals | null; readonly stdout: string; readonly stderr: string };
+/** Child processes a test started; afterEach SIGKILLs any still running. */
+const liveChildren = new Set<ReturnType<typeof spawn>>();
+
+/**
+ * Runs `node <args>` in its own process. Resolves on the child's 'error' or
+ * 'close', whichever comes first; a spawn error is appended to stderr.
+ */
+function runChild(args: readonly string[], { env = process.env, stdio, timeout }: { env?: NodeJS.ProcessEnv; stdio: StdioOptions; timeout?: number }): Promise<ChildResult> {
+  return new Promise((resolveChild) => {
+    const child = spawn(process.execPath, [...args], { cwd: process.cwd(), env, stdio, timeout });
+    liveChildren.add(child);
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+    child.once('error', (error) => { liveChildren.delete(child); resolveChild({ error, status: null, signal: null, stdout, stderr: `${stderr}${String(error)}` }); });
+    child.once('close', (status, signal) => { liveChildren.delete(child); resolveChild({ status, signal, stdout, stderr }); });
+  });
+}
 
 describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   const margin = parseMatchedPairNiDecimal('0.10');
@@ -66,7 +89,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   /**
    * The engine's wall-clock limits off: a determinate result then depends only
    * on its work budget, never on CPU load. Each call stays bounded by its
-   * test's timeout, and each cold child by spawnSync's 25 s (a cold child takes
+   * test's timeout, and each cold child by its 25 s spawn timeout (a cold child takes
    * 15.5 s on the idle noetis VM). A hung worker keeps its two slots, so later
    * engine calls in this file would fall back as well.
    */
@@ -77,17 +100,18 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   /** A probe-internal hang guard, kept below the probe's own termination bound. */
   const INNER_HANG_GUARD_MS = TERMINATION_BOUND_MS - 5_000;
 
-  // A failed or timed-out probe test must not leave spinning realms behind.
-  let emittedChild: ReturnType<typeof spawn> | undefined;
+  // A failed or timed-out probe test must not leave spinning realms or
+  // running children (the emitted-JS child, the cold children) behind.
   afterEach(async () => {
-    emittedChild?.kill('SIGKILL');
-    emittedChild = undefined;
+    for (const child of liveChildren) child.kill('SIGKILL');
+    liveChildren.clear();
     await terminateLiveWorkers();
   });
   afterAll(() => { removeProbeFiles(); });
 
   /** Same claim as a child process exiting 0 with no spawn error or signal. */
   function expectProbeToExitZero(result: RealmProbeResult, label = ''): void {
+    expect(result.poisonEntered, `${label}the probe entered its poisoned intrinsic (it can never exit after that) ${result.stderr}`).toBe(false);
     expect(result.error, `${label}${result.stderr}`).toBeUndefined();
     expect(result.timedOut, `${label}probe did not terminate within ${TERMINATION_BOUND_MS} ms`).toBe(false);
     expect(result.code, `${label}${result.stderr}`).toBe(0);
@@ -113,8 +137,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   async function expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee(): Promise<void> {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
     const result = await runHangProbe(
-      `import { workerData } from 'node:worker_threads'; const entered = workerData.entered;
-      Object.defineProperty(Array.prototype, 'map', { value() { Atomics.store(entered, 0, 1); for (;;) {} }, configurable: true }); await import(${JSON.stringify(engineUrl)}); process.exit(2);`,
+      `Object.defineProperty(Array.prototype, 'map', { value() ${POISON_LOOP}, configurable: true }); await import(${JSON.stringify(engineUrl)}); process.exit(2);`,
       { execArgv: TSX },
     );
     expect(result.error).toBeUndefined();
@@ -129,8 +152,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       'maximizePolynomial([negate(rational(1, 4)), ONE, negate(ONE)], ZERO, ONE, 24)',
     ];
     const poisons = [
-      "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })",
-      "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })",
+      `Object.defineProperty(Array.prototype, 'map', { value() ${POISON_LOOP}, configurable: true })`,
+      `Object.defineProperty(Array.prototype, Symbol.iterator, { value() ${POISON_LOOP}, configurable: true })`,
     ];
     const cases: Array<{ name: string; source: string }> = [];
     for (let poisonIndex = 0; poisonIndex < poisons.length; poisonIndex++) for (let callIndex = 0; callIndex < calls.length; callIndex++) {
@@ -178,32 +201,75 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
   }
 
+  /**
+   * Probe statements (after `import { MessageChannel, Worker }`) that launch
+   * the engine worker as a caller would, with its own port and marker, under
+   * a preload that counts WorkBudget charges into `workerData.chargeCounter`
+   * ([0] charges, [1] = 1 once the hook is installed). The premise that makes
+   * a charge count decide "preflighted": every costly path charges WorkBudget
+   * before it computes, and root isolation runs only after E-step charges.
+   * So an n=25 request the preflight refuses must reach the worker core
+   * (core_start), reply complexity_ceiling, and spend zero charges. The
+   * supported control, with its own counter, proves the hook counts the
+   * engine's WorkBudget (charges > 0); without it a zero would be vacuous.
+   * The engine's wall-clock deadline is off (computeMilliseconds: null), so no
+   * clock decides any of it. On failure the probe prints the runs and exits 2.
+   */
+  function preflightChargeProbe(engineUrlExpression: string, execArgv: readonly string[]): string {
+    return `const alpha = { numerator: 1n, denominator: 20n };
+      const run = (payload) => new Promise((resolve, reject) => {
+        const channel = new MessageChannel();
+        const chargeCounter = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT));
+        const events = [];
+        const portClosed = new Promise((resolveClosed) => channel.port1.once('close', resolveClosed));
+        channel.port1.on('message', (message) => {
+          events.push(String(message));
+          if (message === 'exact_matched_pair_ni_ready') channel.port1.postMessage('exact_matched_pair_ni_authorized');
+        });
+        const worker = new Worker(new URL(${engineUrlExpression}), {
+          workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', authorizationPort: channel.port2, payload,
+            computeMilliseconds: null, trace: true, chargeCounter },
+          transferList: [channel.port2], execArgv: ${JSON.stringify(execArgv)},
+        });
+        worker.once('error', reject);
+        worker.once('message', async (reply) => {
+          // The engine closes the port before it replies; every trace event has arrived once it is closed.
+          await portClosed;
+          channel.port1.close();
+          await worker.terminate();
+          resolve({ ok: reply?.ok, reason: reply?.value?.diagnostic?.indeterminate?.reason, events,
+            hooked: Atomics.load(chargeCounter, 1), charges: Atomics.load(chargeCounter, 0) });
+        });
+      });
+      const failures = [];
+      for (const [label, margin] of [['32767/32768', { numerator: 32767n, denominator: 32768n }], ['1/2^255', { numerator: 1n, denominator: 1n << 255n }]]) {
+        const refused = await run({ counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin, alpha });
+        if (!(refused.ok === true && refused.reason === 'complexity_ceiling' && refused.events.includes('core_start') && refused.hooked === 1 && refused.charges === 0)) {
+          failures.push({ label: \`refused margin \${label}: want ok, complexity_ceiling, core_start seen, hooked 1, charges 0\`, ...refused });
+        }
+      }
+      const control = await run({ counts: { n11: 3, n10: 2, n01: 0, n00: 0 }, margin: { numerator: 1n, denominator: 5n }, alpha });
+      if (!(control.ok === true && control.hooked === 1 && control.charges > 0)) {
+        failures.push({ label: 'supported control: want ok, hooked 1, charges > 0', ...control });
+      }
+      if (failures.length > 0) { console.error(JSON.stringify(failures)); process.exit(2); }`;
+  }
+
   /** A caller can create its own port/marker; the intrinsic preflight, not
-   * that marker, must make recreated expensive activation conservative. The
-   * 1.5 s window opens at the worker's ready message, so loader start-up is
-   * outside it and only the preflighted computation is inside. */
+   * that marker, must make recreated expensive activation conservative:
+   * decided by WorkBudget charges (preflightChargeProbe), not elapsed time. */
   async function expectsRecreatedWorkerToPreflightCostlyTasks(): Promise<void> {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
-    const source = `import { MessageChannel, Worker } from 'node:worker_threads';
-      const run = (margin) => new Promise((resolve, reject) => {
-        const channel = new MessageChannel();
-        const worker = new Worker(new URL(${JSON.stringify(engineUrl)}), {
-          workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', authorizationPort: channel.port2,
-            payload: { counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin, alpha: { numerator: 1n, denominator: 20n } } },
-          transferList: [channel.port2], execArgv: ['--import', 'tsx'],
-        });
-        let settled = false;
-        let timer;
-        channel.port1.once('message', () => {
-          if (!settled) timer = setTimeout(() => reject(new Error('worker timed out')), 1_500);
-          channel.port1.postMessage('exact_matched_pair_ni_authorized');
-        });
-        worker.once('message', (message) => { settled = true; clearTimeout(timer); worker.terminate(); resolve(message?.ok === true && message.value?.diagnostic?.indeterminate?.reason === 'complexity_ceiling'); });
-        worker.once('error', reject);
-      });
-      if (!await run({ numerator: 32767n, denominator: 32768n })) process.exit(2);
-      if (!await run({ numerator: 1n, denominator: 1n << 255n })) process.exit(2);`;
-    expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
+    const workBudgetUrl = new URL('../../../../src/addie/eval/matched-pair-ni/work-budget.ts', import.meta.url).href;
+    const directory = mkdtempSync(join(tmpdir(), 'matched-ni-charge-counter-'));
+    try {
+      const preload = writeChargeCounterPreload(workBudgetUrl, directory);
+      const source = `import { MessageChannel, Worker } from 'node:worker_threads';
+        ${preflightChargeProbe(JSON.stringify(engineUrl), ['--import', 'tsx', '--import', preload])}`;
+      expectProbeToExitZero(await runRealmProbe(source, { execArgv: TSX }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }
 
   /**
@@ -263,8 +329,10 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   async function expectsBuiltPathToRetainRootAndWorkerBounds(): Promise<void> {
     const output = mkdtempSync(join(tmpdir(), 'matched-ni-built-'));
     try {
-      emitEngineClosure(output);
+      const outputDirectory = emitEngineClosure(output);
       const base = `file://${output}/addie/eval/matched-pair-ni/`;
+      // Inside the emitted closure, so it hooks the emitted work-budget.js the engine imports.
+      const preload = writeChargeCounterPreload(`${base}work-budget.js`, outputDirectory);
       const probe = `import { MessageChannel, Worker } from 'node:worker_threads';
         const base = \`file://\${process.env.MATCHED_NI_BUILD_DIR}/addie/eval/matched-pair-ni/\`;
         const { isolateInteriorRoots } = await import(\`\${base}algebraic.js\`);
@@ -273,11 +341,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
         let value = polynomial([ONE]);
         for (let index = 1; index <= 25; index++) value = polynomialMultiply(value, [negate(rational(index, 26)), ONE]);
         if (!isolateInteriorRoots(value, ZERO, ONE, 24).unresolved || !isolateInteriorRoots(polynomial([rational(1n << 513n), ONE]), ZERO, ONE, 24).unresolved) process.exit(2);
-        const channel = new MessageChannel();
-        const worker = new Worker(new URL(\`\${base}engine.js\`), { workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', authorizationPort: channel.port2, payload: { counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin: { numerator: 32767n, denominator: 32768n }, alpha: { numerator: 1n, denominator: 20n } } }, transferList: [channel.port2], execArgv: [] });
-        const reply = await new Promise((resolve, reject) => { let settled = false; let timer; channel.port1.once('message', () => { if (!settled) timer = setTimeout(() => reject(new Error('timeout')), 1_500); channel.port1.postMessage('exact_matched_pair_ni_authorized'); }); worker.once('message', (message) => { settled = true; clearTimeout(timer); resolve(message); }); worker.once('error', reject); });
-        await worker.terminate();
-        process.exit(reply?.ok === true && reply.value?.diagnostic?.indeterminate?.reason === 'complexity_ceiling' ? 0 : 2);`;
+        ${preflightChargeProbe('`${base}engine.js`', ['--import', preload])}
+        process.exit(0);`;
       const cases = [
         { name: 'emitted root and worker bounds', kind: 'probe', source: probe, execArgv: [] },
         ...algebraicPoisonCases(`${base}algebraic.js`, `${base}rational.js`).map((testCase) => ({ ...testCase, kind: 'probe', execArgv: [] })),
@@ -287,17 +352,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       writeFileSync(casesPath, JSON.stringify(cases));
       // One plain-node process (no TypeScript loader anywhere in it) runs
       // every emitted-JS case, each in its own fresh Worker realm.
-      const child = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolveChild) => {
-        const process_ = spawn(process.execPath, [REALM_PROBE_PATH, casesPath], {
-          cwd: process.cwd(), env: { ...process.env, MATCHED_NI_BUILD_DIR: output }, stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        emittedChild = process_;
-        let stdout = '';
-        let stderr = '';
-        process_.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
-        process_.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
-        process_.once('error', (error) => resolveChild({ status: null, stdout, stderr: `${stderr}${String(error)}` }));
-        process_.once('close', (status) => resolveChild({ status, stdout, stderr }));
+      const child = await runChild([REALM_PROBE_PATH, casesPath], {
+        env: { ...process.env, MATCHED_NI_BUILD_DIR: output }, stdio: ['ignore', 'pipe', 'pipe'],
       });
       const outcomes = new Map(child.stdout.trim().split('\n').filter(Boolean).map((line) => {
         const outcome = JSON.parse(line) as { name: string } & RealmProbeResult & PoisonedWorkerOutcome;
@@ -341,18 +397,19 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     return sharedN25!.outcome;
   }
 
-  function expectsColdWorkerFixtureToBeDeterminate(): void {
+  /** Three cold processes, one after another, each killed (SIGTERM) after 25 s. */
+  async function expectsColdWorkerFixtureToBeDeterminate(): Promise<void> {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
     for (let attempt = 0; attempt < 3; attempt++) {
       const source = `import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
         const outcome = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: d("0.10"), alpha: d("0.05") }, ${JSON.stringify(BUDGET_ONLY)});
         process.exit(outcome.diagnostic.indeterminate ? 2 : 0);`;
-      const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
-        cwd: process.cwd(), encoding: 'utf8', timeout: 25_000,
+      const result = await runChild(['--import', 'tsx', '--input-type=module', '--eval', source], {
+        stdio: ['ignore', 'ignore', 'pipe'], timeout: 25_000,
       });
-      expect(result.error).toBeUndefined();
-      expect(result.signal).toBeNull();
-      expect(result.status).toBe(0);
+      expect(result.error, `cold child ${attempt}: ${result.stderr}`).toBeUndefined();
+      expect(result.signal, `cold child ${attempt}: ${result.stderr}`).toBeNull();
+      expect(result.status, `cold child ${attempt}: ${result.stderr}`).toBe(0);
     }
   }
 
@@ -380,8 +437,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(outcome.diagnostic.certificate?.maximization).toBe('rational_sturm_and_interval_bisection');
   }, 30_000);
 
-  it('repeats the published fixture in killable cold worker processes', () => {
-    expectsColdWorkerFixtureToBeDeterminate();
+  it('repeats the published fixture in killable cold worker processes', async () => {
+    await expectsColdWorkerFixtureToBeDeterminate();
   }, 80_000);
 
   it('stops the computation once the clock passes the default 12 s compute deadline', () => {
@@ -489,9 +546,9 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
 
   it('terminates hostile scalar constructors without property access or coercion', async () => {
     const launches = childLaunchMark();
-    await expectsHostileConstructorToTerminate('decimal({ get length() { for (;;) {} } })');
-    await expectsHostileConstructorToTerminate('rational({ [Symbol.toPrimitive]() { for (;;) {} } })');
-    await expectsHostileConstructorToTerminate('canonicalRational({ numerator: 1n, denominator: 2n }, { [Symbol.toPrimitive]() { for (;;) {} } })');
+    await expectsHostileConstructorToTerminate(`decimal({ get length() ${POISON_LOOP} })`);
+    await expectsHostileConstructorToTerminate(`rational({ [Symbol.toPrimitive]() ${POISON_LOOP} })`);
+    await expectsHostileConstructorToTerminate(`canonicalRational({ numerator: 1n, denominator: 2n }, { [Symbol.toPrimitive]() ${POISON_LOOP} })`);
     expectNoChildProcessSince(launches);
   }, 5_000);
 
@@ -499,11 +556,11 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const launches = childLaunchMark();
     const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
     await expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
-      Object.defineProperty(Object.prototype, 'numerator', { set() { for (;;) {} }, configurable: true });
+      Object.defineProperty(Object.prototype, 'numerator', { set() ${POISON_LOOP}, configurable: true });
       process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
     await expectsPoisonedPrototypeToTerminate(`import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
-      Object.defineProperty(Object.prototype, 'counts', { set() { for (;;) {} }, configurable: true });
+      Object.defineProperty(Object.prototype, 'counts', { set() ${POISON_LOOP}, configurable: true });
       const outcome = await restrictedScoreEM({ counts: { n11: 1, n10: 1, n01: 0, n00: 0 }, margin: d('0.10'), alpha: d('0.05') });
       process.exit(outcome.admission.admitted ? 2 : 0);`);
     expectNoChildProcessSince(launches);
@@ -514,13 +571,13 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const polynomialUrl = new URL('../../../../src/addie/eval/matched-pair-ni/polynomial.ts', import.meta.url).href;
     const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
     await expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
-      Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true });
+      Object.defineProperty(Array.prototype, 'map', { value() ${POISON_LOOP}, configurable: true });
       process.exit(degree(polynomial([ONE, ZERO])) === 0 ? 0 : 2);`);
     await expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
-      Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
+      Object.defineProperty(Array.prototype, Symbol.iterator, { value() ${POISON_LOOP}, configurable: true });
       process.exit(degree(polynomial([ONE, ZERO])) === 0 ? 0 : 2);`);
     await expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
-      Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
+      Object.defineProperty(Array.prototype, Symbol.iterator, { value() ${POISON_LOOP}, configurable: true });
       process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
     expectNoChildProcessSince(launches);
   }, 7_000);

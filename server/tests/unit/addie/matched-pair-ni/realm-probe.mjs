@@ -8,14 +8,48 @@
 // probes (execArgv ['--import', 'tsx']); for emitted-JavaScript probes it runs
 // this file as a plain `node` child (no TypeScript loader anywhere in that
 // process) with a JSON file of cases, and reads one JSON result per line.
+//
+// Outcomes come from events, not clocks. A poison announces that it was
+// entered (POISON_LOOP) before it spins, so a probe that reaches its poison
+// fails the moment it does; a probe that does not exits on its own. The
+// deadlines below only bound a realm that hangs without entering a poison.
 import { MessageChannel, Worker } from 'node:worker_threads';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-/** Upper bound for probes whose failure mode is non-termination. */
+/** Hang guard for a probe that neither exits nor enters its poison. */
 export const TERMINATION_BOUND_MS = 20_000;
+
+/**
+ * The body of every poisoned intrinsic: record entry, wake the parent, spin.
+ * The probe realm's flag is `globalThis.__poisonEntered`, set from
+ * `workerData.poisonEntered` before the probe's own code runs.
+ */
+export const POISON_LOOP = '{ Atomics.store(globalThis.__poisonEntered, 0, 1); Atomics.notify(globalThis.__poisonEntered, 0); for (;;) {} }';
+const FLAG_PRELUDE = "import { workerData as __probeWorkerData } from 'node:worker_threads'; globalThis.__poisonEntered = __probeWorkerData.poisonEntered;";
+
+const ENTERED = 1;
+const RELEASED = 2;
+const newFlag = () => new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+
+/**
+ * Resolves 'entered' once the realm stores ENTERED, 'released' once the
+ * parent releases the flag (the realm exited first), or 'timed-out' after
+ * `boundMs` with neither.
+ */
+function poisonEntry(flag, boundMs) {
+  const wait = Atomics.waitAsync(flag, 0, 0, boundMs);
+  const settle = (value) => (value === 'timed-out' ? 'timed-out' : Atomics.load(flag, 0) === ENTERED ? 'entered' : 'released');
+  return wait.async ? wait.value.then(settle) : Promise.resolve(settle(wait.value));
+}
+
+/** The realm exited without entering its poison: wake the pending wait. */
+function releaseFlag(flag) {
+  Atomics.compareExchange(flag, 0, 0, RELEASED);
+  Atomics.notify(flag, 0);
+}
 
 const liveWorkers = new Set();
 let probeDirectory;
@@ -39,58 +73,74 @@ export function removeProbeFiles() {
   probeDirectory = undefined;
 }
 
-function probeFileUrl(source) {
-  probeDirectory ??= mkdtempSync(join(tmpdir(), 'matched-ni-realm-probe-'));
-  const file = join(probeDirectory, `probe-${process.pid}-${++probeSequence}.mjs`);
+function probeFile(name, source, directory) {
+  if (directory === undefined) probeDirectory ??= mkdtempSync(join(tmpdir(), 'matched-ni-realm-probe-'));
+  const file = join(directory ?? probeDirectory, `${name}-${process.pid}-${++probeSequence}.mjs`);
   writeFileSync(file, source);
   return pathToFileURL(file);
 }
 
 /**
- * Runs an ES module source in a fresh Worker realm. Resolves when the Worker
- * exits or, after `deadlineMs`, once it has been terminated.
+ * Writes a preload (for a Worker's execArgv `--import`) that counts
+ * WorkBudget charges in the realm: `workerData.chargeCounter[0]` counts
+ * charge() calls and `[1]` is set to 1 once the counter is installed.
+ * `workBudgetUrl` must be the module the engine imports, so both share one
+ * WorkBudget class. Returns the preload's file URL.
  */
-export function runRealmProbe(source, { execArgv = [], deadlineMs = TERMINATION_BOUND_MS, workerData } = {}) {
-  return new Promise((resolve) => {
-    const worker = track(new Worker(probeFileUrl(source), { execArgv, workerData, stdout: true, stderr: true }));
-    let stderr = '';
-    let error;
-    let timedOut = false;
-    worker.stdout.resume();
-    worker.stderr.setEncoding('utf8');
-    worker.stderr.on('data', (chunk) => { stderr += chunk; });
-    const timer = setTimeout(() => { timedOut = true; void worker.terminate(); }, deadlineMs);
-    worker.on('error', (cause) => { error = cause; });
-    worker.once('exit', (code) => {
-      clearTimeout(timer);
-      resolve({ code: timedOut ? null : code, timedOut, error: error === undefined ? undefined : String(error?.stack ?? error), stderr });
-    });
-  });
+export function writeChargeCounterPreload(workBudgetUrl, directory) {
+  return probeFile('charge-counter', `import { workerData } from 'node:worker_threads';
+import { WorkBudget } from ${JSON.stringify(workBudgetUrl)};
+const counter = workerData.chargeCounter;
+const charge = WorkBudget.prototype.charge;
+WorkBudget.prototype.charge = function (units) { Atomics.add(counter, 0, 1); return charge.call(this, units); };
+Atomics.store(counter, 1, 1);`, directory).href;
 }
 
 /**
- * Runs a probe that is expected never to finish. The probe receives
- * `workerData.entered`, an Int32Array over a SharedArrayBuffer, and must set
- * element 0 to 1 immediately before entering its infinite loop. The result
- * records whether the loop was entered and whether the Worker exited during
- * the confirmation window that follows; the Worker is then terminated.
+ * Runs an ES module source in a fresh Worker realm. Resolves when the Worker
+ * exits, when it enters a poison (it is then terminated), or after
+ * `deadlineMs` with neither (terminated, `timedOut`).
  */
-export async function runHangProbe(source, { execArgv = [], enterBoundMs = TERMINATION_BOUND_MS, confirmMs = 500 } = {}) {
-  const entered = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-  const worker = track(new Worker(probeFileUrl(source), { execArgv, workerData: { entered }, stdout: true, stderr: true }));
+export async function runRealmProbe(source, { execArgv = [], deadlineMs = TERMINATION_BOUND_MS, workerData } = {}) {
+  const flag = newFlag();
+  const worker = track(new Worker(probeFile('probe', `${FLAG_PRELUDE}\n${source}`), {
+    execArgv, workerData: { ...workerData, poisonEntered: flag }, stdout: true, stderr: true,
+  }));
+  let stderr = '';
+  let error;
+  worker.stdout.resume();
+  worker.stderr.setEncoding('utf8');
+  worker.stderr.on('data', (chunk) => { stderr += chunk; });
+  worker.on('error', (cause) => { error = cause; });
+  const exit = new Promise((resolve) => worker.once('exit', (code) => { releaseFlag(flag); resolve(code); }));
+  const first = await Promise.race([exit.then((code) => ({ kind: 'exit', code })), poisonEntry(flag, deadlineMs).then((kind) => ({ kind }))]);
+  if (first.kind !== 'exit') await worker.terminate();
+  const code = await exit;
+  const poisonEntered = Atomics.load(flag, 0) === ENTERED;
+  const timedOut = first.kind === 'timed-out';
+  return { code: first.kind === 'exit' ? code : null, timedOut, poisonEntered, error: error === undefined ? undefined : String(error?.stack ?? error), stderr };
+}
+
+/**
+ * Runs a probe that is expected never to finish: its infinite loop is a
+ * POISON_LOOP, which records entry and wakes the parent immediately before it
+ * spins. The result records whether the loop was entered and whether the
+ * Worker had exited before that; the Worker is then terminated.
+ */
+export async function runHangProbe(source, { execArgv = [], enterBoundMs = TERMINATION_BOUND_MS } = {}) {
+  const flag = newFlag();
+  const worker = track(new Worker(probeFile('probe', `${FLAG_PRELUDE}\n${source}`), {
+    execArgv, workerData: { poisonEntered: flag }, stdout: true, stderr: true,
+  }));
   worker.stdout.resume();
   worker.stderr.resume();
   let exitCode = null;
   let error;
   let exited = false;
   worker.on('error', (cause) => { error = cause; });
-  const exit = new Promise((resolve) => worker.once('exit', (code) => { exited = true; exitCode = code; resolve(); }));
-  const startedAt = Date.now();
-  while (Atomics.load(entered, 0) !== 1 && !exited && Date.now() - startedAt < enterBoundMs) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  const loopEntered = Atomics.load(entered, 0) === 1;
-  if (loopEntered && !exited) await new Promise((resolve) => setTimeout(resolve, confirmMs));
+  const exit = new Promise((resolve) => worker.once('exit', (code) => { exited = true; exitCode = code; releaseFlag(flag); resolve(); }));
+  await poisonEntry(flag, enterBoundMs);
+  const loopEntered = Atomics.load(flag, 0) === ENTERED;
   const exitedBeforeTermination = exited;
   if (!exited) await worker.terminate();
   await exit;
@@ -109,18 +159,18 @@ export const POISONED_WORKER_TASKS = Object.freeze([
  * worker's conservative `{ ok: false }` response before core telemetry.
  */
 export const POISONED_WORKER_POISONS = Object.freeze([
-  { source: "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })", expected: 'normal_completion' },
-  { source: "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })", expected: 'normal_completion' },
-  { source: "Object.defineProperty(RegExp.prototype, 'test', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(String.prototype, 'startsWith', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(String.prototype, 'indexOf', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(String.prototype, 'slice', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(String.prototype, 'endsWith', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(Map.prototype, 'get', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(Map.prototype, 'set', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(Map.prototype, 'has', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(WeakSet.prototype, 'add', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
-  { source: "Object.defineProperty(WeakSet.prototype, 'has', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+  { source: `Object.defineProperty(Array.prototype, 'map', { value() ${POISON_LOOP}, configurable: true })`, expected: 'normal_completion' },
+  { source: `Object.defineProperty(Array.prototype, Symbol.iterator, { value() ${POISON_LOOP}, configurable: true })`, expected: 'normal_completion' },
+  { source: `Object.defineProperty(RegExp.prototype, 'test', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(String.prototype, 'startsWith', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(String.prototype, 'indexOf', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(String.prototype, 'slice', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(String.prototype, 'endsWith', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(Map.prototype, 'get', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(Map.prototype, 'set', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(Map.prototype, 'has', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(WeakSet.prototype, 'add', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
+  { source: `Object.defineProperty(WeakSet.prototype, 'has', { value() ${POISON_LOOP}, configurable: true })`, expected: 'safe_refusal' },
 ]);
 
 /**
@@ -129,36 +179,47 @@ export const POISONED_WORKER_POISONS = Object.freeze([
  * entry module loads the TypeScript engine through the loader first, then
  * poisons before the engine's queued core work. Trace events are read only
  * after the authorization port has closed: the engine closes it before it
- * posts its result, so every event has arrived by then.
+ * posts its result, so every event has arrived by then. A realm that
+ * enters a poison is terminated at once. Node delivers every message a Worker
+ * posted before its 'exit' event, so the case then has the engine's result
+ * exactly when the engine replied before the realm reached the poison; code
+ * that runs in the realm after the result (worker teardown, the loader) is
+ * outside the claim.
  */
 export async function runPoisonedWorkerCase({ engineUrl, workerLoader, sourceResolution = false, taskIndex, poisonIndex, deadlineMs = TERMINATION_BOUND_MS }) {
   const task = POISONED_WORKER_TASKS[taskIndex];
   const poison = POISONED_WORKER_POISONS[poisonIndex];
   const directory = mkdtempSync(join(tmpdir(), 'matched-ni-poisoned-worker-'));
   const preload = join(directory, sourceResolution ? 'entry.mjs' : 'poison.mjs');
+  const flagSetup = "globalThis.__poisonEntered = workerData.poisonEntered;";
   if (sourceResolution) {
-    writeFileSync(preload, `import ${JSON.stringify(engineUrl)}; import { workerData } from 'node:worker_threads'; workerData.authorizationPort.postMessage('import_complete'); ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
+    writeFileSync(preload, `import ${JSON.stringify(engineUrl)}; import { workerData } from 'node:worker_threads'; ${flagSetup} workerData.authorizationPort.postMessage('import_complete'); ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
   } else {
-    writeFileSync(preload, `import { workerData } from 'node:worker_threads'; ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
+    writeFileSync(preload, `import { workerData } from 'node:worker_threads'; ${flagSetup} ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
   }
+  const flag = newFlag();
   const events = [];
   try {
     const channel = new MessageChannel();
     const portClosed = new Promise((resolve) => channel.port1.once('close', resolve));
     const worker = track(new Worker(new URL(sourceResolution ? pathToFileURL(preload).href : engineUrl), {
-      workerData: { exactMatchedPairNiWorker: true, task: task.task, authorizationPort: channel.port2, payload: task.payload(), trace: true },
+      workerData: { exactMatchedPairNiWorker: true, task: task.task, authorizationPort: channel.port2, payload: task.payload(), trace: true, poisonEntered: flag },
       transferList: [channel.port2],
       execArgv: sourceResolution ? [...workerLoader] : [...workerLoader, '--import', pathToFileURL(preload).href],
       stdout: true, stderr: true,
     }));
     worker.stdout.resume();
     worker.stderr.resume();
+    const exit = new Promise((resolve) => worker.once('exit', () => { releaseFlag(flag); resolve(); }));
     let result;
     let error;
     try {
       result = await new Promise((resolve, reject) => {
         let ready = false; let poisonAck = false; let imported = !sourceResolution;
-        const timer = setTimeout(() => reject(new Error(`timeout after ${events.join(',')}`)), deadlineMs);
+        poisonEntry(flag, deadlineMs).then((kind) => {
+          if (kind === 'entered') void worker.terminate();
+          else if (kind === 'timed-out') reject(new Error(`timeout after ${events.join(',')}`));
+        });
         channel.port1.on('message', (message) => {
           events.push(String(message));
           ready ||= message === 'exact_matched_pair_ni_ready';
@@ -166,14 +227,17 @@ export async function runPoisonedWorkerCase({ engineUrl, workerLoader, sourceRes
           imported ||= message === 'import_complete';
           if (ready && poisonAck && imported) { events.push('authorized'); channel.port1.postMessage('exact_matched_pair_ni_authorized'); }
         });
-        worker.once('message', (message) => { clearTimeout(timer); resolve(message); });
-        worker.once('error', (cause) => { clearTimeout(timer); reject(cause); });
-        worker.once('exit', (code) => { clearTimeout(timer); reject(new Error(`worker exited ${code}; events=${events.join(',')}`)); });
+        worker.once('message', (message) => resolve(message));
+        worker.once('error', (cause) => reject(cause));
+        worker.once('exit', (code) => reject(new Error(Atomics.load(flag, 0) === ENTERED
+          ? `entered its poisoned intrinsic before replying; events=${events.join(',')}`
+          : `worker exited ${code}; events=${events.join(',')}`)));
       });
     } catch (cause) {
       error = String(cause?.message ?? cause);
     }
     await worker.terminate();
+    await exit;
     await portClosed;
     channel.port1.close();
     const poisonAt = events.indexOf('poison_ack'); const startAt = events.indexOf('core_start'); const resultAt = events.indexOf('core_complete');
@@ -199,7 +263,7 @@ async function runCases(casesPath) {
         ? await runPoisonedWorkerCase(testCase)
         : await runRealmProbe(testCase.source, { execArgv: testCase.execArgv ?? [], deadlineMs: testCase.deadlineMs ?? TERMINATION_BOUND_MS });
       process.stdout.write(`${JSON.stringify({ name: testCase.name, ...outcome })}\n`);
-      const passed = testCase.kind === 'poisoned_worker' ? outcome.pass : outcome.code === 0 && !outcome.timedOut && outcome.error === undefined;
+      const passed = testCase.kind === 'poisoned_worker' ? outcome.pass : outcome.code === 0 && !outcome.timedOut && !outcome.poisonEntered && outcome.error === undefined;
       if (!passed) break;
     }
   } finally {
