@@ -34,9 +34,8 @@ import { clearSessions, stopSessionCleanup } from '../state.js';
 import { clearAccountStore } from '../account-handlers.js';
 import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'served-release-shape-token';
 
-const TOKEN = 'served-release-shape-token';
+const TOKEN = 'test-token';
 
 /** Stable releases, then the opt-in preview this process serves. */
 const VERSIONS = ['3.2', '3.1', '3.0', TRAINING_AGENT_HOSTED_PREVIEW.wireVersion] as const;

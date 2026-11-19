@@ -10,8 +10,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
-  process.env.REGISTRY_EDITS_CHANNEL_ID = 'C_REGISTRY';
-  process.env.APP_URL = 'https://agenticadvertising.org';
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_REGISTRY');
+  vi.stubEnv('APP_URL', 'https://agenticadvertising.org');
 });
 
 const mocks = vi.hoisted(() => ({
@@ -33,6 +33,13 @@ import {
   runRegistryReviewDigestJob,
   STALE_THRESHOLD_HOURS,
 } from '../../src/addie/jobs/registry-review-digest.js';
+
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_REGISTRY');
+  vi.stubEnv('APP_URL', 'https://agenticadvertising.org');
+});
 
 function backlog(overrides: Record<string, unknown> = {}) {
   return {

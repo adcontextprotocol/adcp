@@ -161,7 +161,7 @@ describe('handleIssueComment (signature-write path)', () => {
 describe('recording a signature when another repo pushed first', () => {
   const tmpRoots = [];
 
-  const callerEnv = { ...process.env };
+  let restoreEnv = () => {};
 
   beforeAll(() => {
     // Every git call here, the script's included, inherits process.env. Inside
@@ -170,15 +170,10 @@ describe('recording a signature when another repo pushed first', () => {
     // run on every call. Use the fixture environment: no GIT_* variables, no
     // global or system config. The script sets its own commit identity, so the
     // fixture identity is left out.
-    const isolated = gitObjectFixture.fixtureEnv({ identity: false });
-    for (const key of Object.keys(process.env)) delete process.env[key];
-    Object.assign(process.env, isolated);
+    restoreEnv = gitObjectFixture.isolateGitEnv({ identity: false });
   });
 
-  afterAll(() => {
-    for (const key of Object.keys(process.env)) delete process.env[key];
-    Object.assign(process.env, callerEnv);
-  });
+  afterAll(() => restoreEnv());
 
   afterEach(() => {
     vi.restoreAllMocks();

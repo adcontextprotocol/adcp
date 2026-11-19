@@ -7,6 +7,11 @@ const crypto = require('crypto');
 const os = require('os');
 const { spawnSync } = require('child_process');
 const YAML = require('yaml');
+const { isolateGitEnv } = require('./helpers/git-object-fixture.cjs');
+
+// Fixture git (and every step spawned from process.env) must not see a hook's
+// GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
+isolateGitEnv({ identity: false });
 
 const repoRoot = path.join(__dirname, '..');
 const changesetsActionSha = 'ae32849d5ba541f9ae29e40e22a623bc13562f51';

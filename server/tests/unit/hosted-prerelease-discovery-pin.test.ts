@@ -12,13 +12,12 @@ import http from 'node:http';
 import { closeMCPConnections } from '@adcp/sdk';
 import { testCapabilityDiscovery } from '@adcp/sdk/testing';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'hosted-prerelease-discovery-token';
 
 import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { hostedComplianceTarget, withHostedTestOptions } from '../../src/services/hosted-compliance-version.js';
 
-const TOKEN = 'hosted-prerelease-discovery-token';
+const TOKEN = 'test-token';
 
 describe('hosted capability discovery against an agent that serves its preview only to an exact pin', () => {
   let server: http.Server;

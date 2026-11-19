@@ -28,7 +28,6 @@ import addFormats from 'ajv-formats';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-hosted-grader-credential';
   process.env.TRAINING_GOVERNANCE_CREDENTIAL_SECRET = require('node:crypto').randomBytes(32).toString('hex') as string;
 });
 

@@ -1,37 +1,19 @@
 // Test environment setup for vitest
 // Sets up mock environment variables for testing
 
-//
-// This file re-runs before every test file (vitest resets the module
-// registry per file, and setup files are part of that registry), but
-// `process.env` itself is a real Node object that outlives the reset --
-// with `fileParallelism: false` the whole ~455-file suite shares one
-// forked worker process. Individual test files set ad-hoc vars in
-// `vi.hoisted()` blocks (ADMIN_API_KEY, ADMIN_EMAILS, DEV_USER_EMAIL, ...)
-// to exercise auth boundaries and never restore them. Left alone, those
-// mutations bleed into every file that runs afterward in the same worker,
-// producing a rotating single-test flake (a different downstream file
-// breaks each run, depending on file scheduling order).
-//
-// Snapshot the environment exactly once per worker process, before any
-// test file's mutations happen, and restore it before every file so each
-// file starts from the same pristine baseline regardless of what earlier
-// files left behind.
-const ENV_BASELINE_KEY = '__adcp_server_unit_env_baseline__';
-type GlobalWithEnvBaseline = typeof globalThis & {
-  [ENV_BASELINE_KEY]?: Record<string, string | undefined>;
-};
-const globalWithBaseline = globalThis as GlobalWithEnvBaseline;
+import { vi } from 'vitest';
 
-if (!globalWithBaseline[ENV_BASELINE_KEY]) {
-  globalWithBaseline[ENV_BASELINE_KEY] = { ...process.env };
-} else {
-  const baseline = globalWithBaseline[ENV_BASELINE_KEY];
-  for (const key of Object.keys(process.env)) {
-    if (!(key in baseline)) delete process.env[key];
-  }
-  Object.assign(process.env, baseline);
-}
+// This file runs before every test file, in the same worker process. Unit
+// test files share workers (`isolate: false` in server/vitest.config.ts),
+// so `process.env` and globals outlive each file. Test files change them
+// with `vi.stubEnv` / `vi.stubGlobal`; `unstubEnvs` / `unstubGlobals`
+// undo those before every test, and the two calls below also undo the
+// last test's stubs before this file's imports run, so module-load reads
+// never see the previous file's values. Direct `process.env` writes are
+// not undone: use `vi.stubEnv` instead (scripts/vitest-leak-inventory.json
+// tracks the files that still write it directly).
+vi.unstubAllEnvs();
+vi.unstubAllGlobals();
 
 // Developer shells (Conductor's `.env.local`, local `.env` files) commonly
 // export dev-login and break-glass admin credentials. `server/src/middleware/
@@ -57,6 +39,12 @@ process.env.NODE_ENV = 'test';
 // Unit tests must not fetch or reset repository caches in developer checkouts.
 process.env.SKIP_REPO_INDEX = 'true';
 
+// src/training-agent/index.ts builds its bearer authenticators at import from
+// PUBLIC_TEST_AGENT_TOKEN, and a shared worker imports it once for every
+// file. One value for every file keeps the cached authenticator valid; tests
+// that call the training agent send `Bearer test-token`.
+process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
+
 // WorkOS credentials (mock values for testing). Including WORKOS_COOKIE_PASSWORD
 // at >=32 chars so AUTH_ENABLED resolves true and the WorkOS client gets
 // constructed — routes that reach for `workos!.userManagement` etc. would
@@ -64,11 +52,3 @@ process.env.SKIP_REPO_INDEX = 'true';
 process.env.WORKOS_API_KEY = 'sk_test_mock_key';
 process.env.WORKOS_CLIENT_ID = 'client_mock_id';
 process.env.WORKOS_COOKIE_PASSWORD = 'test-cookie-password-at-least-32-chars-long';
-
-// On macOS under Conductor, Supertest can address the wrong loopback family;
-// tests/setup/conductor-supertest-loopback.ts explains and fixes it. Loaded
-// only when needed, so ordinary runs never import Supertest here.
-if (process.env.CONDUCTOR_IS_LOCAL === '1') {
-  const { installConductorSupertestLoopback } = await import('./conductor-supertest-loopback.js');
-  installConductorSupertestLoopback();
-}

@@ -13,10 +13,6 @@ import express from 'express';
 import { parse as parseYaml } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-vi.hoisted(() => {
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-creative-features-verifier';
-});
-
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { jsonBodyLimitForPath } from '../../src/utils/json-body-limit.js';
 

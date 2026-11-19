@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.hoisted(() => {
-  process.env.REGISTRY_EDITS_CHANNEL_ID = 'C_TEST_SIGNUP_OPS';
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_TEST_SIGNUP_OPS');
 });
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +24,12 @@ vi.mock('../../src/slack/client.js', () => ({
 }));
 
 import { notifyBrandClaimOpportunity } from '../../src/notifications/registry.js';
+
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_TEST_SIGNUP_OPS');
+});
 
 function lastSentJSON(): string {
   const call = mocks.sendChannelMessage.mock.calls.at(-1);

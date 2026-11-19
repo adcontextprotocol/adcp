@@ -7,10 +7,11 @@ import path from 'node:path';
 import { loadStoryboardFile, registerExternalSchemaRoot, runStoryboardStep, unregisterExternalSchemaRoot } from '@adcp/sdk/testing';
 import { storyboardStepStatus } from '../manual/storyboard-report-format.js';
 
+// Read once, when src/training-agent/candidate-version.ts is imported;
+// unstubEnvs (server/vitest.config.ts) restores both before the first test.
 vi.hoisted(() => {
-  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'candidate-version-test-token';
+  vi.stubEnv('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE', '1');
+  vi.stubEnv('ADCP_TRAINING_CANDIDATE_VERSION', '3.3-beta.1');
 });
 
 import { trainingAgentCandidateVersion } from '../../src/training-agent/candidate-version.js';
@@ -76,7 +77,7 @@ describe('local candidate wire contract', () => {
     for (const adcp_version of ['3.3-beta.1', '3.2', undefined]) {
       const response = await fetch(`${baseUrl}/${tenant}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { adcp_version } } }),
       });
       const envelope = await response.json();
@@ -113,7 +114,7 @@ describe('local candidate wire contract', () => {
     // declaration to 3.3; this keeps it off the route that cannot honor it).
     const response = await fetch(`${baseUrl}/mcp`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { adcp_version: '3.3-beta.1' } } }),
     });
     const result = (await response.json()).result?.structuredContent;
@@ -141,7 +142,7 @@ describe('local candidate wire contract', () => {
       id += 1;
       const response = await fetch(`${baseUrl}/sales/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: { adcp_version, ...args } } }),
       });
       expect(response.status).toBe(200);
@@ -216,7 +217,7 @@ describe('local candidate wire contract', () => {
     const storyboard = loadStoryboardFile(path.resolve('static/compliance/source/universal/capability-discovery.yaml'));
     const options = {
       adcpVersion: '3.3.0-beta.1', wireAdcpVersion: '3.3-beta.1', schemaRoot,
-      auth: { type: 'bearer' as const, token: 'candidate-version-test-token' }, allow_http: true,
+      auth: { type: 'bearer' as const, token: 'test-token' }, allow_http: true,
     };
     const advisory = await runStoryboardStep(`${baseUrl}/sales/mcp`, storyboard, 'get_capabilities', options);
     expect(advisory.validations).toEqual(expect.arrayContaining([
@@ -243,7 +244,7 @@ describe('local candidate wire contract', () => {
       id += 1;
       const response = await fetch(`${baseUrl}/${tenant}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }),
       });
       const envelope = await response.json();

@@ -13,6 +13,11 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync, spawn, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
+const { isolateGitEnv } = require("./helpers/git-object-fixture.cjs");
+
+// Fixture git (and every step spawned from process.env) must not see a hook's
+// GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
+isolateGitEnv({ identity: false });
 
 const root = path.resolve(__dirname, "..");
 const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();

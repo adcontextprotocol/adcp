@@ -8,7 +8,6 @@ import express from 'express';
 import http from 'node:http';
 import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'inventory-tenants-test-public-token';
 
 import { flushDirtySessions, runWithSessionContext, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { setSandboxWallClockForTesting } from '../../src/training-agent/account-sandbox.js';

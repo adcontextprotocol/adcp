@@ -10,7 +10,6 @@ vi.mock('../../src/utils/sdk-safe-fetch.js', async (importOriginal) => ({
   withSdkSafeTransport: <T extends object>(options: T) => options,
 }));
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');

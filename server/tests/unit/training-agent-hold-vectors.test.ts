@@ -15,13 +15,12 @@ import http from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import express from 'express';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'hold-vectors-token';
-const TOKEN = 'hold-vectors-token';
+const TOKEN = 'test-token';
 const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
 
 type Json = Record<string, any>;
@@ -50,6 +49,31 @@ describe('experimental 3.3 holds graded by the reference hold-policy grader', ()
   let seller: Json;
   let keyCount = 0;
   const graded: Array<{ kind: string; label: string; result: { violations: string[]; indeterminate?: string[] } }> = [];
+
+  let gradedAtTestStart = 0;
+
+  const nonConformant = (entries: typeof graded) => entries
+    .filter(({ result }) => result.violations.length > 0 || (result.indeterminate ?? []).length > 0)
+    .map(({ kind, label, result }) => `${kind} ${label}: ${JSON.stringify(result)}`);
+
+  // Each test's captured responses must grade conformant, whatever the order.
+  beforeEach(() => {
+    gradedAtTestStart = graded.length;
+  });
+  afterEach(() => {
+    expect(nonConformant(graded.slice(gradedAtTestStart))).toEqual([]);
+  });
+
+  // The suite as a whole must grade at least 30 responses and every kind of
+  // check. That needs every test, so it runs after all of them, and only when
+  // none was skipped or filtered out.
+  afterAll(({}, suite) => {
+    if (!suite.tasks.every(task => task.mode === 'run')) return;
+    expect(graded.length).toBeGreaterThanOrEqual(30);
+    for (const kind of ['finalize', 'replay', 'draft', 'extend']) {
+      expect(graded.some(entry => entry.kind === kind), kind).toBe(true);
+    }
+  });
 
   const key = (label: string) => `hold-vectors-${label}-${(keyCount += 1).toString().padStart(4, '0')}`;
   const buyer = (name: string) => ({ brand: { domain: `${name}.example` }, operator: `${name}.example`, sandbox: true });
@@ -438,13 +462,6 @@ describe('experimental 3.3 holds graded by the reference hold-policy grader', ()
   });
 
   it('grades every captured response conformant', () => {
-    expect(graded.length).toBeGreaterThanOrEqual(30);
-    const failures = graded
-      .filter(({ result }) => result.violations.length > 0 || (result.indeterminate ?? []).length > 0)
-      .map(({ kind, label, result }) => `${kind} ${label}: ${JSON.stringify(result)}`);
-    expect(failures).toEqual([]);
-    for (const kind of ['finalize', 'replay', 'draft', 'extend']) {
-      expect(graded.some(entry => entry.kind === kind), kind).toBe(true);
-    }
+    expect(nonConformant(graded)).toEqual([]);
   });
 });

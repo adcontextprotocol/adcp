@@ -9,9 +9,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.TRAINING_AGENT_DISABLE_ADCP_PREVIEW = '1';
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'preview-kill-switch-token';
+  vi.stubEnv('TRAINING_AGENT_DISABLE_ADCP_PREVIEW', '1');
 });
 
 import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../../src/training-agent/candidate-version.js';
@@ -30,7 +31,7 @@ describe('hosted 3.3 preview kill switch', () => {
     rpcId += 1;
     const response = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer preview-kill-switch-token' },
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
       body: JSON.stringify({ jsonrpc: '2.0', id: rpcId, method, ...(params && { params }) }),
     });
     return response.json() as Promise<Record<string, any>>;

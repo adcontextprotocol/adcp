@@ -11,7 +11,6 @@ import express from 'express';
 import http from 'node:http';
 import { ADCP_VERSION as SDK_ADCP_VERSION, SingleAgentClient, closeMCPConnections } from '@adcp/sdk';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'preview-version-test-token';
 
 import {
   TRAINING_AGENT_HOSTED_PREVIEW,
@@ -28,7 +27,7 @@ import {
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 
 const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
-const TOKEN = 'preview-version-test-token';
+const TOKEN = 'test-token';
 
 type Structured = Record<string, any>;
 

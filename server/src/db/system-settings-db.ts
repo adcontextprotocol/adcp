@@ -219,6 +219,11 @@ export async function getOrganizationAuthorizationEnforcement(): Promise<Organiz
   return { enabled: enabled && boundaries.length > 0, boundaries };
 }
 
+/** Let the next ignored future boundary warn again. Tests only. */
+export function resetSystemSettingsWarningsForTests(): void {
+  ignoredFutureAuthorizationBoundaryWarningEmitted = false;
+}
+
 export async function setOrganizationAuthorizationEnforcement(
   setting: OrganizationAuthorizationEnforcementSetting,
   updatedBy?: string,

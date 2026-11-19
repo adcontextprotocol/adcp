@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // hoisted runs before module imports, so REGISTRY_EDITS_CHANNEL_ID is set
 // before `registry.js` captures it at module load.
 vi.hoisted(() => {
-  process.env.REGISTRY_EDITS_CHANNEL_ID = 'C_TEST_LOGO_REVIEW';
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_TEST_LOGO_REVIEW');
 });
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +29,12 @@ import {
   notifyPendingBrandLogo,
   notifyPendingCommunityMirrorProposal,
 } from '../../src/notifications/registry.js';
+
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_TEST_LOGO_REVIEW');
+});
 
 function lastSentBlocks() {
   const call = mocks.sendChannelMessage.mock.calls.at(-1);

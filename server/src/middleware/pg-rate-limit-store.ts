@@ -9,6 +9,7 @@
 import type { Store, Options, IncrementResponse } from 'express-rate-limit';
 import { query, isDatabaseInitialized } from '../db/client.js';
 import { createLogger } from '../logger.js';
+import { registerRateLimitStore, unregisterRateLimitStore } from './rate-limit-store-registry.js';
 
 const logger = createLogger('pg-rate-limit');
 
@@ -174,8 +175,25 @@ export class CachedPostgresStore implements Store {
 
   init(options: Options): void {
     this.windowMs = options.windowMs;
-    this.flushTimer = setInterval(() => this.flush(), this.syncIntervalMs);
+    // A flush that rejects must not escape the timer as an unhandled
+    // rejection; keys it did not flush stay dirty for the next tick.
+    this.flushTimer = setInterval(() => {
+      this.flush().catch((err) => logger.warn({ err }, 'CachedPostgresStore flush failed'));
+    }, this.syncIntervalMs);
     this.flushTimer.unref();
+    registerRateLimitStore(this);
+  }
+
+  /**
+   * Stop the periodic flush (express-rate-limit's optional `Store.shutdown()`).
+   * Counters not yet flushed stay in memory only. Calling it again does nothing.
+   */
+  shutdown(): void {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+    unregisterRateLimitStore(this);
   }
 
   async increment(key: string): Promise<IncrementResponse> {

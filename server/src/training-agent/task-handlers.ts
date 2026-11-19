@@ -3297,8 +3297,8 @@ import {
   handleCalibrateContent,
   handleValidateContentDelivery,
 } from './content-standards-handlers.js';
+import { ACCOUNT_REF_SCHEMA } from './account-ref-schema.js';
 import {
-  ACCOUNT_REF_SCHEMA,
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
@@ -3344,8 +3344,8 @@ import {
   handleSiSendMessage,
   handleSiTerminateSession,
 } from './si-handlers.js';
+import { COMPLY_TEST_CONTROLLER_TOOL } from './comply-test-controller-tool.js';
 import {
-  COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
   getDeliverySimulationForPeriod,

@@ -26,7 +26,6 @@ import {
 } from '../../src/training-agent/state.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 const OTHER_PRINCIPAL_TOKEN = 'demo-stable-account-other-v1';
 

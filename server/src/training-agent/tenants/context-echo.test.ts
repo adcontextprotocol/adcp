@@ -17,7 +17,6 @@ import { readdirSync, readFileSync } from 'node:fs';
 import YAML from 'yaml';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 const TENANTS = ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'] as const;
 /** Per-tenant routes plus the legacy single-URL `/mcp` monolith. */

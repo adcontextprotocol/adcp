@@ -10,6 +10,7 @@ vi.mock("../../src/logger.js", () => ({
 
 import {
   getOrganizationAuthorizationEnforcement,
+  resetSystemSettingsWarningsForTests,
   setOrganizationAuthorizationEnforcement,
 } from "../../src/db/system-settings-db.js";
 
@@ -17,6 +18,7 @@ describe("organization authorization system setting", () => {
   beforeEach(() => {
     queryMock.mockReset();
     warnMock.mockReset();
+    resetSystemSettingsWarningsForTests();
   });
 
   it("defaults absent configuration off", async () => {

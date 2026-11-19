@@ -34,6 +34,26 @@ function fixtureEnv({ identity = true } = {}) {
   };
 }
 
+// Applies fixtureEnv to process.env in place, for test files whose fixture git
+// runs in many places: their own helpers, workflow steps they spawn with
+// { ...process.env }, and wrapper scripts that call the real git. Inside a
+// linked-worktree hook git exports GIT_DIR=<repo>/.git/worktrees/<name> and
+// GIT_INDEX_FILE; inherited, they make fixture commands commit, tag and fetch
+// into the caller's repository, and make `git init` write core.bare=true into
+// its shared config. Call it at module scope, before the first git launch.
+// Returns a function that restores the previous environment (for runners
+// that reuse the process across files).
+function isolateGitEnv(options) {
+  const previous = { ...process.env };
+  const isolated = fixtureEnv(options);
+  for (const key of Object.keys(process.env)) if (!Object.hasOwn(isolated, key)) delete process.env[key];
+  Object.assign(process.env, isolated);
+  return () => {
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, previous);
+  };
+}
+
 function gitIn(cwd, args) {
   return execFileSync('git', args, {
     cwd,
@@ -65,4 +85,4 @@ function gitFixture({ filePath, content, missing = 'none' }) {
   return { repo, runGit, cleanup: () => fs.rmSync(repo, { recursive: true, force: true }) };
 }
 
-module.exports = { fixtureEnv, gitFixture };
+module.exports = { fixtureEnv, gitFixture, isolateGitEnv };

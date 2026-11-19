@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { request as httpRequest } from 'node:http';
@@ -130,17 +130,15 @@ beforeEach(() => {
   mocks.previousSnapshot = undefined;
 });
 
-// Own the process-global transport for the lifetime of this file. Installing
-// and restoring it independently in sibling suites lets one suite's teardown
-// expose native fetch while another suite is still issuing a request under a
-// loaded full-suite worker, leaking the request to WorkOS. Individual tests
-// only reset/configure the mock implementation below.
-beforeAll(() => {
+// Own the process-global transport for every test in this file, from one
+// top-level hook. Installing and restoring it independently in sibling
+// suites let one suite's teardown expose native fetch while another suite
+// was still issuing a request under a loaded full-suite worker, leaking the
+// request to WorkOS. unstubGlobals (server/vitest.config.ts) restores native
+// fetch before each test; individual tests only reset/configure the mock
+// implementation below.
+beforeEach(() => {
   vi.stubGlobal('fetch', mocks.fetch);
-});
-
-afterAll(() => {
-  vi.unstubAllGlobals();
 });
 
 afterEach(() => {

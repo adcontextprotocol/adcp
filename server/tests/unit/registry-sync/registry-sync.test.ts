@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RegistrySync, type RegistrySyncConfig } from '../../../src/registry-sync/index.js';
 
-// Mock fetch globally
+// Mock fetch globally; unstubGlobals (server/vitest.config.ts) restores it
+// before every test.
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+beforeEach(() => {
+  vi.stubGlobal('fetch', mockFetch);
+});
 
 function makeConfig(overrides?: Partial<RegistrySyncConfig>): RegistrySyncConfig {
   return {

@@ -6,6 +6,11 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
+const { isolateGitEnv } = require('./helpers/git-object-fixture.cjs');
+
+// Fixture git (and every step spawned from process.env) must not see a hook's
+// GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
+isolateGitEnv({ identity: false });
 
 const ROOT = path.resolve(__dirname, '..');
 const VERSIONS = ['3.2.0-rc.0', '3.2.0-rc.1', '3.2.0-rc.2', '3.2.0-rc.3'];
@@ -164,20 +169,30 @@ function awsStub() {
 }
 
 // Fake only remote authority; local tracked-file and tuple comparisons use git.
-function gitStub() {
+// The publisher and its release fence call git for every object, so the
+// pass-through is a shell exec of the real git, not a Node process per call;
+// only ls-remote runs the Node stub below.
+const GIT_PASSTHROUGH = ['diff', 'ls-files', 'cat-file', 'rev-parse', 'rev-list', 'merge-base', 'ls-tree', 'show'];
+function gitShim(lsRemoteStub) {
+  return [
+    '#!/bin/sh',
+    'case "$1" in',
+    `  ls-remote) exec ${JSON.stringify(process.execPath)} ${JSON.stringify(lsRemoteStub)} "$@" ;;`,
+    `  ${GIT_PASSTHROUGH.join('|')}) exec "$TEST_REAL_GIT" "$@" ;;`,
+    '  *) echo "Unexpected git command: $*" >&2; exit 1 ;;',
+    'esac',
+    '',
+  ].join('\n');
+}
+
+function gitLsRemoteStub() {
   const args = process.argv.slice(2);
-  if (args[0] === 'ls-remote') {
-    const ref = args.find(arg => arg.startsWith('refs/heads/') || arg.startsWith('refs/tags/'));
-    const targets = JSON.parse(process.env.TEST_RELEASE_TARGETS);
-    const version = Object.keys(targets).find(version => ref === `refs/tags/v${version}`);
-    const target = ref === 'refs/heads/main' ? process.env.TESTED_SHA : targets[version];
-    if (!target) throw Error(`Unexpected remote ref: ${ref}`);
-    console.log(`${target}\t${ref}`);
-    return;
-  }
-  if (!['diff', 'ls-files', 'cat-file', 'rev-parse', 'rev-list', 'merge-base', 'ls-tree', 'show'].includes(args[0])) throw Error(`Unexpected git command: ${args}`);
-  const result = require('node:child_process').spawnSync(process.env.TEST_REAL_GIT, args, { stdio: 'inherit' });
-  process.exit(result.status ?? 1);
+  const ref = args.find(arg => arg.startsWith('refs/heads/') || arg.startsWith('refs/tags/'));
+  const targets = JSON.parse(process.env.TEST_RELEASE_TARGETS);
+  const version = Object.keys(targets).find(version => ref === `refs/tags/v${version}`);
+  const target = ref === 'refs/heads/main' ? process.env.TESTED_SHA : targets[version];
+  if (!target) throw Error(`Unexpected remote ref: ${ref}`);
+  console.log(`${target}\t${ref}`);
 }
 
 function ghStub() {
@@ -273,7 +288,9 @@ function fixture(t) {
     commit('Later tested main with mutable artifacts');
     authority = { testedSha: git(['rev-parse', 'HEAD']), targets };
     write('authority.json', JSON.stringify(authority));
-    executable('git', gitStub);
+    write('bin/git-ls-remote.cjs', `(${gitLsRemoteStub.toString()})();\n`);
+    write('bin/git', gitShim(path.join(dir, 'bin', 'git-ls-remote.cjs')));
+    fs.chmodSync(path.join(dir, 'bin', 'git'), 0o755);
     executable('gh', ghStub);
     // Untracked files are now tested as a refusal, separately from valid writes.
   }

@@ -18,12 +18,11 @@ import http from 'node:http';
 import express from 'express';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const PUBLIC_TOKEN = 'test-token-governance-agent-credentials';
+const PUBLIC_TOKEN = 'test-token';
 
 // Generated per run so no key material lives in the repository.
 const { CREDENTIAL_SECRET } = vi.hoisted(() => {
   const secret = require('node:crypto').randomBytes(32).toString('hex') as string;
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-governance-agent-credentials';
   process.env.TRAINING_GOVERNANCE_CREDENTIAL_SECRET = secret;
   return { CREDENTIAL_SECRET: secret };
 });

@@ -4,11 +4,13 @@ import { generateKeyPair, SignJWT } from 'jose';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const authority = vi.hoisted(() => ({ key: undefined as unknown }));
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.TRAINING_BUYER_OAUTH_ENABLED = 'true';
-  process.env.TRAINING_BUYER_OAUTH_ISSUER = 'https://auth.example.com';
-  process.env.TRAINING_BUYER_OAUTH_ORGANIZATION_ID = 'org_canary';
-  delete process.env.TRAINING_REPORTING_GCS_CANARY_PRINCIPAL;
+  vi.stubEnv('TRAINING_BUYER_OAUTH_ENABLED', 'true');
+  vi.stubEnv('TRAINING_BUYER_OAUTH_ISSUER', 'https://auth.example.com');
+  vi.stubEnv('TRAINING_BUYER_OAUTH_ORGANIZATION_ID', 'org_canary');
+  vi.stubEnv('TRAINING_REPORTING_GCS_CANARY_PRINCIPAL', undefined);
 });
 vi.mock('jose', async original => ({ ...await original<object>(), createRemoteJWKSet: () => async () => authority.key }));
 vi.mock('../../src/db/user-authorization-snapshot-db.js', async original => ({

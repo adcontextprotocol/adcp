@@ -350,6 +350,7 @@ test('default navigation matches the stable release branch surface', () => {
   }
   let releaseConfig;
   try {
+    // lint-allow-caller-git: reads the stable docs.json from the enclosing checkout
     releaseConfig = JSON.parse(execFileSync(
       'git',
       ['show', `${stableRef}:docs.json`],
@@ -372,6 +373,7 @@ test('default navigation matches the stable release branch surface', () => {
   if (stableRef === 'origin/3.2.x'
     && currentDefault.version === '3.2'
     && releaseDefault.version === '3.1') {
+    // lint-allow-caller-git: resolves the stable ref in the enclosing checkout
     const releaseSha = execFileSync('git', ['rev-parse', stableRef], {
       cwd: rootDir, encoding: 'utf8'
     }).trim();

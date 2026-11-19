@@ -13,7 +13,6 @@ import http from 'node:http';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 type ToolResult = {
   result?: {

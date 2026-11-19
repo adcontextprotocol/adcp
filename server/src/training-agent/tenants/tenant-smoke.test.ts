@@ -45,7 +45,6 @@ import {
   resolveReportingAccountDurably,
 } from '../reporting-reliability.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 // The schema trees the build publishes, and the copies inside them that
 // reuse the $ids of the schemas they project.

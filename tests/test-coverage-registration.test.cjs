@@ -62,6 +62,7 @@ const isTestFile = (relative) => TEST_FILE_PATTERNS.some((pattern) => pattern.te
 function listTestFiles() {
   // Tracked plus untracked-but-not-ignored files, so a new suite is caught
   // before it is committed.
+  // lint-allow-caller-git: lists the enclosing checkout's own files
   const output = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
     cwd: ROOT,
     encoding: 'utf8',

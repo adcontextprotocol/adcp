@@ -187,7 +187,7 @@ describe('first use loads a deferred dependency and behaves as before', () => {
 });
 
 describe('server unit setup file', () => {
-  const SETUP_FILE = 'server/tests/setup/revenue-tracking-env.ts';
+  const SETUP_FILE = 'server/tests/setup/conductor-loopback-setup.ts';
   const readPatchState = `async () => {
     const supertest = (await import('supertest')).default;
     return { patched: supertest.Test.prototype.__adcpConductorLoopbackPatched === true };

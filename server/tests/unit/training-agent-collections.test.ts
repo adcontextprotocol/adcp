@@ -21,7 +21,6 @@ import express from 'express';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'collections-test-public-token';
 
 import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';

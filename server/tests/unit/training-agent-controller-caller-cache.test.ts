@@ -5,7 +5,6 @@ import type { TrainingContext } from '../../src/training-agent/types.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 async function bootServer(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');

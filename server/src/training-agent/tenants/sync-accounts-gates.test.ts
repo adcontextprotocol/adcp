@@ -112,9 +112,6 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
   // domains differ across tests, idempotency keys are unique per call,
   // and gate rejections happen before any persisted state is touched.
   beforeAll(async () => {
-    // Module-level env mutation leaks across vitest workers; vi.stubEnv
-    // scopes the change to this suite and `afterAll` restores it.
-    vi.stubEnv('PUBLIC_TEST_AGENT_TOKEN', 'test-token');
     server = await bootServer();
     baseUrl = server.baseUrl;
   }, 30_000);

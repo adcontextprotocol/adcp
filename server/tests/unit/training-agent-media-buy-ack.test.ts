@@ -5,7 +5,6 @@ import { InMemoryStateStore, type PutIfMatchResult } from '@adcp/sdk/server';
 import { clearSessions, setStateStore, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearIdempotencyCache, getIdempotencyStore } from '../../src/training-agent/idempotency.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-media-buy-ack-token';
 
 const BUY_NAME = 'Durable acknowledgement fixture';
 const ACCOUNT = {
@@ -67,7 +66,7 @@ describe('tenant media-buy acknowledgement durability', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json', accept: 'application/json',
-        authorization: 'Bearer test-media-buy-ack-token',
+        authorization: 'Bearer test-token',
       },
       body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: {
         name, arguments: { adcp_version: '3.1', ...args },
