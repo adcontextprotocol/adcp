@@ -2,7 +2,8 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { pathsFromNameStatus, planServerUnitRun, resolveWorkerCount } = require('../scripts/precommit-server-unit.cjs') as {
+const { pathsFromNameStatus, planServerUnitRun, resolveWorkerCount, serverUnitFilter } = require('../scripts/precommit-server-unit.cjs') as {
+  serverUnitFilter(env?: Record<string, string | undefined>, listStaged?: () => string[]): (file: string) => boolean;
   resolveWorkerCount(env?: Record<string, string | undefined>, cpus?: number, totalmem?: number): number;
   pathsFromNameStatus(output: Buffer): string[];
   planServerUnitRun(
@@ -181,5 +182,28 @@ describe('precommit server unit parallelism', () => {
     expect(resolveWorkerCount({ ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: '20' }, 4, 8 * GB)).toBe(20);
     expect(resolveWorkerCount({ ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: '0' }, 8, 64 * GB)).toBe(6);
     expect(resolveWorkerCount({ ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: 'two' }, 8, 64 * GB)).toBe(6);
+  });
+});
+
+// The root vitest config's precommit:server-* projects keep the files this
+// filter accepts (server-relative paths, as the server projects list them).
+describe('precommit server unit filter (the root config\'s server projects)', () => {
+  const staged = (...files: string[]) => () => files;
+
+  it('keeps only the staged server unit test files, by their server-relative path', () => {
+    const keep = serverUnitFilter({}, staged('server/tests/unit/slack-escape.test.ts', 'tests/lint-test-builds.test.cjs'));
+    expect(keep('tests/unit/slack-escape.test.ts')).toBe(true);
+    expect(keep('tests/unit/addie/router.spec.ts')).toBe(false);
+  });
+
+  it('keeps every file for a broad server change and none for an unrelated one', () => {
+    expect(serverUnitFilter({}, staged('server/vitest.projects.ts'))('src/x.test.ts')).toBe(true);
+    expect(serverUnitFilter({}, staged('mintlify-docs/reference/media-buys.mdx'))('src/x.test.ts')).toBe(false);
+  });
+
+  it('honors ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full|skip without reading the index', () => {
+    const unreadable = () => { throw new Error('the index must not be read'); };
+    expect(serverUnitFilter({ ADCP_PRECOMMIT_SERVER_UNIT_PLAN: 'full' }, unreadable)('src/x.test.ts')).toBe(true);
+    expect(serverUnitFilter({ ADCP_PRECOMMIT_SERVER_UNIT_PLAN: 'skip' }, unreadable)('src/x.test.ts')).toBe(false);
   });
 });

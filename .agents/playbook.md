@@ -884,16 +884,27 @@ Apply this pattern when restructuring protocol sections.
 
 ## Local Hooks
 
-`.husky/pre-commit` runs the commands of `npm run precommit` (root unit tests,
-dynamic-import and format-identity guards, the staged-file-scoped server unit
-suite, and `typecheck`) plus the advisory image check, through
-`node scripts/profile-precommit.mjs hook`. The runner expands the `precommit`
-script into its leaf commands and runs them in phases: the independent checks
-together, then the server unit suite on its own. `npm run precommit` is the
-sequential equivalent and runs the same commands.
+`.husky/pre-commit` runs `npm run precommit`, which is one vitest run:
+`vitest run --project 'precommit:*'`, through
+`node scripts/profile-precommit.mjs hook` (the run directory, the hook budget
+and the process supervision). The root `vitest.config.ts` defines the hook's projects:
 
-- A phase reports every failure in it; a failed phase skips the later ones.
-  `ADCP_PRECOMMIT_KEEP_GOING=1` runs every phase.
+- `precommit:root`, the root suite (`vitest run --project precommit:root`
+  runs it alone);
+- `precommit:node-tests`, the node:test files the hook runs
+  (`scripts/vitest-node-test-files.cjs`), CommonJS with vitest's globals;
+- `precommit:checks`, `npm run typecheck`, the governance JWS vector check
+  and the advisory image check (`tests/hook-checks/`);
+- `precommit:server-shared`, `-fresh`, `-isolated` and `-alone`, the
+  staged-file-scoped server unit suite, built from the same
+  `server/vitest.projects.ts` as `server/vitest.config.ts`.
+
+vitest runs the projects in groups, one after another: the light checks, then
+the server unit suite, then its load-sensitive file alone.
+
+- A group reports every failure in it; a failed group skips the later ones
+  (`scripts/vitest-hook-reporter.mjs`). `ADCP_PRECOMMIT_KEEP_GOING=1` runs
+  every group.
 - The terminal shows one line per step and the output of each failed step.
   Every step's full log and `report.json` are in `.hook-runs/<stamp>-hook/`;
   the newest 20 runs of each hook are kept (`ADCP_HOOK_RUNS_KEEP`).
@@ -926,7 +937,8 @@ The hook must pass on a clean checkout of `main` in any shell:
   explicitly in `vi.hoisted()`.
 - Staging anything under `docs/`, `static/schemas/source/`, `.agents/`, or
   `server/src/` runs the **full** server unit suite (see
-  `FULL_SERVER_UNIT_PATTERNS` in `scripts/precommit-server-unit.cjs`).
+  `FULL_SERVER_UNIT_PATTERNS` in `scripts/precommit-server-unit.cjs`;
+  `ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full|skip` forces the plan).
 - Live-model router scenarios in `server/tests/unit/addie-router.test.ts`
   are opt-in: `ADDIE_ROUTER_LIVE_TESTS=1` plus `ANTHROPIC_API_KEY`. Having the
   key in your shell is not enough on its own; they are an eval, not a gate.

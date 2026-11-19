@@ -38,7 +38,6 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
-const test = require('node:test');
 const ts = require('typescript');
 const { checkoutGitEnv } = require('./helpers/git-object-fixture.cjs');
 
@@ -451,9 +450,14 @@ function readRepoFile(file) {
   return source;
 }
 
-/** setupFiles of server/vitest.config.ts, repo-relative. */
+/**
+ * setupFiles of every server-suite worker, repo-relative: the first
+ * setupFiles list of server/vitest.projects.ts (serverTestBase), which
+ * server/vitest.config.ts and the root config's precommit:server-* projects
+ * both use.
+ */
 function serverSetupFiles() {
-  const config = readRepoFile('server/vitest.config.ts');
+  const config = readRepoFile('server/vitest.projects.ts');
   const list = /setupFiles\s*:\s*\[([^\]]*)\]/.exec(config ?? '');
   if (!list) return [];
   return [...list[1].matchAll(/['"]([^'"]+)['"]/g)].map(([, p]) => path.posix.join('server', p));
@@ -624,7 +628,7 @@ test('tree: server/src has no static value import of the deferred heavy packages
 
 test('tree: the server unit setup file does not statically load supertest', () => {
   const setupFiles = serverSetupFiles();
-  assert.ok(setupFiles.length > 0, 'expected setupFiles in server/vitest.config.ts');
+  assert.ok(setupFiles.length > 0, 'expected setupFiles in server/vitest.projects.ts');
   const violations = checkSetupSupertest(setupFiles, readRepoFile);
   assert.deepEqual(violations, [], report('Load supertest on demand (CONDUCTOR_IS_LOCAL only)', violations));
 });

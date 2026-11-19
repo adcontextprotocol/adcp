@@ -54,7 +54,6 @@ module.exports = { sleep, alive, has, mark, read, event, waitFor, step, holdWith
 const LIB = "require('../scripts/fixture-lib.cjs')";
 const LIB_FROM_SCRIPTS = "require('./fixture-lib.cjs')";
 
-const IMAGE_CHECK_PASS = '#!/bin/bash\nexit 0\n';
 
 // Leaf files, built from the shared helper.
 const leaf = {
@@ -94,11 +93,10 @@ const roots: string[] = [];
 interface FixtureOptions {
   scripts: Record<string, string>;
   files?: Record<string, string>;
-  imageCheck?: string;
 }
 
 /** A throwaway git repo root with package.json scripts and leaf files. */
-function fixtureRoot({ scripts, files = {}, imageCheck = IMAGE_CHECK_PASS }: FixtureOptions): string {
+function fixtureRoot({ scripts, files = {} }: FixtureOptions): string {
   const root = mkdtempSync(join(tmpdir(), 'precommit-hook-runner-'));
   roots.push(root);
   for (const dir of ['markers', 'scripts', 'tests']) mkdirSync(join(root, dir));
@@ -108,7 +106,6 @@ function fixtureRoot({ scripts, files = {}, imageCheck = IMAGE_CHECK_PASS }: Fix
   );
   copyFileSync(join(REPO_ROOT, 'scripts', 'with-timeout.sh'), join(root, 'scripts', 'with-timeout.sh'));
   writeFileSync(join(root, 'scripts', 'fixture-lib.cjs'), FIXTURE_LIB);
-  writeFileSync(join(root, 'scripts', 'check-image-quality.sh'), imageCheck);
   for (const [rel, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     writeFileSync(join(root, rel), content);
@@ -264,8 +261,10 @@ afterEach(() => {
 
 // ------------------------------------------------------------------- oracle
 
-// The two command lines the sequential .husky/pre-commit ran.
-const ORACLE_LINES = ['bash scripts/check-image-quality.sh', 'npm run precommit'];
+// The command line the hook's plan starts from (scripts/profile-precommit/plan.mjs
+// PLAN_ROOTS): the sequential .husky/pre-commit ran it, and the image check,
+// which is a test of the precommit:checks vitest project since tp-jyw.51.
+const ORACLE_LINES = ['npm run precommit'];
 const ORACLE_CACHE_DIR = join(REPO_ROOT, 'node_modules', '.cache', 'precommit-hook-oracle');
 const NPM_REPLAY = join(REPO_ROOT, 'tests', 'helpers', 'npm-call-replay.cjs');
 
@@ -403,7 +402,7 @@ async function npmExpansion(
 // --------------------------------------------------------------------- tests
 
 describe('pre-commit hook runner: same commands as the sequential hook', () => {
-  it('runs exactly the leaf commands that the image check and npm run precommit run, on the real package.json', async () => {
+  it('runs exactly the leaf commands that npm run precommit runs, on the real package.json', async () => {
     expect(existsSync(NPM_CLI), `npm-cli.js next to ${NODE}`).toBe(true);
     const root = mkdtempSync(join(tmpdir(), 'precommit-hook-oracle-'));
     roots.push(root);
@@ -415,11 +414,10 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
     // Oracle: what npm runs for the two command lines .husky/pre-commit ran.
     const shimmed = writeLeafShims();
     const { leaves: oracle } = await npmExpansion(root, shimmed);
-    expect(oracle).toContain('bash scripts/check-image-quality.sh');
-    expect(oracle).toContain('node scripts/precommit-server-unit.cjs');
-    expect(oracle.some((l) => l.startsWith('vitest run'))).toBe(true);
-    expect(oracle.some((l) => l.startsWith('tsc '))).toBe(true);
-    expect(oracle.some((l) => /^node .*--test( |$)/.test(l))).toBe(true);
+    // The hook's checks are one vitest run over the root config's
+    // precommit:* projects (tests/vitest-hook-projects.test.ts pins which
+    // files each project runs).
+    expect(oracle).toContain('vitest run --project precommit:*');
 
     const hookLog = join(root, 'hook-leaves.log');
     const result = await startHook(root, { env: shimEnv(shimmed.bin, hookLog) }).done;
@@ -452,7 +450,6 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
 
     const replayed = await npmReplayExpansion(root, bin);
     expect(replayed).toEqual([
-      'bash scripts/check-image-quality.sh',
       'node --test a.test.cjs',
       'node scripts/prelint.cjs',
       'npx eslint .',
@@ -487,7 +484,7 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
     writeWithTimeout(withTimeout);
     setNpmVersion('11.0.0-fixture.1');
 
-    const leaves = ['bash scripts/check-image-quality.sh', 'vitest run a'];
+    const leaves = ['vitest run a'];
     expect(await npmExpansion(root, shimmed, options)).toEqual({ leaves, cached: false });
     expect(existsSync(entry())).toBe(true);
     expect(await npmExpansion(root, shimmed, options)).toEqual({ leaves, cached: true });
@@ -690,27 +687,6 @@ describe('pre-commit hook runner: budgets, signals and advisory checks', () => {
     expect(alive(pid), `worker ${pid} outlived its leaf`).toBe(false);
     expect(result.code, result.output).toBe(137);
     expect(stepFor(onlyHookRun(root), main.split('/')[1]).report).toMatchObject({ exit_code: 137, status: 'failed' });
-  });
-
-  it('does not fail the commit when the advisory image check fails', async () => {
-    const root = fixtureRoot({
-      imageCheck: [
-        '#!/bin/bash',
-        'touch "$(dirname "$0")/../markers/image-check-ran"',
-        'echo "fixture image check: images/huge.png exceeds 700KB" >&2',
-        'exit 1',
-        '',
-      ].join('\n'),
-      scripts: { precommit: 'node --test tests/pass.test.cjs' },
-      files: { 'tests/pass.test.cjs': leaf.passes('pass-ran') },
-    });
-
-    const result = await startHook(root).done;
-
-    expect(result.code, result.output).toBe(0);
-    expect(existsSync(marker(root, 'image-check-ran'))).toBe(true);
-    expect(existsSync(marker(root, 'pass-ran'))).toBe(true);
-    expect(stepFor(onlyHookRun(root), 'check-image-quality').report).toMatchObject({ exit_code: 1, status: 'advisory' });
   });
 
   it('keeps only the newest ADCP_HOOK_RUNS_KEEP hook runs and never prunes other run directories', async () => {

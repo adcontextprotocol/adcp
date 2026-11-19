@@ -15,7 +15,9 @@
  * BUILT_SCHEMA_FILES (tests/setup/built-schemas.ts), whose globalSetup builds
  * it once before any worker starts; server/vitest.config.ts does the same for
  * the server suite. node:test files (*.test.cjs) have no globalSetup and build at
- * module load, outside any test timeout, so this lint does not scan them.
+ * module load, outside any test timeout, so this lint does not scan them; the
+ * ones the pre-commit hook runs under vitest (scripts/vitest-node-test-files.cjs)
+ * are vitest files and are scanned.
  *
  * Opt out for one line with a comment on that line or the line above:
  *   // lint-allow-test-builds: <reason or ticket>
@@ -87,10 +89,15 @@ function scanFile(filePath) {
   return scanSource(source, filePath);
 }
 
+/** Every file the lint scans: vitest test files, including the node:test files vitest runs. */
+function scannedFiles() {
+  const files = TEST_ROOTS.flatMap((root) => [...walkTestFiles(root)]);
+  const { NODE_TEST_FILES } = require('./vitest-node-test-files.cjs');
+  return [...files, ...NODE_TEST_FILES.map((file) => path.join(ROOT, file))];
+}
+
 function lint() {
-  const all = [];
-  for (const root of TEST_ROOTS) for (const file of walkTestFiles(root)) all.push(...scanFile(file));
-  return all;
+  return scannedFiles().flatMap((file) => scanFile(file));
 }
 
 function formatViolation(v) {
@@ -111,4 +118,4 @@ if (require.main === module) {
   process.exit(1);
 }
 
-module.exports = { lint, scanFile, scanSource };
+module.exports = { lint, scanFile, scanSource, scannedFiles };

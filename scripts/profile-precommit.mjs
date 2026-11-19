@@ -15,7 +15,8 @@
 //   node scripts/profile-precommit.mjs plan
 //
 // THE PLAN (scripts/profile-precommit/plan.mjs) is derived, not hard-coded:
-// the advisory image check, then `npm run precommit` with every `npm run X`
+// `npm run precommit` (one vitest run over the precommit:* projects of the
+// root vitest.config.ts since tp-jyw.51) with every `npm run X`
 // expanded through package.json into its leaf commands (split on &&).
 // `npm run precommit` stays the sequential equivalent.
 //
@@ -41,14 +42,17 @@
 // sets ADCP_HOOK_RUNNER=<name> for it (.husky/pre-push re-runs itself this
 // way; a hook that becomes one command changes only its exec line).
 // The terminal gets one line per step, the full output of a phase with a
-// single step, and the log tail of every failed step. The image check is
-// advisory, as it was in the old hook: its failure is shown, not fatal.
+// single step, and the log tail of every failed step. An advisory root
+// (none today; the image check is an advisory test of the vitest run) is
+// shown, not fatal. Inside the vitest run, its projects' groups are the
+// phases (vitest.config.ts).
 // Hook runs write .hook-runs/<stamp>-hook/ (pre-push: <stamp>-pre-push-hook/);
 // the newest ADCP_HOOK_RUNS_KEEP (default 20) of each hook are kept. --root
 // runs the plan of another tree (tests).
 //
 // RUN OPTIONS (profiling; sequential unless --concurrent or --as-hook)
-//   --server-unit full|skip|auto  Server unit plan. Standalone default: full
+//   --server-unit full|skip|auto  Server unit plan (ADCP_PRECOMMIT_SERVER_UNIT_PLAN
+//                                 for the vitest leaf). Standalone default: full
 //                                 (the path a staged package.json takes);
 //                                 --as-hook default: auto (staged files).
 //   --root DIR                    Profile the plan of another tree (tests).
@@ -184,7 +188,9 @@ function vitestProfileArgs(dir, opts) {
 function instrument(cmd, dir, opts) {
   switch (cmd.kind) {
     case 'vitest':
-      return `${cmd.command} --reporter=default --reporter=${VITEST_TIMING_REPORTER}${opts['import-durations'] ? ' --experimental.importDurations.limit=500' : ''}${vitestProfileArgs(dir, opts)}`;
+      // The JSON report holds every project's results (the server suite's
+      // too, since tp-jyw.51), as precommit-server-unit.cjs kept them.
+      return `${cmd.command} --reporter=default --reporter=${VITEST_TIMING_REPORTER} --reporter=json --outputFile.json=${path.join(dir, 'vitest', 'all.json')}${opts['import-durations'] ? ' --experimental.importDurations.limit=500' : ''}${vitestProfileArgs(dir, opts)}`;
     case 'node-test':
       return cmd.command.replace(/(\s--test)(\s|$)/, `$1 --require=${NODE_TEST_BLOCKING_STDOUT} --test-reporter=spec --test-reporter-destination=stdout --test-reporter=${NODE_TEST_REPORTER} --test-reporter-destination=${path.join(dir, 'node-test.json')}$2`);
     case 'tsc':
@@ -333,7 +339,11 @@ function profileLauncher(opts, root) {
       if (opts['cpu-prof']) nodeOptions.push('--cpu-prof', `--cpu-prof-dir=${path.join(dir, 'cpu')}`);
       if (opts['heap-prof']) nodeOptions.push('--heap-prof', `--heap-prof-dir=${path.join(dir, 'heap')}`);
       if (nodeOptions.length) env.NODE_OPTIONS = [process.env.NODE_OPTIONS, ...nodeOptions].filter(Boolean).join(' ');
-      if (cmd.kind === 'vitest') env.ADCP_VITEST_TIMING_DIR = path.join(dir, 'vitest');
+      if (cmd.kind === 'vitest') {
+        env.ADCP_VITEST_TIMING_DIR = path.join(dir, 'vitest');
+        // The precommit:server-* projects read the plan in vitest.config.ts.
+        env.ADCP_PRECOMMIT_SERVER_UNIT_PLAN = opts['server-unit'];
+      }
       if (cmd.kind === 'server-unit') {
         env.ADCP_PRECOMMIT_REPORT_DIR = path.join(dir, 'vitest');
         env.ADCP_VITEST_TIMING_DIR = path.join(dir, 'vitest');

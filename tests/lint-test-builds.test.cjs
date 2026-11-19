@@ -16,10 +16,9 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { lint, scanFile, scanSource } = require('../scripts/lint-test-builds.cjs');
+const { lint, scanFile, scanSource, scannedFiles } = require('../scripts/lint-test-builds.cjs');
 
 const rules = (source) => scanSource(source).map((v) => v.rule);
 
@@ -74,4 +73,11 @@ test('scans vitest files, skips node:test files and honours the file-level opt-o
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('scans the node:test files the pre-commit hook runs under vitest, and no other node:test file', () => {
+  const scanned = scannedFiles().map((file) => path.relative(path.resolve(__dirname, '..'), file).split(path.sep).join('/'));
+  const { NODE_TEST_FILES } = require('../scripts/vitest-node-test-files.cjs');
+  for (const file of NODE_TEST_FILES) assert.ok(scanned.includes(file), `${file} is scanned`);
+  assert.deepEqual(scanned.filter((file) => file.endsWith('.test.cjs') && !NODE_TEST_FILES.includes(file)), []);
 });

@@ -1,10 +1,11 @@
 // The pre-commit plan: the leaf commands the hook runs, derived from
 // package.json so that `npm run precommit` stays the single definition.
 //
-// Roots are fixed: the advisory image check, then `npm run precommit`. Every
-// `npm run X` is expanded through package.json into its leaf commands (split
-// on &&). The hook has one overall budget (budget.mjs), so a per-step
-// `bash scripts/with-timeout.sh N cmd` in the chain is rejected.
+// The root is `npm run precommit`, since tp-jyw.51 one vitest command over the
+// root config's precommit:* projects (the advisory image check is one of
+// them). Every `npm run X` is expanded through package.json into its leaf
+// commands (split on &&). The hook has one overall budget (budget.mjs), so a
+// per-step `bash scripts/with-timeout.sh N cmd` in the chain is rejected.
 //
 // phasesOf() groups the leaves for concurrent runs. Leaves of a known
 // read-only kind (vitest, node:test, tsc and its wrapper, plus an allowlist)
@@ -17,10 +18,9 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-// .husky/pre-commit ran these two lines; the image check's exit status was
-// discarded there (no `set -e`), so it stays advisory.
+// What .husky/pre-commit runs. A root may be `advisory`: its failure is
+// shown and does not fail the hook.
 export const PLAN_ROOTS = [
-  { line: 'bash scripts/check-image-quality.sh', name: 'check-image-quality', advisory: true },
   { line: 'npm run precommit' },
 ];
 
@@ -62,10 +62,12 @@ function expand(command, scripts, ctx, out) {
   });
 }
 
-export function planCommands({ root } = {}) {
+// `roots` defaults to the hook's; another list expands other command lines
+// the same way (tests/hook-checks/typecheck.test.ts expands `npm run typecheck`).
+export function planCommands({ root, roots = PLAN_ROOTS } = {}) {
   const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts ?? {};
   const out = { commands: [] };
-  for (const { line, name, advisory } of PLAN_ROOTS) {
+  for (const { line, name, advisory } of roots) {
     const before = out.commands.length;
     expand(line, scripts, { chain: [] }, out);
     for (const c of out.commands.slice(before)) {

@@ -1,7 +1,8 @@
 'use strict';
 
 // Loads a real vitest config in a fresh Node process (through tsx, as vitest
-// would) and returns the test.env it resolves. Configs read process.env at
+// would) and returns the test.env it resolves (for the root config, its
+// precommit:root project's: the root suite). Configs read process.env at
 // load, so each case gets its own process and environment; cwd is a scratch
 // directory, so a default can only come from the config's own location.
 const { spawnSync } = require('node:child_process');
@@ -21,7 +22,10 @@ function resolvedTestEnv(config, env, cwd) {
   const script = [
     "const { pathToFileURL } = await import('node:url');",
     'const { default: config } = await import(pathToFileURL(process.argv[1]).href);',
-    'process.stdout.write(JSON.stringify({ env: config.test?.env ?? {} }));',
+    // A config with projects (the root one) keeps the root suite's options in
+    // its precommit:root project.
+    "const suite = config.test?.projects?.find((p) => p.test?.name === 'precommit:root')?.test ?? config.test;",
+    'process.stdout.write(JSON.stringify({ env: suite?.env ?? {} }));',
   ].join('\n');
   const result = spawnSync(process.execPath, ['--import', TSX_LOADER, '--input-type=module', '-e', script, path.join(REPO_ROOT, config)], {
     cwd, env, encoding: 'utf8',

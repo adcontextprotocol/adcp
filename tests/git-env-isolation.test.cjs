@@ -110,14 +110,26 @@ function snapshot({ repo, gitDir }) {
   return { bytes, refs, worktrees: listFiles(path.join(common, 'worktrees')) };
 }
 
-/** The command for one file; both kinds record test progress in TEST_PROGRESS_FILE. */
+// node:test files the pre-commit hook runs under vitest (tp-jyw.51).
+const VITEST_NODE_TEST_FILES = new Set(require('../scripts/vitest-node-test-files.cjs').NODE_TEST_FILES);
+
+/**
+ * The command for one file, by the runner that owns it: a .cjs file is a
+ * node:test file unless the root vitest config's precommit:node-tests project
+ * runs it; every other file belongs to the root suite (precommit:root). Both
+ * kinds record test progress in TEST_PROGRESS_FILE.
+ */
 function commandFor(file) {
+  if (VITEST_NODE_TEST_FILES.has(file)) {
+    return { command: process.execPath, args: [path.join(ROOT, 'node_modules/vitest/vitest.mjs'), 'run',
+      '--project', 'precommit:node-tests', '--reporter=default', `--reporter=${VITEST_PROGRESS}`, file] };
+  }
   if (file.endsWith('.cjs')) {
     return { command: process.execPath, args: [`--require=${PROGRESS_HOOKS}`, '--test', '--test-force-exit',
       ...(BOUND_MS > 0 ? [`--test-timeout=${BOUND_MS}`] : []), file] };
   }
   return { command: process.execPath, args: [path.join(ROOT, 'node_modules/vitest/vitest.mjs'), 'run',
-    '--dir', 'tests/', '--reporter=default', `--reporter=${VITEST_PROGRESS}`, file] };
+    '--project', 'precommit:root', '--reporter=default', `--reporter=${VITEST_PROGRESS}`, file] };
 }
 
 /** The last line of the progress file and when it was written (ms), or null. */

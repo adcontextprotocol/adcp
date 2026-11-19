@@ -30,6 +30,7 @@ const FULL_SERVER_UNIT_PATTERNS = [
   /^static\/compliance\/source\//,
   /^static\/registry\//,
   /^server\/vitest\.config\.ts$/,
+  /^server\/vitest\.projects\.ts$/,
   /^scripts\/server-unit-workers\.cjs$/,
   /^scripts\/sdk-validator-cache\.cjs$/,
   /^scripts\/node-compile-cache\.cjs$/,
@@ -73,6 +74,7 @@ function stagedFiles() {
   // Node's default 1 MB maxBuffer overflows (ENOBUFS) on the -z listing.
   const output = execFileSync('git', ['diff', '--cached', '--name-status', '--diff-filter=ACMRD', '-z'], {
     maxBuffer: 64 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
   return pathsFromNameStatus(output);
 }
@@ -164,6 +166,34 @@ function resolvePlan(env = process.env) {
   return planServerUnitRun(stagedFiles(), existsSync);
 }
 
+/**
+ * The server-relative unit files (tests/unit/..., src/...) the root config's
+ * precommit:server-* projects keep, by the same plan as main(): every file
+ * (full), none (skip), or the staged server unit test files. A git call that
+ * fails (no repository, a broken GIT_DIR) means the full plan, with a
+ * warning: a hook must not skip the suite because it could not tell.
+ */
+function serverUnitFilter(env = process.env, listStaged = stagedFiles) {
+  let plan;
+  const forced = env[PLAN_ENV];
+  if (forced === 'full' || forced === 'skip') {
+    plan = { kind: forced, files: [] };
+  } else {
+    if (forced && forced !== 'auto') console.warn(`Ignoring invalid ${PLAN_ENV}=${forced}; expected full, skip or auto.`);
+    try {
+      plan = planServerUnitRun(listStaged(), existsSync);
+    } catch (error) {
+      const reason = String(error?.stderr || error?.message || error).trim().split('\n')[0];
+      console.warn(`The staged-file plan for the server unit suite failed (git: ${reason}); running the full suite.`);
+      plan = { kind: 'full', files: [] };
+    }
+  }
+  if (plan.kind === 'full') return () => true;
+  if (plan.kind === 'skip') return () => false;
+  const files = new Set(plan.files.map((file) => file.replace(/^server\//, '')));
+  return (file) => files.has(file);
+}
+
 async function main() {
   const plan = resolvePlan();
 
@@ -190,6 +220,7 @@ if (require.main === module) {
 
 module.exports = {
   planServerUnitRun,
+  serverUnitFilter,
   resolveWorkerCount,
   pathsFromNameStatus,
   SERVER_UNIT_TEST_RE,

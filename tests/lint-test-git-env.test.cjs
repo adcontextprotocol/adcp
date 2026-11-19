@@ -12,7 +12,6 @@
 'use strict';
 
 const path = require('node:path');
-const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { gitTestFiles, lint, scanSource } = require('../scripts/lint-test-git-env.cjs');

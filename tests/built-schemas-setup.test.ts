@@ -65,7 +65,9 @@ describe('tests/setup/built-schemas.ts', () => {
     const script = [
       "const { pathToFileURL } = await import('node:url');",
       'const { default: config } = await import(pathToFileURL(process.argv[1]).href);',
-      'process.stdout.write(JSON.stringify([config.test?.globalSetup ?? []].flat()));',
+      // The root suite's options live in the config's precommit:root project.
+      "const suite = config.test.projects.find((p) => p.test?.name === 'precommit:root').test;",
+      'process.stdout.write(JSON.stringify([suite.globalSetup ?? []].flat()));',
     ].join('\n');
     const { stdout } = await run(process.execPath, ['--import', TSX_LOADER, '--input-type=module', '-e', script, join(REPO_ROOT, 'vitest.config.ts')], {
       cwd: REPO_ROOT, env: cleanEnv(), encoding: 'utf8',
