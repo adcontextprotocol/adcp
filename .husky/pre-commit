@@ -5,5 +5,11 @@ HUSKY_INIT="${XDG_CONFIG_HOME:-$HOME/.config}/husky/init.sh"
 [ "${HUSKY-}" = "0" ] && exit 0
 export PATH="node_modules/.bin:$PATH"
 
+# Opt-in: run the same commands through the profiler, which writes a run
+# report to .hook-runs/ and exits with the same status.
+if [ -n "${ADCP_PRECOMMIT_PROFILE-}" ]; then
+  exec node scripts/profile-precommit.mjs run --as-hook
+fi
+
 bash scripts/check-image-quality.sh
 npm run precommit
