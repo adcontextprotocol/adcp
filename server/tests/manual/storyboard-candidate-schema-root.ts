@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { registerExternalSchemaRoot } from '@adcp/sdk/testing';
 
@@ -24,9 +23,4 @@ export function registerStoryboardCandidateSchemaRoot(
   // envelope policy, and an unknown future release otherwise defaults to the
   // legacy envelope before any request-local buyer validation is entered.
   registerExternalSchemaRoot(version, root);
-  // The SDK's envelope compatibility helper also resolves schemas through
-  // its CommonJS graph. Bind the same public entry point there so both
-  // module graphs see the candidate, without reaching into SDK internals.
-  const commonJsTesting = createRequire(import.meta.url)('@adcp/sdk/testing') as typeof import('@adcp/sdk/testing');
-  commonJsTesting.registerExternalSchemaRoot(version, root);
 }

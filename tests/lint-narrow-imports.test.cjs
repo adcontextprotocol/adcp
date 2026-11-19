@@ -15,6 +15,17 @@
  *   3. The server unit setup file, which runs before every server test file,
  *      does not statically load supertest, directly or through a relative
  *      module it statically imports.
+ *   4. ESM-context files (.ts, .tsx, .mts, .mjs under server, tests and
+ *      scripts; .d.ts excluded) reach @adcp/sdk only through its ESM entry
+ *      points: no createRequire(...)('@adcp/sdk...'), no require('@adcp/sdk...')
+ *      through a createRequire-made function (however it is named or
+ *      aliased), and no <createRequire-made>.resolve('@adcp/sdk...'), except
+ *      '@adcp/sdk/package.json' (JSON, no build). Those load the CommonJS
+ *      build next to the ESM one, so one process holds two schema loaders
+ *      with separate roots and caches. import.meta.resolve() is the ESM form
+ *      and stays legal. The allowlist is shrink-only. .cjs files are out of
+ *      scope (tp-n2s tracks CJS helpers loaded into ESM processes), and code
+ *      inside strings (an --eval script) is not parsed.
  *
  * Imports are read with the TypeScript parser, not regexes, so multi-line
  * clauses, either quote style, aliases and `export ... from` are all seen.
@@ -52,6 +63,24 @@ const BARREL_ALLOWLIST = new Set([
 
 const DEFERRED_PACKAGES = ['isomorphic-dompurify', 'linkedom', 'pdf-parse', 'mammoth', '@google-cloud/kms'];
 
+const ESM_CONTEXT_SCOPE = ['server', 'tests', 'scripts'];
+const ESM_CONTEXT_FILE = /\.(?:ts|tsx|mts|mjs)$/;
+const SDK_PACKAGE_JSON = '@adcp/sdk/package.json';
+
+// ESM-context files allowed to load the CommonJS SDK build. Shrink only: an
+// entry must be the only SDK build its process loads.
+const CJS_SDK_ALLOWLIST = new Set([
+  // A node:test file whose only other import, scripts/add-storyboard-account-
+  // fixtures.mjs, does not import the SDK: the CommonJS build is its only one.
+  'tests/lint-storyboard-account-fixtures.node.mjs',
+  // Interop processes that load the SDK under test from a separate pinned
+  // install (createRequire from <env>/node/package.json), CommonJS only, and
+  // import nothing else that loads @adcp/sdk.
+  'tests/interop/differential/cli-ts.mjs',
+  'tests/interop/matrix/ts/buyer.mjs',
+  'tests/interop/matrix/ts/seller.mjs',
+]);
+
 // ---------------------------------------------------------------------------
 // Import extraction
 // ---------------------------------------------------------------------------
@@ -63,6 +92,29 @@ function scriptKind(file) {
   return ts.ScriptKind.JS;
 }
 
+function isEsmContextFile(file) {
+  return ESM_CONTEXT_FILE.test(file) && !file.endsWith('.d.ts');
+}
+
+// One parse per file and source text. The tree checks read the same files;
+// a file's import list and its check 4 result come from one syntax tree, and
+// only those results are kept, not the tree.
+const factsCache = new Map();
+let parseCount = 0;
+function fileFacts(file, source) {
+  const hit = factsCache.get(file);
+  if (hit && hit.source === source) return hit;
+  parseCount += 1;
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
+  const facts = {
+    source,
+    imports: importsOf(sf),
+    commonJsSdkReach: isEsmContextFile(file) ? commonJsSdkReachOf(file, sf) : [],
+  };
+  factsCache.set(file, facts);
+  return facts;
+}
+
 /**
  * Static declarations that evaluate a module at runtime: value imports,
  * side-effect imports, `import x = require()` and `export ... from`.
@@ -71,7 +123,10 @@ function scriptKind(file) {
  * Side-effect imports have `names: []`. Type-only forms are omitted.
  */
 function staticValueImports(file, source) {
-  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
+  return fileFacts(file, source).imports;
+}
+
+function importsOf(sf) {
   const found = [];
   const line = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
   for (const node of sf.statements) {
@@ -196,13 +251,105 @@ function resolveRelative(fromFile, spec, read) {
   return candidates.find((c) => read(c) !== undefined);
 }
 
+/** The module text of a string literal or substitution-free template, else undefined. */
+function literalText(node) {
+  if (node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))) return node.text;
+  return undefined;
+}
+
+function isSdkSpecifier(spec) {
+  return spec !== undefined && spec !== SDK_PACKAGE_JSON && (spec === '@adcp/sdk' || spec.startsWith('@adcp/sdk/'));
+}
+
+/** Check 4. */
+function checkCommonJsSdkReach(file, source) {
+  if (!isEsmContextFile(file)) return [];
+  return fileFacts(file, source).commonJsSdkReach;
+}
+
+function commonJsSdkReachOf(file, sf) {
+  const line = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+
+  // Local names of createRequire, and of the node:module namespace.
+  const createRequireNames = new Set(['createRequire']);
+  const moduleNamespaces = new Set();
+  for (const node of sf.statements) {
+    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
+    if (node.moduleSpecifier.text !== 'module' && node.moduleSpecifier.text !== 'node:module') continue;
+    const clause = node.importClause;
+    if (!clause) continue;
+    if (clause.name) moduleNamespaces.add(clause.name.text);
+    const bindings = clause.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) moduleNamespaces.add(bindings.name.text);
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const el of bindings.elements) {
+        if ((el.propertyName ?? el.name).text === 'createRequire') createRequireNames.add(el.name.text);
+      }
+    }
+  }
+  const isCreateRequireCall = (node) => ts.isCallExpression(node) && (
+    (ts.isIdentifier(node.expression) && createRequireNames.has(node.expression.text))
+    || (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'createRequire'
+      && (!ts.isIdentifier(node.expression.expression) || moduleNamespaces.has(node.expression.expression.text)
+        || node.expression.expression.text === 'module'))
+  );
+
+  // Variables holding a createRequire-made function, through any alias chain.
+  const requireNames = new Set();
+  const bindings = [];
+  (function collect(node) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      bindings.push([node.name.text, node.initializer]);
+    } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
+      bindings.push([node.left.text, node.right]);
+    }
+    ts.forEachChild(node, collect);
+  })(sf);
+  const unwrap = (node) => {
+    let n = node;
+    while (n && (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression?.(n) || ts.isNonNullExpression(n))) n = n.expression;
+    return n;
+  };
+  const isRequireFunction = (node) => {
+    const n = unwrap(node);
+    return isCreateRequireCall(n) || (ts.isIdentifier(n) && requireNames.has(n.text));
+  };
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const [name, value] of bindings) {
+      if (!requireNames.has(name) && isRequireFunction(value)) {
+        requireNames.add(name);
+        grew = true;
+      }
+    }
+  }
+
+  const violations = [];
+  (function visit(node) {
+    if (ts.isCallExpression(node) && node.arguments.length > 0) {
+      const spec = literalText(node.arguments[0]);
+      if (isSdkSpecifier(spec)) {
+        const callee = unwrap(node.expression);
+        if (isRequireFunction(callee)) {
+          violations.push(`${file}:${line(node.arguments[0])}: ${callee.getText(sf)}('${spec}') loads the CommonJS @adcp/sdk build`);
+        } else if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'resolve' && isRequireFunction(callee.expression)) {
+          violations.push(`${file}:${line(node.arguments[0])}: ${callee.getText(sf)}('${spec}') resolves the CommonJS @adcp/sdk build`);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  })(sf);
+  return violations;
+}
+
 // ---------------------------------------------------------------------------
 // Repository access
 // ---------------------------------------------------------------------------
 
-function trackedCodeFiles() {
+function trackedCodeFiles(scope = SCOPE) {
   // Directory pathspecs, not 'dir/**/*.ts' globs, so top-level files count.
-  const out = execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', ...SCOPE], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  // lint-allow-caller-git: lists the enclosing checkout's own files
+  const out = execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', ...scope], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return out.split('\0').filter((f) => f && CODE_FILE.test(f) && !f.endsWith('.d.ts'));
 }
 
@@ -264,6 +411,21 @@ test('tree: the server unit setup file does not statically load supertest', () =
   assert.ok(setupFiles.length > 0, 'expected setupFiles in server/vitest.config.ts');
   const violations = checkSetupSupertest(setupFiles, readRepoFile);
   assert.deepEqual(violations, [], report('Load supertest on demand (CONDUCTOR_IS_LOCAL only)', violations));
+});
+
+test('tree: ESM-context files reach @adcp/sdk only through its ESM entry points', () => {
+  const byFile = trackedCodeFiles(ESM_CONTEXT_SCOPE).map((f) => [f, checkCommonJsSdkReach(f, readRepoFile(f))]);
+  const { violations } = applyAllowlist(byFile, CJS_SDK_ALLOWLIST);
+  assert.deepEqual(violations, [], report(
+    "Import @adcp/sdk (static import, import(), or import.meta.resolve); createRequire picks the CommonJS build",
+    violations,
+  ));
+});
+
+test('tree: the CommonJS SDK allowlist is shrink-only (every entry still needs its exemption)', () => {
+  const byFile = [...CJS_SDK_ALLOWLIST].map((f) => [f, checkCommonJsSdkReach(f, readRepoFile(f) ?? '')]);
+  const { stale } = applyAllowlist(byFile, CJS_SDK_ALLOWLIST);
+  assert.deepEqual(stale, [], `Remove these entries from CJS_SDK_ALLOWLIST: ${stale.join(', ')}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -432,4 +594,98 @@ test('check 3 resists regex slips: multi-line clause and double quotes', () => {
   assert.deepEqual(checkSetupSupertest(['server/tests/setup/env.ts'], read), [
     'server/tests/setup/env.ts:2: static import of supertest (via server/tests/setup/env.ts)',
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// Meta-tests: check 4 (CommonJS SDK build from ESM-context files)
+// ---------------------------------------------------------------------------
+
+test('the checks parse a file once per source text, and again when the text changes', () => {
+  const file = 'server/src/parse-once-fixture.ts';
+  const source = "import { createRequire } from 'node:module';\nimport { x } from '@adcp/sdk';\ncreateRequire(import.meta.url)('@adcp/sdk');\n";
+  const start = parseCount;
+  assert.equal(checkDeferredPackageImports(file, source).length, 0);
+  assert.equal(staticValueImports(file, source).length, 2);
+  assert.equal(checkCommonJsSdkReach(file, source).length, 1);
+  assert.equal(parseCount - start, 1, 'checks 1, 2 and 4 must share one parse of the same source');
+  assert.equal(checkCommonJsSdkReach(file, `${source}// edited\n`).length, 1);
+  assert.equal(parseCount - start, 2, 'a changed source must be parsed again');
+});
+
+test('check 4 flags createRequire calls, createRequire-made requires and their resolve()', () => {
+  const source = [
+    "import { createRequire } from 'node:module';",
+    "import { dirname, join } from 'node:path';",
+    "const testing = createRequire(import.meta.url)('@adcp/sdk/testing');",
+    'const requireFromHere = createRequire(import.meta.url);',
+    "const loader = join(dirname(requireFromHere.resolve('@adcp/sdk')), 'validation', 'schema-loader.js');",
+    "const sdk = requireFromHere('@adcp/sdk');",
+    'const require = createRequire(import.meta.url);',
+    "const tracks = require(join(dirname(require.resolve('@adcp/sdk/testing')), 'compliance/storyboard-tracks.js'));",
+  ].join('\n');
+  assert.deepEqual(checkCommonJsSdkReach('server/src/x.ts', source), [
+    "server/src/x.ts:3: createRequire(import.meta.url)('@adcp/sdk/testing') loads the CommonJS @adcp/sdk build",
+    "server/src/x.ts:5: requireFromHere.resolve('@adcp/sdk') resolves the CommonJS @adcp/sdk build",
+    "server/src/x.ts:6: requireFromHere('@adcp/sdk') loads the CommonJS @adcp/sdk build",
+    "server/src/x.ts:8: require.resolve('@adcp/sdk/testing') resolves the CommonJS @adcp/sdk build",
+  ]);
+});
+
+test('check 4 passes ESM entry points, package.json, other packages and non-ESM-context files', () => {
+  const clean = [
+    "import { createRequire } from 'node:module';",
+    "import { registerExternalSchemaRoot } from '@adcp/sdk/testing';",
+    "import type { AgentConfig } from '@adcp/sdk';",
+    "const sdk = await import('@adcp/sdk');",
+    "const tracks = await import(new URL('compliance/storyboard-tracks.mjs', import.meta.resolve('@adcp/sdk/testing')).href);",
+    'const requireFromHere = createRequire(import.meta.url);',
+    "const pkg = requireFromHere(requireFromHere.resolve('@adcp/sdk/package.json'));",
+    "const pkg2 = createRequire(import.meta.url)('@adcp/sdk/package.json');",
+    "const yaml = requireFromHere('yaml');",
+    "const cached = Object.keys(createRequire(import.meta.url).cache);",
+    "const other = { resolve: (s) => s }; other.resolve('@adcp/sdk');",
+  ].join('\n');
+  assert.deepEqual(checkCommonJsSdkReach('server/src/x.ts', clean), []);
+  assert.deepEqual(checkCommonJsSdkReach('scripts/s.mjs', clean), []);
+  const commonJs = "const { createRequire } = require('node:module');\nconst sdk = require('@adcp/sdk');\ncreateRequire(__filename)('@adcp/sdk/testing');";
+  assert.deepEqual(checkCommonJsSdkReach('tests/a.test.cjs', commonJs), []);
+  assert.deepEqual(checkCommonJsSdkReach('server/src/types.d.ts', "createRequire(import.meta.url)('@adcp/sdk');"), []);
+});
+
+test('check 4 resists slips: aliased require variable, aliased createRequire, double quotes, multi-line call, node:module namespace', () => {
+  const source = [
+    "import { createRequire as makeRequire } from 'module';",
+    "import * as nodeModule from 'node:module';",
+    'const req = makeRequire(import.meta.url);',
+    'const load = req;',
+    'load("@adcp/sdk/server");',
+    'let later;',
+    'later = load;',
+    'later.resolve(`@adcp/sdk/schemas`);',
+    'makeRequire(',
+    '  import.meta.url,',
+    ')(',
+    '  "@adcp/sdk/testing",',
+    ');',
+    "(nodeModule.createRequire(import.meta.url) as NodeRequire)('@adcp/sdk');",
+  ].join('\n');
+  assert.deepEqual(checkCommonJsSdkReach('tests/helpers/h.ts', source), [
+    "tests/helpers/h.ts:5: load('@adcp/sdk/server') loads the CommonJS @adcp/sdk build",
+    "tests/helpers/h.ts:8: later.resolve('@adcp/sdk/schemas') resolves the CommonJS @adcp/sdk build",
+    "tests/helpers/h.ts:12: makeRequire(\n  import.meta.url,\n)('@adcp/sdk/testing') loads the CommonJS @adcp/sdk build",
+    "tests/helpers/h.ts:14: nodeModule.createRequire(import.meta.url)('@adcp/sdk') loads the CommonJS @adcp/sdk build",
+  ]);
+});
+
+test('check 4 allowlist suppresses listed files and reports entries that no longer need it', () => {
+  const violating = "import { createRequire } from 'node:module';\nconst sdk = createRequire(import.meta.url)('@adcp/sdk');";
+  const clean = "import * as sdk from '@adcp/sdk';";
+  const allowlist = new Set(['tests/a.node.mjs', 'tests/b.node.mjs']);
+  const result = applyAllowlist([
+    ['tests/a.node.mjs', checkCommonJsSdkReach('tests/a.node.mjs', violating)],
+    ['tests/b.node.mjs', checkCommonJsSdkReach('tests/b.node.mjs', clean)],
+    ['tests/c.node.mjs', checkCommonJsSdkReach('tests/c.node.mjs', violating)],
+  ], allowlist);
+  assert.deepEqual(result.violations, ["tests/c.node.mjs:2: createRequire(import.meta.url)('@adcp/sdk') loads the CommonJS @adcp/sdk build"]);
+  assert.deepEqual(result.stale, ['tests/b.node.mjs']);
 });

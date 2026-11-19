@@ -961,7 +961,17 @@ function main() {
 }
 
 if (require.main === module) {
-  main();
+  // The lock keeps concurrent builds of dist/compliance/latest apart; the
+  // stamp lets scripts/built-schemas.cjs skip the next build while the inputs
+  // stay the same. A failed build exits inside main() and writes no stamp.
+  const { withBuildLock, writeBuildStamp } = require('./built-schemas.cjs');
+  withBuildLock(() => {
+    main();
+    writeBuildStamp('compliance');
+  }, 'compliance').catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }
 
 module.exports = {

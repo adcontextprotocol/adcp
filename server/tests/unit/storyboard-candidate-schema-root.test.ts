@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import Ajv, { type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
 import { registerStoryboardCandidateSchemaRoot } from '../manual/storyboard-candidate-schema-root.js';
-import { childLaunchesExited, childLaunchesSince, launchedBeforeExitOf } from '../helpers/child-process-launches.js';
+import { childLaunchesSince, launchedBeforeExitOf } from '../helpers/child-process-launches.js';
 
 // Pass-through recorder: the wire-witness controls run for real in fresh
 // processes; the guard reads when each was launched and when it exited
@@ -20,6 +20,11 @@ const CANDIDATE_WIRE = '3.3-beta.999999';
 const STRICT_FIXTURE_RELEASE = '3.3.0-beta.2';
 const CANDIDATE_SCHEMA_PREFIX = `/schemas/${CANDIDATE_BUNDLE}/`;
 const OUTPUT_PREFIX = 'CANDIDATE_SCHEMA_WITNESS ';
+// The CommonJS schema loader and the CommonJS entry points. CJS leaves the
+// SDK's ESM build loads itself (validation/compact-schema.js and
+// validation/schema-diagnostic-origins.js) hold no schema roots or caches.
+const CJS_SCHEMA_AUTHORITY = /\/@adcp\/sdk\/dist\/lib\/(?:validation\/schema-loader|(?:.+\/)?index)\.js$/;
+const CJS_SCHEMA_LOADER = /\/@adcp\/sdk\/dist\/lib\/validation\/schema-loader\.js$/;
 
 type DeclineResponse = {
   results?: Array<{ proposal_id: string; outcome: string; reason?: string }>;
@@ -29,7 +34,11 @@ type DeclineResponse = {
   adcp_error?: unknown;
 };
 type Witness = {
+  /** Only the negative control loads a CommonJS schema loader; null otherwise. */
   commonjsCandidateSchemaVersion: string | null;
+  esmCandidateSchemaVersion: string | null;
+  /** require.cache entries of the CommonJS SDK build, collected after every call. */
+  cjsSdkFiles: string[];
   candidate: { httpStatus: number; body: DeclineResponse };
   stable?: { httpStatus: number; body: DeclineResponse; schemaVersion: string; schemaValid: boolean; errors: unknown };
 };
@@ -41,7 +50,16 @@ interface WitnessRun {
   readonly stderr: string;
 }
 
-/** Starts one wire-witness control process; settles (never rejects) when it ends. */
+/**
+ * Starts one wire-witness control process; settles (never rejects) when it
+ * ends. `register` binds the candidate through the runner's helper. Otherwise
+ * the child registers the candidate in the ESM loader only and then
+ * deliberately loads the CommonJS schema loader without it: the fault the
+ * SDK-bump detector must see (the pre-#3519 envelope fallback).
+ */
+/** Control processes still running; afterAll stops any a failed or skipped test left behind. */
+const runningControls = new Set<ChildProcess>();
+
 function startWireWitness(schemaRoot: string, register: boolean): Promise<WitnessRun> {
   // A fresh process for each control is essential: the SDK's envelope policy
   // is cached by tool and release before response validation takes place.
@@ -56,8 +74,8 @@ function startWireWitness(schemaRoot: string, register: boolean): Promise<Witnes
     if (${register}) {
       registerStoryboardCandidateSchemaRoot(${JSON.stringify(CANDIDATE_BUNDLE)}, ${JSON.stringify(schemaRoot)});
     } else {
-      // Give the application/validator its future schema metadata, while
-      // leaving the CommonJS server envelope resolver unaware of the release.
+      // Give the application/validator its future schema metadata through
+      // the ESM loader only; the CommonJS loader is injected below.
       const { registerExternalSchemaRoot } = await import('@adcp/sdk/testing');
       registerExternalSchemaRoot(${JSON.stringify(CANDIDATE_BUNDLE)}, ${JSON.stringify(schemaRoot)});
     }
@@ -80,13 +98,16 @@ function startWireWitness(schemaRoot: string, register: boolean): Promise<Witnes
       const envelope = await response.json();
       return { httpStatus: response.status, body: envelope.result?.structuredContent ?? envelope };
     }
-    const cjsSchemas = createRequire(import.meta.url)('@adcp/sdk/schemas');
     let commonjsCandidateSchemaVersion = null;
-    try {
-      commonjsCandidateSchemaVersion = cjsSchemas.getToolResponseSchema('decline_proposals', {
-        adcpVersion: ${JSON.stringify(CANDIDATE_WIRE)},
-      })?.resolvedVersion ?? null;
-    } catch { /* An unregistered candidate has no CommonJS schema authority. */ }
+    if (!${register}) {
+      // Fault injection: a CommonJS schema loader that never saw the root.
+      const cjsSchemas = createRequire(import.meta.url)('@adcp/sdk/schemas');
+      try {
+        commonjsCandidateSchemaVersion = cjsSchemas.getToolResponseSchema('decline_proposals', {
+          adcpVersion: ${JSON.stringify(CANDIDATE_WIRE)},
+        })?.resolvedVersion ?? null;
+      } catch { /* An unregistered candidate has no CommonJS schema authority. */ }
+    }
     const result = { commonjsCandidateSchemaVersion, candidate: await call('decline_proposals', {
       adcp_version: ${JSON.stringify(CANDIDATE_WIRE)}, idempotency_key: randomUUID(),
       declines: [{ proposal_id: 'proposal-not-visible-to-caller', reason: 'inventory_fit' }],
@@ -97,6 +118,12 @@ function startWireWitness(schemaRoot: string, register: boolean): Promise<Witnes
       const schemaVersion = getToolResponseSchema('get_adcp_capabilities', { adcpVersion: '3.2' })?.resolvedVersion;
       result.stable = { ...stable, schemaVersion, schemaValid: typeof validate === 'function' && validate(stable.body), errors: validate?.errors };
     }
+    // After every call: the SDK's envelope fallback loads its CommonJS
+    // schema loader at response time, not at import.
+    result.esmCandidateSchemaVersion = getToolResponseSchema('decline_proposals', {
+      adcpVersion: ${JSON.stringify(CANDIDATE_WIRE)},
+    })?.resolvedVersion ?? null;
+    result.cjsSdkFiles = Object.keys(createRequire(import.meta.url).cache).filter(f => f.includes('/@adcp/sdk/dist/lib/'));
     stopSessionCleanup();
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
@@ -116,6 +143,7 @@ function startWireWitness(schemaRoot: string, register: boolean): Promise<Witnes
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    runningControls.add(child);
     let stdout = '';
     let stderr = '';
     let error: Error | undefined;
@@ -124,7 +152,7 @@ function startWireWitness(schemaRoot: string, register: boolean): Promise<Witnes
     // The same 60 s ceiling spawnSync enforced, reported the same way.
     const timer = setTimeout(() => { error = new Error('spawn ETIMEDOUT'); child.kill('SIGTERM'); }, 60_000);
     child.once('error', (cause) => { error ??= cause; });
-    child.once('close', (status) => { clearTimeout(timer); resolve({ error, status, stdout, stderr }); });
+    child.once('close', (status) => { clearTimeout(timer); runningControls.delete(child); resolve({ error, status, stdout, stderr }); });
   });
 }
 
@@ -176,9 +204,12 @@ describe('candidate server schema registration', () => {
 
   afterEach(() => vi.unstubAllEnvs());
   afterAll(async () => {
+    // The tests await both controls; one still running here belongs to a test
+    // that failed early or was filtered out, so stop it instead of waiting.
+    for (const child of runningControls) child.kill('SIGKILL');
     await Promise.all([unboundControl, registeredControl]);
     rmSync(schemaRoot, { recursive: true, force: true });
-  }, 90_000);
+  });
 
   it('requires the explicit test mode, a root, and its exact candidate identity', () => {
     vi.stubEnv('NODE_ENV', 'production');
@@ -192,8 +223,11 @@ describe('candidate server schema registration', () => {
     expect(() => registerStoryboardCandidateSchemaRoot('3.3.0-beta.999998', schemaRoot)).toThrow('must match the package and compliance bundle version');
   });
 
-  it('detects an unbound CommonJS schema even when the current envelope happens to conform', async () => {
-    const { candidate, commonjsCandidateSchemaVersion } = wireWitness(await unboundControl);
+  it('negative control: an injected CommonJS schema loader without the root is detected while the envelope still conforms', async () => {
+    const { candidate, commonjsCandidateSchemaVersion, cjsSdkFiles } = wireWitness(await unboundControl);
+    // The SDK-bump detector's require.cache probe sees the injected loader,
+    // so a clean registered control is evidence, not a blind spot.
+    expect(cjsSdkFiles.filter(file => CJS_SCHEMA_LOADER.test(file)), JSON.stringify(cjsSdkFiles)).toHaveLength(1);
     expect(candidate.httpStatus, JSON.stringify(candidate)).toBe(200);
     expect(candidate.body.adcp_error).toBeUndefined();
     expect(candidate.body.adcp_version).toBe(CANDIDATE_WIRE);
@@ -205,9 +239,8 @@ describe('candidate server schema registration', () => {
     expect(validate(candidate.body), JSON.stringify(validate.errors)).toBe(true);
   }, 90_000);
 
-  it('serves strict raw future-candidate declines without changing explicit stable 3.2', async () => {
-    const { candidate, stable, commonjsCandidateSchemaVersion } = wireWitness(await registeredControl);
-    expect(commonjsCandidateSchemaVersion).toBe(CANDIDATE_BUNDLE);
+  it('SDK-bump detector: strict raw future-candidate declines come from the ESM schema loader alone, and explicit stable 3.2 is unchanged', async () => {
+    const { candidate, stable, esmCandidateSchemaVersion, cjsSdkFiles } = wireWitness(await registeredControl);
     expect(candidate.httpStatus, JSON.stringify(candidate)).toBe(200);
     expect(candidate.body.adcp_error).toBeUndefined();
     expect(candidate.body.adcp_version).toBe(CANDIDATE_WIRE);
@@ -220,14 +253,22 @@ describe('candidate server schema registration', () => {
     expect(stable?.body.adcp_version).toBe('3.2');
     expect(stable?.schemaVersion).toBe('3.2.8');
     expect(stable?.schemaValid, JSON.stringify(stable?.errors)).toBe(true);
+    // One schema authority: the ESM loader serves the candidate, and no
+    // CommonJS schema loader or entry point was loaded, even at response time.
+    // An SDK that drops bindEnvelopeSchemaLoader falls back to the CommonJS
+    // loader while shaping the decline, which this catches.
+    expect(esmCandidateSchemaVersion).toBe(CANDIDATE_BUNDLE);
+    expect(cjsSdkFiles.filter(file => CJS_SCHEMA_AUTHORITY.test(file))).toEqual([]);
   }, 90_000);
 
   it('runs both wire-witness control processes in flight together', async () => {
     // The controls are independent (ephemeral port, read-only schema root), so
     // both fresh processes are launched before any test body runs and the
-    // second is launched before the first exits.
-    expect(childLaunchesSince(0), 'both control processes are launched before the tests that read them').toHaveLength(2);
-    const [first, second] = await childLaunchesExited(0, 2);
+    // second is launched before the first exits. The launch and exit events are
+    // already recorded (or the first is still running), so nothing is awaited.
+    const launches = childLaunchesSince(0);
+    expect(launches, 'both control processes are launched before the tests that read them').toHaveLength(2);
+    const [first, second] = launches;
     expect(launchedBeforeExitOf(second!, first!), 'the second control process is launched before the first exits').toBe(true);
-  }, 90_000);
+  });
 });

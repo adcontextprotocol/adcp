@@ -915,10 +915,22 @@ source changed. Treat the local run as **advisory**: the
   run it against HEAD, or run the script directly.
 - `ADCP_SKIP_STORYBOARD_MATRIX=1 git push` skips it explicitly (for example
   on a loaded sandbox where the ~3 minute run stretches to tens of minutes).
-- The matrix snapshots the freshly built `dist/schemas/latest` into a
+- The matrix builds `dist/schemas/latest` and `dist/compliance/latest`
+  only when their inputs changed: `node scripts/built-schemas.cjs ensure
+  schemas compliance` compares a digest of every file each build reads with
+  the stamp the last build left, and prints one `build-cache:` line per tree.
+  A build that fails stops the matrix. `ADCP_BUILD_CACHE=0` forces the builds;
+  a linked dependency in `node_modules` (`npm link`, `file:`) always does.
+  Running `scripts/build-*.cjs` directly always builds.
+- The matrix snapshots the current `dist/schemas/latest` into a
   temporary directory before running tenants, so a concurrent
   `npm run build:schemas` in the same tree cannot fail the SDK's schema-root
   version check mid-run.
+- The pre-push hook sets `NODE_COMPILE_CACHE` to
+  `node_modules/.cache/node-compile-cache` unless it is already set, so the
+  storyboard processes reuse compiled code across processes.
+  `NODE_DISABLE_COMPILE_CACHE=1` turns it off. The pre-commit hook does not
+  set it: vitest's module runner bypasses the cache.
 
 ## PR Preparation Checklist
 

@@ -1,7 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildComplianceBundleResults, comply, runStoryboard, type ComplianceResult } from '@adcp/sdk/testing';
@@ -15,11 +13,11 @@ import { deriveVerificationProfileRoleAssessments } from '../../src/services/ver
 import { hostedComplianceOptions, hostedComplianceTarget } from '../../src/services/hosted-compliance-version.js';
 
 // Exercise the installed SDK's projection as well as its public runner. The
-// mapper has no public export; resolve its file from the public testing entry.
-const require = createRequire(import.meta.url);
-const { mapStoryboardResultsToTrackResult } = require(join(
-  dirname(require.resolve('@adcp/sdk/testing')), 'compliance/storyboard-tracks.js',
-));
+// mapper has no public export; load its ES module file next to the public
+// testing entry, so it shares the SDK build this file already imports.
+const { mapStoryboardResultsToTrackResult } = await import(
+  new URL('compliance/storyboard-tracks.mjs', import.meta.resolve('@adcp/sdk/testing')).href
+);
 const agentUrl = 'https://uncontacted.example/mcp';
 const profile = {
   name: 'No-controller seller',

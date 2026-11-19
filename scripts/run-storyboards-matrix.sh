@@ -145,8 +145,8 @@ done
 
 if [ "${CURRENT_SOURCE}" -eq 1 ]; then
   echo "Building current compliance and schema bundles."
-  node "${REPO_ROOT}/scripts/build-schemas.cjs"
-  node "${REPO_ROOT}/scripts/build-compliance.cjs"
+  node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure schemas || exit 1
+  node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure compliance || exit 1
   COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/latest"
   if [ -z "${SCHEMA_ROOT}" ]; then
     # Snapshot the freshly built schema bundle. The SDK's schema loader
