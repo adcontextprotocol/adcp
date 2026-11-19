@@ -208,12 +208,16 @@ class Graph {
       const branches = split.branches.map(b => ({ n: this.addPlain(origin, b.kw, b.kids, {}), via: '' }));
       members.push({ n: this.addPlain(origin, {}, { anyOf: branches }, {}), via: '' });
     }
-    const restEmpty = Object.keys(kw).length === 0 && Object.keys(kids).length === 0 && Object.keys(info).length === 0;
+    const noAssertions = Object.keys(kw).length === 0 && Object.keys(kids).length === 0;
+    // Annotations beside `$ref`/`allOf` belong to this location, not to a
+    // member: they stay on the conjunction (annotated mode only).
+    const conjInfo = noAssertions && members.length > 0 ? info : {};
+    const restEmpty = noAssertions && (Object.keys(info).length === 0 || members.length > 0);
     const rest = restEmpty ? null : this.addPlain(origin, kw, kids, info);
     if (rest !== null) members.push({ n: rest, via: '' });
     if (members.length === 0) return this.TRUE;
-    if (members.length === 1 && parts.length === 0) return members[0].n;
-    return this.add({ kind: 'conj', origin, members });
+    if (members.length === 1 && parts.length === 0 && !Object.keys(conjInfo).length) return members[0].n;
+    return this.add({ kind: 'conj', origin, members, info: conjInfo });
   }
 
   /**
@@ -231,7 +235,7 @@ class Graph {
     const flat = new Map();
     const expand = (id, stack) => {
       const node = this.nodes[id];
-      if (node.kind !== 'conj') return [{ n: id, via: '' }];
+      if (node.kind !== 'conj' || (stack.size > 0 && hasInfo(node))) return [{ n: id, via: '' }];
       if (flat.has(id)) return flat.get(id);
       if (stack.has(id)) {
         throw new Error(`conjunction cycle through ${originLabel(node.origin)} (a schema that is its own allOf/$ref member)`);
@@ -284,37 +288,112 @@ class Graph {
   }
 
   /**
-   * Property names are strings, so inside `propertyNames` a `type` that
-   * includes "string" always holds, and keywords for other types never apply.
-   * Rewrites the `propertyNames` edge to a copy without them (the target node
-   * is shared and keeps its meaning elsewhere).
+   * Property names are strings. Inside `propertyNames` every keyword that
+   * applies to the same instance (`allOf`, `anyOf`, `oneOf`, `not`, `if`,
+   * `then`, `else`, `$ref`) sees a string, so the subgraph is rewritten in a
+   * "string instance" context: a `type` that includes "string" is dropped, a
+   * `type`, `const`, or `enum` that admits no string makes the node `false`,
+   * keywords for other types are dropped, and `false` union branches go.
+   * The rewrite builds context copies (node identity is location plus
+   * context), because targets such as core/country-code.json are shared with
+   * value positions where `type` matters.
    */
   _propertyNamesAreStrings() {
-    const strip = (id) => {
-      const node = this.nodes[id];
-      if (node.kind !== 'plain' || !typedNode(node.kw) || !node.kw.type.includes('string')) return null;
-      const kw = { ...node.kw, type: ['string'] };
-      const kids = { ...node.kids };
-      pruneByType(kw, kids);
-      delete kw.type;
-      return this.addPlain(node.origin, kw, kids, node.info);
+    const memo = new Map();
+    const pending = new Set();
+    // Follows finished aliases without the resolve memo (placeholders change).
+    const peek = (id) => {
+      let cur = id;
+      for (let i = 0; i < 1000; i++) {
+        const n = this.nodes[cur];
+        if (pending.has(cur) || n.kind !== 'alias') return n;
+        cur = n.target.n;
+      }
+      return this.nodes[cur];
+    };
+    const isFalse = (id) => { const n = peek(id); return n.kind === 'bool' && n.value === false; };
+    const isTrueNow = (id) => { const n = peek(id); return n.kind === 'bool' && n.value === true; };
+    const toCtx = (id) => {
+      const r = this.resolve(id).n;
+      if (memo.has(r)) return memo.get(r);
+      const node = this.nodes[r];
+      if (node.kind === 'bool' || (node.kind === 'plain' && node.kw.nullable !== undefined)) {
+        memo.set(r, r);
+        return r;
+      }
+      const ph = this.add({ kind: 'alias', target: { n: this.TRUE, via: '' }, origin: node.origin });
+      memo.set(r, ph);
+      pending.add(ph);
+      let result;
+      if (node.kind === 'conj') {
+        const members = this.conjMembers(node).map(m => ({ n: toCtx(m.n), via: m.via }));
+        const live = members.filter(m => !isTrueNow(m.n));
+        if (members.some(m => isFalse(m.n))) result = this.FALSE;
+        else if (live.length === 0) result = this.TRUE;
+        else if (live.length === 1 && !hasInfo(node)) result = live[0].n;
+        else result = this.add({ kind: 'conj', origin: node.origin, members: live, info: node.info || {} });
+      } else {
+        result = this._stringCopy(node, toCtx, isFalse);
+      }
+      Object.assign(this.nodes[ph], { kind: 'alias', target: { n: result, via: '' } });
+      pending.delete(ph);
+      return ph;
     };
     const count = this.nodes.length;
     for (let id = 0; id < count; id++) {
       const node = this.nodes[id];
       if (node.kind !== 'plain' || !node.kids.propertyNames) continue;
       const ref = this.kid(node.kids.propertyNames);
-      const target = this.nodes[ref.n];
-      let replacement = null;
-      if (target.kind === 'plain') replacement = strip(ref.n);
-      else if (target.kind === 'conj') {
-        const members = this.conjMembers(target);
-        const mapped = members.map(m => ({ n: strip(m.n) ?? m.n, via: m.via }));
-        if (mapped.some((m, i) => m.n !== members[i].n)) replacement = this.add({ kind: 'conj', origin: target.origin, members: mapped });
-      }
-      if (replacement !== null) node.kids.propertyNames = { n: replacement, via: ref.via };
+      const n = toCtx(ref.n);
+      if (n !== ref.n) node.kids.propertyNames = { n, via: ref.via };
     }
     this._resolved = null;
+  }
+
+  /** A plain node read in the string-instance context; returns a node id. */
+  _stringCopy(node, toCtx, isFalse) {
+    const kw = { ...node.kw };
+    if (Array.isArray(kw.type) && kw.type.every(t => TYPE_NAMES.has(t))) {
+      if (!kw.type.includes('string')) return this.FALSE;
+      delete kw.type;
+    }
+    if (Object.prototype.hasOwnProperty.call(kw, 'const') && typeof kw.const !== 'string') return this.FALSE;
+    if (Array.isArray(kw.enum)) {
+      kw.enum = kw.enum.filter(v => typeof v === 'string');
+      if (kw.enum.length === 0) return this.FALSE;
+      normalizeValues(kw);
+    }
+    for (const k of Object.keys(kw)) if (KEYWORD_TYPE.has(k) && KEYWORD_TYPE.get(k) !== 'string') delete kw[k];
+    const kids = {};
+    for (const [k, v] of Object.entries(node.kids)) {
+      if (KEYWORD_TYPE.has(k)) continue; // object and array keywords never apply to a string
+      if (k === 'anyOf' || k === 'oneOf') {
+        const refs = v.map(r => ({ n: toCtx(this.kid(r).n), via: '' })).filter(r => !isFalse(r.n));
+        if (refs.length === 0) return this.FALSE;
+        kids[k] = refs;
+      } else if (k === 'not') {
+        const n = toCtx(this.kid(v).n);
+        if (isFalse(n)) continue;
+        kids.not = { n, via: '' };
+      } else if (k === 'if' || k === 'then' || k === 'else') {
+        kids[k] = { n: toCtx(this.kid(v).n), via: '' };
+      } else {
+        kids[k] = v;
+      }
+    }
+    // A one-branch union is its branch.
+    const members = [];
+    for (const k of ['anyOf', 'oneOf']) {
+      if (kids[k] && kids[k].length === 1 && !(k === 'oneOf' && kw.discriminator !== undefined)) {
+        members.push({ n: kids[k][0].n, via: '' });
+        delete kids[k];
+      }
+    }
+    const empty = !Object.keys(kw).length && !Object.keys(kids).length && !Object.keys(node.info).length;
+    if (!empty) members.push({ n: this.addPlain(node.origin, kw, kids, node.info), via: '' });
+    if (members.length === 0) return this.TRUE;
+    if (members.length === 1) return members[0].n;
+    return this.add({ kind: 'conj', origin: node.origin, members, info: {} });
   }
 
   /**
@@ -367,7 +446,7 @@ class Graph {
 
   _computeTrue(node) {
     if (node.kind === 'bool') return node.value === true;
-    if (node.kind === 'conj') return node.members.every(m => this.isTrue[m.n]);
+    if (node.kind === 'conj') return !hasInfo(node) && node.members.every(m => this.isTrue[m.n]);
     if (node.kind !== 'plain') return false;
     if (Object.keys(node.kw).length || Object.keys(node.info).length) return false;
     const view = this._effectiveKids(node);
@@ -433,7 +512,7 @@ class Graph {
         cur = node.target.n;
         continue;
       }
-      if (node.kind === 'conj') {
+      if (node.kind === 'conj' && !hasInfo(node)) {
         const live = node.members.filter(m => !this.isTrue[m.n]);
         if (live.length === 1) {
           via += live[0].via;
@@ -498,6 +577,10 @@ function refTarget(doc, ref) {
 /** A document of a tree by key. */
 function readDoc(tree, doc) {
   return doc.startsWith('src:') ? tree.files.get(doc.slice(4)) : tree.readDist(doc.slice(5));
+}
+
+function hasInfo(node) {
+  return !!node.info && Object.keys(node.info).length > 0;
 }
 
 function locKey(side, doc, ptr) {
@@ -629,4 +712,4 @@ function normalizeValues(kw) {
   }
 }
 
-module.exports = { Graph, forEachKid, originLabel, locKey, unescapePointer, canonicalKw, normalizeValues, refTarget, readDoc };
+module.exports = { Graph, hasInfo, forEachKid, originLabel, locKey, unescapePointer, canonicalKw, normalizeValues, refTarget, readDoc };

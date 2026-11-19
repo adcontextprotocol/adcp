@@ -17,7 +17,7 @@ const { parseArgs } = require('node:util');
 const { loadFromRef, loadFromDir, git } = require('./lib/tree.cjs');
 const { compare } = require('./lib/compare.cjs');
 const { loadManifest, matchManifest, skeleton } = require('./lib/manifest.cjs');
-const { collectCorpus, differential, sitesFromEntries, TreeValidator } = require('./lib/corpus.cjs');
+const { collectCorpus, differential, sitesFromEntries, probeValues, TreeValidator } = require('./lib/corpus.cjs');
 const { generateWitnesses } = require('./lib/witness.cjs');
 const { formatText } = require('./lib/report.cjs');
 
@@ -40,6 +40,7 @@ Compare the published schema roots at two refs (or two directories).
   --corpus              corpus differential for the roots that differ
   --corpus-all          corpus differential for every bound instance (cross-check)
   --corpus-dir DIR      directory mode: corpus files { "schema": "rel#ptr", "instance": ... }
+                        or { "probe": ... } (a document of unbound values)
   --witness             generate one witness payload per manifest entry
   --json FILE           write the JSON report (- for stdout)
   --quiet               no text report
@@ -66,14 +67,21 @@ function changedDeltaFiles(base, head) {
   return out.split('\n').filter(f => /\.ya?ml$/.test(f));
 }
 
+/**
+ * Directory-mode corpus: { "schema": "rel#ptr", "instance": ... } files are
+ * bound instances; { "probe": ... } files are documents of unbound values.
+ */
 function loadDirCorpus(dir) {
   const bound = [];
+  const probeDocs = [];
   for (const name of fs.readdirSync(dir).sort()) {
     if (!name.endsWith('.json')) continue;
     const doc = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
-    bound.push({ source: 'fixture', schema: doc.schema.includes('#') ? doc.schema : `${doc.schema}#`, label: name, instance: doc.instance });
+    if (typeof doc.schema === 'string') bound.push({ source: 'fixture', schema: doc.schema.includes('#') ? doc.schema : `${doc.schema}#`, label: name, instance: doc.instance });
+    else if (doc.probe !== undefined) probeDocs.push({ label: name, doc: doc.probe });
+    else throw new Error(`${name}: expected "schema" with "instance", or "probe"`);
   }
-  return bound;
+  return { bound, probes: probeValues(probeDocs) };
 }
 
 async function main() {
@@ -179,7 +187,11 @@ async function main() {
     if (refs) corpus = collectCorpus({ repo: REPO, commit: refs.head, baseTree: base, headTree: head });
     else {
       corpus = collectCorpus({ baseTree: base, headTree: head });
-      if (values['corpus-dir']) corpus.bound.push(...loadDirCorpus(path.resolve(values['corpus-dir'])));
+      if (values['corpus-dir']) {
+        const dirCorpus = loadDirCorpus(path.resolve(values['corpus-dir']));
+        corpus.bound.push(...dirCorpus.bound);
+        corpus.probes.push(...dirCorpus.probes);
+      }
     }
     timings.corpus_collect_ms = Date.now() - t0;
     report.corpus = await differential({

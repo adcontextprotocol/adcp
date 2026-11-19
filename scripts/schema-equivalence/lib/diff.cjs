@@ -29,6 +29,7 @@ function render(graph, id, depth = RENDER_DEPTH, stack = new Set()) {
   const sortRendered = (arr) => arr.map(x => [stableStringify(x), x]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(x => x[1]);
   if (node.kind === 'conj') {
     out = { allOf: sortRendered(graph.conjMembers(node).map(m => render(graph, m.n, depth - 1, stack))) };
+    for (const k of Object.keys(node.info || {}).sort()) out[k] = node.info[k];
   } else {
     out = {};
     for (const k of Object.keys(node.kw).sort()) out[k] = node.kw[k];
@@ -79,14 +80,38 @@ class Differ {
     return e;
   }
 
-  _walk(root, a, b, path, out, visited) {
-    const key = `${a},${b}`;
+  /**
+   * Informational keywords of a node as its location sees them: a
+   * conjunction's members' annotations, overridden by the annotations written
+   * beside its `$ref`/`allOf`.
+   */
+  _effectiveInfo(id, depth = 0) {
+    const node = this.graph.nodes[id];
+    if (node.kind === 'plain') return node.info;
+    if (node.kind !== 'conj' || depth > 50) return {};
+    const out = {};
+    for (const m of this.graph.conjMembers(node)) Object.assign(out, this._effectiveInfo(m.n, depth + 1));
+    return Object.assign(out, node.info || {});
+  }
+
+  _walk(root, a, b, path, out, visited, skipInfo = false) {
+    const key = `${a},${b},${skipInfo ? 1 : 0}`;
     if (visited.has(key)) return;
     visited.add(key);
     if (this.color.get(a) === this.color.get(b)) return;
     const g = this.graph;
     const A = g.nodes[a];
     const B = g.nodes[b];
+    if (!skipInfo) {
+      const ia = this._effectiveInfo(a);
+      const ib = this._effectiveInfo(b);
+      for (const k of union(Object.keys(ia), Object.keys(ib))) {
+        const va = ia[k];
+        const vb = ib[k];
+        if (va !== undefined && vb !== undefined && stableStringify(va) === stableStringify(vb)) continue;
+        out.push(this._entry(root, path, k, a, b, va, vb, a, b));
+      }
+    }
     if (A.kind === 'plain' && B.kind === 'plain') {
       this._plain(root, a, b, A, B, path, out, visited);
       return;
@@ -97,7 +122,8 @@ class Differ {
     }
     const ma = A.kind === 'conj' ? g.conjMembers(A) : [{ n: a, via: '' }];
     const mb = B.kind === 'conj' ? g.conjMembers(B) : [{ n: b, via: '' }];
-    this._matchSets(root, path, 'allOf', ma, mb, a, b, out, visited, (m) => m.via || '');
+    // The conjunction's annotations were compared above, members included.
+    this._matchSets(root, path, 'allOf', ma, mb, a, b, out, visited, (m) => m.via || '', true);
   }
 
   _plain(root, a, b, A, B, path, out, visited) {
@@ -106,12 +132,6 @@ class Differ {
       const va = A.kw[k];
       const vb = B.kw[k];
       if (va !== undefined && vb !== undefined && stableStringify(A.ckw[k]) === stableStringify(B.ckw[k])) continue;
-      out.push(this._entry(root, path, k, a, b, va, vb, a, b));
-    }
-    for (const k of union(Object.keys(A.info), Object.keys(B.info))) {
-      const va = A.info[k];
-      const vb = B.info[k];
-      if (va !== undefined && vb !== undefined && stableStringify(va) === stableStringify(vb)) continue;
       out.push(this._entry(root, path, k, a, b, va, vb, a, b));
     }
     for (const key of union(Object.keys(A.kids), Object.keys(B.kids))) {
@@ -187,7 +207,7 @@ class Differ {
    * pairs leftovers by structural similarity, and reports the rest as added
    * or removed.
    */
-  _matchSets(root, path, keyword, ma, mb, a, b, out, visited, seg) {
+  _matchSets(root, path, keyword, ma, mb, a, b, out, visited, seg, skipInfo = false) {
     const g = this.graph;
     const color = this.color;
     let restA;
@@ -242,7 +262,7 @@ class Differ {
       restA.splice(0, restA.length, ...restA.filter(x => !ua.has(x)));
       restB = restB.filter(y => !ub.has(y));
     }
-    for (const [x, y] of pairs) this._walk(root, x.n, y.n, `${path}${seg(y)}`, out, visited);
+    for (const [x, y] of pairs) this._walk(root, x.n, y.n, `${path}${seg(y)}`, out, visited, skipInfo);
     for (const x of restA) out.push(this._entry(root, `${path}${seg(x)}`, keyword, x, null, render(g, x.n), undefined, a, b));
     for (const y of restB) out.push(this._entry(root, `${path}${seg(y)}`, keyword, null, y, undefined, render(g, y.n), a, b));
   }

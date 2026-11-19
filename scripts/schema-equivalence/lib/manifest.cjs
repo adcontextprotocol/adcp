@@ -11,7 +11,10 @@ const fs = require('node:fs');
 const yaml = require('js-yaml');
 const { stableStringify } = require('./json.cjs');
 
-const DIRECTIONS = new Set(['tighten', 'loosen', 'both']);
+// `none`: a real canonical difference whose effect another line at the same
+// node masks (a removed maxLength beside a stricter pattern), so no payload
+// changes verdict because of this line alone.
+const DIRECTIONS = new Set(['tighten', 'loosen', 'both', 'none']);
 const SIDES = new Set(['request', 'response', 'both', 'none']);
 const FIELDS = new Set(['root', 'pointer', 'location', 'keyword', 'old', 'new', 'direction', 'side', 'note']);
 

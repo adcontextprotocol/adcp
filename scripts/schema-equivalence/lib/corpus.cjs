@@ -36,7 +36,8 @@ const PUBLISHED = /^https:\/\/adcontextprotocol\.org\/schemas\/(.+)$/;
 const SEMVER_SEGMENT = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 class TreeValidator {
-  constructor(tree) {
+  /** `lazy` loads only the documents a compiled root reaches (cheap to create). */
+  constructor(tree, { lazy = false } = {}) {
     this.tree = tree;
     this.cache = new Map();
     this.problems = [];
@@ -51,7 +52,7 @@ class TreeValidator {
         return doc;
       },
     });
-    for (const [rel, doc] of tree.files) {
+    for (const [rel, doc] of lazy ? [] : tree.files) {
       if (!isRootFile(rel)) continue;
       try {
         this.ajv.addSchema(doc, `/schemas/${rel}`);
@@ -165,12 +166,15 @@ function docsBlocks(file, text, out) {
   }
 }
 
+/** Adds the storyboard's bound samples to `out`; returns the JSON pointers of those samples. */
 function storyboardSamples(file, doc, out, notes) {
   const lint = require('../../lint-storyboard-sample-request-schema.cjs');
   const phases = Array.isArray(doc && doc.phases) ? doc.phases : [];
-  for (const phase of phases) {
-    for (const step of (phase && Array.isArray(phase.steps) ? phase.steps : [])) {
-      if (!step || typeof step !== 'object') continue;
+  const boundPointers = [];
+  phases.forEach((phase, pi) => {
+    (phase && Array.isArray(phase.steps) ? phase.steps : []).forEach((step, si) => {
+      if (!step || typeof step !== 'object') return;
+      const stepPtr = `/phases/${pi}/steps/${si}`;
       const where = `${file} :: ${phase.id}/${step.id}`;
       if (typeof step.schema_ref === 'string' && !step.schema_ref.startsWith('$test_kit.') && step.sample_request && typeof step.sample_request === 'object') {
         const rel = schemaUriToRel(step.schema_ref.startsWith('/schemas/') ? step.schema_ref : `/schemas/${step.schema_ref}`);
@@ -184,13 +188,16 @@ function storyboardSamples(file, doc, out, notes) {
         }
         const negative = lint.isNegativeStep(step);
         payloads.forEach((p, i) => out.push({ source: 'storyboard-request', schema: `${rel}#`, label: payloads.length > 1 ? `${where} [${i}]` : where, instance: p, negative }));
+        boundPointers.push(`${stepPtr}/sample_request`);
       }
       if (typeof step.response_schema_ref === 'string' && !step.response_schema_ref.startsWith('$test_kit.') && step.sample_response && typeof step.sample_response === 'object') {
         const rel = schemaUriToRel(step.response_schema_ref.startsWith('/schemas/') ? step.response_schema_ref : `/schemas/${step.response_schema_ref}`);
         out.push({ source: 'storyboard-response', schema: `${rel}#`, label: where, instance: step.sample_response });
+        boundPointers.push(`${stepPtr}/sample_response`);
       }
-    }
-  }
+    });
+  });
+  return boundPointers;
 }
 
 const EXAMPLE_FILE_BINDINGS = [
@@ -207,7 +214,7 @@ const SOURCES = {
     'docs/**/*.md(x) ```json blocks with a `$schema`',
     'storyboard sample_request (schema_ref) and sample_response (response_schema_ref) in static/compliance/source/**/*.yaml',
     'static/examples/{products/canonical, get_products_responses/canonical, adagents, brand-json}',
-    'probe values: every distinct JSON value in static/compliance/source/** (test vectors, storyboards, test kits), static/test-vectors/**, static/examples/**, probed against a changed site only when found under a property name the roots reach that site under',
+    'unbound probe values (heuristic, never fail the check): every distinct JSON value outside the bound samples in static/compliance/source/** (test vectors, storyboard fixtures, test kits), static/test-vectors/**, static/examples/**, probed against a changed site only when found under the same (parent property, property) pair that the roots reach the site under',
   ],
   excluded: [
     'steps whose schema_ref is `$test_kit.*`: the schema is chosen at run time',
@@ -242,24 +249,43 @@ function collectCorpus({ repo, commit, baseTree, headTree }) {
       notes.push(`${file}: not parsed (${err.message.split('\n')[0]})`);
       continue;
     }
-    if (/\.ya?ml$/.test(file) && file.startsWith('static/compliance/source/')) storyboardSamples(file, doc, bound, notes);
+    let boundPointers = [];
+    if (/\.ya?ml$/.test(file) && file.startsWith('static/compliance/source/')) boundPointers = storyboardSamples(file, doc, bound, notes);
     const binding = EXAMPLE_FILE_BINDINGS.find(([re]) => re.test(file));
-    if (binding) bound.push({ source: 'example-file', schema: `${binding[1]}#`, label: file, instance: doc });
-    collectValues(doc, file, '', probeValues);
+    if (binding) {
+      bound.push({ source: 'example-file', schema: `${binding[1]}#`, label: file, instance: doc });
+      boundPointers = [''];
+    }
+    collectValues(doc, file, '', probeValues, { boundPointers });
   }
   return dedupeBound(bound, probeValues, notes);
 }
 
 /**
- * Every distinct value in a document, with the property names it was found
- * under (array elements take their array's property name).
+ * Every distinct value in a document outside its bound samples, with the
+ * (parent property, property) pairs it was found under, written
+ * "parent/property" (array elements take their array's names; a top-level
+ * property has an empty parent). Values inside a bound sample are left out:
+ * the bound differential already validates them in their real context.
  */
-function collectValues(value, file, ptr, out, prop = null) {
+function collectValues(value, file, ptr, out, ctx, prop = null, parent = null) {
+  if (ctx.boundPointers.some(b => ptr === b || ptr.startsWith(`${b}/`) || b === '')) return;
   const key = stableStringify(value);
-  if (!out.has(key)) out.set(key, { value, label: `${file}#${ptr}`, props: new Set() });
-  if (prop !== null) out.get(key).props.add(prop);
-  if (Array.isArray(value)) value.forEach((v, i) => collectValues(v, file, `${ptr}/${i}`, out, prop));
-  else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) collectValues(v, file, `${ptr}/${escapePointer(k)}`, out, k);
+  if (prop !== null) {
+    if (!out.has(key)) out.set(key, { value, label: `${file}#${ptr}`, props: new Set() });
+    out.get(key).props.add(`${parent ?? ''}/${prop}`);
+  }
+  if (Array.isArray(value)) value.forEach((v, i) => collectValues(v, file, `${ptr}/${i}`, out, ctx, prop, parent));
+  else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) collectValues(v, file, `${ptr}/${escapePointer(k)}`, out, ctx, k, prop);
+  }
+}
+
+/** Probe values from in-memory documents (directory mode). */
+function probeValues(docs) {
+  const out = new Map();
+  for (const { label, doc } of docs) collectValues(doc, label, '', out, { boundPointers: [] });
+  return [...out.values()];
 }
 
 function dedupeBound(bound, probeValues, notes) {
@@ -354,17 +380,25 @@ async function differential({ baseTree, headTree, corpus, changedRoots, sites, a
 }
 
 /** Probe sites from difference entries: distinct (base, head) source locations. */
-/** The property name a schema pointer reaches its node under, or null. */
+/**
+ * The "parent/property" pair a schema pointer reaches its node under (empty
+ * parent for a top-level property), or null when the path passes through
+ * additionalProperties, patternProperties, or propertyNames, or names no
+ * property.
+ */
 function propertyName(entry) {
   const segs = entry.pointer.split('/').slice(1).map(x => x.replace(/~1/g, '/').replace(/~0/g, '~'));
   // A presence entry (…/properties/x) sits on the parent node.
   if (['properties', 'patternProperties', 'dependencies'].includes(entry.keyword)) segs.splice(-2);
-  let name = null;
+  let names = [];
   for (let i = 0; i < segs.length; i++) {
-    if (segs[i] === 'properties') name = segs[++i];
-    else if (['additionalProperties', 'patternProperties', 'propertyNames'].includes(segs[i])) name = null;
+    if (segs[i] === 'properties') names.push(segs[++i]);
+    else if (['additionalProperties', 'patternProperties', 'propertyNames'].includes(segs[i])) names = [null];
   }
-  return name;
+  const last = names[names.length - 1];
+  if (last === undefined || last === null) return null;
+  const parent = names.length > 1 ? names[names.length - 2] : '';
+  return parent === null ? null : `${parent}/${last}`;
 }
 
 /**
@@ -386,4 +420,4 @@ function sitesFromEntries(entries) {
   return [...out.values()].filter(s => s.props.size);
 }
 
-module.exports = { collectCorpus, differential, sitesFromEntries, TreeValidator, verdict, SOURCES };
+module.exports = { collectCorpus, differential, sitesFromEntries, probeValues, TreeValidator, verdict, SOURCES };

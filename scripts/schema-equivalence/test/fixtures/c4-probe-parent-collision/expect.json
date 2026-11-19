@@ -1,0 +1,13 @@
+{
+  "why": "A corpus value under the same property name but a different parent (geo.system, not selector.system) is not a probe hit.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--corpus",
+    "--corpus-dir",
+    "corpus"
+  ],
+  "probeHits": 0
+}

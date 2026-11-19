@@ -58,7 +58,8 @@ function signature(graph, id, color, local) {
   const c = (ref) => color.get(graph.kid(ref).n);
   if (node.kind === 'conj') {
     const ms = [...new Set(graph.conjMembers(node).map(m => color.get(m.n)))].sort((a, b) => a - b);
-    return `A[${ms.join(',')}]`;
+    const info = node.info ? Object.keys(node.info).sort().map(k => `i:${k}=${stableStringify(node.info[k])}`).join('|') : '';
+    return `A[${ms.join(',')}]${info}`;
   }
   const parts = [`P${local.get(id)}`];
   for (const key of Object.keys(node.kids).sort()) {

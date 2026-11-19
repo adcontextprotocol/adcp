@@ -84,7 +84,7 @@ function formatText(report) {
       for (const ch of k.changes.slice(0, 30)) lines.push(`    ${ch.source} ${ch.label} [${ch.schema}]: base ${ch.base.v}${ch.base.error ? ` (${ch.base.error})` : ''} -> head ${ch.head.v}${ch.head.error ? ` (${ch.head.error})` : ''}`);
     } else lines.push('  Verdict changes: none');
     if (k.probe_hits.length) {
-      lines.push(`  Probe hits (real values the changed constraints treat differently): ${k.probe_hits.length} sites`);
+      lines.push(`  Unbound probe hits (heuristic, not evidence; values found under the same parent and property name): ${k.probe_hits.length} sites`);
       for (const h of k.probe_hits.slice(0, 20)) {
         lines.push(`    ${h.site} (under ${h.under.slice(0, 4).join(', ')}${h.under.length > 4 ? ', …' : ''}): ${h.hits} value${h.hits === 1 ? '' : 's'}, e.g. ${h.samples.slice(0, 2).map(s => `${short(s.value, 60)} (${s.base} -> ${s.head}, ${s.found_at})`).join('; ')}`);
       }
@@ -92,7 +92,7 @@ function formatText(report) {
   }
   if (report.witnesses) {
     const w = report.witnesses;
-    lines.push(`Witnesses: ${w.filter(x => x.ok).length}/${w.length} manifest entries have a verified witness`);
+    lines.push(`Witnesses: ${w.filter(x => x.ok).length}/${w.length} manifest entries pass the witness check (an attributed witness per declared direction, none for "none")`);
     for (const x of w) {
       lines.push(`  entry ${x.index} (${x.direction}): ${x.ok ? 'ok' : 'MISSING'}`);
       for (const p of x.payloads || []) {

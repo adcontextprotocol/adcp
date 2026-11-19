@@ -45,11 +45,13 @@ describe('schema-equivalence CLI fixtures', { concurrency: 8 }, () => {
       if (expect.keyword) assert.ok(c.entries.some(e => e.keyword === expect.keyword), `an entry for ${expect.keyword}: ${JSON.stringify(c.entries)}`);
       if (expect.entries !== undefined) assert.equal(c.entries.length, expect.entries);
       if (expect.info) assert.ok(c.info.some(e => e.keyword === expect.info), `informational entry for ${expect.info}`);
+      if (expect.infoEntries !== undefined) assert.equal(c.info.length, expect.infoEntries, JSON.stringify(c.info, null, 1));
       if (expect.addedRoots) assert.deepEqual(c.addedRoots, expect.addedRoots);
       if (expect.manifestOk !== undefined) assert.equal(report.manifest.ok, expect.manifestOk);
       if (expect.extra !== undefined) assert.equal(report.manifest.extra.length, expect.extra);
       if (expect.missing !== undefined) assert.equal(report.manifest.missing.length, expect.missing);
       if (expect.corpusChanges !== undefined) assert.equal(report.corpus.changes.length, expect.corpusChanges);
+      if (expect.probeHits !== undefined) assert.equal(report.corpus.probe_hits.length, expect.probeHits, JSON.stringify(report.corpus.probe_hits));
       if (expect.witnesses !== undefined) {
         assert.equal(report.witnesses.filter(w => w.ok).length, expect.witnesses, JSON.stringify(report.witnesses, null, 1));
       }

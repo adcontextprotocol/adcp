@@ -1,0 +1,12 @@
+changes:
+  - location: x-request.json#/properties/selector/properties/system
+    keyword: enum
+    old:
+      - geonames
+      - postcode
+      - zip
+    new:
+      - postcode
+      - zip
+    direction: tighten
+    side: request

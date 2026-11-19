@@ -23,6 +23,7 @@ const { refTarget, readDoc } = require('./graph.cjs');
 const { getPointer, unescapePointer, stableStringify } = require('./json.cjs');
 const { sampleRegex } = require('./sample-regex.cjs');
 const { siteOf } = require('./manifest.cjs');
+const { VALUE, SINGLE } = require('./keywords.cjs');
 
 const FAIL = Symbol('fail');
 const DELETE = Symbol('delete');
@@ -347,75 +348,195 @@ function candidates(entry, ctx) {
 }
 
 /**
- * Witnesses are searched per site (the schema node where the manifest lines
- * apply), in both directions. Several lines at one node act together: a
- * removed `maxLength` next to an added `pattern` may loosen nothing, so a
- * line's direction is checked against what the node's combined change does.
- * A site passes when the directions found equal the directions declared:
- * a "tighten" site needs a tightening witness and no loosening witness.
+ * Witnesses belong to one manifest line. A line's witness is a payload whose
+ * verdict differs between base and head (in the declared direction) because
+ * of that line: on a hybrid head where only that line's keyword is reverted
+ * at its site, the payload gets the base verdict again. The search runs over
+ * the line's own entries (its roots and pointers), so a line cannot pass on a
+ * neighbouring line's payload, and a line that changes nothing finds none.
+ * A line declared `none` passes only when no attributed witness is found.
+ *
+ * Separately, each site is searched in both directions without attribution:
+ * a direction found there that no line at the site declares fails the site.
+ * The search is not exhaustive: a missing witness is not a proof.
  */
 async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, validators: given }) {
   const validators = given || { base: new TreeValidator(baseTree), head: new TreeValidator(headTree) };
   const trees = { base: baseTree, head: headTree };
   const corpusStrings = corpus ? corpus.probes.map(p => p.value).filter(v => typeof v === 'string' && v.length < 200).slice(0, 5000) : [];
+  const ctx = { trees, validators, corpus, corpusStrings };
+  const byPointer = (a, b) => a.pointer.length - b.pointer.length || (a.root < b.root ? -1 : 1);
   const sites = new Map();
-  const results = [];
+  const results = new Map();
   for (const change of manifest.changes) {
     const m = match && match.matched.find(x => x.change.index === change.index);
     if (!m) {
-      results.push({ index: change.index, direction: change.direction, ok: false, payloads: [], reason: 'no matching difference' });
+      results.set(change.index, { index: change.index, direction: change.direction, ok: false, payloads: [], reason: 'no matching difference' });
       continue;
     }
     const site = siteOf(m.entries[0]);
-    if (!sites.has(site)) sites.set(site, { lines: [], entries: [], perLine: [] });
+    if (!sites.has(site)) sites.set(site, { lines: [], entries: [] });
     sites.get(site).lines.push(change);
     sites.get(site).entries.push(...m.entries);
-    sites.get(site).perLine.push(m.entries);
-  }
-  for (const [site, group] of sites) {
-    const declared = new Set(group.lines.flatMap(l => (l.direction === 'both' ? ['tighten', 'loosen'] : [l.direction])));
-    // For every line, its roots with the shortest pointers first (usually
-    // the file that defines the node); lines at one site can reach it from
-    // different roots, where the other side's schema differs.
-    const byPointer = (a, b) => a.pointer.length - b.pointer.length || (a.root < b.root ? -1 : 1);
-    const roots = [...new Set(group.perLine.flatMap(list => [...new Set([...list].sort(byPointer).map(e => e.root))].slice(0, 3)))].slice(0, 9);
-    const found = {};
-    for (const dir of ['tighten', 'loosen']) {
-      const accept = dir === 'tighten' ? 'base' : 'head';
-      const reject = dir === 'tighten' ? 'head' : 'base';
-      found[dir] = null;
-      for (const root of roots) {
-        for (const entry of group.entries.filter(e => e.root === root)) {
-          found[dir] = await search(entry, accept, reject, { trees, validators, corpus, corpusStrings });
-          if (found[dir]) break;
-        }
-        if (found[dir]) break;
+
+    // Per-line, attributed search over the line's own entries.
+    const entries = [];
+    const seenRoots = new Set();
+    for (const e of [...m.entries].sort(byPointer)) {
+      if (seenRoots.has(e.root)) continue;
+      seenRoots.add(e.root);
+      entries.push(e);
+      if (entries.length === 4) break;
+    }
+    const res = { index: change.index, direction: change.direction, site, ok: false, payloads: [] };
+    const reasons = [];
+    const found = { tighten: null, loosen: null };
+    for (const entry of entries) {
+      const hybrid = revertedHead(trees, entry);
+      if (!hybrid.tree) {
+        reasons.push(`cannot attribute: ${hybrid.reason}`);
+        break;
       }
+      // One hybrid per entry, compiled lazily (only what the root reaches).
+      const hv = new TreeValidator(hybrid.tree, { lazy: true });
+      const h = await hv.get(`${entry.root}#`);
+      if (typeof h !== 'function') continue;
+      for (const dir of ['tighten', 'loosen']) {
+        if (found[dir]) continue;
+        const accept = dir === 'tighten' ? 'base' : 'head';
+        const reject = dir === 'tighten' ? 'head' : 'base';
+        // Reverting the line restores the base verdict.
+        const attributed = (p) => (dir === 'tighten' ? h(p) : !h(p));
+        found[dir] = await search(entry, accept, reject, ctx, attributed);
+      }
+      if (found.tighten && found.loosen) break;
     }
     const observed = ['tighten', 'loosen'].filter(d => found[d]);
-    const payloads = observed.map(d => ({ kind: d, root: found[d].root, payload: found[d].payload,
-      at: `/${found[d].at.map(x => String(x).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`.replace(/^\/$/, ''),
-      value: getAt(found[d].payload, found[d].at),
-      base: d === 'tighten' ? 'valid' : 'invalid', head: d === 'tighten' ? 'invalid' : 'valid' }));
-    const missing = [...declared].filter(d => !found[d]);
-    const undeclared = observed.filter(d => !declared.has(d));
-    const reasons = [];
-    if (missing.length) reasons.push(`no ${missing.join('/')} witness found in ${roots.length} root(s)`);
-    if (undeclared.length) reasons.push(`a ${undeclared.join('/')} witness exists but the site declares only ${[...declared].join('/')}`);
-    for (const line of group.lines) {
-      results.push({ index: line.index, direction: line.direction, site, site_lines: group.lines.map(l => l.index),
-        observed, ok: reasons.length === 0, payloads, reason: reasons.join('; ') || undefined });
+    const declared = change.direction === 'both' ? ['tighten', 'loosen'] : change.direction === 'none' ? [] : [change.direction];
+    res.observed = observed;
+    res.payloads = observed.map(d => payloadRecord(d, found[d]));
+    const missing = declared.filter(d => !found[d]);
+    const extra = observed.filter(d => !declared.includes(d));
+    if (missing.length && !reasons.length) reasons.push(`no ${missing.join('/')} witness attributed to this line in ${entries.length} root(s)`);
+    else if (missing.length) reasons.push(`no ${missing.join('/')} witness`);
+    if (extra.length) reasons.push(`a ${extra.join('/')} witness is attributed to this line, which declares ${change.direction}`);
+    if (!missing.length && !extra.length) reasons.length = 0;
+    res.ok = reasons.length === 0;
+    if (reasons.length) res.reason = [...new Set(reasons)].join('; ');
+    results.set(change.index, res);
+  }
+
+  // Per-site search in both directions, without attribution: a direction
+  // the site shows that none of its lines declares is an undeclared change.
+  for (const [site, group] of sites) {
+    const declared = new Set(group.lines.flatMap(l => (l.direction === 'both' ? ['tighten', 'loosen'] : l.direction === 'none' ? [] : [l.direction])));
+    const roots = [...new Set([...group.entries].sort(byPointer).map(e => e.root))].slice(0, 6);
+    for (const dir of ['tighten', 'loosen']) {
+      if (declared.has(dir)) continue;
+      const accept = dir === 'tighten' ? 'base' : 'head';
+      const reject = dir === 'tighten' ? 'head' : 'base';
+      let hit = null;
+      for (const root of roots) {
+        for (const entry of group.entries.filter(e => e.root === root)) {
+          hit = await search(entry, accept, reject, ctx, () => true);
+          if (hit) break;
+        }
+        if (hit) break;
+      }
+      if (!hit) continue;
+      for (const line of group.lines) {
+        const r = results.get(line.index);
+        r.ok = false;
+        r.site_undeclared = payloadRecord(dir, hit);
+        r.reason = [r.reason, `site ${site} has a ${dir} witness that no line at the site declares`].filter(Boolean).join('; ');
+      }
     }
   }
-  return results.sort((a, b) => a.index - b.index);
+  return [...results.values()].sort((a, b) => a.index - b.index);
 }
 
-async function search(entry, accept, reject, { trees, validators, corpus, corpusStrings }) {
+function payloadRecord(dir, found) {
+  return {
+    kind: dir,
+    root: found.root,
+    payload: found.payload,
+    at: found.at.length ? `/${found.at.map(x => String(x).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}` : '',
+    value: getAt(found.payload, found.at),
+    base: dir === 'tighten' ? 'valid' : 'invalid',
+    head: dir === 'tighten' ? 'invalid' : 'valid',
+  };
+}
+
+/**
+ * The head tree with one difference entry reverted at its site: the entry's
+ * keyword at head_location gets the base value back, or is removed when the
+ * base lacks it. Returns { tree }, or { reason } when the keyword as the
+ * source writes it cannot be mapped back (it came from a normalization).
+ */
+function revertedHead(trees, entry) {
+  const loc = parseLocation(entry.head_location);
+  if (!loc || !loc.doc.startsWith('src:')) return { reason: `site ${entry.head_location} is not a source schema` };
+  const rel = loc.doc.slice(4);
+  const doc = structuredClone(trees.head.files.get(rel));
+  const raw = getPointer(doc, loc.ptr);
+  if (!isObj(raw)) return { reason: `no schema object at ${entry.head_location}` };
+  const baseRaw = rawAt(trees.base, parseLocation(entry.base_location));
+  const kw = entry.keyword;
+  const has = (f) => Object.prototype.hasOwnProperty.call(entry, f);
+  const written = (k) => Object.prototype.hasOwnProperty.call(raw, k);
+  const segs = entry.pointer.split('/').map(unescapePointer);
+  const last = segs[segs.length - 1];
+  const UNIONS = ['anyOf', 'oneOf', 'allOf'];
+  const branch = /^\d+$/.test(last) && UNIONS.includes(segs[segs.length - 2]) && UNIONS.includes(kw);
+  if (branch) {
+    const key = segs[segs.length - 2];
+    const idx = Number(last);
+    if (has('new') && !has('old')) {
+      if (!Array.isArray(raw[key]) || raw[key][idx] === undefined) return { reason: `${key}/${idx} is not written at ${entry.head_location}` };
+      raw[key].splice(idx, 1);
+    } else if (has('old') && !has('new')) {
+      const b = isObj(baseRaw) && Array.isArray(baseRaw[key]) ? baseRaw[key][idx] : undefined;
+      if (b === undefined) return { reason: `${key}/${idx} is not written at ${entry.base_location}` };
+      raw[key] = [...(Array.isArray(raw[key]) ? raw[key] : []), structuredClone(b)];
+    } else return { reason: `cannot revert a ${key} branch change` };
+  } else if (kw === 'properties' || kw === 'patternProperties' || kw === 'dependencies') {
+    if (has('new') && !has('old')) {
+      if (!isObj(raw[kw]) || raw[kw][last] === undefined) return { reason: `${kw}/${last} is not written at ${entry.head_location}` };
+      delete raw[kw][last];
+    } else {
+      const b = isObj(baseRaw) && isObj(baseRaw[kw]) ? baseRaw[kw][last] : undefined;
+      if (b === undefined) return { reason: `${kw}/${last} is not written at ${entry.base_location}` };
+      raw[kw] = { ...(isObj(raw[kw]) ? raw[kw] : {}), [last]: structuredClone(b) };
+    }
+  } else if (VALUE.has(kw)) {
+    // `const` may be written as a one-value `enum`.
+    const oneValueEnum = kw === 'const' && Array.isArray(raw.enum) && raw.enum.length === 1;
+    if (has('new') && !written(kw) && !oneValueEnum) return { reason: `${kw} at ${entry.head_location} comes from a normalization, not the source` };
+    if (oneValueEnum) delete raw.enum;
+    if (kw === 'enum' && written('const')) delete raw.const;
+    if (has('old')) raw[kw] = structuredClone(entry.old);
+    else delete raw[kw];
+  } else if (SINGLE.has(kw) || kw === 'items') {
+    if (has('new') && !written(kw)) return { reason: `${kw} at ${entry.head_location} comes from a normalization, not the source` };
+    if (has('old')) {
+      const b = isObj(baseRaw) ? baseRaw[kw] : undefined;
+      if (b === undefined) return { reason: `${kw} is not written at ${entry.base_location}` };
+      raw[kw] = structuredClone(b);
+    } else delete raw[kw];
+  } else {
+    return { reason: `no revert for keyword ${kw}` };
+  }
+  const files = new Map(trees.head.files);
+  files.set(rel, doc);
+  return { tree: { label: `${trees.head.label} with ${kw} reverted at ${entry.head_location}`, commit: null, files, readDist: trees.head.readDist } };
+}
+
+async function search(entry, accept, reject, { trees, validators, corpus, corpusStrings }, attributed = () => true) {
   const location = `${entry.root}#`;
   const va = await validators[accept].get(location);
   const vr = await validators[reject].get(location);
   if (typeof va !== 'function' || typeof vr !== 'function') return null;
-  const ok = (p) => p !== FAIL && p !== undefined && va(p) && !vr(p);
+  const ok = (p) => p !== FAIL && p !== undefined && va(p) && !vr(p) && attributed(p);
   const path = instancePath(entry.pointer);
   if (!path) return null;
   const steps = path.steps;
@@ -451,6 +572,11 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
     }
     if (raw === undefined) continue;
     if (isObj(raw) && typeof raw.pattern === 'string') patterns.push(raw.pattern);
+    // What a `not` excludes is a candidate on its own.
+    if (isObj(raw) && isObj(raw.not)) {
+      const v = synth(trees[side], loc.doc, raw.not, [], 0, 0);
+      if (v !== FAIL) synthesized.push(v);
+    }
     for (const choice of [0, 1]) {
       const v = synth(trees[side], loc.doc, raw, [], 0, choice);
       if (v !== FAIL) synthesized.push(v);

@@ -1,0 +1,13 @@
+changes:
+  - root: m-request.json
+    pointer: /properties/code
+    keyword: pattern
+    new: ^[A-Z]{2}$
+    direction: tighten
+    side: request
+  - root: m-request.json
+    pointer: /properties/code
+    keyword: maxLength
+    old: 2
+    direction: none
+    side: request
