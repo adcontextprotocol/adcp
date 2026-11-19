@@ -37,6 +37,10 @@ export const DISTRIBUTION_IDENTIFIER_TYPE_VALUES = [
   'snapchat_handle',
   'x_user_id',
   'x_handle',
+  'linkedin_member_id',
+  'linkedin_member_handle',
+  'linkedin_organization_id',
+  'linkedin_organization_handle',
   'imdb_id',
   'gracenote_id',
   'eidr_id',
@@ -68,6 +72,8 @@ const HANDLE_IDENTIFIER_TYPES = new Set<string>([
   'facebook_page_handle',
   'snapchat_handle',
   'x_handle',
+  'linkedin_member_handle',
+  'linkedin_organization_handle',
 ]);
 
 function normalizeHandle(raw: string): string {

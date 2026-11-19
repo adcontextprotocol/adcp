@@ -17,11 +17,15 @@ describe('social distribution identifier types', () => {
     'snapchat_handle',
     'x_user_id',
     'x_handle',
+    'linkedin_member_id',
+    'linkedin_member_handle',
+    'linkedin_organization_id',
+    'linkedin_organization_handle',
   ])('accepts %s', (type) => {
     expect(isValidDistributionIdentifierType(type)).toBe(true);
   });
 
-  it.each(['instagram_handle', 'facebook_page_handle', 'snapchat_handle', 'x_handle', 'youtube_channel_handle'])(
+  it.each(['instagram_handle', 'facebook_page_handle', 'snapchat_handle', 'x_handle', 'linkedin_member_handle', 'linkedin_organization_handle', 'youtube_channel_handle'])(
     'normalizes %s to @ plus the lowercased name',
     (type) => {
       expect(normalizeCollectionDistributionIdentifier(type, '  JuniperVale ')).toEqual({ type, value: '@junipervale' });
@@ -35,6 +39,8 @@ describe('social distribution identifier types', () => {
       value: '17841400000000000',
     });
     expect(normalizeCollectionDistributionIdentifier('x_user_id', '783214')).toEqual({ type: 'x_user_id', value: '783214' });
+    expect(normalizeCollectionDistributionIdentifier('linkedin_member_id', '  Member123 ')).toEqual({ type: 'linkedin_member_id', value: 'Member123' });
+    expect(normalizeCollectionDistributionIdentifier('linkedin_organization_id', ' 001234 ')).toEqual({ type: 'linkedin_organization_id', value: '001234' });
   });
 });
 
