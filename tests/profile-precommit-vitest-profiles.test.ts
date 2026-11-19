@@ -11,7 +11,16 @@
 // profile is simply missing. The case first requires the step to report no
 // failed profile write (report.json profile_write_errors), and every message
 // names the free space on the root's volume.
-import { execFileSync, spawnSync } from 'node:child_process';
+//
+// Work decides the outcome, not wall time. The marker function does a fixed
+// amount of work: on a loaded machine a time-boxed loop can get almost no CPU
+// in its window, and then neither sampler records it. The profiler run is
+// bounded by CPU time, 5 s per process (RLIMIT_CPU, which every process it
+// starts inherits): a process that spins is killed with SIGXCPU however busy
+// the machine is, and a run that is merely slow under load is not. A run that
+// hangs without using CPU ends at the 10 s test timeout (vitest.config.ts),
+// and afterEach stops it.
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -26,7 +35,16 @@ const NODE = process.execPath;
 const MARKER_FUNCTION = 'profiledInForksWorker';
 
 const dirs: string[] = [];
-afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+const profilerGroups: number[] = [];
+afterEach(() => {
+  // A profiler run cut off by the test timeout must not keep running. SIGTERM,
+  // not SIGKILL: the runner forwards it to the leaves it started in groups of
+  // their own.
+  for (const pgid of profilerGroups.splice(0)) {
+    try { process.kill(-pgid, 'SIGTERM'); } catch { /* group gone */ }
+  }
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 // The profiler runs git in the throwaway root; inside a hook the inherited
 // GIT_DIR must not reach it (tests/helpers/git-object-fixture.cjs).
@@ -54,6 +72,27 @@ function listing(dir: string): string {
   try { return readdirSync(dir).join(', ') || '(empty)'; } catch (error) { return (error as Error).message; }
 }
 
+interface ProfilerRun { status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }
+
+/**
+ * Runs the profiler CLI in its own process group, every process of the run
+ * limited to cpuSeconds of CPU time, and resolves when it exits.
+ */
+function runProfiler(args: string[], cwd: string, cpuSeconds: number): Promise<ProfilerRun> {
+  return new Promise((resolveRun) => {
+    const child = spawn('sh', ['-c', `ulimit -t ${cpuSeconds} && exec "$0" "$@"`, NODE, PROFILER, ...args], {
+      cwd, env: childEnv(), detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    profilerGroups.push(child.pid!);
+    let stdout = '';
+    let stderr = '';
+    child.stdout!.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+    child.stderr!.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+    child.once('error', (error) => resolveRun({ status: null, signal: null, stdout, stderr: `${stderr}${String(error)}` }));
+    child.once('close', (status, signal) => resolveRun({ status, signal, stdout, stderr }));
+  });
+}
+
 /** Profile files under dir whose text names MARKER_FUNCTION. */
 function profilesNamingMarker(dir: string, suffix: string): string[] {
   let names: string[] = [];
@@ -62,7 +101,7 @@ function profilesNamingMarker(dir: string, suffix: string): string[] {
 }
 
 describe('profile-precommit run', () => {
-  it('writes CPU and heap profiles for the test files of a forks-pool vitest leaf', () => {
+  it('writes CPU and heap profiles for the test files of a forks-pool vitest leaf', async () => {
     const root = mkdtempSync(join(tmpdir(), 'profile-precommit-forks-'));
     dirs.push(root);
     mkdirSync(join(root, 'scripts'));
@@ -73,27 +112,32 @@ describe('profile-precommit run', () => {
       name: 'profile-precommit-forks-fixture', version: '0.0.0', private: true,
       scripts: { precommit: 'npm run test:unit', 'test:unit': 'vitest run --dir tests/ --pool=forks' },
     }, null, 2));
-    // Busy and allocating for 200 ms, so both samplers record the function.
-    // The heap profile lists live allocations only, so they stay reachable.
+    // A fixed amount of work: about 30 MB of allocations kept reachable (the
+    // heap profile lists live allocations only), some 60 intervals of the
+    // heap sampler's 512 KiB, then a fixed loop over them that the CPU sampler
+    // records about 70 times on an idle machine. Load stretches the work and
+    // so adds CPU samples; it never removes any.
     writeFileSync(join(root, 'tests', 'worker.test.ts'), [
       "import { expect, it } from 'vitest';",
-      'const kept: object[] = [];',
+      'const kept: { index: number; text: string }[] = [];',
       `function ${MARKER_FUNCTION}() {`,
-      '  const end = Date.now() + 200;',
-      '  while (Date.now() < end) kept.push({ at: Date.now(), text: String(kept.length) });',
-      '  return kept.length;',
+      '  for (let index = 0; index < 400_000; index++) kept.push({ index, text: String(index) });',
+      '  let checksum = 0;',
+      '  for (let round = 0; round < 40; round++) for (let index = 0; index < kept.length; index++) checksum = (checksum + (kept[index].index ^ round)) | 0;',
+      '  return kept.length + (checksum & 0);',
       '}',
       `it('runs in a forks worker', () => { expect(${MARKER_FUNCTION}()).toBeGreaterThan(0); });`,
       '',
     ].join('\n'));
     execFileSync('git', ['init', '-q'], { cwd: root });
 
-    const result = spawnSync(
-      NODE,
-      [PROFILER, 'run', '--root', root, '--server-unit', 'skip', '--cpu-prof', '--heap-prof', '--label', 'forks', '--out', 'runs'],
-      { cwd: root, env: childEnv(), encoding: 'utf8', timeout: 5_000 },
+    const result = await runProfiler(
+      ['run', '--root', root, '--server-unit', 'skip', '--cpu-prof', '--heap-prof', '--label', 'forks', '--out', 'runs'],
+      root, 5,
     );
-    expect(result.status, `${result.stdout}${result.stderr}\n${freeSpace(root)}`).toBe(0);
+    const outcome = `signal: ${String(result.signal)} (SIGXCPU: a process used 5 s of CPU)\n${result.stdout}${result.stderr}\n${freeSpace(root)}`;
+    expect(result.signal, outcome).toBeNull();
+    expect(result.status, outcome).toBe(0);
 
     const runDir = join(root, 'runs', readdirSync(join(root, 'runs'))[0]);
     const step = readdirSync(runDir).find((name) => /^\d{2}-test-unit$/.test(name));

@@ -18,16 +18,23 @@
 // ⏰ TIMEOUT block naming each running step and how long it ran, later steps
 // are skipped and the hook exits 124.
 //
-// Budgets here are 0.5-1 s and every bounded wait ends inside vitest's 10 s
-// testTimeout (vitest.config.ts); a hook that never ends is SIGKILLed by the
-// harness guard so the case fails on its assertions, not on a test timeout.
+// Budgets here are 0.5-1 s. Outcomes come from events, not from how fast a
+// loaded machine starts processes: in every expiry case a preload in the
+// runner (budget-gate.mjs) holds the budget's expiry until each fixture
+// process the case kills has published its pid, so the budget expires at the
+// deadline or once the fixture is up, whichever is later. The promptness
+// bound counts from the runner's recorded expiry. Every process a case starts
+// may use 5 s of CPU (RLIMIT_CPU), so one that spins is killed however busy
+// the machine is; a hook still running 5 s after it announced the expiry is
+// SIGKILLed by the harness guard; anything else that never ends fails at
+// vitest's 10 s testTimeout and afterEach kills it.
 import { execFileSync, spawn } from 'node:child_process';
 import {
   copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import gitObjectFixture from './helpers/git-object-fixture.cjs';
 
@@ -44,22 +51,26 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const MARKERS = path.join(__dirname, '..', 'markers');
 const file = (name) => path.join(MARKERS, name);
-const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const has = (name) => fs.existsSync(file(name));
 const mark = (name, text = '') => fs.writeFileSync(file(name), String(text));
-const waitFor = (pred, ms) => {
-  const end = Date.now() + ms;
-  while (Date.now() < end) { if (pred()) return true; sleep(20); }
-  return pred();
-};
 // Publishes this process's pid as <name>.pid and keeps running until killed.
 const hold = (name) => { mark(name + '.pid', process.pid); setInterval(() => {}, 1000); };
 // Starts scripts/stray.cjs in its OWN process group (detached), sharing this
-// process's stdout and stderr, and returns once it has published its pid.
-const startStray = (name) => {
-  spawn(process.execPath, [path.join(__dirname, 'stray.cjs'), name], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] });
-  if (!waitFor(() => has(name + '.pid'), 2000)) { console.error(name + ' never started'); process.exit(1); }
-};
+// process's stdout and stderr; resolves once the stray has published its pid.
+// A stray that exits first fails the leaf.
+const startStray = (name) => new Promise((resolve) => {
+  let started = false;
+  const child = spawn(process.execPath, [path.join(__dirname, 'stray.cjs'), name], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] });
+  const check = () => {
+    if (started || !has(name + '.pid')) return;
+    started = true;
+    watcher.close();
+    resolve();
+  };
+  const watcher = fs.watch(MARKERS, check);
+  check();
+  child.once('exit', () => { if (!started) { console.error(name + ' exited before it started'); process.exit(1); } });
+});
 module.exports = { has, mark, hold, startStray };
 `;
 
@@ -80,7 +91,7 @@ const leaf = {
   holds: (name: string) => `${LIB}.hold(${JSON.stringify(name)});\n`,
   /** Starts a detached SIGTERM-ignoring stray on its stdout, then publishes its pid and runs until killed. */
   holdsWithStray: (name: string, stray: string) =>
-    `const lib = ${LIB};\nlib.startStray(${JSON.stringify(stray)});\nlib.hold(${JSON.stringify(name)});\n`,
+    `const lib = ${LIB};\nlib.startStray(${JSON.stringify(stray)}).then(() => lib.hold(${JSON.stringify(name)}));\n`,
   /** Records its argv in <name>.argv and exits with the number after --code. */
   exitsWith: (name: string) => [
     `const lib = ${LIB};`,
@@ -92,6 +103,41 @@ const leaf = {
 };
 
 const IMAGE_CHECK = '#!/bin/bash\ntouch "$(dirname "$0")/../markers/image-check-ran"\nexit 0\n';
+
+// Loaded into the hook runner only (NODE_OPTIONS, which it then drops, so no
+// step inherits it). It wraps the one timer runPlan arms, the budget's, so
+// that its callback runs once the delay has passed AND every marker named in
+// FIXTURE_BUDGET_READY exists: the budget expires at the deadline or once the
+// fixture is up, whichever is later. It marks budget-gate-engaged when it
+// wraps the timer and budget-gate-released when it lets the expiry through.
+const BUDGET_GATE = `
+import { existsSync, watch, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const markers = process.env.FIXTURE_MARKERS_DIR;
+const ready = (process.env.FIXTURE_BUDGET_READY ?? '').split(',').filter(Boolean);
+delete process.env.NODE_OPTIONS;
+if (/profile-precommit\\.mjs$/.test(process.argv[1] ?? '') && markers && ready.length > 0) {
+  const realSetTimeout = globalThis.setTimeout;
+  let engaged = false;
+  globalThis.setTimeout = function setTimeout(callback, delay, ...args) {
+    const caller = (new Error().stack ?? '').split('\\n')[2] ?? '';
+    if (engaged || typeof callback !== 'function' || !/\\bat runPlan\\b/.test(caller)) return realSetTimeout(callback, delay, ...args);
+    engaged = true;
+    writeFileSync(join(markers, 'budget-gate-engaged'), '');
+    let due = false;
+    let released = false;
+    const release = () => {
+      if (released || !due || !ready.every((name) => existsSync(join(markers, name)))) return;
+      released = true;
+      watcher.close();
+      writeFileSync(join(markers, 'budget-gate-released'), '');
+      callback(...args);
+    };
+    const watcher = watch(markers, { persistent: false }, release);
+    return realSetTimeout(() => { due = true; release(); }, delay);
+  };
+}
+`;
 
 // The pre-commit plan most cases share: one quick light leaf.
 const QUICK_PLAN = { precommit: 'node scripts/typecheck-pass.cjs' };
@@ -125,6 +171,7 @@ function fixtureRoot({ scripts, files = {} }: FixtureOptions): string {
   writeFileSync(join(root, 'scripts', 'fixture-lib.cjs'), FIXTURE_LIB);
   writeFileSync(join(root, 'scripts', 'stray.cjs'), STRAY);
   writeFileSync(join(root, 'scripts', 'check-image-quality.sh'), IMAGE_CHECK);
+  writeFileSync(join(root, 'budget-gate.mjs'), BUDGET_GATE);
   for (const [rel, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     writeFileSync(join(root, rel), content);
@@ -151,6 +198,18 @@ function hookEnv(root: string, extra: Record<string, string> = {}): NodeJS.Proce
   return { ...env, ...extra };
 }
 
+/**
+ * Environment additions that hold the budget's expiry until each fixture
+ * process in `pids` (marker names without .pid) has published its pid.
+ */
+function gatedOn(root: string, pids: string[]): Record<string, string> {
+  return {
+    NODE_OPTIONS: `--import=${pathToFileURL(join(root, 'budget-gate.mjs')).href}`,
+    FIXTURE_MARKERS_DIR: join(root, 'markers'),
+    FIXTURE_BUDGET_READY: pids.map((name) => `${name}.pid`).join(','),
+  };
+}
+
 // ------------------------------------------------------------------- harness
 
 interface HookResult {
@@ -165,22 +224,30 @@ interface HookResult {
   exitAt: number;
 }
 
+const TIMEOUT_BANNER = '⏰ TIMEOUT:';
+
 /**
- * Runs command with cwd = root in its own process group, as git runs a hook.
- * A hook that outlives guardMs is SIGKILLed (its whole group), inside the
- * test timeout; the stray/leaf pids are cleaned up by afterEach.
+ * Runs command with cwd = root in its own process group, as git runs a hook,
+ * each of its processes limited to 5 s of CPU. A hook still running guardMs
+ * after it printed its TIMEOUT banner is SIGKILLed (its whole group), inside
+ * the test timeout. The stray/leaf pids are cleaned up by afterEach.
  */
 function runHook(root: string, command: string, args: string[], env: NodeJS.ProcessEnv, guardMs = 5_000): Promise<HookResult> {
   const spawnAt = Date.now();
-  const child = spawn(command, args, { cwd: root, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn('sh', ['-c', 'ulimit -t 5 && exec "$0" "$@"', command, ...args], { cwd: root, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   hookGroups.push(child.pid!);
   let stdout = '';
   let stderr = '';
   let output = '';
-  child.stdout!.on('data', (chunk) => { stdout += chunk; output += chunk; });
-  child.stderr!.on('data', (chunk) => { stderr += chunk; output += chunk; });
+  let guard: ReturnType<typeof setTimeout> | undefined;
+  const armGuard = () => { guard ??= setTimeout(() => { try { process.kill(-child.pid!, 'SIGKILL'); } catch { /* gone */ } }, guardMs); };
+  const onOutput = (chunk: Buffer) => {
+    output += chunk;
+    if (output.includes(TIMEOUT_BANNER)) armGuard();
+  };
+  child.stdout!.on('data', (chunk) => { stdout += chunk; onOutput(chunk); });
+  child.stderr!.on('data', (chunk) => { stderr += chunk; onOutput(chunk); });
   return new Promise((resolveDone) => {
-    const guard = setTimeout(() => { try { process.kill(-child.pid!, 'SIGKILL'); } catch { /* gone */ } }, guardMs);
     let settled = false;
     child.on('exit', (code, signal) => {
       const exitAt = Date.now();
@@ -204,17 +271,17 @@ const runHuskyHook = (root: string, hook: 'pre-commit' | 'pre-push', env: NodeJS
 /** node scripts/profile-precommit.mjs hook ARGS (the copy in root). */
 const runRunner = (root: string, args: string[], env: NodeJS.ProcessEnv) => runHook(root, NODE, [RUNNER, 'hook', ...args], env);
 
-async function waitUntil(pred: () => boolean, ms: number): Promise<boolean> {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    if (pred()) return true;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return pred();
-}
-
 function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+/** The process exists and is not a zombie (killed, not yet reaped). */
+function running(pid: number): boolean {
+  try {
+    return !execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().startsWith('Z');
+  } catch {
+    return false;
+  }
 }
 
 const marker = (root: string, name: string) => join(root, 'markers', name);
@@ -226,12 +293,22 @@ function publishedPid(root: string, name: string, output: string): number {
   return Number(readFileSync(file, 'utf8'));
 }
 
-/** Fails if any of the named fixture processes is alive shortly after the hook exited. */
+/**
+ * Waits until none of the named fixture processes is running. The hook has
+ * exited, so each has been sent its SIGKILL; under load the kernel may take a
+ * moment to end it. A process the hook never killed keeps this waiting until
+ * the test times out, so the case fails either way.
+ */
 async function expectAllDead(root: string, names: string[], output: string) {
   const pids = names.map((name) => [name, publishedPid(root, name, output)] as const);
-  // Only the OS's reaping of a killed, reparented process; not a kill grace.
-  await waitUntil(() => pids.every(([, pid]) => !alive(pid)), 500);
-  for (const [name, pid] of pids) expect(alive(pid), `${name} (pid ${pid}) outlived the hook`).toBe(false);
+  while (pids.some(([, pid]) => running(pid))) await new Promise((r) => setImmediate(r));
+  for (const [name, pid] of pids) expect(running(pid), `${name} (pid ${pid}) outlived the hook`).toBe(false);
+}
+
+/** The case's readiness gate wrapped the budget timer and let the expiry through. */
+function expectGateReleased(root: string, output: string) {
+  expect(existsSync(marker(root, 'budget-gate-engaged')), `the budget gate wrapped the runner's budget timer; output:\n${output}`).toBe(true);
+  expect(existsSync(marker(root, 'budget-gate-released')), `the budget gate released the expiry; output:\n${output}`).toBe(true);
 }
 
 type HookName = 'pre-commit' | 'pre-push';
@@ -277,14 +354,20 @@ function stepFor(runDir: string, needle: string): Record<string, any> {
 
 const timeOf = (value: unknown) => (typeof value === 'number' ? value : Date.parse(String(value)));
 
-/** The hook exited after its deadline and no more than ~1 s after it (kill, reap, summary and prune included). */
-function expectExitNearDeadline(result: HookResult, budget: Record<string, any>) {
+/**
+ * The budget expired no earlier than its deadline, and the hook exited after
+ * the expiry and no more than ~1 s after it (kill, reap, summary and prune
+ * included). Counted from the runner's recorded expiry, so neither process
+ * start-up nor the readiness gate is inside the bound.
+ */
+function expectExitSoonAfterExpiry(result: HookResult, budget: Record<string, any>) {
   const deadline = timeOf(budget.deadline_at);
+  const expiredAt = timeOf(budget.expired_at);
   expect(Number.isFinite(deadline), `budget.deadline_at is a time: ${JSON.stringify(budget)}`).toBe(true);
-  expect(Number.isFinite(timeOf(budget.expired_at)), `budget.expired_at is a time: ${JSON.stringify(budget)}`).toBe(true);
-  expect(timeOf(budget.expired_at)).toBeGreaterThanOrEqual(deadline);
-  expect(result.exitAt - deadline, 'ms from the deadline to the hook exit').toBeGreaterThanOrEqual(0);
-  expect(result.exitAt - deadline, 'ms from the deadline to the hook exit').toBeLessThanOrEqual(1_500);
+  expect(Number.isFinite(expiredAt), `budget.expired_at is a time: ${JSON.stringify(budget)}`).toBe(true);
+  expect(expiredAt).toBeGreaterThanOrEqual(deadline);
+  expect(result.exitAt - expiredAt, 'ms from the expiry to the hook exit').toBeGreaterThanOrEqual(0);
+  expect(result.exitAt - expiredAt, 'ms from the expiry to the hook exit').toBeLessThanOrEqual(1_500);
 }
 
 /** A line of the TIMEOUT block that names needle with an elapsed time in seconds. */
@@ -337,12 +420,13 @@ describe('pre-commit hook budget (sh -e .husky/pre-commit)', () => {
       },
     });
 
-    const result = await runHuskyHook(root, 'pre-commit', hookEnv(root, { ADCP_PRECOMMIT_BUDGET_S: '1' }));
+    const fixture = ['hold-alpha', 'hold-beta', 'stray-alpha'];
+    const result = await runHuskyHook(root, 'pre-commit', hookEnv(root, { ADCP_PRECOMMIT_BUDGET_S: '1', ...gatedOn(root, fixture) }));
 
     expect(result.code, result.output).toBe(124);
+    expectGateReleased(root, result.output);
     expect(result.exitAt - result.spawnAt, 'spawn-to-exit ms').toBeGreaterThanOrEqual(1_000);
-    expect(result.exitAt - result.spawnAt, 'spawn-to-exit ms').toBeLessThanOrEqual(3_000);
-    await expectAllDead(root, ['hold-alpha', 'hold-beta', 'stray-alpha'], result.output);
+    await expectAllDead(root, fixture, result.output);
     expect(existsSync(marker(root, 'server-unit-ran')), 'a step after the expiry must never run').toBe(false);
 
     expect(result.output).toContain('⏰ TIMEOUT: pre-commit used its 1 s budget');
@@ -354,8 +438,8 @@ describe('pre-commit hook budget (sh -e .husky/pre-commit)', () => {
     const meta = runJson(runDir);
     expect(meta.exit_code).toBe(124);
     expect(meta.budget).toMatchObject({ hook: 'pre-commit', seconds: 1, source: 'ADCP_PRECOMMIT_BUDGET_S' });
-    expectExitNearDeadline(result, meta.budget);
-    expect(timeOf(meta.ended_at) - timeOf(meta.budget.deadline_at)).toBeLessThanOrEqual(1_500);
+    expectExitSoonAfterExpiry(result, meta.budget);
+    expect(timeOf(meta.ended_at) - timeOf(meta.budget.expired_at)).toBeLessThanOrEqual(1_500);
     const running = JSON.stringify(meta.budget.running);
     expect(meta.budget.running).toHaveLength(2);
     expect(running).toContain('hold-alpha');
@@ -397,17 +481,19 @@ describe('pre-push hook budget (sh -e .husky/pre-push)', () => {
       },
     });
 
+    const fixture = ['verify-version-sync', 'stray-vvs'];
     const result = await runHuskyHook(
-      root, 'pre-push', hookEnv(root, { ADCP_PREPUSH_BUDGET_S: '1' }), ['origin', 'https://example.invalid/fixture.git'],
+      root, 'pre-push', hookEnv(root, { ADCP_PREPUSH_BUDGET_S: '1', ...gatedOn(root, fixture) }), ['origin', 'https://example.invalid/fixture.git'],
     );
 
     expect(result.code, result.output).toBe(124);
-    await expectAllDead(root, ['verify-version-sync', 'stray-vvs'], result.output);
+    expectGateReleased(root, result.output);
+    await expectAllDead(root, fixture, result.output);
     expect(result.output).toContain('⏰ TIMEOUT: pre-push used its 1 s budget');
     expectNamedWithElapsed(result.output, 'verify-version-sync');
     const budget = budgetOf(root, 'pre-push', result.output);
     expect(budget).toMatchObject({ hook: 'pre-push', seconds: 1, source: 'ADCP_PREPUSH_BUDGET_S' });
-    expectExitNearDeadline(result, budget);
+    expectExitSoonAfterExpiry(result, budget);
   });
 });
 
@@ -441,14 +527,15 @@ describe('budget resolution through the runner CLI', () => {
       files: { 'scripts/typecheck-hold.cjs': leaf.holds('hold') },
     });
 
-    const result = await runRunner(root, [], hookEnv(root, { ADCP_HOOK_BUDGET_S: '0.5' }));
+    const result = await runRunner(root, [], hookEnv(root, { ADCP_HOOK_BUDGET_S: '0.5', ...gatedOn(root, ['hold']) }));
 
     expect(result.code, result.output).toBe(124);
+    expectGateReleased(root, result.output);
     await expectAllDead(root, ['hold'], result.output);
     expect(result.output).toContain('⏰ TIMEOUT: pre-commit used its 0.5 s budget');
     const budget = budgetOf(root, 'pre-commit', result.output);
     expect(budget).toMatchObject({ hook: 'pre-commit', seconds: 0.5, source: 'ADCP_HOOK_BUDGET_S' });
-    expectExitNearDeadline(result, budget);
+    expectExitSoonAfterExpiry(result, budget);
   });
 
   const INVALID = ['abc', '0', '-1', ''];
@@ -500,9 +587,10 @@ describe('hook --name <hook> -- CMD: the command as the single step under the ho
       files: { ...QUICK_FILES, 'scripts/hold.cjs': leaf.holds('hold') },
     });
 
-    const result = await runRunner(root, ['--name', hook, '--budget-s', '0.5', '--', 'node', 'scripts/hold.cjs'], hookEnv(root));
+    const result = await runRunner(root, ['--name', hook, '--budget-s', '0.5', '--', 'node', 'scripts/hold.cjs'], hookEnv(root, gatedOn(root, ['hold'])));
 
     expect(result.code, result.output).toBe(124);
+    expectGateReleased(root, result.output);
     await expectAllDead(root, ['hold'], result.output);
     expect(result.output).toContain(`⏰ TIMEOUT: ${hook} used its 0.5 s budget`);
     expectNamedWithElapsed(result.output, 'hold.cjs');
@@ -510,7 +598,7 @@ describe('hook --name <hook> -- CMD: the command as the single step under the ho
     const meta = runJson(runDir);
     expect(meta.exit_code).toBe(124);
     expect(meta.budget).toMatchObject({ hook, seconds: 0.5, source: '--budget-s' });
-    expectExitNearDeadline(result, meta.budget);
+    expectExitSoonAfterExpiry(result, meta.budget);
     expect(stepFor(runDir, 'hold.cjs').status).toBe('timed_out');
   });
 });
