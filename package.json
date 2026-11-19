@@ -165,7 +165,7 @@
     "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs tests/lint-conformance-doc-freshness.test.cjs && npm run test:release-instrumentation",
     "test:release-instrumentation": "node --test --test-force-exit --test-timeout=30000 tests/release-instrumentation.test.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs && node --test --test-force-exit --test-timeout=30000 tests/universal-macro-translation-vectors.test.cjs",
-    "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads && npm run test:auction-only-compliance",
+    "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ && npm run test:auction-only-compliance",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
     "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/ src/",
     "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts",

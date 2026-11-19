@@ -84,7 +84,7 @@ function snapshot({ repo, gitDir }) {
 
 function commandFor(file) {
   if (file.endsWith('.cjs')) return [process.execPath, ['--test', '--test-force-exit', file]];
-  return [process.execPath, [path.join(ROOT, 'node_modules/vitest/vitest.mjs'), 'run', '--dir', 'tests/', '--pool=threads', file]];
+  return [process.execPath, [path.join(ROOT, 'node_modules/vitest/vitest.mjs'), 'run', '--dir', 'tests/', file]];
 }
 
 /** Runs one test file with the parent's linked-worktree hook environment. */
