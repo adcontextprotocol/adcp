@@ -7,8 +7,8 @@
  *
  * A synchronous `node:module` resolve hook sees `import`, `import()`,
  * `require()` and `createRequire(...)(...)` / `.resolve(...)` alike. Every
- * resolution whose target is inside node_modules/@adcp/sdk/dist/lib/ is
- * appended to the JSONL file as one line:
+ * resolution whose target is inside node_modules/@adcp/sdk/ (outside its own
+ * node_modules) is appended to the JSONL file as one line:
  *
  *   { pid, parentURL, specifier, url, build: 'esm' | 'cjs' | 'other', conditions }
  *
@@ -25,7 +25,10 @@ if (!out) {
   throw new Error('sdk-build-trace.mjs needs ADCP_SDK_BUILD_TRACE_FILE (the JSONL file to append edges to)');
 }
 
-const SDK_LIB = '/node_modules/@adcp/sdk/dist/lib/';
+// The package root, not its build directory: the build is told apart by file
+// extension below, and the SDK's own dependencies are left out.
+const SDK_PACKAGE = '/node_modules/@adcp/sdk/';
+const SDK_DEPENDENCIES = '/node_modules/@adcp/sdk/node_modules/';
 
 function buildOf(url) {
   if (url.endsWith('.mjs')) return 'esm';
@@ -36,7 +39,7 @@ function buildOf(url) {
 registerHooks({
   resolve(specifier, context, nextResolve) {
     const result = nextResolve(specifier, context);
-    if (typeof result.url === 'string' && result.url.includes(SDK_LIB)) {
+    if (typeof result.url === 'string' && result.url.includes(SDK_PACKAGE) && !result.url.includes(SDK_DEPENDENCIES)) {
       appendFileSync(out, `${JSON.stringify({
         pid: process.pid,
         parentURL: context.parentURL ?? null,

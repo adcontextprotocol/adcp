@@ -20,7 +20,7 @@ function profile() {
     nodes: [
       frame(1, '(root)', '', [2, 5, 6]),
       frame(2, 'main', `file://${ROOT}/server/tests/manual/run-storyboards.ts`, [3]),
-      frame(3, 'getValidator', `file://${ROOT}/node_modules/@adcp/sdk/dist/lib/validation/schema-loader.mjs`, [4]),
+      frame(3, 'getValidator', `file://${ROOT}/node_modules/@adcp/sdk/dist/index.mjs`, [4]),
       frame(4, 'compileSchema', `file://${ROOT}/node_modules/ajv/dist/compile/index.js`),
       frame(5, 'spawnSync', 'node:child_process'),
       frame(6, '(idle)', ''),

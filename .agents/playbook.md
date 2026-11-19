@@ -985,9 +985,10 @@ authoritative gate.
   Running `scripts/build-*.cjs` directly always builds.
 - The matrix sets `ADCP_VALIDATOR_CACHE_DIR` to
   `node_modules/.cache/adcp-sdk-validators` unless it is already set, and the
-  queue passes it to every training-agent process, so only the first process
-  compiles each @adcp/sdk validator. Set it to an empty string to turn the
-  cache off.
+  queue passes it to every training-agent process. With an @adcp/sdk release
+  that reads it (the on-disk validator cache), only the first process
+  compiles each validator; an SDK without that cache ignores the variable.
+  Set it to an empty string to turn the cache off.
 - The server unit suite and `test:unit` use the same cache:
   `server/vitest.config.ts` and `vitest.config.ts` default
   `ADCP_VALIDATOR_CACHE_DIR` to the same path through `test.env`
