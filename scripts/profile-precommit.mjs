@@ -37,6 +37,7 @@
 //   --server-unit full|skip|auto  Server unit plan. Standalone default: full
 //                                 (the path a staged package.json takes);
 //                                 --as-hook default: auto (staged files).
+//   --root DIR                    Profile the plan of another tree (tests).
 //   --label TEXT                  Suffix for the run directory name.
 //   --out DIR                     Parent directory (default .hook-runs).
 //   --concurrent                  Use the hook's phases instead of running
@@ -123,6 +124,8 @@ import { leanLauncher, pruneHookRuns, runPlan } from './profile-precommit/runner
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
 const NODE_TEST_REPORTER = path.join(SCRIPT_DIR, 'profile-precommit', 'node-test-json-reporter.mjs');
+// Keeps --test-force-exit from dropping a file's last results (nodejs/node#64833).
+const NODE_TEST_BLOCKING_STDOUT = path.join(SCRIPT_DIR, 'profile-precommit', 'node-test-blocking-stdout.cjs');
 const VITEST_TIMING_REPORTER = path.join(SCRIPT_DIR, 'profile-precommit', 'vitest-timing-reporter.mjs');
 const COMPETING_RE = 'pre-push|storyboard|git push|vitest|tsc --project';
 const DEFAULT_HOOK_RUNS_KEEP = 20;
@@ -152,7 +155,7 @@ function instrument(cmd, dir, opts) {
     case 'vitest':
       return `${cmd.command} --reporter=default --reporter=${VITEST_TIMING_REPORTER}${opts['import-durations'] ? ' --experimental.importDurations.limit=500' : ''}`;
     case 'node-test':
-      return cmd.command.replace(/(\s--test)(\s|$)/, `$1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=${NODE_TEST_REPORTER} --test-reporter-destination=${path.join(dir, 'node-test.json')}$2`);
+      return cmd.command.replace(/(\s--test)(\s|$)/, `$1 --require=${NODE_TEST_BLOCKING_STDOUT} --test-reporter=spec --test-reporter-destination=stdout --test-reporter=${NODE_TEST_REPORTER} --test-reporter-destination=${path.join(dir, 'node-test.json')}$2`);
     case 'tsc':
       return `${cmd.command} --pretty false`;
     default:
@@ -287,13 +290,13 @@ function killTree(pid, signal) {
 
 // The profiling launcher for runner.mjs: the leaf plus structured reporters,
 // under /usr/bin/time, with a process-tree sampler and machine state.
-function profileLauncher(opts) {
+function profileLauncher(opts, root) {
   return {
     launch(cmd, dir) {
       const command = instrument(cmd, dir, opts);
       const env = {
         ...process.env,
-        PATH: `${path.join(REPO_ROOT, 'node_modules', '.bin')}:${process.env.PATH}`,
+        PATH: `${path.join(root, 'node_modules', '.bin')}:${process.env.PATH}`,
       };
       const nodeOptions = [];
       if (opts['cpu-prof']) nodeOptions.push('--cpu-prof', `--cpu-prof-dir=${path.join(dir, 'cpu')}`);
@@ -315,7 +318,7 @@ function profileLauncher(opts) {
       const errFd = openSync(path.join(dir, 'stderr.log'), 'w');
       const rusageFile = path.join(dir, 'rusage.txt');
       const child = spawn('/usr/bin/time', [TIME_FLAG, '-o', rusageFile, 'sh', '-c', command], {
-        cwd: REPO_ROOT, env, detached: true, stdio: ['ignore', outFd, errFd],
+        cwd: root, env, detached: true, stdio: ['ignore', outFd, errFd],
       });
       closeSync(outFd);
       closeSync(errFd);
@@ -334,10 +337,10 @@ function profileLauncher(opts) {
           },
           machine_before: before,
           machine_after: machineState(),
-          ...collectResults(cmd, dir, REPO_ROOT),
+          ...collectResults(cmd, dir, root),
         };
         if (opts['cpu-prof']) {
-          extra.cpu_profile = aggregateCpuProfiles(path.join(dir, 'cpu'), { repoRoot: REPO_ROOT });
+          extra.cpu_profile = aggregateCpuProfiles(path.join(dir, 'cpu'), { repoRoot: root });
           if (extra.cpu_profile) writeFileSync(path.join(dir, 'cpu', 'cpu-summary.json'), JSON.stringify(extra.cpu_profile, null, 1));
         }
         if (opts['heap-prof']) {
@@ -506,10 +509,11 @@ async function runAll(opts) {
   const asHook = !!opts['as-hook'];
   opts['server-unit'] ??= asHook ? 'auto' : 'full';
   if (!['full', 'skip', 'auto'].includes(opts['server-unit'])) throw new Error('--server-unit must be full, skip or auto');
-  const runDir = path.resolve(REPO_ROOT, opts.out ?? '.hook-runs', `${utcStamp(false)}${opts.label ? `-${String(opts.label).replace(/[^\w.-]+/g, '-')}` : ''}`);
+  const root = path.resolve(opts.root ?? REPO_ROOT);
+  const runDir = path.resolve(root, opts.out ?? '.hook-runs', `${utcStamp(false)}${opts.label ? `-${String(opts.label).replace(/[^\w.-]+/g, '-')}` : ''}`);
   mkdirSync(runDir, { recursive: true });
 
-  const plan = planCommands({ root: REPO_ROOT });
+  const plan = planCommands({ root });
   const only = opts.only ? String(opts.only).split(',') : null;
   const commands = only ? plan.commands.filter((c) => only.some((o) => c.name.includes(o))) : plan.commands;
   const concurrent = asHook || !!opts.concurrent;
@@ -518,7 +522,7 @@ async function runAll(opts) {
     mode: 'profile',
     label: opts.label ?? null,
     started_at: new Date().toISOString(),
-    git: gitState(REPO_ROOT),
+    git: gitState(root),
     node: process.version,
     options: { 'server-unit': opts['server-unit'], concurrent, 'cpu-prof': !!opts['cpu-prof'], 'import-durations': !!opts['import-durations'], 'heap-prof': !!opts['heap-prof'], 'keep-going': !!opts['keep-going'], 'synthetic-load': Number(opts['synthetic-load'] ?? 0), only, ADCP_TIMEOUT_SCALE: process.env.ADCP_TIMEOUT_SCALE ?? null, ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_SHARDS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: process.env.ADCP_PRECOMMIT_SERVER_UNIT_WORKERS ?? null, ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL: process.env.ADCP_PRECOMMIT_SERVER_UNIT_ISOLATE_ALL ?? null, NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE ?? null, NODE_DISABLE_COMPILE_CACHE: process.env.NODE_DISABLE_COMPILE_CACHE ?? null },
     plan: planMeta(commands, phases),
@@ -531,11 +535,11 @@ async function runAll(opts) {
   const stopHogs = () => { for (const hog of hogs) killTree(hog.pid, 'SIGKILL'); };
   process.on('exit', stopHogs);
   if (hogs.length) say(`  synthetic load: ${hogs.length} busy processes`);
-  say(`${asHook ? 'pre-commit' : 'profile-precommit'}: ${commands.length} commands${concurrent ? ` in ${phases.length} phases` : ''} -> ${path.relative(REPO_ROOT, runDir)}`);
+  say(`${asHook ? 'pre-commit' : 'profile-precommit'}: ${commands.length} commands${concurrent ? ` in ${phases.length} phases` : ''} -> ${path.relative(root, runDir)}`);
 
   const { exitCode, interrupted } = await runPlan({
-    root: REPO_ROOT, runDir, phases, keepGoing: !!opts['keep-going'],
-    launcher: profileLauncher(opts),
+    root, runDir, phases, keepGoing: !!opts['keep-going'],
+    launcher: profileLauncher(opts, root),
     onStart: (cmd) => { if (!asHook) say(`  [${cmd.index}/${plan.commands.length}] ${cmd.name} ...`); },
     onFinish: (report, dir) => {
       say(statusLine(report));
@@ -576,7 +580,7 @@ try {
     const { commands } = planCommands({ root });
     console.log(JSON.stringify(planMeta(commands, phasesOf(commands)), null, 2));
   } else {
-    console.error('usage: node scripts/profile-precommit.mjs hook [--root DIR] [--keep-going] | run [--server-unit full|skip|auto] [--concurrent] [--cpu-prof] [--label X] | summarize <dir> | compare <a> <b> | plan');
+    console.error('usage: node scripts/profile-precommit.mjs hook [--root DIR] [--keep-going] | run [--root DIR] [--server-unit full|skip|auto] [--concurrent] [--cpu-prof] [--label X] | summarize <dir> | compare <a> <b> | plan');
     process.exitCode = 2;
   }
 } catch (error) {
