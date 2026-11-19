@@ -1,0 +1,91 @@
+{
+  "$comment": "Reviewed registry for lint-property-names.cjs. Synonym groups say which spelling of a concept is canonical; exemptions are permanent and carry a reason each. Word lists only tune the plural heuristics. Existing violations are not listed here: they live in lint-property-names-baseline.json, which is empty at 4.0.0.",
+  "synonyms": [
+    {
+      "canonical": "created_at",
+      "variants": ["created_time", "created_date"],
+      "concept": "the instant an object was created"
+    },
+    {
+      "canonical": "updated_at",
+      "variants": ["last_updated", "last_modified", "last_update_time", "updated_date"],
+      "concept": "the instant an object last changed"
+    },
+    {
+      "canonical": "expires_at",
+      "variants": ["valid_until", "valid_to"],
+      "concept": "the instant after which an object no longer applies"
+    },
+    {
+      "canonical": "starts_at",
+      "variants": ["start_time", "starts"],
+      "concept": "the instant something begins"
+    },
+    {
+      "canonical": "ends_at",
+      "variants": ["end_time", "ends", "stop_time"],
+      "concept": "the instant something ends"
+    },
+    {
+      "canonical": "occurred_at",
+      "variants": ["event_time"],
+      "concept": "the instant an event happened"
+    },
+    {
+      "canonical": "total_count",
+      "variants": ["total_matching"],
+      "concept": "the number of results across all pages"
+    },
+    {
+      "canonical": "check_count",
+      "variants": ["checks_performed"],
+      "concept": "the number of governance checks performed"
+    },
+    {
+      "canonical": "street",
+      "variants": ["line1"],
+      "concept": "the street line of a postal address"
+    },
+    {
+      "canonical": "max_chars",
+      "variants": ["max_length"],
+      "concept": "the maximum number of characters in a text value"
+    }
+  ],
+  "tokenSynonyms": [
+    { "canonical": "min", "variants": ["minimum"], "concept": "lower bound; `min` is used 120 times and `minimum` 14" },
+    { "canonical": "max", "variants": ["maximum"], "concept": "upper bound; `max` is used 224 times and `maximum` 5" },
+    { "canonical": "params", "variants": ["parameters"], "concept": "parameters; `params` is used 39 times and `parameters` 11" },
+    { "canonical": "config", "variants": ["configuration"], "concept": "configuration; `config` is used 44 times and `configuration` 12" },
+    { "canonical": "percentage", "variants": ["percent", "pct"], "concept": "a configured share, as docs/spec-guidelines.md names it" },
+    { "canonical": "source", "variants": ["src"], "concept": "origin of a value; `source` is used 97 times and `src` once" }
+  ],
+  "exemptions": [
+    {
+      "rule": "*",
+      "match": "a2ui/",
+      "rationale": "These schemas mirror the external A2UI component specification. Its property names and types are A2UI's, not AdCP's."
+    },
+    {
+      "rule": "casing",
+      "match": "name:$schema",
+      "rationale": "`$schema` is the JSON Schema convention for a document that names its own schema (adagents.json, brand.json, trust.json)."
+    },
+    {
+      "rule": "casing",
+      "match": "extensions/extension-meta.json#/properties/",
+      "rationale": "This meta-schema describes extension schema files, so its property names are JSON Schema keywords such as `$id` and `additionalProperties`."
+    },
+    {
+      "rule": "casing",
+      "match": "core/truncation-sentinel.json#/properties/_truncation",
+      "rationale": "The leading underscore marks a control key that can't collide with the payload field it replaces."
+    }
+  ],
+  "massNouns": ["data", "metadata", "media", "status", "criteria", "analytics", "semantics", "news", "series", "notes", "instructions", "terms"],
+  "collectiveNouns": ["list", "set", "history", "breakdown", "range", "histogram", "timeline", "catalog", "inventory"],
+  "irregularPlurals": { "children": "child", "people": "person", "leaves": "leaf" },
+  "unitTokens": ["ms", "bytes", "seconds", "minutes", "hours", "days", "weeks", "months", "years"],
+  "qualifierTokens": ["any", "all", "none", "include", "exclude", "included", "excluded", "allowed", "blocked", "add", "remove", "added", "removed", "evaluated", "applied", "pending", "supported", "requested", "required", "unauthorized", "override", "contains"],
+  "relationTokens": ["by", "per", "to", "for", "on", "with", "of", "in"]
+}

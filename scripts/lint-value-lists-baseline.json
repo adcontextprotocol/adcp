@@ -1,0 +1,29 @@
+{
+  "$comment": "One-value enums and extension branches beside an enum (scripts/lint-value-lists.cjs, #9002). A new finding fails. The one-value enums become const in 4.0; the extension branches move to one shared grammar once #9002 decides it.",
+  "entries": [
+    {"rule":"extension-branch","site":"core/account-authorization.json#/properties/scope_name/anyOf"},
+    {"rule":"extension-branch","site":"core/geo-place-system.json#/anyOf"},
+    {"rule":"extension-branch","site":"core/geo-place-type.json#/anyOf"},
+    {"rule":"extension-branch","site":"enums/universal-macro.json#/anyOf"},
+    {"rule":"extension-branch","site":"error-details/accessibility-violation.json#/properties/violations/items/properties/failure_kind/oneOf"},
+    {"rule":"extension-branch","site":"trust/v1/trust.json#/definitions/grant_source/anyOf"},
+    {"rule":"extension-branch","site":"trust/v1/trust.json#/definitions/role/anyOf"},
+    {"rule":"extension-branch","site":"trust/v1/trust.json#/definitions/scope/anyOf"},
+    {"rule":"one-value-enum","site":"core/agent-webhook-challenge.json#/properties/event_types/items/enum"},
+    {"rule":"one-value-enum","site":"core/canonical-media-buy-action.json#/oneOf/0/properties/action/enum"},
+    {"rule":"one-value-enum","site":"core/package-signal-targeting-groups.json#/properties/operator/enum"},
+    {"rule":"one-value-enum","site":"core/reporting-subscription-coverage.json#/properties/gaps/items/properties/reason/enum"},
+    {"rule":"one-value-enum","site":"core/wholesale-feed-event.json#/oneOf/11/properties/payload/properties/recommendation/enum"},
+    {"rule":"one-value-enum","site":"core/wholesale-feed-event.json#/oneOf/8/properties/payload/properties/recommendation/enum"},
+    {"rule":"one-value-enum","site":"creative/audit-observation.json#/properties/code/enum"},
+    {"rule":"one-value-enum","site":"creative/audit-observation.json#/properties/recovery/enum"},
+    {"rule":"one-value-enum","site":"creative/audit-observation.json#/properties/severity/enum"},
+    {"rule":"one-value-enum","site":"creative/list-creatives-response.json#/properties/creatives/items/properties/purge/properties/kind/enum"},
+    {"rule":"one-value-enum","site":"enums/frequency-cap-scope.json#/enum"},
+    {"rule":"one-value-enum","site":"enums/media-buy-frequency-cap-control-mode.json#/enum"},
+    {"rule":"one-value-enum","site":"protocol/get-adcp-capabilities-response.json#/properties/account/properties/notifications/oneOf/0/properties/event_types/items/enum"},
+    {"rule":"one-value-enum","site":"protocol/get-adcp-capabilities-response.json#/properties/adcp/properties/capability_changes/properties/notifications/oneOf/0/properties/event_types/items/enum"},
+    {"rule":"one-value-enum","site":"protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/budget_capping/properties/supported_periods/items/enum"},
+    {"rule":"one-value-enum","site":"protocol/get-adcp-capabilities-response.json#/properties/webhook_signing/properties/profile/enum"}
+  ]
+}
