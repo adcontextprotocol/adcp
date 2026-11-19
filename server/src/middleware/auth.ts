@@ -218,8 +218,15 @@ function isInvalidSealedBearerError(error: unknown): boolean {
   // The SDK verifies the sealed JWT with its own unwrapped key resolver.
   // Unsupported provider JWKs can throw this code even for a healthy token.
   if (error instanceof Error && (error as { code?: unknown }).code === 'ERR_JOSE_NOT_SUPPORTED') return false;
+  // A seal part that is not base64url fails in the SDK's decoder, which the
+  // SDK picks when it loads: atob throws InvalidCharacterError, and
+  // Uint8Array.fromBase64 (built into Node 25+, or installed by a polyfill
+  // such as pdf-parse's core-js) throws SyntaxError. No other bare
+  // SyntaxError reaches the callers' catch blocks: the SDK's HTTP client
+  // wraps JSON errors in ParseError, iron wraps them in Error, jose in its
+  // own errors, and the snapshot loader in AuthorizationSnapshotUnavailableError.
   return isInvalidWorkOSJWTError(error) || (error instanceof Error && (
-    error.name === 'InvalidCharacterError' || error.message === 'Invalid expiration'
+    error.name === 'InvalidCharacterError' || error.name === 'SyntaxError' || error.message === 'Invalid expiration'
   ));
 }
 
@@ -1333,6 +1340,7 @@ async function requireAuthWithSnapshot(
   } catch (error) {
     if (sendAuthorizationStateError(error, res)) return;
     if (bearerToken !== null && !isInvalidSealedBearerError(error)) {
+      logger.warn({ err: error, path: req.path }, 'Sealed bearer could not be verified — returning 503');
       return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
     }
     if (isTransientAuthError(error)) {
@@ -2372,6 +2380,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   } catch (error) {
     if (sendAuthorizationStateError(error, res, true)) return;
     if (getBearerToken(req.headers.authorization) !== null && !isInvalidSealedBearerError(error)) {
+      logger.warn({ err: error, path: req.path }, 'Sealed bearer could not be verified (optional auth) — returning 503');
       return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
     }
     logger.debug({ err: error }, 'Optional auth failed');
