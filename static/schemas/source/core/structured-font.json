@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/structured-font.json",
+  "title": "Structured Font",
+  "description": "A font described by family name, downloadable font files, OpenType features, and fallback families.",
+  "type": "object",
+  "properties": {
+    "family": {
+      "type": "string",
+      "description": "CSS font-family name (e.g., 'Brand Sans')"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/font-file.json"
+      },
+      "maxItems": 36,
+      "description": "Font files for different weights and styles"
+    },
+    "opentype_features": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/opentype-feature-tag.json"
+      },
+      "maxItems": 20,
+      "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum', 'cv01']). These are four-character tags per the OpenType spec."
+    },
+    "fallbacks": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/font-family-name.json"
+      },
+      "maxItems": 10,
+      "description": "Ordered fallback font-family names for when the primary font is unavailable or does not support the required script (e.g., ['Noto Sans Arabic', 'Noto Sans SC', 'sans-serif'])"
+    }
+  },
+  "required": [
+    "family"
+  ],
+  "additionalProperties": true
+}

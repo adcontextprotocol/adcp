@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-claim-subsidiary.json",
+  "title": "Brand Claim Subsidiary",
+  "description": "A brand claim that a domain is a subsidiary, with the subsidiary domain, an optional brand ID, and the time the claim was observed.",
+  "type": "object",
+  "properties": {
+    "subsidiary_domain": {
+      "type": "string",
+      "format": "hostname",
+      "description": "Domain of the leaf brand whose `house_domain` claim is being verified."
+    },
+    "subsidiary_brand_id": {
+      "$ref": "/schemas/core/brand-id.json",
+      "description": "Stable brand identifier the leaf uses for itself. Optional but recommended."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the caller observed the leaf's claim."
+    }
+  },
+  "required": [
+    "subsidiary_domain"
+  ],
+  "additionalProperties": true
+}

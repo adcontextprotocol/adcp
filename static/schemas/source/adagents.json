@@ -36,46 +36,8 @@
           "description": "JSON Schema identifier for this adagents.json file"
         },
         "contact": {
-          "type": "object",
-          "description": "Contact information for the entity managing this adagents.json file (may be publisher or third-party operator)",
-          "properties": {
-            "name": {
-              "$ref": "/schemas/core/contact-name.json",
-              "description": "Name of the entity managing this file (e.g., 'Meta Advertising Operations', 'Clear Channel Digital')"
-            },
-            "email": {
-              "type": "string",
-              "format": "email",
-              "description": "Contact email for questions or issues with this authorization file",
-              "minLength": 1,
-              "maxLength": 255
-            },
-            "domain": {
-              "$ref": "/schemas/core/domain-name.json",
-              "description": "Primary domain of the entity managing this file"
-            },
-            "seller_id": {
-              "type": "string",
-              "description": "Seller ID from IAB Tech Lab sellers.json (if applicable)",
-              "minLength": 1,
-              "maxLength": 255
-            },
-            "tag_id": {
-              "type": "string",
-              "description": "TAG Certified Against Fraud ID for verification (if applicable)",
-              "minLength": 1,
-              "maxLength": 100
-            },
-            "privacy_policy_url": {
-              "type": "string",
-              "format": "uri",
-              "description": "URL to the entity's privacy policy. Used for consumer consent flows when interacting with this sales agent."
-            }
-          },
-          "required": [
-            "name"
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/contact.json",
+          "description": "Contact information for the entity managing this adagents.json file (may be publisher or third-party operator)"
         },
         "catalog_etag": {
           "type": "string",

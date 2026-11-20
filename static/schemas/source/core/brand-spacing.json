@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-spacing.json",
+  "title": "Brand Spacing",
+  "description": "Spacing system for consistent layout rhythm. Most design systems use an 8px base grid.",
+  "type": "object",
+  "properties": {
+    "unit": {
+      "type": "string",
+      "description": "Base grid unit this scale was designed from (e.g., '8px', '4px'). Informational — agents should use the named scale values, not compute from this."
+    },
+    "scale": {
+      "type": "object",
+      "description": "Named spacing scale built from the base unit",
+      "properties": {
+        "xs": {
+          "type": "string",
+          "description": "Extra small spacing (e.g., '4px')"
+        },
+        "sm": {
+          "type": "string",
+          "description": "Small spacing (e.g., '8px')"
+        },
+        "md": {
+          "type": "string",
+          "description": "Medium spacing (e.g., '16px')"
+        },
+        "lg": {
+          "type": "string",
+          "description": "Large spacing (e.g., '24px')"
+        },
+        "xl": {
+          "type": "string",
+          "description": "Extra large spacing (e.g., '32px')"
+        },
+        "2xl": {
+          "type": "string",
+          "description": "Section-level spacing (e.g., '48px', '64px')"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

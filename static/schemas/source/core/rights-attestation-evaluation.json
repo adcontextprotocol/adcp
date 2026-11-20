@@ -16,37 +16,7 @@
       "description": "Digest of the exact rights constraint evaluated. MUST equal reference.subject.content_digest and evaluation.action_binding.action_digest."
     },
     "reference": {
-      "allOf": [
-        { "$ref": "/schemas/core/attestation-reference.json" },
-        {
-          "type": "object",
-          "properties": {
-            "issuer": {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "const": "brand" },
-                "brand": { "$ref": "/schemas/core/brand-ref.json" }
-              },
-              "required": ["type", "brand"]
-            },
-            "claim_type": {
-              "type": "string",
-              "const": "https://adcontextprotocol.org/claims/rights/grant"
-            },
-            "subject": {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "const": "resource" },
-                "resource_type": {
-                  "type": "string",
-                  "const": "https://adcontextprotocol.org/claims/subjects/rights-grant"
-                }
-              },
-              "required": ["type", "resource_type", "namespace", "id", "content_digest"]
-            }
-          }
-        }
-      ]
+      "$ref": "/schemas/core/rights-grant-attestation-reference.json"
     },
     "evaluation": {
       "allOf": [

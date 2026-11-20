@@ -49,22 +49,8 @@
           }
         },
         "disclosure": {
-          "type": "object",
-          "description": "Required disclosure for creatives using these rights",
-          "properties": {
-            "required": {
-              "type": "boolean",
-              "description": "Whether disclosure is required"
-            },
-            "text": {
-              "type": "string",
-              "description": "Disclosure text to include with the creative"
-            }
-          },
-          "required": [
-            "required"
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/rights-disclosure.json",
+          "description": "Required disclosure for creatives using these rights"
         },
         "approval_webhook": {
           "$ref": "/schemas/core/push-notification-config.json",

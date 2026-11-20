@@ -147,11 +147,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // brings it to 561,291 bytes / 548.14 KiB; bound it at 549 KiB.
 // Named rejections (DR-0036) are validation, so the model-context view omits
 // them with the bounds; the budget is unchanged.
-// Replacing repeated inline object copies with shared core definitions adds 13
+// Replacing repeated inline object copies with shared core definitions adds 14
 // definitions to the media-buy inputs, each with its own title and description:
-// 558,798 → 562,241 bytes (545.70 → 549.06 KiB measured); bound it at 550 KiB.
+// 558,798 → 564,093 bytes (545.70 → 550.87 KiB measured); bound it at 551 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 550,
+  'media-buy': 551,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
@@ -262,9 +262,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // (#8899, #8900) bring it to 1_426_550 bytes; bound at 1_427_000.
 // Defaulting every tagged-union tag to its const brings it to 1_430_635 bytes.
 // Replacing repeated inline object copies with shared definitions puts their
-// titles and descriptions in the controller closure: 1_440_524 bytes measured;
-// bound at 1_441_000.
-const PARITY_COMPILE_LIMIT = 1_441_000;
+// titles and descriptions in the controller closure: 1_443_131 bytes measured;
+// bound at 1_444_000.
+const PARITY_COMPILE_LIMIT = 1_444_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1342,8 +1342,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // (#8525) brings it to 24,176,139 bytes, the further concepts to 25,034,871
   // bytes, naming every remaining repeat to 25,664,885 bytes (24.48 MiB), and
   // pointing every site at one definition to 25,961,497 bytes (24.76 MiB), so
-  // the cap moves to 25 MiB.
-  assert.ok(totalBytes < 25 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // the cap moves to 25 MiB. Replacing repeated inline object copies with
+  // shared definitions takes it from 26,030,614 bytes (24.82 MiB) at the start
+  // of this series to 26,317,378 bytes (25.10 MiB), so the cap moves to 26 MiB.
+  assert.ok(totalBytes < 26 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

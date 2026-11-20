@@ -31,21 +31,8 @@
         "type": "object",
         "properties": {
           "brand_agent": {
-            "type": "object",
-            "description": "Brand agent that exposed the referenced voice_synthesis entry.",
-            "properties": {
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "MCP endpoint URL of the brand agent."
-              },
-              "id": {
-                "type": "string",
-                "description": "Agent identifier."
-              }
-            },
-            "required": ["url", "id"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/brand-agent.json",
+            "description": "Brand agent that exposed the referenced voice_synthesis entry."
           },
           "voice_id": {
             "type": "string",

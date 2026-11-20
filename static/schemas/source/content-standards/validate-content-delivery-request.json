@@ -48,18 +48,8 @@
             "description": "Channel type (e.g., display, video, audio, social)"
           },
           "brand_context": {
-            "type": "object",
-            "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers.",
-            "properties": {
-              "brand_id": {
-                "type": "string",
-                "description": "Brand identifier"
-              },
-              "sku_id": {
-                "type": "string",
-                "description": "Product/SKU identifier if applicable"
-              }
-            }
+            "$ref": "/schemas/core/brand-context.json",
+            "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers."
           }
         },
         "required": [

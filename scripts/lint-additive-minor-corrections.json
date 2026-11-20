@@ -1979,6 +1979,114 @@
         "quote": "\"required\": [ \"currency\" ]"
       },
       "reason": "Applies the required name the published text sets. 3.2.11 published total_budget_guidance in core/canonical-proposal.json with currency required; the proposal copy now references the same definition."
+    },
+    {
+      "file": "adagents.json",
+      "pointer": "/oneOf/1/properties/contact/properties/email",
+      "bound": "maxLength",
+      "value": 254,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/business-entity.json",
+        "quote": "\"email\": { \"type\": \"string\", \"format\": \"email\", \"maxLength\": 254"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on email in core/business-entity.json. An email address, which core/email-address.json bounds at 254 characters (RFC 5321)."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/contact/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/signal-definition-enrichment.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on domain in core/signal-definition-enrichment.json. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/contact/properties/email",
+      "bound": "maxLength",
+      "value": 254,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/business-entity.json",
+        "quote": "\"email\": { \"type\": \"string\", \"format\": \"email\", \"maxLength\": 254"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on email in core/business-entity.json. An email address, which core/email-address.json bounds at 254 characters (RFC 5321)."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/house/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/signal-definition-enrichment.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on domain in core/signal-definition-enrichment.json. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/house/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/brand.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Primary display name of the house\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on the house name in brand.json. A parent organization name, which core/parent-organization-name.json keeps non-empty."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/names/items",
+      "bound": "maxProperties",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/brand.json",
+        "quote": "\"minProperties\": 1, \"maxProperties\": 1,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on localized_name in brand.json. A localized name, which brand.json#/definitions/localized_name limits to one key."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/names/items/additionalProperties",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/brand/get-brand-identity-response.json",
+        "quote": "\"additionalProperties\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on additionalProperties in brand/get-brand-identity-response.json."
+    },
+    {
+      "file": "brand/verify-brand-claim-request.json",
+      "pointer": "/oneOf/2/properties/claim/properties/property/properties/identifier",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/brand.json",
+        "quote": "\"identifier\": { \"type\": \"string\", \"description\": \"Property identifier - domain for websites, bundle ID for apps\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on identifier in brand.json. A property identifier value, which brand.json keeps non-empty."
+    },
+    {
+      "file": "brand/verify-brand-claims-request.json",
+      "pointer": "/definitions/claim_entry/oneOf/2/properties/claim/properties/property/properties/identifier",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/brand.json",
+        "quote": "\"identifier\": { \"type\": \"string\", \"description\": \"Property identifier - domain for websites, bundle ID for apps\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on identifier in brand.json. A property identifier value, which brand.json keeps non-empty."
     }
   ]
 }

@@ -19,33 +19,14 @@
           "x-entity": "advertiser_brand"
         },
         "house": {
-          "type": "object",
-          "description": "The house (corporate entity) this brand belongs to. Always returned regardless of authorization level.",
-          "properties": {
-            "domain": {
-              "type": "string",
-              "description": "House domain (e.g., nikeinc.com)"
-            },
-            "name": {
-              "type": "string",
-              "description": "House display name"
-            }
-          },
-          "required": [
-            "domain",
-            "name"
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/house-summary.json",
+          "description": "The house (corporate entity) this brand belongs to. Always returned regardless of authorization level."
         },
         "names": {
           "type": "array",
           "description": "Localized brand names with BCP 47 locale code keys (e.g., 'en_US', 'fr_CA'). Bare language codes ('en') are accepted as wildcards for backwards compatibility.",
           "items": {
-            "type": "object",
-            "minProperties": 1,
-            "additionalProperties": {
-              "type": "string"
-            }
+            "$ref": "/schemas/core/brand-localized-name.json"
           }
         },
         "description": {
@@ -68,49 +49,7 @@
           "type": "array",
           "description": "Brand logos. Public callers get standard logos; authorized callers also receive high-res variants. Shape matches brand.json logo definition.",
           "items": {
-            "type": "object",
-            "properties": {
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "URL to the logo asset"
-              },
-              "orientation": {
-                "$ref": "/schemas/enums/logo-orientation.json",
-                "description": "Logo aspect ratio orientation"
-              },
-              "background": {
-                "$ref": "/schemas/enums/logo-background.json",
-                "description": "Background compatibility"
-              },
-              "variant": {
-                "$ref": "/schemas/enums/logo-variant.json",
-                "description": "Logo variant type"
-              },
-              "tags": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Additional semantic tags"
-              },
-              "usage": {
-                "type": "string",
-                "description": "When to use this logo variant"
-              },
-              "width": {
-                "type": "integer",
-                "description": "Width in pixels"
-              },
-              "height": {
-                "type": "integer",
-                "description": "Height in pixels"
-              }
-            },
-            "required": [
-              "url"
-            ],
-            "additionalProperties": true
+            "$ref": "/schemas/core/brand-logo.json"
           }
         },
         "colors": {
@@ -191,98 +130,11 @@
           "additionalProperties": true
         },
         "fonts": {
-          "type": "object",
-          "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with family name and font files. Shape matches brand.json fonts definition.",
-          "maxProperties": 20,
-          "definitions": {
-            "font_role": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "family": {
-                      "type": "string",
-                      "description": "CSS font-family name"
-                    },
-                    "files": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "url": {
-                            "$ref": "/schemas/core/https-url.json",
-                            "description": "HTTPS URL to the font file"
-                          },
-                          "weight": {
-                            "$ref": "/schemas/core/font-weight.json",
-                            "description": "CSS numeric font-weight"
-                          },
-                          "weight_range": {
-                            "type": "array",
-                            "items": {
-                              "$ref": "/schemas/core/font-weight.json"
-                            },
-                            "minItems": 2,
-                            "maxItems": 2,
-                            "description": "Variable font weight axis range as [min, max]"
-                          },
-                          "style": {
-                            "$ref": "/schemas/enums/font-style.json",
-                            "description": "CSS font-style"
-                          }
-                        },
-                        "required": [
-                          "url"
-                        ],
-                        "additionalProperties": true
-                      },
-                      "maxItems": 36
-                    },
-                    "opentype_features": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "/schemas/core/opentype-feature-tag.json"
-                      },
-                      "maxItems": 20,
-                      "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum'])"
-                    },
-                    "fallbacks": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "/schemas/core/font-family-name.json"
-                      },
-                      "maxItems": 10,
-                      "description": "Ordered fallback font-family names for script coverage"
-                    }
-                  },
-                  "required": [
-                    "family"
-                  ],
-                  "additionalProperties": true
-                }
-              ]
-            }
-          },
-          "properties": {
-            "primary": {
-              "$ref": "#/oneOf/0/properties/fonts/definitions/font_role",
-              "description": "Primary font family"
-            },
-            "secondary": {
-              "$ref": "#/oneOf/0/properties/fonts/definitions/font_role",
-              "description": "Secondary font family"
-            }
-          },
-          "additionalProperties": {
-            "$ref": "#/oneOf/0/properties/fonts/definitions/font_role"
-          }
+          "$ref": "/schemas/core/brand-fonts.json",
+          "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with family name and font files. Shape matches brand.json fonts definition."
         },
         "visual_guidelines": {
-          "type": "object",
-          "additionalProperties": true,
+          "$ref": "/schemas/core/brand-visual-guidelines.json",
           "description": "Structured visual rules for generative creative systems (photography, graphic_style, colorways, type_scale, motion). Matches brand.json visual_guidelines definition. Authorized callers only."
         },
         "tone": {
@@ -327,13 +179,7 @@
               "type": "array",
               "description": "Localized taglines with BCP 47 locale codes",
               "items": {
-                "type": "object",
-                "minProperties": 1,
-                "maxProperties": 1,
-                "additionalProperties": {
-                  "type": "string",
-                  "minLength": 1
-                }
+                "$ref": "/schemas/core/brand-localized-name.json"
               },
               "minItems": 1
             }
@@ -341,125 +187,19 @@
           "description": "Brand tagline or slogan. Accepts a plain string or a localized array matching the names pattern."
         },
         "voice_synthesis": {
-          "type": "object",
-          "description": "Voice synthesis configuration for AI-generated audio",
-          "properties": {
-            "provider": {
-              "type": "string"
-            },
-            "voice_id": {
-              "type": "string"
-            },
-            "rights_offering_id": {
-              "type": "string",
-              "x-entity": "rights_grant",
-              "description": "Optional stable rights offering identifier for this voice, as returned by get_rights. This is configuration-time advisory provenance, not the buyer-specific grant identifier returned by acquire_rights. Buyers resolve the offering to a grant through acquire_rights before synthesis."
-            },
-            "settings": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/voice-synthesis.json",
+          "description": "Voice synthesis configuration for AI-generated audio"
         },
         "assets": {
           "type": "array",
           "description": "Available brand assets (images, audio, video). Authorized callers only. Shape matches brand.json asset definition.",
           "items": {
-            "type": "object",
-            "properties": {
-              "asset_id": {
-                "type": "string",
-                "description": "Unique identifier"
-              },
-              "asset_type": {
-                "$ref": "/schemas/enums/asset-content-type.json",
-                "description": "Type of asset content"
-              },
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "URL to CDN-hosted asset file"
-              },
-              "tags": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Tags for discovery"
-              },
-              "name": {
-                "type": "string",
-                "description": "Human-readable name"
-              },
-              "description": {
-                "type": "string",
-                "description": "Asset description or usage notes"
-              },
-              "width": {
-                "type": "integer",
-                "description": "Image/video width in pixels"
-              },
-              "height": {
-                "type": "integer",
-                "description": "Image/video height in pixels"
-              },
-              "duration_seconds": {
-                "type": "number",
-                "description": "Video/audio duration in seconds"
-              },
-              "file_size_bytes": {
-                "type": "integer",
-                "description": "File size in bytes"
-              },
-              "format": {
-                "type": "string",
-                "description": "File format (e.g., 'jpg', 'mp4')"
-              }
-            },
-            "required": [
-              "asset_id",
-              "asset_type",
-              "url"
-            ],
-            "additionalProperties": true
+            "$ref": "/schemas/core/brand-asset.json"
           }
         },
         "rights": {
-          "type": "object",
-          "description": "Rights availability summary. For detailed pricing, use get_rights.",
-          "properties": {
-            "available_uses": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/enums/right-use.json"
-              }
-            },
-            "countries": {
-              "type": "array",
-              "description": "Countries where rights are available (ISO 3166-1 alpha-2). If omitted, rights are available worldwide.",
-              "items": {
-                "$ref": "/schemas/core/country-code.json"
-              }
-            },
-            "excluded_countries": {
-              "type": "array",
-              "description": "Countries excluded from availability (ISO 3166-1 alpha-2)",
-              "items": {
-                "$ref": "/schemas/core/country-code.json"
-              }
-            },
-            "exclusivity_model": {
-              "type": "string"
-            },
-            "content_restrictions": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/rights-availability-summary.json",
+          "description": "Rights availability summary. For detailed pricing, use get_rights."
         },
         "collections": {
           "type": "array",

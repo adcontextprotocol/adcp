@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-color-constraint.json",
+  "title": "Brand Color Constraint",
+  "description": "Machine-readable rule constraining how a brand color may be used or paired. Use for accent-only colors, forbidden foreground/background combinations, and palette pairs that should never appear together.",
+  "type": "object",
+  "properties": {
+    "color": {
+      "$ref": "/schemas/core/brand-color-ref.json",
+      "description": "Color role or value this constraint governs."
+    },
+    "applies_to": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-color-surface.json"
+      },
+      "description": "Surfaces where this color may be used."
+    },
+    "allowed_on": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-color-ref.json"
+      },
+      "description": "Backgrounds, surfaces, or color roles where this color is allowed."
+    },
+    "forbidden_on": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-color-ref.json"
+      },
+      "description": "Backgrounds, surfaces, or color roles where this color is forbidden."
+    },
+    "never_pair_with": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-color-ref.json"
+      },
+      "description": "Color roles or values that must not be paired with this color."
+    },
+    "contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Channels or creative contexts where this constraint applies, such as digital, print, social, or ctv_end_card."
+    },
+    "severity": {
+      "$ref": "/schemas/core/brand-guideline-severity.json"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable rationale or source-language summary for the rule."
+    }
+  },
+  "required": [
+    "color"
+  ],
+  "additionalProperties": true
+}

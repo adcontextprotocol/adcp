@@ -307,84 +307,8 @@
       "additionalProperties": true
     },
     "data_subject_rights": {
-      "type": "object",
-      "description": "Per-signal data-subject-rights routing. Inline on the signal because upstream source, rights routing, and response commitments can differ by segment or may be unavailable from a public provider document for custom/private signals. This is a contact/routing reference, not a machine-callable AdCP API.",
-      "properties": {
-        "upstream_source_domain": {
-          "$ref": "/schemas/core/domain-name.json",
-          "description": "Domain of the upstream data source whose rights process these channels reach, when different from the publishing domain."
-        },
-        "channels": {
-          "type": "array",
-          "description": "Rights request channels and the rights each channel supports. At least one declared channel MUST support one or more of access, erasure, or objection; schema validators enforce this with draft-07 contains, and consumers whose SDK drops contains need an equivalent runtime check.",
-          "minItems": 1,
-          "contains": {
-            "type": "object",
-            "properties": {
-              "rights": {
-                "type": "array",
-                "contains": {
-                  "$ref": "/schemas/enums/required-data-subject-right.json"
-                }
-              }
-            },
-            "required": ["rights"]
-          },
-          "items": {
-            "type": "object",
-            "properties": {
-              "rights": {
-                "type": "array",
-                "description": "Rights supported by this channel.",
-                "items": {
-                  "$ref": "/schemas/enums/data-subject-right.json"
-                },
-                "minItems": 1,
-                "uniqueItems": true
-              },
-              "url": {
-                "$ref": "/schemas/core/https-url.json",
-                "description": "HTTPS URL for submitting the rights request."
-              },
-              "email": {
-                "type": "string",
-                "format": "email",
-                "description": "Email address for submitting the rights request."
-              },
-              "languages": {
-                "type": "array",
-                "description": "BCP 47 language tags supported by this channel.",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "countries": {
-                "type": "array",
-                "description": "ISO 3166-1 alpha-2 countries this channel serves, when the provider routes rights by country.",
-                "items": {
-                  "$ref": "/schemas/core/country-code.json"
-                }
-              }
-            },
-            "required": ["rights"],
-            "anyOf": [
-              { "required": ["url"] },
-              { "required": ["email"] }
-            ],
-            "additionalProperties": true
-          }
-        },
-        "response_sla_days": {
-          "$ref": "/schemas/core/rights-response-sla-days.json",
-          "description": "Maximum response time in days for rights requests handled through the declared rights channels. For provider-published signals, providers SHOULD avoid duplicating this field across every signal unless the value varies by signal or upstream source; consumers MAY also consult the provider's public privacy policy or registry disclosures when present."
-        },
-        "ccpa_opt_out_url": {
-          "$ref": "/schemas/core/https-url.json",
-          "description": "US-specific 'Do Not Sell or Share' opt-out URL where required."
-        }
-      },
-      "required": ["channels"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/data-subject-rights-routing.json",
+      "description": "Per-signal data-subject-rights routing. Inline on the signal because upstream source, rights routing, and response commitments can differ by segment or may be unavailable from a public provider document for custom/private signals. This is a contact/routing reference, not a machine-callable AdCP API."
     },
     "last_updated": {
       "type": "string",

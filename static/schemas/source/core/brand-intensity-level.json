@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-intensity-level.json",
+  "title": "Intensity Level",
+  "description": "Qualitative level of a visual property: low, medium, or high.",
+  "type": "string",
+  "enum": [
+    "low",
+    "medium",
+    "high"
+  ]
+}

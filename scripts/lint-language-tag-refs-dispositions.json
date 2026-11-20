@@ -2,16 +2,6 @@
   "$comment": "Reviewed exceptions for scripts/lint-language-tag-refs.cjs. Legacy language boundaries are migration debt; name collisions are structural fields selected by the deliberately broad matcher.",
   "entries": [
     {
-      "path": "brand.json#/definitions/data_subject_contestation/properties/languages",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing contestation channel language list predates the canonical locale-tag primitive."
-    },
-    {
-      "path": "brand.json#/definitions/localized_name",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Legacy localized maps use underscore-separated keys and an explicit underscore-to-hyphen bridge."
-    },
-    {
       "path": "brand.json#/definitions/localized_string_list_entry",
       "disposition": "legacy-language-boundary",
       "rationale": "Legacy localized list maps use underscore-separated keys and the brand.json bridge contract."
@@ -70,11 +60,6 @@
       "path": "core/assets/text-asset.json#/properties/language",
       "disposition": "legacy-language-boundary",
       "rationale": "Published text asset language values predate the canonical primitive."
-    },
-    {
-      "path": "core/brand-ref.json#/properties/data_subject_contestation/properties/languages",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing contestation channel language list predates the canonical locale-tag primitive."
     },
     {
       "path": "core/collection.json#/properties/language",
@@ -147,19 +132,19 @@
       "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
     },
     {
+      "path": "core/data-subject-contestation.json#/properties/languages",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing contestation channel language list predates the canonical locale-tag primitive."
+    },
+    {
+      "path": "core/data-subject-rights-channel.json#/properties/languages",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing rights-channel language values predate the canonical primitive."
+    },
+    {
       "path": "core/education-item.json#/properties/language",
       "disposition": "legacy-language-boundary",
       "rationale": "Published education item language values predate the canonical primitive."
-    },
-    {
-      "path": "core/signal-definition-enrichment.json#/properties/data_subject_rights/properties/channels/items/properties/languages",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing rights-channel language values predate the canonical primitive."
-    },
-    {
-      "path": "core/signal-definition.json#/properties/data_subject_rights/properties/channels/items/properties/languages",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing rights-channel language values predate the canonical primitive."
     },
     {
       "path": "protocol/get-adcp-capabilities-response.json#/properties/creative/properties/localization/properties/locale_matching",

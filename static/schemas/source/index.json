@@ -2344,6 +2344,146 @@
           "$ref": "/schemas/core/account-setup.json",
           "description": "Next steps a human must complete before an account can activate."
         },
+        "brand-claim-parent": {
+          "$ref": "/schemas/core/brand-claim-parent.json",
+          "description": "A brand claim that a domain belongs to a parent organization, with the parent domain, the claimant's statement, and the time the claim was observed."
+        },
+        "brand-claim-subsidiary": {
+          "$ref": "/schemas/core/brand-claim-subsidiary.json",
+          "description": "A brand claim that a domain is a subsidiary, with the subsidiary domain, an optional brand ID, and the time the claim was observed."
+        },
+        "brand-claim-trademark": {
+          "$ref": "/schemas/core/brand-claim-trademark.json",
+          "description": "A trademark claim: the mark, its registry and registration number, the countries it covers, and the use case."
+        },
+        "brand-context": {
+          "$ref": "/schemas/core/brand-context.json",
+          "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers."
+        },
+        "brand-agent": {
+          "$ref": "/schemas/core/brand-agent.json",
+          "description": "Reference to a brand agent that provides brand data via MCP"
+        },
+        "brand-asset": {
+          "$ref": "/schemas/core/brand-asset.json",
+          "description": "Brand asset (image, video, audio, text)"
+        },
+        "brand-asset-library": {
+          "$ref": "/schemas/core/brand-asset-library.json",
+          "description": "A managed asset library (icon set, illustration system, image collection). The URL is for human access; agent-facing DAM integration is under investigation."
+        },
+        "brand-border-radius": {
+          "$ref": "/schemas/core/brand-border-radius.json",
+          "description": "Named border radius presets for UI components and layout elements. One of the most visible brand differentiators — Airbnb uses generous 20px, Stripe uses precise 4–8px, Spotify uses pill/999px."
+        },
+        "brand-color-constraint": {
+          "$ref": "/schemas/core/brand-color-constraint.json",
+          "description": "Machine-readable rule constraining how a brand color may be used or paired. Use for accent-only colors, forbidden foreground/background combinations, and palette pairs that should never appear together."
+        },
+        "brand-color-ref": {
+          "$ref": "/schemas/core/brand-color-ref.json",
+          "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use kind=name for palette lookup keys in colors, kind=value for a literal hex color, and kind=surface for layout surfaces such as background or text."
+        },
+        "brand-color-surface": {
+          "$ref": "/schemas/core/brand-color-surface.json",
+          "description": "Usage surface that a brand color applies to, such as background or cta."
+        },
+        "brand-colorway": {
+          "$ref": "/schemas/core/brand-colorway.json",
+          "description": "A named color pairing that defines how colors work together. Colorways ensure foreground/background combinations are always on-brand and accessible."
+        },
+        "brand-composition-rules": {
+          "$ref": "/schemas/core/brand-composition-rules.json",
+          "description": "Layout composition rules including overlays, textures, and backgrounds"
+        },
+        "brand-elevation": {
+          "$ref": "/schemas/core/brand-elevation.json",
+          "description": "Named shadow/elevation levels. Brands use elevation as identity — from Stripe's blue-tinted multi-layer shadows to Apple's single diffuse shadow. Values are CSS box-shadow syntax."
+        },
+        "brand-font-role": {
+          "$ref": "/schemas/core/brand-font-role.json",
+          "description": "A font role entry. Either a CSS font-family string (simple) or a structured object with family name and font files (rich)."
+        },
+        "brand-fonts": {
+          "$ref": "/schemas/core/brand-fonts.json",
+          "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with font files for reliable resolution."
+        },
+        "brand-graphic-element": {
+          "$ref": "/schemas/core/brand-graphic-element.json",
+          "description": "A reusable decorative or structural visual element that is part of the brand identity (e.g., torn paper edges, watermarks, dividers, background patterns)"
+        },
+        "brand-graphic-style": {
+          "$ref": "/schemas/core/brand-graphic-style.json",
+          "description": "Visual language for brand graphics and illustrations"
+        },
+        "brand-guideline-severity": {
+          "$ref": "/schemas/core/brand-guideline-severity.json",
+          "description": "Strength of a machine-readable brand guideline constraint."
+        },
+        "brand-iconography": {
+          "$ref": "/schemas/core/brand-iconography.json",
+          "description": "Icon style system and usage rules"
+        },
+        "brand-intensity-level": {
+          "$ref": "/schemas/core/brand-intensity-level.json",
+          "description": "Qualitative level of a visual property: low, medium, or high."
+        },
+        "brand-localized-name": {
+          "$ref": "/schemas/core/brand-localized-name.json",
+          "description": "A localized name using the legacy underscore-separated language/region key convention (for example 'en_US', 'fr_CA', or 'zh_CN') and a name value. Bare language codes such as 'en' are also accepted for backwards compatibility. These keys are not AdCP locale-tag values: a bridge to /schemas/core/locale-tag.json replaces '_' with '-', applies the AdCP canonical wire profile, and validates the result rather than passing the key through unchanged."
+        },
+        "brand-localized-scalar": {
+          "$ref": "/schemas/core/brand-localized-scalar.json",
+          "description": "A legacy plain string or an ordered set of one-locale string maps. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile. Readers resolve the requested locale using the document default_language fallback contract and MUST NOT choose an arbitrary available translation."
+        },
+        "brand-logo": {
+          "$ref": "/schemas/core/brand-logo.json",
+          "description": "Brand logo asset with structured fields for orientation, background compatibility, and variant type"
+        },
+        "brand-logo-id": {
+          "$ref": "/schemas/core/brand-logo-id.json",
+          "description": "Stable identifier for a logo entry within this brand.json document. Use lowercase words separated by underscores or hyphens; do not key integrations on mutable asset URLs."
+        },
+        "brand-logo-placement": {
+          "$ref": "/schemas/core/brand-logo-placement.json",
+          "description": "Logo placement and clear space rules for automated creative production"
+        },
+        "brand-logo-usage-rule": {
+          "$ref": "/schemas/core/brand-logo-usage-rule.json",
+          "description": "Machine-readable logo selection and placement rule. Complements logos[].usage by making enforceable minimum size, clear-space, background, and context constraints queryable."
+        },
+        "brand-mark-lockup": {
+          "$ref": "/schemas/core/brand-mark-lockup.json",
+          "description": "Machine-readable layout constraints for co-brand, partner, sponsor, program, or secondary-mark lockups."
+        },
+        "brand-motion-guidelines": {
+          "$ref": "/schemas/core/brand-motion-guidelines.json",
+          "description": "Motion and animation rules for video, animated display, and interactive formats"
+        },
+        "brand-photography-style": {
+          "$ref": "/schemas/core/brand-photography-style.json",
+          "description": "Photography style rules for generative creative systems. Defines how brand photography should look when selected or generated."
+        },
+        "brand-property": {
+          "$ref": "/schemas/core/brand-property.json",
+          "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare direct, delegated, or ad_network properties. For direct, delegated, and network paths, these values match the delegation_type field in adagents.json, creating a bilateral verification chain: the operator declares the relationship here, the publisher confirms by setting the same delegation_type on the agent's authorization in their adagents.json. 'owned' is an inline ownership declaration with no adagents.json counterpart."
+        },
+        "brand-shapes": {
+          "$ref": "/schemas/core/brand-shapes.json",
+          "description": "Distinctive shapes used as part of brand visual identity"
+        },
+        "brand-spacing": {
+          "$ref": "/schemas/core/brand-spacing.json",
+          "description": "Spacing system for consistent layout rhythm. Most design systems use an 8px base grid."
+        },
+        "brand-type-scale-entry": {
+          "$ref": "/schemas/core/brand-type-scale-entry.json",
+          "description": "A single entry in the type scale"
+        },
+        "brand-visual-guidelines": {
+          "$ref": "/schemas/core/brand-visual-guidelines.json",
+          "description": "Structured visual rules for generative creative systems. Defines how brand photography, graphics, typography, and composition should be produced to maintain brand consistency at scale."
+        },
         "buyer-agent-ref": {
           "$ref": "/schemas/core/buyer-agent-ref.json",
           "description": "A reference to a buyer agent by its agent URL."
@@ -2352,9 +2492,25 @@
           "$ref": "/schemas/core/closed-money.json",
           "description": "A monetary amount and its currency."
         },
+        "contact": {
+          "$ref": "/schemas/core/contact.json",
+          "description": "Contact information for an entity: its name, plus optional email, domain, and registry identifiers."
+        },
         "country-subdivision-value-set": {
           "$ref": "/schemas/core/country-subdivision-value-set.json",
           "description": "A non-empty set of ISO 3166-2 country subdivision codes."
+        },
+        "data-subject-contestation": {
+          "$ref": "/schemas/core/data-subject-contestation.json",
+          "description": "A contact point where a data subject can request human intervention, express their view, or contest an automated decision. It is a URL, an email address, or both, not a machine-callable API."
+        },
+        "data-subject-rights-channel": {
+          "$ref": "/schemas/core/data-subject-rights-channel.json",
+          "description": "A contact channel for data-subject rights requests: the rights it handles, a URL, an email address, or both, and its languages and countries."
+        },
+        "data-subject-rights-routing": {
+          "$ref": "/schemas/core/data-subject-rights-routing.json",
+          "description": "Where data subjects send rights requests: the upstream source domain, contact channels, response time commitment, and CCPA opt-out URL. It is a contact reference, not a machine-callable API."
         },
         "distribution-identifier": {
           "$ref": "/schemas/core/distribution-identifier.json",
@@ -2384,6 +2540,10 @@
           "$ref": "/schemas/core/flight-endpoint.json",
           "description": "One end of a flight: an airport code and an optional city."
         },
+        "font-file": {
+          "$ref": "/schemas/core/font-file.json",
+          "description": "A downloadable font file with its weight or variable weight range and its style."
+        },
         "geo-coordinates": {
           "$ref": "/schemas/core/geo-coordinates.json",
           "description": "A geographic point as latitude and longitude."
@@ -2411,6 +2571,10 @@
         "half-open-datetime-range": {
           "$ref": "/schemas/core/half-open-datetime-range.json",
           "description": "A half-open date-time range: `start` is inclusive and `end` is exclusive."
+        },
+        "house-summary": {
+          "$ref": "/schemas/core/house-summary.json",
+          "description": "The house (corporate entity) a brand belongs to."
         },
         "metro-area": {
           "$ref": "/schemas/core/metro-area.json",
@@ -2448,6 +2612,22 @@
           "$ref": "/schemas/core/render-dimensions.json",
           "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels."
         },
+        "rights-availability-summary": {
+          "$ref": "/schemas/core/rights-availability-summary.json",
+          "description": "A summary of a brand's licensable rights: available uses, countries and excluded countries, exclusivity model, and content restrictions. Detailed pricing and rights records come from get_rights."
+        },
+        "rights-disclosure": {
+          "$ref": "/schemas/core/rights-disclosure.json",
+          "description": "A disclosure obligation: whether a disclosure is required and, when it is, the disclosure text."
+        },
+        "rights-grant-attestation-reference": {
+          "$ref": "/schemas/core/rights-grant-attestation-reference.json",
+          "description": "An attestation reference for a rights grant: a brand-issued claim whose subject is a rights-grant resource."
+        },
+        "structured-font": {
+          "$ref": "/schemas/core/structured-font.json",
+          "description": "A font described by family name, downloadable font files, OpenType features, and fallback families."
+        },
         "tag-metadata": {
           "$ref": "/schemas/core/tag-metadata.json",
           "description": "Human-readable metadata for one tag value: a name and a description."
@@ -2467,6 +2647,10 @@
         "travel-time": {
           "$ref": "/schemas/core/travel-time.json",
           "description": "A travel time limit used to compute an isochrone, with its unit."
+        },
+        "voice-synthesis": {
+          "$ref": "/schemas/core/voice-synthesis.json",
+          "description": "Text-to-speech voice synthesis configuration for AI-generated audio."
         },
         "webhook-delivery-auth": {
           "$ref": "/schemas/core/webhook-delivery-auth.json",

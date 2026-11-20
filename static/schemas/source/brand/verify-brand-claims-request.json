@@ -40,25 +40,7 @@
               "default": "subsidiary"
             },
             "claim": {
-              "type": "object",
-              "properties": {
-                "subsidiary_domain": {
-                  "type": "string",
-                  "format": "hostname",
-                  "description": "Domain of the leaf brand whose `house_domain` claim is being verified."
-                },
-                "subsidiary_brand_id": {
-                  "$ref": "/schemas/core/brand-id.json",
-                  "description": "Stable brand identifier the leaf uses for itself. Optional but recommended."
-                },
-                "observed_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "When the caller observed the leaf's claim."
-                }
-              },
-              "required": ["subsidiary_domain"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/brand-claim-subsidiary.json"
             }
           },
           "required": ["claim_type", "claim"],
@@ -74,24 +56,7 @@
               "default": "parent"
             },
             "claim": {
-              "type": "object",
-              "properties": {
-                "parent_domain": {
-                  "type": "string",
-                  "format": "hostname",
-                  "description": "Domain of the house claimed as this brand's parent."
-                },
-                "claimant_says": {
-                  "type": "string",
-                  "description": "Optional context — what the claimant published or said."
-                },
-                "observed_at": {
-                  "type": "string",
-                  "format": "date-time"
-                }
-              },
-              "required": ["parent_domain"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/brand-claim-parent.json"
             }
           },
           "required": ["claim_type", "claim"],
@@ -110,20 +75,8 @@
               "type": "object",
               "properties": {
                 "property": {
-                  "type": "object",
-                  "description": "Shape matches brand.json properties[] entry.",
-                  "properties": {
-                    "type": {
-                      "$ref": "/schemas/enums/property-type.json"
-                    },
-                    "identifier": { "type": "string" },
-                    "store": {
-                      "$ref": "/schemas/enums/app-store.json"
-                    },
-                    "region": { "type": "string" }
-                  },
-                  "required": ["type", "identifier"],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/brand-property.json",
+                  "description": "Shape matches brand.json properties[] entry."
                 },
                 "use_case": {
                   "$ref": "/schemas/core/brand-claim-use-case.json",
@@ -147,27 +100,7 @@
               "default": "trademark"
             },
             "claim": {
-              "type": "object",
-              "properties": {
-                "mark": {
-                  "$ref": "/schemas/core/trademark-mark.json"
-                },
-                "registry": {
-                  "$ref": "/schemas/core/trademark-registry.json"
-                },
-                "number": {
-                  "$ref": "/schemas/core/trademark-registration-number.json"
-                },
-                "countries": {
-                  "type": "array",
-                  "items": { "$ref": "/schemas/core/country-code.json" }
-                },
-                "use_case": {
-                  "$ref": "/schemas/core/brand-claim-use-case.json"
-                }
-              },
-              "required": ["mark"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/brand-claim-trademark.json"
             }
           },
           "required": ["claim_type", "claim"],

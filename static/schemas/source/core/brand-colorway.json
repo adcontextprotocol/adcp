@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-colorway.json",
+  "title": "Brand Colorway",
+  "description": "A named color pairing that defines how colors work together. Colorways ensure foreground/background combinations are always on-brand and accessible.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Colorway name (e.g., 'primary', 'inverted', 'subtle')"
+    },
+    "foreground": {
+      "$ref": "/schemas/core/hex-color.json"
+    },
+    "background": {
+      "$ref": "/schemas/core/hex-color.json"
+    },
+    "accent": {
+      "$ref": "/schemas/core/hex-color.json"
+    },
+    "border": {
+      "$ref": "/schemas/core/hex-color.json"
+    },
+    "cta_foreground": {
+      "$ref": "/schemas/core/hex-color.json",
+      "description": "CTA text/icon color, if different from foreground"
+    },
+    "cta_background": {
+      "$ref": "/schemas/core/hex-color.json",
+      "description": "CTA button/container color, if different from accent"
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Channels or contexts where this colorway applies (e.g., 'online', 'print', 'pos', 'social', 'outdoor'). Omit for universal colorways."
+    }
+  },
+  "required": [
+    "name",
+    "foreground",
+    "background"
+  ],
+  "additionalProperties": true
+}

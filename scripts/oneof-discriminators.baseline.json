@@ -36,11 +36,6 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:string | 1:req=[∅]"
     },
-    "brand.json##/definitions/font_role/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:string | 1:req=[family]"
-    },
     "brand.json##/oneOf": {
       "kind": "dangerous",
       "variants": 5,
@@ -60,11 +55,6 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[brand_id,house,names] | 1:[errors]"
-    },
-    "brand/get-brand-identity-response.json##/oneOf/0/properties/fonts/definitions/font_role/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:string | 1:req=[family]"
     },
     "brand/get-rights-response.json##/oneOf": {
       "kind": "narrowable",
@@ -160,6 +150,11 @@
       "kind": "dangerous",
       "variants": 4,
       "note": "shared-required=[type]; 0:req=[type,value_type,value] | 1:req=[type,value_type,values] | 2:req=[type,value_type] | 3:req=[type,description]"
+    },
+    "core/brand-font-role.json##/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:string | 1:req=[family]"
     },
     "core/catchment.json##/oneOf": {
       "kind": "narrowable",
