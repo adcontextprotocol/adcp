@@ -1,0 +1,97 @@
+title: Give the registry documents a schema for their own data (#9104)
+changes:
+  - location: core/asset-group-vocabulary.json#
+    keyword: (schema)
+    old: true
+    new:
+      type:
+        - object
+      properties:
+        governance:
+          type:
+            - object
+          additionalProperties:
+            type:
+              - string
+        lastUpdated:
+          format: date
+          type:
+            - string
+        version:
+          type:
+            - string
+        vocabulary:
+          type:
+            - object
+          additionalProperties:
+            required:
+              - asset_type
+              - description
+            type:
+              - object
+            properties:
+              aliases:
+                $at: core/asset-group-vocabulary.json#/properties/vocabulary/additionalProperties/properties/aliases
+              asset_type:
+                $at: core/asset-group-vocabulary.json#/properties/vocabulary/additionalProperties/properties/asset_type
+              description:
+                $at: core/asset-group-vocabulary.json#/properties/vocabulary/additionalProperties/properties/description
+              note:
+                $at: core/asset-group-vocabulary.json#/properties/vocabulary/additionalProperties/properties/note
+              typical_use:
+                $at: core/asset-group-vocabulary.json#/properties/vocabulary/additionalProperties/properties/typical_use
+    direction: tighten
+    side: none
+  - location: core/format-shape-vocabulary.json#
+    keyword: (schema)
+    old: true
+    new:
+      type:
+        - object
+      properties:
+        lastUpdated:
+          format: date
+          type:
+            - string
+        version:
+          type:
+            - string
+        vocabulary:
+          type:
+            - object
+          additionalProperties:
+            required:
+              - description
+              - promotion_status
+            type:
+              - object
+            dependencies:
+              promoted_to:
+                - promotion_release
+                - promotion_start
+                - transition_end
+            properties:
+              description:
+                $at: core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/description
+              promoted_to:
+                $at: core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/promoted_to
+              promotion_release:
+                $at: >-
+                  core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/promotion_release
+              promotion_start:
+                $at: >-
+                  core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/promotion_start
+              promotion_status:
+                $at: >-
+                  core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/promotion_status
+              tracking_model_hint:
+                $at: >-
+                  core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/tracking_model_hint
+              transition_end:
+                $at: >-
+                  core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/transition_end
+              typical_use:
+                $at: core/format-shape-vocabulary.json#/properties/vocabulary/additionalProperties/properties/typical_use
+    direction: tighten
+    side: none
+    note: 'The root was the empty schema. No message schema $refs this document. Witness: null (also 0 and []).'
