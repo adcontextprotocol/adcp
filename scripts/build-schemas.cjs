@@ -1698,6 +1698,16 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
         // keep the parent's `$id` so the alias's identity wins over the
         // target's.
         const { $schema, $id: refId, ...rest } = resolvedRef;
+        if (rest[HOIST_MARKER] === true && Object.keys(schema).some(k => k !== '$ref')) {
+          // The target is a canonical named type (`x-adcp-hoist`) and the
+          // call-site adds keys beside the `$ref` (e.g. `deprecated` and a
+          // `description` on one branch of a union). Merging would produce
+          // a second, different copy of the named type, so keep the target
+          // body intact for `hoistMarkedSchemas`, which turns this node
+          // into `{ $ref: "#/$defs/<Title>", ...call-site keys }`.
+          result[HOIST_TARGET_KEY] = refId === undefined ? rest : { ...rest, $id: refId };
+          continue;
+        }
         Object.assign(result, rest);
         if (refId !== undefined && result.$id === undefined) {
           result.$id = refId;
@@ -2044,6 +2054,10 @@ function hoistDuplicateInlineEnums(schema) {
  * See issue #4557.
  */
 const HOIST_MARKER = 'x-adcp-hoist';
+// Build-time key set by `resolveRefs` on a `$ref` call-site whose target is
+// marked and which carries sibling keys. Holds the unmerged target body;
+// `hoistMarkedSchemas` replaces it with the `$ref` to the hoisted entry.
+const HOIST_TARGET_KEY = 'x-adcp-hoist-target';
 
 function hoistMarkedSchemas(schema) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
@@ -2106,6 +2120,7 @@ function hoistMarkedSchemas(schema) {
     // markers that may live inside pre-existing $defs entries — the
     // directive must not leak into the bundled output regardless of
     // where it was authored.
+    collapseHoistTargets(schema);
     stripStrayMarkers(schema);
     return schema;
   }
@@ -2188,12 +2203,43 @@ function hoistMarkedSchemas(schema) {
 
   replace(schema);
 
+  // Call-sites that carried keys beside a `$ref` to a marked schema now hold
+  // `{ [HOIST_TARGET_KEY]: { $ref }, ...siblings }`; fold them into
+  // `{ $ref, ...siblings }`.
+  collapseHoistTargets(schema);
+
   // Final sweep: delete any stray `x-adcp-hoist` keys that survived (e.g.
   // markers authored inside a pre-existing $defs entry that Pass 1
   // skipped). The directive must never appear in bundled output.
   stripStrayMarkers(schema);
 
   return schema;
+}
+
+/**
+ * Fold every `HOIST_TARGET_KEY` left by `resolveRefs` back into its node.
+ * A hoisted target (now `{ $ref }`) becomes the node's `$ref`, so the
+ * call-site keeps its sibling keys next to the pointer, the same form
+ * `hoistBySourceIdentity` writes. A target that was not hoisted (reached
+ * only inside a pre-existing `$defs` block) is merged as `resolveRefs`
+ * would have merged it, with the call-site keys winning.
+ */
+function collapseHoistTargets(node) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) collapseHoistTargets(item);
+    return;
+  }
+  if (Object.prototype.hasOwnProperty.call(node, HOIST_TARGET_KEY)) {
+    const target = node[HOIST_TARGET_KEY];
+    delete node[HOIST_TARGET_KEY];
+    const siblings = { ...node };
+    for (const key of Object.keys(node)) delete node[key];
+    const hoisted = target && typeof target === 'object' && !Array.isArray(target)
+      && Object.keys(target).length === 1 && typeof target.$ref === 'string';
+    Object.assign(node, hoisted ? { $ref: target.$ref } : target, siblings);
+  }
+  for (const val of Object.values(node)) collapseHoistTargets(val);
 }
 
 function stripStrayMarkers(node) {
