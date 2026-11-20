@@ -24,6 +24,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { ADSERVER_SEASON, CONTENT_SEASON, type SeasonSeed } from '../inventory-sim/engine/index.js';
 import { InventoryPlatform, type InventoryTenantProfile } from '../inventory-sim/platform.js';
 import { readSeasonFile } from '../inventory-sim/season-file.js';
+import { TRAINING_FORMAT_LABELS } from '../product-factory.js';
 import { createLogger } from '../../logger.js';
 import { resetMarket } from '../inventory-sim/market-store.js';
 import { SANDBOX_CLOCK_SCENARIO, handleSandboxClock } from '../inventory-sim/sandbox-clock.js';
@@ -55,7 +56,7 @@ function seasonFor(tenantId: string, env: NodeJS.ProcessEnv): SeasonSeed {
   if (!file) return SHIPPED_SEASONS[tenantId];
   let seed: SeasonSeed;
   try {
-    seed = readSeasonFile(file);
+    seed = readSeasonFile(file, { formats: TRAINING_FORMAT_LABELS });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`${envVar}=${file}: ${reason}`, { cause: error });

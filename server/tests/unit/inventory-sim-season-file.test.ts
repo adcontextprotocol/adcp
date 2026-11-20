@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
   ADSERVER_SEASON,
   CONTENT_SEASON,
@@ -18,6 +19,7 @@ import {
   readSeasonFile,
   seasonToYaml,
 } from '../../src/training-agent/inventory-sim/season-file.js';
+import { TRAINING_FORMAT_LABELS } from '../../src/training-agent/product-factory.js';
 import {
   INVENTORY_ADSERVER_TENANT_ID,
   INVENTORY_CONTENT_TENANT_ID,
@@ -271,6 +273,40 @@ describe('season files', () => {
   });
 });
 
+describe('season file formats', () => {
+  const CUSTOM = MINIMAL_YAML.replace('formats: [display_300x250]', 'formats: [custom_banner, display_300x250]');
+  const FORMATS = new Set(['display_300x250', 'video_preroll']);
+
+  it('refuses a format the host does not support', () => {
+    const message = invalidSeedMessage(() => parseSeasonSeed(parseYaml(CUSTOM), 'custom', { formats: FORMATS }));
+    expect(message).toContain('placements[0].formats[0]: unsupported format custom_banner');
+    expect(message).not.toContain('formats[1]');
+    expect(message).toContain('supported formats: display_300x250, video_preroll');
+    const file = write('custom-format.yaml', CUSTOM);
+    expect(invalidSeedMessage(() => readSeasonFile(file, { formats: FORMATS }))).toContain('custom_banner');
+  });
+
+  it('leaves formats to the host when none are given', () => {
+    expect(parseSeasonSeed(parseYaml(CUSTOM), 'custom').placements[0].formats).toEqual(['custom_banner', 'display_300x250']);
+    expect(readSeasonFile(write('custom-format-open.yaml', CUSTOM)).placements[0].formats[0]).toBe('custom_banner');
+  });
+
+  it('reports a format problem together with a reference problem', () => {
+    const both = CUSTOM.replace('property_ids: [site]\n    formats', 'property_ids: [site, nowhere]\n    formats');
+    const message = invalidSeedMessage(() => parseSeasonSeed(parseYaml(both), 'both', { formats: FORMATS }));
+    expect(message).toContain('custom_banner');
+  });
+
+  it('knows every format the shipped seasons and the starter fixture use', () => {
+    const starter = readSeasonFile(path.resolve(path.dirname(new URL(import.meta.url).pathname), '../fixtures/inventory-sim/small-season.yaml'));
+    for (const seed of [ADSERVER_SEASON, CONTENT_SEASON, starter]) {
+      for (const placement of seed.placements) {
+        for (const format of placement.formats) expect(TRAINING_FORMAT_LABELS.has(format), `${seed.seed_id}: ${format}`).toBe(true);
+      }
+    }
+  });
+});
+
 describe('resolveInventoryTenantProfiles', () => {
   const FIXTURE = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),
@@ -303,6 +339,14 @@ describe('resolveInventoryTenantProfiles', () => {
     const missing = path.join(dir, 'nope.yaml');
     expect(() => resolveInventoryTenantProfiles({ [CONTENT_VAR]: missing })).toThrow(
       new RegExp(`${CONTENT_VAR}.*${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+    );
+  });
+
+  it('names the env var, the path and the format when a season uses an unknown format', () => {
+    const fixture = fs.readFileSync(FIXTURE, 'utf8');
+    const custom = write('custom-format-tenant-season.yaml', fixture.replace('formats: [display_300x250]', 'formats: [custom_banner]'));
+    expect(() => resolveInventoryTenantProfiles({ [ADSERVER_VAR]: custom })).toThrow(
+      new RegExp(`${ADSERVER_VAR}=${custom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*custom_banner`, 's'),
     );
   });
 
