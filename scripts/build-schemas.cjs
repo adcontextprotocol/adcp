@@ -903,17 +903,32 @@ function filterExtensionsForVersion(extensions, targetVersion) {
 }
 
 /**
+ * Read the schema keywords that describe the registry document itself from
+ * the source placeholder, so the generated registry is a schema for its own
+ * data rather than an empty schema.
+ * @param {string} sourceDir - Schema source directory
+ * @returns {Object} The type, required, and properties keywords
+ */
+function readExtensionRegistrySchema(sourceDir) {
+  const placeholder = JSON.parse(fs.readFileSync(path.join(sourceDir, 'extensions', 'index.json'), 'utf8'));
+  const { type, required, properties } = placeholder;
+  return { type, required, properties };
+}
+
+/**
  * Generate the extensions/index.json registry for a target version
  * @param {Array} extensions - Array of valid extension objects
  * @param {string} targetVersion - Target version string for $id paths
+ * @param {string} [sourceDir] - Schema source directory holding the registry placeholder
  * @returns {Object} The generated registry object
  */
-function generateExtensionRegistry(extensions, targetVersion) {
+function generateExtensionRegistry(extensions, targetVersion, sourceDir = SOURCE_DIR) {
   const registry = {
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: `/schemas/${targetVersion}/extensions/index.json`,
     title: 'AdCP Extension Registry',
     description: 'Auto-generated registry of formal AdCP extensions. Extensions provide typed schemas for vendor-specific or domain-specific data within the ext field. Agents declare which extensions they support in their agent card.',
+    ...readExtensionRegistrySchema(sourceDir),
     _generated: true,
     _generatedAt: BUILD_TIMESTAMP,
     extensions: {}
@@ -970,7 +985,7 @@ function buildExtensions(sourceDir, targetDir, version) {
     }
 
     // Generate empty registry
-    const registry = generateExtensionRegistry([], version);
+    const registry = generateExtensionRegistry([], version, sourceDir);
     fs.writeFileSync(
       path.join(targetExtensionsDir, 'index.json'),
       JSON.stringify(registry, null, 2)
@@ -1005,7 +1020,7 @@ function buildExtensions(sourceDir, targetDir, version) {
   }
 
   // Generate the registry index
-  const registry = generateExtensionRegistry(validExtensions, version);
+  const registry = generateExtensionRegistry(validExtensions, version, sourceDir);
   fs.writeFileSync(
     path.join(targetExtensionsDir, 'index.json'),
     JSON.stringify(registry, null, 2)

@@ -1,0 +1,774 @@
+title: Enforce each asset_requirements schema for its own asset_type (#8476)
+changes:
+  - location: core/requirements/offering-asset-constraint.json#/allOf/0
+    keyword: if
+    new:
+      required:
+        - asset_type
+      properties:
+        asset_type:
+          const: image
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#/allOf/0
+    keyword: then
+    new:
+      properties:
+        asset_requirements:
+          type:
+            - object
+          if:
+            required:
+              - min_dpi
+          properties:
+            animation_allowed:
+              type:
+                - boolean
+            aspect_ratio:
+              pattern: ^\d+(\.\d+)?:\d+(\.\d+)?$
+              type:
+                - string
+            bleed:
+              type:
+                - object
+              oneOf:
+                - $at: core/requirements/image-asset-requirements.json#/properties/bleed/oneOf/0
+                - $at: core/requirements/image-asset-requirements.json#/properties/bleed/oneOf/1
+            color_space:
+              enum:
+                - cmyk
+                - grayscale
+                - rgb
+            formats:
+              type:
+                - array
+              items:
+                $at: core/requirements/image-asset-requirements.json#/properties/formats/items
+            max_animation_duration_ms:
+              minimum: 0
+              type:
+                - integer
+            max_file_size_kb:
+              minimum: 1
+              type:
+                - integer
+            max_height:
+              exclusiveMinimum: 0
+              type:
+                - number
+            max_weight_grams:
+              exclusiveMinimum: 0
+              type:
+                - integer
+            max_width:
+              exclusiveMinimum: 0
+              type:
+                - number
+            min_dpi:
+              minimum: 1
+              type:
+                - integer
+            min_height:
+              exclusiveMinimum: 0
+              type:
+                - number
+            min_width:
+              exclusiveMinimum: 0
+              type:
+                - number
+            parameters_from_format_id:
+              type:
+                - boolean
+            pixel_ratios:
+              minItems: 1
+              type:
+                - array
+              uniqueItems: true
+              items:
+                $at: core/requirements/image-asset-requirements.json#/properties/pixel_ratios/items
+            transparency_required:
+              type:
+                - boolean
+            unit:
+              enum:
+                - cm
+                - dp
+                - inches
+                - mm
+                - pt
+                - px
+          then:
+            required:
+              - unit
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: video
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              aspect_ratio:
+                $at: core/requirements/video-asset-requirements.json#/properties/aspect_ratio
+              audio_channels:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_channels
+              audio_codecs:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_codecs
+              audio_required:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_required
+              audio_sample_rates:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_sample_rates
+              codecs:
+                $at: core/requirements/video-asset-requirements.json#/properties/codecs
+              containers:
+                $at: core/requirements/video-asset-requirements.json#/properties/containers
+              frame_rate_type:
+                $at: enums/frame-rate-type.json#
+              frame_rates:
+                $at: core/requirements/video-asset-requirements.json#/properties/frame_rates
+              gop_type:
+                $at: enums/gop-type.json#
+              loudness_lufs:
+                $at: core/requirements/video-asset-requirements.json#/properties/loudness_lufs
+              loudness_tolerance_db:
+                $at: core/requirements/video-asset-requirements.json#/properties/loudness_tolerance_db
+              max_bitrate_kbps:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_bitrate_kbps
+              max_duration_ms:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_duration_ms
+              max_file_size_kb:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_file_size_kb
+              max_gop_interval_seconds:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_gop_interval_seconds
+              max_height:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_height
+              max_width:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_width
+              min_bitrate_kbps:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_bitrate_kbps
+              min_duration_ms:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_duration_ms
+              min_gop_interval_seconds:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_gop_interval_seconds
+              min_height:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_height
+              min_width:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_width
+              moov_atom_position:
+                $at: enums/moov-atom-position.json#
+              scan_type:
+                $at: enums/scan-type.json#
+              true_peak_dbfs:
+                $at: core/requirements/video-asset-requirements.json#/properties/true_peak_dbfs
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: audio
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              channels:
+                $at: core/requirements/audio-asset-requirements.json#/properties/channels
+              formats:
+                $at: core/requirements/audio-asset-requirements.json#/properties/formats
+              loudness_lufs:
+                $at: core/requirements/audio-asset-requirements.json#/properties/loudness_lufs
+              loudness_tolerance_db:
+                $at: core/requirements/audio-asset-requirements.json#/properties/loudness_tolerance_db
+              max_bitrate_kbps:
+                $at: core/requirements/audio-asset-requirements.json#/properties/max_bitrate_kbps
+              max_duration_ms:
+                $at: core/requirements/audio-asset-requirements.json#/properties/max_duration_ms
+              max_file_size_kb:
+                $at: core/requirements/audio-asset-requirements.json#/properties/max_file_size_kb
+              min_bitrate_kbps:
+                $at: core/requirements/audio-asset-requirements.json#/properties/min_bitrate_kbps
+              min_duration_ms:
+                $at: core/requirements/audio-asset-requirements.json#/properties/min_duration_ms
+              sample_rates:
+                $at: core/requirements/audio-asset-requirements.json#/properties/sample_rates
+              true_peak_dbfs:
+                $at: core/requirements/audio-asset-requirements.json#/properties/true_peak_dbfs
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: text
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_values:
+                $at: core/requirements/text-asset-requirements.json#/properties/allowed_values
+              character_pattern:
+                $at: core/requirements/text-asset-requirements.json#/properties/character_pattern
+              max_length:
+                $at: core/requirements/text-asset-requirements.json#/properties/max_length
+              max_lines:
+                $at: core/requirements/text-asset-requirements.json#/properties/max_lines
+              min_length:
+                $at: core/requirements/text-asset-requirements.json#/properties/min_length
+              min_lines:
+                $at: core/requirements/text-asset-requirements.json#/properties/min_lines
+              prohibited_terms:
+                $at: core/requirements/text-asset-requirements.json#/properties/prohibited_terms
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: markdown
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              max_length:
+                $at: core/requirements/markdown-asset-requirements.json#/properties/max_length
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: html
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_external_domains:
+                $at: core/requirements/html-asset-requirements.json#/properties/allowed_external_domains
+              external_resources_allowed:
+                $at: core/requirements/html-asset-requirements.json#/properties/external_resources_allowed
+              max_file_size_kb:
+                $at: core/requirements/html-asset-requirements.json#/properties/max_file_size_kb
+              sandbox:
+                $at: core/requirements/html-asset-requirements.json#/properties/sandbox
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: css
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              max_file_size_kb:
+                $at: core/requirements/css-asset-requirements.json#/properties/max_file_size_kb
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: javascript
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_external_domains:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/allowed_external_domains
+              external_resources_allowed:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/external_resources_allowed
+              max_file_size_kb:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/max_file_size_kb
+              module_type:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/module_type
+              strict_mode_required:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/strict_mode_required
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: vast
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            not:
+              $at: core/requirements/vast-asset-requirements.json#/not
+            properties:
+              media_file_requirements:
+                $at: core/vast-media-file-requirements.json#
+              vast_version:
+                $at: enums/vast-version.json#
+              vast_versions:
+                $at: core/requirements/vast-asset-requirements.json#/properties/vast_versions
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: daast
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            not:
+              $at: core/requirements/daast-asset-requirements.json#/not
+            properties:
+              daast_version:
+                $at: enums/daast-version.json#
+              daast_versions:
+                $at: core/daast-tracker-constraints.json#/definitions/daast_versions
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: url
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_domains:
+                $at: core/requirements/url-asset-requirements.json#/properties/allowed_domains
+              macro_support:
+                $at: core/requirements/url-asset-requirements.json#/properties/macro_support
+              max_length:
+                $at: core/requirements/url-asset-requirements.json#/properties/max_length
+              protocols:
+                $at: core/requirements/url-asset-requirements.json#/properties/protocols
+              role:
+                $at: core/requirements/url-asset-requirements.json#/properties/role
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: webhook
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              methods:
+                $at: core/requirements/webhook-asset-requirements.json#/properties/methods
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: video
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              aspect_ratio:
+                $at: core/requirements/video-asset-requirements.json#/properties/aspect_ratio
+              audio_channels:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_channels
+              audio_codecs:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_codecs
+              audio_required:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_required
+              audio_sample_rates:
+                $at: core/requirements/video-asset-requirements.json#/properties/audio_sample_rates
+              codecs:
+                $at: core/requirements/video-asset-requirements.json#/properties/codecs
+              containers:
+                $at: core/requirements/video-asset-requirements.json#/properties/containers
+              frame_rate_type:
+                $at: enums/frame-rate-type.json#
+              frame_rates:
+                $at: core/requirements/video-asset-requirements.json#/properties/frame_rates
+              gop_type:
+                $at: enums/gop-type.json#
+              loudness_lufs:
+                $at: core/requirements/video-asset-requirements.json#/properties/loudness_lufs
+              loudness_tolerance_db:
+                $at: core/requirements/video-asset-requirements.json#/properties/loudness_tolerance_db
+              max_bitrate_kbps:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_bitrate_kbps
+              max_duration_ms:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_duration_ms
+              max_file_size_kb:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_file_size_kb
+              max_gop_interval_seconds:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_gop_interval_seconds
+              max_height:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_height
+              max_width:
+                $at: core/requirements/video-asset-requirements.json#/properties/max_width
+              min_bitrate_kbps:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_bitrate_kbps
+              min_duration_ms:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_duration_ms
+              min_gop_interval_seconds:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_gop_interval_seconds
+              min_height:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_height
+              min_width:
+                $at: core/requirements/video-asset-requirements.json#/properties/min_width
+              moov_atom_position:
+                $at: enums/moov-atom-position.json#
+              scan_type:
+                $at: enums/scan-type.json#
+              true_peak_dbfs:
+                $at: core/requirements/video-asset-requirements.json#/properties/true_peak_dbfs
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: audio
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              channels:
+                $at: core/requirements/audio-asset-requirements.json#/properties/channels
+              formats:
+                $at: core/requirements/audio-asset-requirements.json#/properties/formats
+              loudness_lufs:
+                $at: core/requirements/audio-asset-requirements.json#/properties/loudness_lufs
+              loudness_tolerance_db:
+                $at: core/requirements/audio-asset-requirements.json#/properties/loudness_tolerance_db
+              max_bitrate_kbps:
+                $at: core/requirements/audio-asset-requirements.json#/properties/max_bitrate_kbps
+              max_duration_ms:
+                $at: core/requirements/audio-asset-requirements.json#/properties/max_duration_ms
+              max_file_size_kb:
+                $at: core/requirements/audio-asset-requirements.json#/properties/max_file_size_kb
+              min_bitrate_kbps:
+                $at: core/requirements/audio-asset-requirements.json#/properties/min_bitrate_kbps
+              min_duration_ms:
+                $at: core/requirements/audio-asset-requirements.json#/properties/min_duration_ms
+              sample_rates:
+                $at: core/requirements/audio-asset-requirements.json#/properties/sample_rates
+              true_peak_dbfs:
+                $at: core/requirements/audio-asset-requirements.json#/properties/true_peak_dbfs
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: text
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_values:
+                $at: core/requirements/text-asset-requirements.json#/properties/allowed_values
+              character_pattern:
+                $at: core/requirements/text-asset-requirements.json#/properties/character_pattern
+              max_length:
+                $at: core/requirements/text-asset-requirements.json#/properties/max_length
+              max_lines:
+                $at: core/requirements/text-asset-requirements.json#/properties/max_lines
+              min_length:
+                $at: core/requirements/text-asset-requirements.json#/properties/min_length
+              min_lines:
+                $at: core/requirements/text-asset-requirements.json#/properties/min_lines
+              prohibited_terms:
+                $at: core/requirements/text-asset-requirements.json#/properties/prohibited_terms
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: markdown
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              max_length:
+                $at: core/requirements/markdown-asset-requirements.json#/properties/max_length
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: html
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_external_domains:
+                $at: core/requirements/html-asset-requirements.json#/properties/allowed_external_domains
+              external_resources_allowed:
+                $at: core/requirements/html-asset-requirements.json#/properties/external_resources_allowed
+              max_file_size_kb:
+                $at: core/requirements/html-asset-requirements.json#/properties/max_file_size_kb
+              sandbox:
+                $at: core/requirements/html-asset-requirements.json#/properties/sandbox
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: css
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              max_file_size_kb:
+                $at: core/requirements/css-asset-requirements.json#/properties/max_file_size_kb
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: javascript
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_external_domains:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/allowed_external_domains
+              external_resources_allowed:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/external_resources_allowed
+              max_file_size_kb:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/max_file_size_kb
+              module_type:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/module_type
+              strict_mode_required:
+                $at: core/requirements/javascript-asset-requirements.json#/properties/strict_mode_required
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: vast
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            not:
+              $at: core/requirements/vast-asset-requirements.json#/not
+            properties:
+              media_file_requirements:
+                $at: core/vast-media-file-requirements.json#
+              vast_version:
+                $at: enums/vast-version.json#
+              vast_versions:
+                $at: core/requirements/vast-asset-requirements.json#/properties/vast_versions
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: daast
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            not:
+              $at: core/requirements/daast-asset-requirements.json#/not
+            properties:
+              daast_version:
+                $at: enums/daast-version.json#
+              daast_versions:
+                $at: core/daast-tracker-constraints.json#/definitions/daast_versions
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: url
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              allowed_domains:
+                $at: core/requirements/url-asset-requirements.json#/properties/allowed_domains
+              macro_support:
+                $at: core/requirements/url-asset-requirements.json#/properties/macro_support
+              max_length:
+                $at: core/requirements/url-asset-requirements.json#/properties/max_length
+              protocols:
+                $at: core/requirements/url-asset-requirements.json#/properties/protocols
+              role:
+                $at: core/requirements/url-asset-requirements.json#/properties/role
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#
+    keyword: allOf
+    new:
+      if:
+        required:
+          - asset_type
+        properties:
+          asset_type:
+            const: webhook
+      then:
+        properties:
+          asset_requirements:
+            type:
+              - object
+            properties:
+              methods:
+                $at: core/requirements/webhook-asset-requirements.json#/properties/methods
+    direction: tighten
+    side: none
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
