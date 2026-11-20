@@ -22,23 +22,7 @@
           "type": "array",
           "description": "Platform-independent identifiers (imdb_id, gracenote_id, eidr_id, etc.). Each identifier uniquely identifies a collection across all publishers. platform_channel_id is not allowed here: its identity is the tuple (publisher_domain, value), which this bare {type, value} shape cannot carry.",
           "items": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "$ref": "/schemas/enums/distribution-identifier-type.json",
-                "description": "Type of distribution identifier"
-              },
-              "value": {
-                "type": "string",
-                "description": "The identifier value"
-              }
-            },
-            "required": ["type", "value"],
-            "additionalProperties": true,
-            "not": {
-              "required": ["type"],
-              "properties": { "type": { "const": "platform_channel_id" } }
-            }
+            "$ref": "/schemas/core/platform-independent-distribution-identifier.json"
           },
           "minItems": 1
         }

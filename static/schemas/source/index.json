@@ -2336,6 +2336,10 @@
           "$ref": "/schemas/core/country-subdivision-value-set.json",
           "description": "A non-empty set of ISO 3166-2 country subdivision codes."
         },
+        "distribution-identifier": {
+          "$ref": "/schemas/core/distribution-identifier.json",
+          "description": "An identifier for a distribution: a type and a value."
+        },
         "dooh-address": {
           "$ref": "/schemas/core/dooh-address.json",
           "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise."
@@ -2404,6 +2408,10 @@
           "$ref": "/schemas/core/pixel-size.json",
           "description": "A width and height in pixels."
         },
+        "platform-independent-distribution-identifier": {
+          "$ref": "/schemas/core/platform-independent-distribution-identifier.json",
+          "description": "A distribution identifier that does not depend on one platform: a type and a value, where the type can't be `platform_channel_id`."
+        },
         "postal-address": {
           "$ref": "/schemas/core/postal-address.json",
           "description": "A postal address: street, city, region, postal code, and country."
@@ -2415,6 +2423,14 @@
         "render-dimensions": {
           "$ref": "/schemas/core/render-dimensions.json",
           "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels."
+        },
+        "tag-metadata": {
+          "$ref": "/schemas/core/tag-metadata.json",
+          "description": "Human-readable metadata for one tag value: a name and a description."
+        },
+        "tag-metadata-map": {
+          "$ref": "/schemas/core/tag-metadata-map.json",
+          "description": "Metadata for tags, keyed by tag value. Each entry gives the tag a human-readable name and description."
         },
         "target-frequency": {
           "$ref": "/schemas/core/target-frequency.json",
