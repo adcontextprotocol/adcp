@@ -1,0 +1,33 @@
+#!/usr/bin/env node
+// GNU coreutils `stat -c FORMAT FILE...`, limited to the `%a` specifier that
+// scripts/backfill-cdn-artifacts.sh uses. Tests put this on PATH only off
+// Linux, where BSD stat rejects -c. Any other option or specifier fails.
+import fs from "node:fs";
+
+const fail = (message) => {
+  process.stderr.write(`stat: ${message}\n`);
+  process.exit(1);
+};
+
+const args = process.argv.slice(2);
+if (args[0] !== "-c" || args.length < 3) fail("supports only -c FORMAT FILE...");
+const [, format, ...files] = args;
+const unsupported = format.replace(/%a/g, "").match(/%./);
+if (unsupported) fail(`unsupported format specifier '${unsupported[0]}'`);
+
+let status = 0;
+for (const file of files) {
+  let mode;
+  try {
+    // Like GNU stat without -L, report the link itself.
+    mode = fs.lstatSync(file).mode;
+  } catch (error) {
+    process.stderr.write(`stat: cannot statx '${file}': ${error.message}\n`);
+    status = 1;
+    continue;
+  }
+  // %a: access rights in octal, including setuid, setgid and sticky bits.
+  const rights = (mode & 0o7777).toString(8);
+  process.stdout.write(`${format.replace(/%a/g, rights)}\n`);
+}
+process.exit(status);
