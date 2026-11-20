@@ -126,5 +126,15 @@ describe('inventory tenant on a season file', () => {
     expectCanonical('get_media_buy_delivery', delivery);
     expect(delivery.media_buy_deliveries[0].media_buy_id).toBe(buy.media_buy_id);
     expect(delivery.media_buy_deliveries[0].totals.impressions).toBe(0);
+
+    const advanced = await call(tenant, 'comply_test_controller', {
+      scenario: 'sandbox_clock',
+      account: ACCOUNT,
+      params: { operation: 'advance_time', by: 'P5D' },
+    });
+    expect(advanced.success).toBe(true);
+    const later = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [buy.media_buy_id] });
+    expectCanonical('get_media_buy_delivery', later);
+    expect(later.media_buy_deliveries[0].totals.impressions).toBeGreaterThan(0);
   });
 });

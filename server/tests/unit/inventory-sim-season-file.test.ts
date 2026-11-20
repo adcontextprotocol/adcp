@@ -167,6 +167,14 @@ describe('season files', () => {
     expect(invalidSeedMessage(() => readSeasonFile(file))).toContain('  start_date: ');
   });
 
+  it.each(['2027/01/05', 'abc', '2027-1-5'])('reports only the format problem for the date %s', date => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.start_date = date;
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'dates'));
+    expect(message).toContain('start_date: must be a YYYY-MM-DD date');
+    expect(message).not.toContain('not a calendar date');
+  });
+
   it('refuses digit separators', () => {
     const file = write('separators.yaml', MINIMAL_YAML.replace('base_daily_impressions: 10000', 'base_daily_impressions: 2_200_000'));
     expect(invalidSeedMessage(() => readSeasonFile(file))).toContain('placements[0].base_daily_impressions');
@@ -279,8 +287,8 @@ describe('season values the tenants put on the wire', () => {
     ['a currency that is not three letters', y => y.replace('currency: USD', 'currency: DOLLARS'), 'currency:'],
     ['a property domain that is not a hostname', y => y.replace('domain: site.example', 'domain: https://site.example/'), 'properties[0].domain:'],
     ['an upper-case property domain', y => y.replace('domain: site.example', 'domain: Site.Example'), 'properties[0].domain:'],
-    ['a placement with no formats', y => y.replace('formats: [display_300x250]', 'formats: []'), 'placements[0].formats:'],
-    ['a negative floor', y => y.replace('floor_cpm: 2', 'floor_cpm: -1'), 'placements[0].floor_cpm:'],
+    ['a placement with no formats', y => y.replace('formats: [display_300x250]', 'formats: []'), 'placements[0].formats: needs at least one format'],
+    ['a negative floor', y => y.replace('floor_cpm: 2', 'floor_cpm: -1'), 'placements[0].floor_cpm: must be 0 or more'],
   ];
 
   it.each(refuses)('refuses %s', (_name, edit, where) => {
@@ -376,9 +384,22 @@ describe('season file formats', () => {
   });
 
   it('reports a format problem together with a reference problem', () => {
-    const both = CUSTOM.replace('property_ids: [site]\n    formats', 'property_ids: [site, nowhere]\n    formats');
-    const message = invalidSeedMessage(() => parseSeasonSeed(parseYaml(both), 'both', { formats: FORMATS }));
-    expect(message).toContain('custom_banner');
+    const seed = parseYaml(CUSTOM);
+    seed.products[0].property_ids = ['missing'];
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'both', { formats: FORMATS }));
+    expect(message).toContain('products[0].property_ids[0]: unknown property missing');
+    expect(message).toContain('placements[0].formats[0]: unsupported format custom_banner');
+    const lines = message.trim().split('\n');
+    expect(lines[lines.length - 1]).toContain('supported formats:');
+  });
+
+  it('reports an unknown product placement without blaming its properties', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.products[0].placement_ids = ['nowhere'];
+    seed.products[0].property_ids = ['site'];
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'placement'));
+    expect(message).not.toContain('is not on any of the product');
+    expect(message).toContain('nowhere');
   });
 
   it('knows every format the shipped seasons and the starter fixture use', () => {

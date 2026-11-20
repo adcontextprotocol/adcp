@@ -146,7 +146,16 @@ products:
     rate_cpm: 8
 ```
 
-The file is checked against the `SeasonSeed` shape and its value ranges (rates are between 0 and 1, lags, cadences and counts are whole numbers, sigmas and multipliers are not negative), and then against the engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, and every placement lists at least one format. Ids are unique and every reference resolves. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`. Placement `formats` must be format labels the training agent knows, such as `display_300x250` or `video_preroll`; the error for any other lists them.
+The loader checks:
+
+- The shape and value ranges. Day counts, cadences and counts are whole numbers (cadences and counts from 1), `share_of_voice` is above 0 and at most 1, rates are between 0 and 1, and multipliers and noise are not negative. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, and every placement lists at least one format.
+- Dates are real calendar dates.
+- Every reference resolves: product properties and collections, and the placements, properties and regions that traffic events name.
+- Placement `formats` are format labels the training agent knows, such as `display_300x250` or `video_preroll`; the error for any other lists them.
+- Every product covers some inventory.
+- The engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Ids are unique. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`.
+
+The shape, reference and coverage checks each list every problem they find. The engine's own rules report the first.
 
 Set one environment variable per tenant:
 
@@ -155,7 +164,7 @@ Set one environment variable per tenant:
 | Ad server | `TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE` |
 | Content platform | `TRAINING_AGENT_INVENTORY_CONTENT_SEASON_FILE` |
 
-A tenant whose variable is unset or empty serves its shipped season. A tenant whose variable is set serves the file, and logs one line naming it. If the file is missing or invalid, the server refuses to start. The error names the variable and the path. The shape check lists every problem it finds, and the engine's rules report the first.
+A tenant whose variable is unset or empty serves its shipped season. A tenant whose variable is set serves the file, and logs one line naming it. If the file is missing or invalid, the server refuses to start. The error names the variable and the path.
 
 Change `seed_id` whenever you change a season file. A market already stored under an unchanged `seed_id` would replay under the new traffic.
 
