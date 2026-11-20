@@ -253,7 +253,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // controller measures 1_461_855 bytes; bound it at 1_462_000.
 // Merged with main's withdrawals and the reserved-word enum replacements, the
 // controller measures 1_424_038 bytes; bound it at 1_425_000.
-const PARITY_COMPILE_LIMIT = 1_425_000;
+// Naming the two legacy webhook authentication objects (#8907) puts them in
+// the controller closure as shared definitions: 1_425_903 bytes, bound at
+// 1_426_000.
+const PARITY_COMPILE_LIMIT = 1_426_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

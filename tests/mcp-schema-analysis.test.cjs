@@ -69,10 +69,12 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // definition adds 57 and 10. With installment refinement on top, whose
   // product_id and action reference core/product-id.json and
   // enums/membership-action.json, the report measures 1,182 instances and 306
-  // unique definitions.
-  assert.equal(report.definition_instances, 1182);
-  assert.equal(report.unique_definitions, 306);
-  assert.equal(report.repeated_definitions, 205);
+  // unique definitions. Naming the legacy webhook authentication object
+  // (#8907), reached from push_notification_config and reporting_webhook,
+  // adds 8 instances and 1 unique, repeated definition: 1,190, 307 and 206.
+  assert.equal(report.definition_instances, 1190);
+  assert.equal(report.unique_definitions, 307);
+  assert.equal(report.repeated_definitions, 206);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -199,7 +201,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 306);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 307);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

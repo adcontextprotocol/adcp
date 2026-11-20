@@ -1508,6 +1508,14 @@
           "$ref": "/schemas/core/auth-credential.json",
           "description": "Credential for Bearer or HMAC-SHA256 authentication: a token or shared secret of at least 32 characters."
         },
+        "webhook-authentication": {
+          "$ref": "/schemas/core/webhook-authentication.json",
+          "description": "Legacy Bearer or HMAC-SHA256 webhook authentication with required credentials, removed in 4.0."
+        },
+        "notification-authentication": {
+          "$ref": "/schemas/core/notification-authentication.json",
+          "description": "Legacy authentication selector on a notification subscription, with write-only, optional credentials."
+        },
         "account-change-id": {
           "$ref": "/schemas/core/account-change-id.json",
           "description": "Stable seller-generated identifier of one logical account change."

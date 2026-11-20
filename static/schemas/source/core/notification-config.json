@@ -53,28 +53,10 @@
       "description": "Product webhook representation selected by this subscriber. Use canonical with lifecycle_tools.list_products; legacy is for 3.x get_products consumers. When absent, sellers emit the legacy representation. Sellers emit exactly canonical_product/canonical_pricing_options or product/pricing_options accordingly. Valid only when event_types includes a product.* event. The default is stated here rather than as a schema default so serializers that materialize defaults do not add the field to configs without a product.* event. Sellers echoing configs on sync_accounts or list_accounts MUST NOT add product_payload_view to a config whose event_types includes no product.* event."
     },
     "authentication": {
-      "type": "object",
+      "$ref": "/schemas/core/notification-authentication.json",
       "deprecated": true,
       "x-removed-in": "4.0.0",
-      "description": "Legacy authentication selector. Same semantics as `push-notification-config.authentication`: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry as a per-account validation failure with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
-      "properties": {
-        "schemes": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/enums/auth-scheme.json"
-          },
-          "minItems": 1,
-          "maxItems": 1
-        },
-        "credentials": {
-          "$ref": "/schemas/core/auth-credential.json",
-          "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only."
-        }
-      },
-      "required": [
-        "schemes"
-      ],
-      "additionalProperties": true
+      "description": "Legacy authentication selector. Same semantics as `push-notification-config.authentication`, except that `credentials` is optional because this configuration is echoed on reads: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry as a per-account validation failure with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads."
     },
     "signing_profile": {
       "x-status": "experimental",

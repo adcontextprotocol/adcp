@@ -226,30 +226,10 @@
           "description": "Optional client-provided token. The seller echoes it verbatim in every delivery. A receiver MUST NOT treat a valid token echo as a substitute for verifying the delivery's signature."
         },
         "authentication": {
-          "type": "object",
+          "$ref": "/schemas/core/webhook-authentication.json",
           "deprecated": true,
           "x-removed-in": "4.0.0",
-          "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery with `adcp/webhook-signing/v1`, as for a `push_notification_config` that selects no `signing_profile` (docs/building/by-layer/L1/security.mdx#webhook-callbacks).",
-          "properties": {
-            "schemes": {
-              "type": "array",
-              "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead.",
-              "items": {
-                "$ref": "/schemas/enums/auth-scheme.json"
-              },
-              "minItems": 1,
-              "maxItems": 1
-            },
-            "credentials": {
-              "$ref": "/schemas/core/auth-credential.json",
-              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding."
-            }
-          },
-          "required": [
-            "schemes",
-            "credentials"
-          ],
-          "additionalProperties": true
+          "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery with `adcp/webhook-signing/v1`, as for a `push_notification_config` that selects no `signing_profile` (docs/building/by-layer/L1/security.mdx#webhook-callbacks)."
         },
         "delivery_mode": {
           "type": "string",
