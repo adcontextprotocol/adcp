@@ -95,6 +95,70 @@ The simulation is deterministic: the same calls at the same simulated times alwa
 
 A content product lists the installments scheduled in the requested flight, with each one's `status` as known at your sandbox time: `scheduled`, then `published`, `postponed` (with the new `scheduled_at`) or `cancelled` once its date passes. A sponsorship package buys every installment of its product scheduled in its flight.
 
+## Run on your own season
+
+The two tenants run on any season you supply as a file, so you can test against your own sites, products and scripted events. Run the training agent on your machine and point a tenant at the file. The hosted test agent serves only its shipped seasons, so a season file never leaves your machine.
+
+A season is a YAML or JSON file. Its fields are the `SeasonSeed` type in [`engine/types.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/inventory-sim/engine/types.ts). The starter, `server/tests/fixtures/inventory-sim/small-season.yaml`, is a complete season for one site with a guaranteed and an auction product. Copy it and edit it. This is its shape, shortened:
+
+```yaml
+seed_id: small-season
+rng_seed: small-season-v1
+start_date: 2026-11-01
+days: 365
+currency: USD
+regions:
+  - { region_id: us, country: US, name: United States, share: 1 }
+properties:
+  - { property_id: harbor_daily, name: Harbor Daily, domain: harbor-daily.example }
+placements:
+  - placement_id: banner
+    channel: display
+    property_ids: [harbor_daily]
+    base_daily_impressions: 100000
+    floor_cpm: 2
+products:
+  - product_id: banner_guaranteed
+    delivery_type: guaranteed
+    placement_ids: [banner]
+    rate_cpm: 8
+```
+
+The file is checked against the `SeasonSeed` shape, and then against the engine's own rules, such as shares that sum to 1 and flights that fall inside the calendar.
+
+Set one environment variable per tenant:
+
+| Tenant | Variable |
+|--------|----------|
+| Ad server | `TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE` |
+| Content platform | `TRAINING_AGENT_INVENTORY_CONTENT_SEASON_FILE` |
+
+A tenant whose variable is unset or empty serves its shipped season. A tenant whose variable is set serves the file, and logs one line naming it. If the file is missing or invalid, the server refuses to start. The error names the variable, the path and every problem found.
+
+Change `seed_id` whenever you change a season file. A market already stored under an unchanged `seed_id` would replay under the new traffic.
+
+The server needs PostgreSQL. Start the one in `docker-compose.yml`, create the schema the migrations expect (see the [local bootstrap](https://github.com/adcontextprotocol/adcp/blob/main/docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap)), then start the server from the repository root:
+
+```bash
+docker compose up -d --wait postgres
+docker compose exec -T postgres psql -U adcp -d adcp_registry \
+  -c "create schema if not exists training_reporting_gcs authorization adcp"
+
+NODE_ENV=development PORT=3917 RUN_MIGRATIONS=true SKIP_REPO_INDEX=true \
+  DATABASE_URL="postgresql://adcp:localdev@localhost:$(docker compose port postgres 5432 | sed 's/.*://')/adcp_registry" \
+  ALLOW_INSECURE_COOKIES=true DEV_USER_EMAIL=dev@example.com DEV_USER_ID=dev-user-123 \
+  AGENT_TOKEN_ENCRYPTION_SECRET='local-dev-encryption-key-32chars!' \
+  WORKOS_API_KEY=sk_test_dummy_local_dev_00000000000 WORKOS_CLIENT_ID=client_dummy_local_dev_00000000 \
+  WORKOS_COOKIE_PASSWORD='local-dev-cookie-password-that-is-at-least-32-chars-long' \
+  PUBLIC_TEST_AGENT_TOKEN=local-token \
+  TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE=server/tests/fixtures/inventory-sim/small-season.yaml \
+  npx tsx server/src/index.ts
+```
+
+The dummy WorkOS values only satisfy the server's start-up checks. The tenants are at `http://localhost:3917/api/training-agent/inventory-adserver/mcp` and `.../inventory-content/mcp`, and `local-token` is their bearer token. The log shows `inventory-adserver: season small-season from server/tests/fixtures/inventory-sim/small-season.yaml`.
+
+To use a season without a server, read it with `readSeasonFile` from `server/src/training-agent/inventory-sim/season-file.ts`, and pass the result to `InventorySimulation.create` from `server/src/training-agent/inventory-sim/engine/`.
+
 ## A month in five calls
 
 On `/inventory-adserver/mcp`:
