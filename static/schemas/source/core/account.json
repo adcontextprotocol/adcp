@@ -93,17 +93,7 @@
       "type": "array",
       "description": "Governance agent endpoint registered on this account. Exactly one entry per sync_governance's one-agent-per-account invariant. The array shape is preserved for wire compatibility with 3.0; `maxItems: 1` is load-bearing and mirrors the singular `governance_context` on the protocol envelope. Authentication credentials are write-only and not included in responses — use sync_governance to set or update credentials.",
       "items": {
-        "type": "object",
-        "properties": {
-          "url": {
-            "$ref": "/schemas/core/https-url.json",
-            "description": "Governance agent endpoint URL. Must use HTTPS."
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/governance-agent.json"
       },
       "minItems": 1,
       "maxItems": 1

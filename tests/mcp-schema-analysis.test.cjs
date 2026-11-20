@@ -76,11 +76,11 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // governance commitments, adds 3 instances and 1 unique, repeated
   // definition: 1,193, 308 and 207.
   // Replacing repeated inline object copies with shared core definitions adds
-  // 28 definitions the media-buy inputs reach, 24 of them repeated, and 88
-  // instances: 1,281, 336 and 231.
-  assert.equal(report.definition_instances, 1281);
-  assert.equal(report.unique_definitions, 336);
-  assert.equal(report.repeated_definitions, 231);
+  // 31 definitions the media-buy inputs reach, 27 of them repeated, and 103
+  // instances: 1,296, 339 and 234.
+  assert.equal(report.definition_instances, 1296);
+  assert.equal(report.unique_definitions, 339);
+  assert.equal(report.repeated_definitions, 234);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -207,7 +207,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 336);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 339);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -274,10 +274,13 @@ test("experiment report keeps all alternatives smaller than standalone model con
   // enough for the experiment comparisons to matter and below the projection
   // budget; the ratio and payload-consistency assertions below carry the
   // actual signal.
+  // The shared core definitions that replaced repeated inline objects carry
+  // their own titles and descriptions, which moved the standalone context to
+  // 409,997 bytes (400.39 KiB); the upper end of the band is 420 KiB.
   assert.ok(
     variants.standalone.context_bytes > 200_000 &&
-      variants.standalone.context_bytes < 400 * 1024,
-    `standalone context outside [200 KiB, 400 KiB]: ${variants.standalone.context_bytes}`
+      variants.standalone.context_bytes < 420 * 1024,
+    `standalone context outside [200 KiB, 420 KiB]: ${variants.standalone.context_bytes}`
   );
   // Baseline projection improvements also shrink the denominator, so a fixed
   // additional percentage is not stable. Require a material absolute saving:

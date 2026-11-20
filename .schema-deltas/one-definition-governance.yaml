@@ -1,0 +1,261 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: governance. The corrections the review chose; every other change is a $ref to an identical
+  definition.
+changes:
+  - location: core/country-code.json#
+    keyword: pattern
+    new: ^[A-Z]{2}$
+    direction: tighten
+    side: none
+    note: >-
+      governance/attribute-definition.json#/properties/regulatory_basis/items ->
+      new:core/regulatory-framework-reference.json. Witness: governance/attribute-definition.json
+      /regulatory_basis/0/jurisdictions/0 = "a" (tighten).
+  - location: core/regulatory-framework-reference.json#
+    keyword: properties
+    new:
+      type:
+        - array
+      items:
+        type:
+          - string
+    direction: tighten
+    side: none
+    note: >-
+      governance/attribute-definition.json#/properties/regulatory_basis/items ->
+      new:core/regulatory-framework-reference.json. Verdict delta: policy_ids:property:tighten:correction. Witness:
+      governance/attribute-definition.json /regulatory_basis/0/policy_ids = {} (tighten).
+  - location: core/governance-delivery-metrics.json#
+    keyword: required
+    new:
+      - reporting_period
+    direction: tighten
+    side: response
+    note: >-
+      governance/check-governance-response.json#/properties/delivery_statement ->
+      new:core/governance-delivery-statement.json. Verdict lists no delta for this keyword. Witness:
+      governance/get-plan-audit-logs-response.json
+      /plans/0/entries/0/delivery_statement/canonical_payload/delivery_metrics = {} (tighten).
+  - location: core/governance-delivery-metrics.json#
+    keyword: properties
+    new:
+      audience_distribution:
+        required:
+          - baseline
+          - indices
+        type:
+          - object
+        properties:
+          baseline:
+            enum:
+              - census
+              - custom
+              - platform
+          baseline_description:
+            type:
+              - string
+          cumulative_indices:
+            type:
+              - object
+            additionalProperties:
+              minimum: 0
+              type:
+                - number
+            propertyNames:
+              pattern: ^[a-z_]+:.+$
+          indices:
+            type:
+              - object
+            additionalProperties:
+              minimum: 0
+              type:
+                - number
+            propertyNames:
+              pattern: ^[a-z_]+:.+$
+      channel_distribution:
+        type:
+          - object
+        additionalProperties:
+          maximum: 100
+          minimum: 0
+          type:
+            - number
+      cumulative_impressions:
+        minimum: 0
+        type:
+          - integer
+      cumulative_spend:
+        minimum: 0
+        type:
+          - number
+      currency:
+        pattern: ^[A-Z]{3}$
+        type:
+          - string
+      geo_distribution:
+        type:
+          - object
+        additionalProperties:
+          maximum: 100
+          minimum: 0
+          type:
+            - number
+      impressions:
+        minimum: 0
+        type:
+          - integer
+      issued_at:
+        format: date-time
+        type:
+          - string
+      pacing:
+        enum:
+          - ahead
+          - behind
+          - on_track
+      reporting_period:
+        required:
+          - end
+          - start
+        type:
+          - object
+        properties:
+          end:
+            format: date-time
+            type:
+              - string
+          start:
+            format: date-time
+            type:
+              - string
+      sequence:
+        minimum: 1
+        type:
+          - integer
+      spend:
+        minimum: 0
+        type:
+          - number
+      statement_digest:
+        pattern: ^sha256:[a-f0-9]{64}$
+        type:
+          - string
+      statement_id:
+        maxLength: 255
+        minLength: 1
+        type:
+          - string
+    direction: tighten
+    side: response
+    note: >-
+      governance/check-governance-response.json#/properties/delivery_statement ->
+      new:core/governance-delivery-statement.json. Verdict lists no delta for this keyword. The tool's witness search
+      found none (cannot attribute: properties/$ref is not written at core/governance-delivery-metrics.json#).
+  - location: core/governance-delivery-observation.json#
+    keyword: required
+    new:
+      - cumulative_spend
+      - currency
+      - observation_id
+      - observed_at
+      - reporting_period
+      - source
+    direction: tighten
+    side: response
+    note: >-
+      governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/entries/items/properties/delivery
+      -> new:core/governance-delivery-observation.json. Verdict delta: observation_id:required:tighten:plausible_impact;
+      source:required:tighten:plausible_impact; observed_at:required:tighten:plausible_impact;
+      reporting_period:required:tighten:plausible_impact; cumulative_spend:required:tighten:plausible_impact;
+      currency:required:tighten:plausible_impact. Witness: governance/get-plan-audit-logs-response.json
+      /plans/0/entries/0/delivery = {} (tighten).
+  - location: core/governance-delivery-observation.json#/allOf/0
+    keyword: if
+    new:
+      required:
+        - source
+      properties:
+        source:
+          const: seller_statement_copy
+    direction: tighten
+    side: response
+    note: >-
+      governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/entries/items/properties/delivery
+      -> new:core/governance-delivery-observation.json. Verdict delta: (object):if:tighten:plausible_impact. Witness:
+      governance/get-plan-audit-logs-response.json /plans/0/entries/0/delivery =
+      {"observation_id":"a","source":"seller_statement_copy","observed_at":"2026-01... (tighten).
+  - location: core/governance-delivery-observation.json#/allOf/0
+    keyword: then
+    new:
+      required:
+        - seller_statement_digest
+        - seller_statement_id
+    direction: tighten
+    side: response
+    note: >-
+      governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/entries/items/properties/delivery
+      -> new:core/governance-delivery-observation.json. Verdict delta: (object):then:tighten:plausible_impact. Witness:
+      governance/get-plan-audit-logs-response.json /plans/0/entries/0/delivery =
+      {"observation_id":"a","source":"seller_statement_copy","observed_at":"2026-01... (tighten).
+  - location: core/plan-adjustment-evidence.json#/properties/evidence_id
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: response
+    note: >-
+      governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/entries/items/properties/evidence
+      -> new:core/plan-adjustment-evidence.json. Verdict delta: evidence_id:maxLength:tighten:correction. Witness:
+      governance/get-plan-audit-logs-response.json /plans/0/entries/0/evidence/evidence_id =
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa... (tighten).
+  - location: core/plan-adjustment-evidence.json#/properties/evidence_id
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/entries/items/properties/evidence
+      -> new:core/plan-adjustment-evidence.json. Verdict delta: evidence_id:minLength:tighten:correction. Witness:
+      governance/get-plan-audit-logs-response.json /plans/0/entries/0/evidence/evidence_id = "" (tighten).
+  - location: core/governance-finding.json#
+    keyword: properties
+    new:
+      pattern: ^sha256:[a-f0-9]{64}$
+      type:
+        - string
+    direction: tighten
+    side: response
+    note: >-
+      governance/report-plan-outcome-response.json#/properties/findings/items -> new:core/governance-finding.json.
+      Verdict delta: policy_id:property:tighten:correction; source_plan_id:property:tighten:correction;
+      confidence:property:tighten:correction; uncertainty_reason:property:tighten:correction;
+      attestation_reference_digest:property:tighten:correction. Witness: governance/report-plan-outcome-response.json
+      /findings/0/attestation_reference_digest = {} (tighten).
+  - location: core/governance-finding.json#
+    keyword: properties
+    new:
+      maximum: 1
+      minimum: 0
+      type:
+        - number
+    direction: tighten
+    side: response
+    note: >-
+      governance/report-plan-outcome-response.json#/properties/findings/items -> new:core/governance-finding.json.
+      Verdict delta: policy_id:property:tighten:correction; source_plan_id:property:tighten:correction;
+      confidence:property:tighten:correction; uncertainty_reason:property:tighten:correction;
+      attestation_reference_digest:property:tighten:correction. Witness: governance/report-plan-outcome-response.json
+      /findings/0/confidence = {} (tighten).
+  - location: core/governance-finding.json#
+    keyword: properties
+    new:
+      type:
+        - string
+    direction: tighten
+    side: response
+    note: >-
+      governance/report-plan-outcome-response.json#/properties/findings/items -> new:core/governance-finding.json.
+      Verdict delta: policy_id:property:tighten:correction; source_plan_id:property:tighten:correction;
+      confidence:property:tighten:correction; uncertainty_reason:property:tighten:correction;
+      attestation_reference_digest:property:tighten:correction. Witness: governance/report-plan-outcome-response.json
+      /findings/0/policy_id = {} (tighten).

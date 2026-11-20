@@ -2348,6 +2348,30 @@
           "$ref": "/schemas/core/account-setup.json",
           "description": "Next steps a human must complete before an account can activate."
         },
+        "attestation-agent-identity": {
+          "$ref": "/schemas/core/attestation-agent-identity.json",
+          "description": "An attestation issuer identified by an agent URL."
+        },
+        "attestation-brand-identity": {
+          "$ref": "/schemas/core/attestation-brand-identity.json",
+          "description": "An attestation issuer identified by a brand."
+        },
+        "attestation-evaluation-pair": {
+          "$ref": "/schemas/core/attestation-evaluation-pair.json",
+          "description": "An attestation reference paired with its evaluation."
+        },
+        "attestation-origin-issuer": {
+          "$ref": "/schemas/core/attestation-origin-issuer.json",
+          "description": "An attestation issuer identified by an HTTPS origin."
+        },
+        "audience-dimension-key": {
+          "$ref": "/schemas/core/audience-dimension-key.json",
+          "description": "Key of an audience distribution index, written as dimension:value."
+        },
+        "audience-index-map": {
+          "$ref": "/schemas/core/audience-index-map.json",
+          "description": "Audience index values keyed by audience dimension. Each value is zero or greater."
+        },
         "authority-free-product-format-declaration": {
           "$ref": "/schemas/core/authority-free-product-format-declaration.json",
           "description": "A product format declaration that carries no seller execution authority: `tracker_execution_contract` and `tracker_execution_contract_digest` are not allowed."
@@ -2564,6 +2588,10 @@
           "$ref": "/schemas/core/delivery-reporting-period.json",
           "description": "A half-open delivery reporting period: `start` is inclusive and `end` is exclusive. Both are instants on the reporting time zone's period boundaries."
         },
+        "delivery-statement-canonical-payload": {
+          "$ref": "/schemas/core/delivery-statement-canonical-payload.json",
+          "description": "The canonical payload of a delivery statement: the seller reference and the delivery metrics."
+        },
         "demographic-signals-execution": {
           "$ref": "/schemas/core/demographic-signals-execution.json",
           "description": "A demographic targeting execution through signals: one or more signal references."
@@ -2651,6 +2679,34 @@
         "golden-vector-input-row": {
           "$ref": "/schemas/core/golden-vector-input-row.json",
           "description": "One input row in a reporting canonicalization golden vector."
+        },
+        "governance-agent": {
+          "$ref": "/schemas/core/governance-agent.json",
+          "description": "A governance agent, identified by its HTTPS URL."
+        },
+        "governance-delivery-metrics": {
+          "$ref": "/schemas/core/governance-delivery-metrics.json",
+          "description": "Seller-attributed delivery metrics for a reporting period: spend, impressions, distributions, pacing, and the statement ID, digest, and sequence that bind them."
+        },
+        "governance-delivery-observation": {
+          "$ref": "/schemas/core/governance-delivery-observation.json",
+          "description": "A buyer-attributed delivery observation kept as audit evidence. It never overwrites the seller's delivery statement."
+        },
+        "governance-delivery-statement": {
+          "$ref": "/schemas/core/governance-delivery-statement.json",
+          "description": "A canonical, seller-attributed delivery statement: a statement ID and digest, sequence number, issue time, reporting period, cumulative spend, and canonical payload."
+        },
+        "governance-feature-definition": {
+          "$ref": "/schemas/core/governance-feature-definition.json",
+          "description": "A governance feature definition: feature ID, type, value range or categories, description, and methodology URL."
+        },
+        "governance-finding": {
+          "$ref": "/schemas/core/governance-finding.json",
+          "description": "A governance finding: policy category, severity, explanation, confidence, and supporting details."
+        },
+        "governance-finding-details": {
+          "$ref": "/schemas/core/governance-finding-details.json",
+          "description": "Additional details for a governance finding as an open object."
         },
         "half-open-datetime-range": {
           "$ref": "/schemas/core/half-open-datetime-range.json",
@@ -2756,6 +2812,18 @@
           "$ref": "/schemas/core/pixel-size.json",
           "description": "A width and height in pixels."
         },
+        "plan-adjustment-amount": {
+          "$ref": "/schemas/core/plan-adjustment-amount.json",
+          "description": "An adjustment amount and its currency."
+        },
+        "plan-adjustment-evidence": {
+          "$ref": "/schemas/core/plan-adjustment-evidence.json",
+          "description": "An integrity-bound source record for a plan adjustment: evidence ID and type, digest, and issue time."
+        },
+        "plan-budget-summary": {
+          "$ref": "/schemas/core/plan-budget-summary.json",
+          "description": "A plan's budget state: accounting mode, gross and net commitments, reported and verified adjustments, restored headroom, and remaining budget."
+        },
         "platform-independent-distribution-identifier": {
           "$ref": "/schemas/core/platform-independent-distribution-identifier.json",
           "description": "A distribution identifier that does not depend on one platform: a type and a value, where the type can't be `platform_channel_id`."
@@ -2795,6 +2863,10 @@
         "reference-population": {
           "$ref": "/schemas/core/reference-population.json",
           "description": "A versioned reference population that an estimate is calculated against, identified by system, population ID, and version."
+        },
+        "regulatory-framework-reference": {
+          "$ref": "/schemas/core/regulatory-framework-reference.json",
+          "description": "A regulation or standard, the jurisdictions where it applies, and what it requires."
         },
         "render-dimensions": {
           "$ref": "/schemas/core/render-dimensions.json",
@@ -2907,6 +2979,10 @@
         "vendor-metric-key": {
           "$ref": "/schemas/core/vendor-metric-key.json",
           "description": "The key of one vendor metric value: vendor, metric ID, and optional qualifier."
+        },
+        "verifier-agent-ref": {
+          "$ref": "/schemas/core/verifier-agent-ref.json",
+          "description": "A buyer-supplied reference to a verifier agent, by agent URL and optional feature ID. The URL must match the seller's accepted verifiers, and the reference never carries credentials."
         },
         "voice-synthesis": {
           "$ref": "/schemas/core/voice-synthesis.json",

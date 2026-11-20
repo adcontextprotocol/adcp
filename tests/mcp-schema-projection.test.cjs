@@ -147,11 +147,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // brings it to 561,291 bytes / 548.14 KiB; bound it at 549 KiB.
 // Named rejections (DR-0036) are validation, so the model-context view omits
 // them with the bounds; the budget is unchanged.
-// Replacing repeated inline object copies with shared core definitions adds 26
+// Replacing repeated inline object copies with shared core definitions adds 31
 // definitions to the media-buy inputs, each with its own title and description:
-// 558,798 → 566,431 bytes (545.70 → 553.16 KiB measured); bound it at 554 KiB.
+// 558,798 → 567,927 bytes (545.70 → 554.62 KiB measured); bound it at 555 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 554,
+  'media-buy': 555,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one

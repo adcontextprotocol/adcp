@@ -8,7 +8,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
+const { resolveScalar, schemaAt } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
@@ -75,11 +75,12 @@ const STILL_REFUSED = [
   'not a uri',
 ];
 
+// Reads through each `$ref` on the way to the site; the site itself is returned as written.
 function pointerGet(doc, pointer) {
-  return pointer
+  return schemaAt(doc, ...pointer
     .split('/')
     .slice(1)
-    .reduce((node, key) => node[key.replace(/~1/g, '/').replace(/~0/g, '~')], doc);
+    .map((key) => key.replace(/~1/g, '/').replace(/~0/g, '~')));
 }
 
 function leafValidator(ajv, node) {

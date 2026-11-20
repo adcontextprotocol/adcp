@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-adjustment-amount.json",
+  "title": "Plan Adjustment Amount",
+  "description": "An adjustment amount and its currency.",
+  "type": "object",
+  "properties": {
+    "amount": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Finite positive amount. Cumulative adjustments for an outcome cannot exceed its authoritative commitment."
+    },
+    "currency": {
+      "$ref": "/schemas/core/currency-code.json",
+      "description": "Three-letter uppercase currency code matching the plan currency."
+    }
+  },
+  "required": [
+    "amount",
+    "currency"
+  ],
+  "additionalProperties": true
+}

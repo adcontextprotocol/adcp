@@ -40,32 +40,7 @@
       "type": "array",
       "description": "Issues detected. Present only when outcome_state is 'findings'.",
       "items": {
-        "type": "object",
-        "properties": {
-          "category_id": {
-            "type": "string",
-            "description": "Which validation category flagged the issue."
-          },
-          "severity": {
-            "$ref": "/schemas/enums/escalation-severity.json",
-            "description": "Finding severity."
-          },
-          "explanation": {
-            "type": "string",
-            "description": "Human-readable description of the issue."
-          },
-          "details": {
-            "type": "object",
-            "description": "Structured details for programmatic consumption.",
-            "additionalProperties": true
-          }
-        },
-        "required": [
-          "category_id",
-          "severity",
-          "explanation"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/governance-finding.json"
       }
     },
     "plan_summary": {

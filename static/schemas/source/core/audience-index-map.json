@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-index-map.json",
+  "title": "Audience Index Map",
+  "description": "Audience index values keyed by audience dimension. Each value is zero or greater.",
+  "type": "object",
+  "propertyNames": {
+    "$ref": "/schemas/core/audience-dimension-key.json"
+  },
+  "additionalProperties": {
+    "type": "number",
+    "minimum": 0
+  }
+}

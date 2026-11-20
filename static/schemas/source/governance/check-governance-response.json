@@ -142,53 +142,7 @@
       "type": "array",
       "description": "Specific issues found during the governance check. Present when verdict is 'denied' or 'conditions'. MAY also be present on 'approved' for informational findings (e.g., budget approaching limit).",
       "items": {
-        "type": "object",
-        "properties": {
-          "category_id": {
-            "type": "string",
-            "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety'). This is an **agent-internal** taxonomy: the string is defined by the governance agent's own policy model and is not constrained to any protocol-level enum. Sellers and buyers MUST NOT pattern-match `category_id` values against a fixed list — treat them as opaque labels with human-readable significance for audit but no machine-level contract. See the Campaign Governance specification for how an agent composes internal specialist review behind one endpoint."
-          },
-          "policy_id": {
-            "type": "string",
-            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations). When the violation traces to a producer-tagged surface (feature-requirement, creative-feature-result, or validation-result feature) carrying policy_id, governance agents SHOULD echo that policy_id here for end-to-end traceability, and MUST NOT invent a policy_id that wasn't present on the originating surface. See /docs/governance/policy-attribution.",
-            "$comment": "x-entity deliberately omitted — a finding's policy_id can reference EITHER a governance_registry_policy or a governance_inline_policy depending on which policy matched. Resolution requires a sibling source discriminator the lint can't see from this leaf. Storyboards that capture from findings must re-annotate at the consume site (see #2685 for the registry/inline split)."
-          },
-          "source_plan_id": {
-            "type": "string",
-            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance).",
-            "x-entity": "governance_plan"
-          },
-          "severity": {
-            "$ref": "/schemas/enums/escalation-severity.json"
-          },
-          "explanation": {
-            "type": "string",
-            "description": "Human-readable description of the issue."
-          },
-          "details": {
-            "type": "object",
-            "description": "Structured details for programmatic consumption.",
-            "additionalProperties": true
-          },
-          "confidence": {
-            "$ref": "/schemas/core/fraction.json",
-            "description": "Confidence score (0-1) in this finding. Distinguishes 'this definitely violates the policy' (0.95) from 'this might violate depending on how audience segments resolve' (0.6). When absent, the finding is presented without a confidence qualifier."
-          },
-          "uncertainty_reason": {
-            "type": "string",
-            "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
-          },
-          "attestation_reference_digest": {
-            "$ref": "/schemas/core/sha256-digest.json",
-            "description": "When this finding relies on or reports a runtime attestation evaluation, the reference_digest of the exact AttestationReference in runtime_attestation_evaluations[]. Findings MUST NOT copy credential bodies or treat a presenter assertion as verified evidence."
-          }
-        },
-        "required": [
-          "category_id",
-          "severity",
-          "explanation"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/governance-finding.json"
       }
     },
     "conditions": {
@@ -231,32 +185,8 @@
       "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
     },
     "delivery_statement": {
-      "type": "object",
-      "description": "Canonical seller-attributed delivery statement retained by governance. Present on delivery execution checks. The buyer binds any later observation to this exact statement through report_plan_outcome.",
-      "properties": {
-        "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
-        "statement_digest": { "$ref": "/schemas/core/sha256-digest.json" },
-        "sequence": { "type": "integer", "minimum": 1 },
-        "issued_at": { "type": "string", "format": "date-time" },
-        "seller_reference": { "type": "string" },
-        "reporting_period": {
-          "$ref": "/schemas/core/datetime-range.json"
-        },
-        "cumulative_spend": { "type": "number", "minimum": 0 },
-        "currency": { "$ref": "/schemas/core/currency-code.json" },
-        "canonical_payload": {
-          "type": "object",
-          "description": "Exact retained digest-bearing payload. To verify statement_digest, apply RFC 8785 JCS after removing delivery_metrics.statement_digest.",
-          "properties": {
-            "seller_reference": { "type": "string" },
-            "delivery_metrics": { "type": "object", "additionalProperties": true }
-          },
-          "required": ["seller_reference", "delivery_metrics"],
-          "additionalProperties": true
-        }
-      },
-      "required": ["statement_id", "statement_digest", "sequence", "issued_at", "seller_reference", "reporting_period", "cumulative_spend", "currency", "canonical_payload"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/governance-delivery-statement.json",
+      "description": "Canonical seller-attributed delivery statement retained by governance. Present on delivery execution checks. The buyer binds any later observation to this exact statement through report_plan_outcome."
     },
     "categories_evaluated": {
       "type": "array",

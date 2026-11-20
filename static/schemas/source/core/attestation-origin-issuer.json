@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/attestation-origin-issuer.json",
+  "title": "Attestation Origin Issuer",
+  "description": "An attestation issuer identified by an HTTPS origin.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "origin",
+      "default": "origin",
+      "description": "The issuer is identified by a canonical HTTPS origin because no AdCP brand or agent identity applies."
+    },
+    "origin": {
+      "$ref": "/schemas/core/https-origin.json",
+      "description": "Canonical HTTPS origin with no path, query, fragment, or userinfo. This identifies the issuer; it does not authorize a fetch. Receivers compare these values by canonical origin (docs/reference/url-canonicalization.mdx#canonical-origin), so `https://host` and `https://host/` name the same origin."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "type",
+    "origin"
+  ],
+  "additionalProperties": true
+}

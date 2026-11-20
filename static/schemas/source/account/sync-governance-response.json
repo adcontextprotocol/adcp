@@ -37,17 +37,7 @@
                 "type": "array",
                 "description": "Governance agent now synced on this account. Reflects the persisted state after sync. Exactly one entry; the array shape mirrors the request schema and the one-agent-per-account invariant. See sync_governance request schema.",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "url": {
-                      "$ref": "/schemas/core/https-url.json",
-                      "description": "Governance agent endpoint URL."
-                    }
-                  },
-                  "required": [
-                    "url"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/governance-agent.json"
                 },
                 "minItems": 1,
                 "maxItems": 1

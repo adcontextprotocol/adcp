@@ -38,29 +38,7 @@
       "type": "array",
       "description": "Key regulations and standards grouped under this category. Governance agents use this to resolve specific policies from the registry.",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Name of the regulation or standard (e.g., 'US COPPA')."
-          },
-          "jurisdictions": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "ISO 3166-1 alpha-2 codes where this framework applies."
-          },
-          "summary": {
-            "type": "string",
-            "description": "Brief summary of what the framework requires or prohibits."
-          },
-          "policy_ids": {
-            "type": "array",
-            "items": { "type": "string", "x-entity": "governance_registry_policy" },
-            "description": "Registry policy IDs that implement this framework."
-          }
-        },
-        "required": ["name", "summary"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/regulatory-framework-reference.json"
       }
     },
     "restricted_attributes": {

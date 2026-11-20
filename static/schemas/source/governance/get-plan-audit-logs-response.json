@@ -312,78 +312,12 @@
                   "type": "array",
                   "description": "Findings from this check or outcome. Same structure as check_governance response findings.",
                   "items": {
-                    "type": "object",
-                    "properties": {
-                      "category_id": {
-                        "type": "string"
-                      },
-                      "policy_id": {
-                        "type": "string",
-                        "$comment": "x-entity deliberately omitted — audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
-                      },
-                      "source_plan_id": {
-                        "type": "string",
-                        "description": "Plan whose policy triggered this finding when the audit entry aggregates findings across plans.",
-                        "x-entity": "governance_plan"
-                      },
-                      "severity": {
-                        "$ref": "/schemas/enums/escalation-severity.json"
-                      },
-                      "explanation": {
-                        "type": "string"
-                      },
-                      "details": {
-                        "type": "object",
-                        "description": "Structured finding details retained exactly as emitted by check_governance.",
-                        "additionalProperties": true
-                      },
-                      "confidence": {
-                        "$ref": "/schemas/core/fraction.json"
-                      },
-                      "uncertainty_reason": {
-                        "type": "string",
-                        "description": "Reason the finding carries less than full confidence, retained exactly as emitted by check_governance."
-                      },
-                      "attestation_reference_digest": {
-                        "$ref": "/schemas/core/sha256-digest.json",
-                        "description": "reference_digest of the runtime attestation evaluation this finding relied on."
-                      }
-                    },
-                    "required": [
-                      "category_id",
-                      "severity",
-                      "explanation"
-                    ],
-                    "additionalProperties": true
+                    "$ref": "/schemas/core/governance-finding.json"
                   }
                 },
                 "delivery_statement": {
-                  "type": "object",
-                  "description": "Canonical seller statement retained on a delivery check entry.",
-                  "properties": {
-                    "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
-                    "statement_digest": { "$ref": "/schemas/core/sha256-digest.json" },
-                    "sequence": { "type": "integer", "minimum": 1 },
-                    "issued_at": { "type": "string", "format": "date-time" },
-                    "seller_reference": { "type": "string" },
-                    "cumulative_spend": { "type": "number", "minimum": 0 },
-                    "currency": { "$ref": "/schemas/core/currency-code.json" },
-                    "reporting_period": {
-                      "$ref": "/schemas/core/datetime-range.json"
-                    },
-                    "canonical_payload": {
-                      "type": "object",
-                      "description": "Exact retained payload used to verify statement_digest after removing delivery_metrics.statement_digest.",
-                      "properties": {
-                        "seller_reference": { "type": "string" },
-                        "delivery_metrics": { "type": "object", "additionalProperties": true }
-                      },
-                      "required": ["seller_reference", "delivery_metrics"],
-                      "additionalProperties": true
-                    }
-                  },
-                  "required": ["statement_id", "statement_digest", "sequence", "issued_at", "seller_reference", "cumulative_spend", "currency", "reporting_period", "canonical_payload"],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/governance-delivery-statement.json",
+                  "description": "Canonical seller statement retained on a delivery check entry."
                 },
                 "outcome": {
                   "$ref": "/schemas/enums/outcome-type.json",
@@ -408,22 +342,8 @@
                   "description": "Commercial adjustment type (present for adjustment entries)."
                 },
                 "amount": {
-                  "type": "object",
-                  "description": "Adjustment amount and currency (present for adjustment entries).",
-                  "properties": {
-                    "amount": {
-                      "type": "number",
-                      "exclusiveMinimum": 0
-                    },
-                    "currency": {
-                      "$ref": "/schemas/core/currency-code.json"
-                    }
-                  },
-                  "required": [
-                    "amount",
-                    "currency"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/plan-adjustment-amount.json",
+                  "description": "Adjustment amount and currency (present for adjustment entries)."
                 },
                 "headroom_restored": {
                   "type": "number",
@@ -453,50 +373,8 @@
                   "description": "Seller resource identifier retained on an outcome entry."
                 },
                 "delivery": {
-                  "type": "object",
-                  "description": "Buyer-attributed observation retained as audit evidence on a delivery outcome. It never overwrites the seller statement.",
-                  "properties": {
-                    "observation_id": {
-                      "$ref": "/schemas/core/delivery-observation-id.json",
-                      "description": "Stable buyer-issued identifier for this observation."
-                    },
-                    "source": {
-                      "$ref": "/schemas/enums/governance-delivery-source.json",
-                      "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
-                    },
-                    "observed_at": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "seller_statement_id": {
-                      "type": "string",
-                      "description": "Seller statement identifier as received by the buyer. Required for seller_statement_copy.",
-                      "x-entity": "governance_delivery_statement"
-                    },
-                    "seller_statement_digest": {
-                      "$ref": "/schemas/core/sha256-digest.json",
-                      "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
-                    },
-                    "reporting_period": {
-                      "$ref": "/schemas/core/datetime-range.json",
-                      "description": "Start and end timestamps for the reporting window."
-                    },
-                    "cumulative_spend": {
-                      "type": "number",
-                      "minimum": 0,
-                      "description": "Buyer-attributed cumulative spend for the governed action."
-                    },
-                    "currency": {
-                      "$ref": "/schemas/core/currency-code.json"
-                    },
-                    "period_closed": {
-                      "type": "boolean",
-                      "default": false,
-                      "description": "Buyer-declared operational closure of this governance reporting period. When true, governance freezes the period after recording this observation. An unresolved mismatch becomes closed_unresolved and no longer blocks later governance. Closure is not final billing or commercial settlement."
-                    },
-                    "impressions": { "type": "integer", "minimum": 0 }
-                  },
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/governance-delivery-observation.json",
+                  "description": "Buyer-attributed observation retained as audit evidence on a delivery outcome. It never overwrites the seller statement."
                 },
                 "governance_context": {
                   "type": "string",
@@ -511,17 +389,7 @@
                   "type": "array",
                   "description": "Portable attestation presentations and their evaluator-of-record results retained as ordered pairs for this check entry. Auditors recompute each evaluation.reference_digest from JCS(reference), then recompute runtime_attestation_binding_digest from the ordered evaluations and attestation-bound findings.",
                   "items": {
-                    "type": "object",
-                    "properties": {
-                      "reference": {
-                        "$ref": "/schemas/core/attestation-reference.json"
-                      },
-                      "evaluation": {
-                        "$ref": "/schemas/core/attestation-evaluation.json"
-                      }
-                    },
-                    "required": ["reference", "evaluation"],
-                    "additionalProperties": true
+                    "$ref": "/schemas/core/attestation-evaluation-pair.json"
                   },
                   "minItems": 1,
                   "maxItems": 10
@@ -550,15 +418,7 @@
                 },
                 "verified_amount": { "type": "number", "minimum": 0 },
                 "evidence": {
-                  "type": "object",
-                  "properties": {
-                    "evidence_id": { "type": "string", "x-entity": "governance_adjustment_evidence" },
-                    "evidence_type": { "$ref": "/schemas/enums/plan-adjustment-evidence-type.json" },
-                    "digest": { "$ref": "/schemas/core/sha256-digest.json" },
-                    "issued_at": { "type": "string", "format": "date-time" }
-                  },
-                  "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/plan-adjustment-evidence.json"
                 },
                 "reviewed_by": { "type": "string", "format": "uri" },
                 "reviewed_at": { "type": "string", "format": "date-time" },

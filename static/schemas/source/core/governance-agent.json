@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/governance-agent.json",
+  "title": "Governance Agent",
+  "description": "A governance agent, identified by its HTTPS URL.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "$ref": "/schemas/core/https-url.json",
+      "description": "Governance agent endpoint URL. Must use HTTPS."
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": true
+}
