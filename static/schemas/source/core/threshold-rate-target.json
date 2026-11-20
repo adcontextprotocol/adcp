@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/threshold-rate-target.json",
+  "title": "Threshold Rate Optimization Target",
+  "description": "An optimization target that sets a minimum per-impression value for a metric. The metric defines the unit.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "threshold_rate",
+      "default": "threshold_rate"
+    },
+    "value": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Minimum per-impression value. Units depend on the metric: proportion (clicks, views, completed_views, viewable_rate), seconds (viewed_seconds, attention_seconds), or score (attention_score)."
+    }
+  },
+  "required": [
+    "kind",
+    "value"
+  ],
+  "additionalProperties": true
+}

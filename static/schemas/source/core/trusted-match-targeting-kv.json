@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/trusted-match-targeting-kv.json",
+  "title": "Trusted Match Targeting KV",
+  "description": "A targeting key-value pair.",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Provider-local targeting key. Publishers resolve this together with provider_id; it is not a globally unique or publisher-owned ad-server key."
+    },
+    "value": {
+      "type": "string",
+      "description": "Targeting value preserved unchanged by the router."
+    }
+  },
+  "required": [
+    "key",
+    "value"
+  ],
+  "additionalProperties": true
+}

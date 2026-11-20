@@ -20,13 +20,7 @@
         },
         "view_duration_seconds": { "type": "number", "exclusiveMinimum": 0 },
         "target": {
-          "type": "object",
-          "properties": {
-            "kind": { "type": "string", "const": "threshold_rate" },
-            "value": { "type": "number", "exclusiveMinimum": 0 }
-          },
-          "required": ["kind", "value"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/threshold-rate-target.json"
         },
         "priority": { "type": "integer", "minimum": 1 }
       },
@@ -53,26 +47,12 @@
         "event_sources": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "event_source_id": { "$ref": "/schemas/core/event-source-id.json", "x-entity": "event_source" },
-              "event_type": { "$ref": "/schemas/enums/event-type.json" },
-              "custom_event_name": { "$ref": "/schemas/core/custom-event-name.json" },
-              "value_field": { "type": "string", "minLength": 1 },
-              "value_factor": { "type": "number", "default": 1 }
-            },
-            "required": ["event_source_id", "event_type"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/optimization-event-source.json"
           },
           "minItems": 1
         },
         "target": {
-          "type": "object",
-          "properties": {
-            "kind": { "type": "string", "const": "maximize_value" }
-          },
-          "required": ["kind"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/maximize-value-target.json"
         },
         "attribution_window": { "$ref": "/schemas/core/attribution-window.json" },
         "priority": { "type": "integer", "minimum": 1 }
@@ -87,13 +67,7 @@
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
         "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" },
         "target": {
-          "type": "object",
-          "properties": {
-            "kind": { "type": "string", "const": "threshold_rate" },
-            "value": { "type": "number", "exclusiveMinimum": 0 }
-          },
-          "required": ["kind", "value"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/threshold-rate-target.json"
         },
         "priority": { "type": "integer", "minimum": 1 }
       },

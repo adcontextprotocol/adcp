@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/trusted-match-provider-filter.json",
+  "title": "Trusted Match Provider Filter",
+  "description": "A filter on one Trusted Match Protocol (TMP) provider: its agent URL and whether it supports context match or identity match.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Provider's agent URL from the registry."
+    },
+    "context_match": {
+      "type": "boolean",
+      "description": "When true, require this provider to support context match."
+    },
+    "identity_match": {
+      "type": "boolean",
+      "description": "When true, require this provider to support identity match."
+    }
+  },
+  "required": [
+    "agent_url"
+  ],
+  "additionalProperties": true
+}

@@ -2632,6 +2632,14 @@
           "$ref": "/schemas/core/inline-creative-asset.json",
           "description": "A creative asset supplied inline, without localization."
         },
+        "keyword-match-capabilities": {
+          "$ref": "/schemas/core/keyword-match-capabilities.json",
+          "description": "Keyword match-type capabilities."
+        },
+        "legacy-cost-per-target": {
+          "$ref": "/schemas/core/legacy-cost-per-target.json",
+          "description": "A deprecated optimization target that sets a cost per unit of the goal's metric. Normalize it to `bidding.cost_per` with strength `target`."
+        },
         "locale-fallback-rule": {
           "$ref": "/schemas/core/locale-fallback-rule.json",
           "description": "A locale fallback rule: requests matching a language range use the given locale variant."
@@ -2643,6 +2651,10 @@
         "macro-values": {
           "$ref": "/schemas/core/macro-values.json",
           "description": "Raw macro values keyed by AdCP universal macro name, for example `CLICK_URL` or `CACHEBUSTER`."
+        },
+        "maximize-value-target": {
+          "$ref": "/schemas/core/maximize-value-target.json",
+          "description": "An optimization target that maximizes total conversion value within budget, with no specific return ratio."
         },
         "metro-area": {
           "$ref": "/schemas/core/metro-area.json",
@@ -2659,6 +2671,10 @@
         "opaque-creative-accessibility": {
           "$ref": "/schemas/core/opaque-creative-accessibility.json",
           "description": "Self-declared accessibility properties for this opaque creative"
+        },
+        "optimization-event-source": {
+          "$ref": "/schemas/core/optimization-event-source.json",
+          "description": "An event source used for optimization: the source ID, the event type or custom event name, and an optional value field and value factor."
         },
         "pixel-size": {
           "$ref": "/schemas/core/pixel-size.json",
@@ -2756,6 +2772,14 @@
           "$ref": "/schemas/core/target-frequency.json",
           "description": "A target frequency band, with a minimum, a maximum, or both, measured over a time window."
         },
+        "threshold-rate-target": {
+          "$ref": "/schemas/core/threshold-rate-target.json",
+          "description": "An optimization target that sets a minimum per-impression value for a metric. The metric defines the unit."
+        },
+        "tmp-provider": {
+          "$ref": "/schemas/core/tmp-provider.json",
+          "description": "A Trusted Match Protocol (TMP) provider: its agent URL, whether it supports context match or identity match, and the countries and user ID types it covers."
+        },
         "total-budget-guidance": {
           "$ref": "/schemas/core/total-budget-guidance.json",
           "description": "Budget guidance as a range in one currency, with a minimum, a recommended amount, a maximum, or any combination."
@@ -2763,6 +2787,18 @@
         "travel-time": {
           "$ref": "/schemas/core/travel-time.json",
           "description": "A travel time limit used to compute an isochrone, with its unit."
+        },
+        "trusted-match-filter": {
+          "$ref": "/schemas/core/trusted-match-filter.json",
+          "description": "A filter on Trusted Match Protocol (TMP) support, by provider and response type."
+        },
+        "trusted-match-provider-filter": {
+          "$ref": "/schemas/core/trusted-match-provider-filter.json",
+          "description": "A filter on one Trusted Match Protocol (TMP) provider: its agent URL and whether it supports context match or identity match."
+        },
+        "trusted-match-targeting-kv": {
+          "$ref": "/schemas/core/trusted-match-targeting-kv.json",
+          "description": "A targeting key-value pair."
         },
         "universal-id": {
           "$ref": "/schemas/core/universal-id.json",

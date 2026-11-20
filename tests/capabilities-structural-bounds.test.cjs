@@ -30,7 +30,7 @@ const security = read('docs/building/by-layer/L1/security.mdx');
 
 // The documented worst case. Update security.mdx with this number.
 const DOCUMENTED_WORST_CASE_BYTES = 99_052_347;
-const DOCUMENTED_OPEN_POSITIONS = 189;
+const DOCUMENTED_OPEN_POSITIONS = 188;
 
 const rows = bounds.coverage();
 const KEYWORD_BY_KIND = { array: 'maxItems', string: 'maxLength', map: 'maxProperties' };

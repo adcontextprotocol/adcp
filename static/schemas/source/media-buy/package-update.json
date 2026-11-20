@@ -95,23 +95,7 @@
       "type": "array",
       "description": "Keyword targets to add or update on this package. Upserts by (keyword, match_type) identity: if the pair already exists, its bid_price is updated; if not, a new keyword target is added. Use targeting_overlay.keyword_targets in create_media_buy to set the initial list.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "$ref": "/schemas/core/keyword.json",
-            "description": "The keyword to target"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          },
-          "bid_price": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Per-keyword bid price. Inherits currency and max_bid interpretation from the package's pricing option."
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/keyword-target.json"
       },
       "minItems": 1
     },
@@ -119,18 +103,7 @@
       "type": "array",
       "description": "Keyword targets to remove from this package. Removes matching (keyword, match_type) pairs. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "$ref": "/schemas/core/keyword.json",
-            "description": "The keyword to stop targeting"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/keyword-target.json"
       },
       "minItems": 1
     },
@@ -138,18 +111,7 @@
       "type": "array",
       "description": "Negative keywords to add to this package. Appends to the existing negative keyword list — does not replace it. If a keyword+match_type pair already exists, sellers SHOULD treat it as a no-op for that entry. Use targeting_overlay.negative_keywords in create_media_buy to set the initial list.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "$ref": "/schemas/core/keyword.json",
-            "description": "The keyword to exclude"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/negative-keyword.json"
       },
       "minItems": 1
     },
@@ -157,18 +119,7 @@
       "type": "array",
       "description": "Negative keywords to remove from this package. Removes matching keyword+match_type pairs from the existing list. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "$ref": "/schemas/core/keyword.json",
-            "description": "The keyword to stop excluding"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/negative-keyword.json"
       },
       "minItems": 1
     },

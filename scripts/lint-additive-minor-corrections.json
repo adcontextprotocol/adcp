@@ -2111,6 +2111,30 @@
         "quote": "\"id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Taxonomy node identifier.\" }"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on the taxonomy node id in core/signal-definition.json. A taxonomy node ID, which core/signal-taxonomy-node-id.json keeps non-empty."
+    },
+    {
+      "file": "core/optimization-goal.json",
+      "pointer": "/oneOf/1/properties/event_sources/items/properties/custom_event_name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/canonical-optimization-goal.json",
+        "quote": "\"custom_event_name\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on custom_event_name in core/canonical-optimization-goal.json. An optimization event source, which core/optimization-event-source.json now defines."
+    },
+    {
+      "file": "core/optimization-goal.json",
+      "pointer": "/oneOf/1/properties/event_sources/items/properties/value_field",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/canonical-optimization-goal.json",
+        "quote": "\"value_field\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on value_field in core/canonical-optimization-goal.json. An optimization event source, which core/optimization-event-source.json now defines."
     }
   ]
 }

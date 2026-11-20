@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/keyword-match-capabilities.json",
+  "title": "Keyword Match Capabilities",
+  "description": "Keyword match-type capabilities.",
+  "type": "object",
+  "properties": {
+    "supported_match_types": {
+      "type": "array",
+      "description": "Match types this seller supports. Sellers must reject goals with unsupported match types.",
+      "items": {
+        "$ref": "/schemas/enums/match-type.json"
+      },
+      "minItems": 1,
+      "x-max-items-4.0": 16,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "supported_match_types"
+  ]
+}

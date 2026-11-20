@@ -147,29 +147,7 @@
       "x-canonicalization": "set"
     },
     "trusted_match": {
-      "type": "object",
-      "properties": {
-        "providers": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "agent_url": { "type": "string", "format": "uri" },
-              "context_match": { "type": "boolean" },
-              "identity_match": { "type": "boolean" }
-            },
-            "required": ["agent_url"],
-            "additionalProperties": true
-          },
-          "minItems": 1
-        },
-        "response_types": {
-          "type": "array",
-          "items": { "$ref": "/schemas/enums/response-type.json" },
-          "minItems": 1
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/trusted-match-filter.json"
     },
     "required_features": {
       "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-features.json" }],

@@ -21,3 +21,5 @@ Brand, rights, and data-subject objects have one definition each under `core/`, 
 Creative, preview, and format objects have one definition each, including `core/preview-input.json`, `core/creative-preview.json`, `core/format-params.json`, `core/component-assets.json`, and `a2ui/component-action.json`. The `build_creative` preview no longer requires `expires_at`, as `preview_creative` does not.
 
 Signal and audience objects have one definition each under `core/`, including `signal-taxonomy`, `signal-modeling`, `signal-onboarder`, `reference-population`, `universal-id`, and `signal-catalog-entry`. A taxonomy value mapping's `taxonomy_value_id` is non-empty.
+
+Optimization targets and trusted match objects have one definition each under `core/`, including `threshold-rate-target`, `optimization-event-source`, `keyword-match-capabilities`, and the trusted match filters. Event sources keep `custom_event_name` and `value_field` non-empty, and keyword capabilities list unique match types.

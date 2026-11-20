@@ -15,22 +15,7 @@
       "type": "array",
       "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id.",
       "items": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "Provider-local targeting key. It is not a globally unique or publisher-owned ad-server destination."
-          },
-          "value": {
-            "type": "string",
-            "description": "Targeting value that the router preserves unchanged."
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/trusted-match-targeting-kv.json"
       }
     }
   },

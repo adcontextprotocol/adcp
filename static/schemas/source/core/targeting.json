@@ -362,23 +362,7 @@
       "type": "array",
       "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "$ref": "/schemas/core/keyword.json",
-            "description": "The keyword to target"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          },
-          "bid_price": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. Inherits the max_bid interpretation from the pricing option: when max_bid is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package bid_price applies."
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/keyword-target.json"
       },
       "minItems": 1
     },
