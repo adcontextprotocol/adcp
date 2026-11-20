@@ -443,6 +443,45 @@ test('fails when a required correction is not applied in the candidate', () => {
   assert.deepEqual(result.errors, ['correction core/open.json# does not require note in source']);
 });
 
+/** Moves core/union.json's first branch into core/branch-a.json, whose `a` gains minLength 1. */
+function moveBranchBehindRef(t) {
+  const branch = { $id: '/schemas/core/branch-a.json', ...t['core/union.json'].oneOf[0] };
+  branch.properties = { ...branch.properties, a: { type: 'string', minLength: 1 } };
+  t['core/branch-a.json'] = branch;
+  t['core/union.json'].oneOf[0] = { $ref: '/schemas/core/branch-a.json' };
+}
+
+test('a correction location passes through a $ref the candidate introduced', () => {
+  const entry = correction({ file: 'core/union.json', pointer: '/oneOf/0/properties/a' });
+  const result = analyzePair(moveBranchBehindRef, { correctionsValue: corrections(entry) });
+  assert.deepEqual([result.findings, result.errors], [[], []]);
+});
+
+/** Makes core/explicit-open.json only compose core/open-name.json, whose `name` gains minLength 1. */
+function composeSharedDefinition(t) {
+  const { $schema, $id, ...body } = t['core/explicit-open.json'];
+  t['core/open-name.json'] = { $id: '/schemas/core/open-name.json', ...body, properties: { name: { type: 'string', minLength: 1 } } };
+  t['core/explicit-open.json'] = { $schema, $id, allOf: [{ $ref: '/schemas/core/open-name.json' }] };
+}
+
+test('a correction location passes through the allOf of a document that composes a shared definition', () => {
+  const entry = correction({ file: 'core/explicit-open.json', pointer: '/properties/name' });
+  const result = analyzePair(composeSharedDefinition, { correctionsValue: corrections(entry) });
+  assert.deepEqual([result.findings, result.errors], [[], []]);
+});
+
+/** Makes core/open.json a $ref to core/open-def.json, a copy of its body that also requires note. */
+function requireNoteThroughRef(t) {
+  const { $schema, $id, ...body } = t['core/open.json'];
+  t['core/open-def.json'] = { $id: '/schemas/core/open-def.json', ...body, required: [...(body.required || []), 'note'] };
+  t['core/open.json'] = { $schema, $id, $ref: '/schemas/core/open-def.json' };
+}
+
+test('a required correction applies through a $ref to a shared definition', () => {
+  const result = analyzePair(requireNoteThroughRef, { correctionsValue: corrections(requiredCorrection()) });
+  assert.deepEqual([result.findings, result.errors], [[], []]);
+});
+
 test('fails when a correction names a location that does not exist', () => {
   const result = analyzePair(() => {}, {
     correctionsValue: corrections(correction({ pointer: '/properties/missing' })),
