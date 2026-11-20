@@ -424,6 +424,55 @@ describe('inventory tenants', () => {
       expect(still.media_buys[0].packages[0].creative_approvals).toEqual([{ creative_id: 'banner_c', approval_status: 'approved' }]);
     });
 
+    it('resolves canonical image creatives by format_kind and params alone, without a format_id', async () => {
+      const canonical = (id: string, width: number, height: number, params?: Record<string, unknown>) => ({
+        creative_id: id, name: `Canonical ${id}`, format_kind: 'image', ...(params && { params }),
+        assets: {
+          image: { asset_type: 'image', url: `https://cdn.inventory-buyer.example/${id}.png`, width, height },
+          click_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+        },
+      });
+      const leaderboard = await sync({
+        creatives: [canonical('leaderboard', 728, 90, { width: 728, height: 90 })],
+        assignment_operations: [{ operation: 'assign', creative_id: 'leaderboard', package_id: displayPackage }],
+      });
+      expectCanonical('sync_creatives', leaderboard);
+      expect(leaderboard.creatives[0]).toMatchObject({ creative_id: 'leaderboard', action: 'created', assigned_to: [displayPackage] });
+      // Without params, the image asset's size picks the format.
+      const rectangle = await sync({ creatives: [canonical('rectangle', 300, 250)] });
+      expect(rectangle.creatives[0].action).toBe('created');
+      const listed = await call(tenant, 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['leaderboard', 'rectangle'] } }, CREATIVE_TOKEN);
+      expect(Object.fromEntries(listed.creatives.map((creative: Structured) => [creative.creative_id, creative.format_id.id])))
+        .toEqual({ leaderboard: 'display_728x90', rectangle: 'display_300x250' });
+
+      // Still ambiguous: refused, naming the candidates.
+      const ambiguous = await sync({ creatives: [canonical('unsized', 300, 250, {})] });
+      expect(ambiguous.errors[0].code).toBe('INVALID_REQUEST');
+      expect(ambiguous.errors[0].message).toContain('display_728x90');
+      expect(ambiguous.errors[0].message).toContain('display_300x250');
+      // The takeover image is unsized, so it takes a size no sized format has.
+      const skyscraper = await sync({ creatives: [canonical('skyscraper', 160, 600, { width: 160, height: 600 })] });
+      expect(skyscraper.creatives[0].action).toBe('created');
+      const onRos = await sync({ assignment_operations: [{ operation: 'assign', creative_id: 'skyscraper', package_id: displayPackage }] });
+      expect(onRos.errors[0].code).toBe('FORMAT_NOT_SUPPORTED');
+      const unserved = await sync({ creatives: [{ ...canonical('html_ad', 300, 250), format_kind: 'html' }] });
+      expect(unserved.errors[0].code).toBe('FORMAT_NOT_SUPPORTED');
+
+      // Inline on create_media_buy, the same params pick the 728x90 of a ROS
+      // display product that also serves 300x250.
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-creatives-canonical-01', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-04-01T00:00:00Z', end_time: '2027-05-01T00:00:00Z',
+        packages: [{
+          product_id: 'ros_display_auction', pricing_option_id: 'ros_display_auction_cpm', budget: 500, bid_price: 3,
+          creatives: [canonical('inline_leaderboard', 728, 90, { width: 728, height: 90 })],
+        }],
+      }, CREATIVE_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      const inline = await call(tenant, 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['inline_leaderboard'] } }, CREATIVE_TOKEN);
+      expect(inline.creatives[0].format_id.id).toBe('display_728x90');
+    });
+
     it('validates leniently on request and rejects formats the seller does not serve', async () => {
       const strict = await sync({ creatives: [banner('banner_d'), banner('podcast_ad', 'audio_spot')] });
       expect(strict.errors[0]).toMatchObject({ code: 'FORMAT_NOT_SUPPORTED', field: 'creatives[1].format_id' });

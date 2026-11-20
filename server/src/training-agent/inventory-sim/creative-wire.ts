@@ -15,6 +15,7 @@ import type { CreativeError } from './creatives.js';
 export interface FormatDeclaration {
   format_option_id: string;
   format_kind: string;
+  params?: Record<string, unknown>;
   v1_format_ref?: Array<{ agent_url: string; id: string }>;
 }
 
@@ -36,10 +37,11 @@ export function catalogIdOf(declaration: FormatDeclaration): string {
 
 /**
  * The format_option_id of a creative, from whichever identity it carries:
- * a named format_id (sync_creatives), or a canonical format_option_ref or
- * format_kind (create_media_buy and update_media_buy, which the SDK
- * canonicalizes). `allowed` limits a format_kind match to a product's
- * formats.
+ * a named format_id, a canonical format_option_ref, or a canonical
+ * format_kind with params (or sized assets) that pick one format. The SDK
+ * canonicalizes create_media_buy and update_media_buy creatives; buyers may
+ * send any of these to sync_creatives. `allowed` limits a format_kind match
+ * to a product's formats.
  */
 export function resolveCreativeFormat(
   declarations: readonly FormatDeclaration[],
@@ -61,10 +63,40 @@ export function resolveCreativeFormat(
   if (typeof input.format_kind === 'string') {
     const byKind = declarations.filter(candidate => candidate.format_kind === input.format_kind
       && (!allowed || allowed.has(candidate.format_option_id)));
-    if (byKind.length === 1) return { formatOptionId: byKind[0].format_option_id };
-    return { error: { code: 'FORMAT_NOT_SUPPORTED', message: `This seller serves ${served}; send the format_id from the product's format_options`, field: `${field}.format_kind` } };
+    const matched = byParams(byKind, sizeHints(input));
+    if (matched.length === 1) return { formatOptionId: matched[0].format_option_id };
+    if (matched.length > 1) {
+      return { error: { code: 'INVALID_REQUEST', message: `A ${input.format_kind} creative matches ${matched.map(catalogIdOf).join(', ')}; send params (or format_option_ref) that pick one`, field: `${field}.params` } };
+    }
+    const kinds = byKind.length > 0 ? `${input.format_kind} formats here are ${byKind.map(catalogIdOf).join(', ')}` : `this seller serves ${served}`;
+    return { error: { code: 'FORMAT_NOT_SUPPORTED', message: `No format matches this ${input.format_kind} creative; ${kinds}`, field: `${field}.format_kind` } };
   }
-  return { error: { code: 'INVALID_REQUEST', message: `Send a format_id from this seller's formats: ${served}`, field: `${field}.format_id` } };
+  return { error: { code: 'INVALID_REQUEST', message: `Send a format_kind and params, or a format_id, from this seller's formats: ${served}`, field: `${field}.format_kind` } };
+}
+
+/** What a canonical creative says about its format beyond format_kind: its
+ * params, or failing those the size of its first sized image or video. */
+function sizeHints(input: Json): Json {
+  if (isObject(input.params)) return input.params;
+  for (const asset of isObject(input.assets) ? Object.values(input.assets) : []) {
+    if (isObject(asset) && typeof asset.width === 'number' && typeof asset.height === 'number') {
+      return { width: asset.width, height: asset.height };
+    }
+  }
+  return {};
+}
+
+/** The declarations a creative's hints select. One that declares every hint
+ * with the same value wins; otherwise any whose declared params do not
+ * contradict the hints (an unsized format takes any size). */
+function byParams(candidates: readonly FormatDeclaration[], hints: Json): FormatDeclaration[] {
+  const keys = Object.keys(hints);
+  if (keys.length === 0) return [...candidates];
+  const params = (candidate: FormatDeclaration) => (isObject(candidate.params) ? candidate.params : {});
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const exact = candidates.filter(candidate => keys.every(key => key in params(candidate) && same(params(candidate)[key], hints[key])));
+  if (exact.length > 0) return exact;
+  return candidates.filter(candidate => keys.every(key => !(key in params(candidate)) || same(params(candidate)[key], hints[key])));
 }
 
 /** The named format a creative is listed in. */
