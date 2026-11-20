@@ -108,65 +108,8 @@
             "description": "When true, parameters for this render (dimensions and/or duration) are specified in the format_id. Used for template formats that accept parameters. Mutually exclusive with specifying dimensions object explicitly."
           },
           "dimensions": {
-            "type": "object",
-            "description": "Dimensions for this rendered piece. Defaults to pixels when unit is absent.",
-            "properties": {
-              "width": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Fixed width. Interpretation depends on unit (default: pixels)."
-              },
-              "height": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Fixed height. Interpretation depends on unit (default: pixels)."
-              },
-              "min_width": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Minimum width for responsive renders"
-              },
-              "min_height": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Minimum height for responsive renders"
-              },
-              "max_width": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Maximum width for responsive renders"
-              },
-              "max_height": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Maximum height for responsive renders"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/dimension-unit.json",
-                "description": "Unit of measurement for width/height values. Defaults to 'px' when absent. Print formats use 'inches' or 'cm'."
-              },
-              "responsive": {
-                "title": "Responsive Dimension Flags",
-                "type": "object",
-                "description": "Indicates which dimensions are responsive/fluid",
-                "properties": {
-                  "width": {
-                    "type": "boolean"
-                  },
-                  "height": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "width",
-                  "height"
-                ]
-              },
-              "aspect_ratio": {
-                "$ref": "/schemas/core/aspect-ratio.json",
-                "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1', '1.91:1')"
-              }
-            }
+            "$ref": "/schemas/core/render-dimensions.json",
+            "description": "Dimensions for this rendered piece. Defaults to pixels when unit is absent."
           }
         },
         "required": [

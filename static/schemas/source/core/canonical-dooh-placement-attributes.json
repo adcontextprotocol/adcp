@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-dooh-placement-attributes.json",
+  "title": "Canonical DOOH Placement Attributes",
+  "description": "DOOH installed-surface and scheduled-loop facts. These fields do not define creative acceptance, which is governed exclusively by effective canonical format_options. Visual placements may declare screen_resolution and motion; audio-only placements omit those screen-specific fields. For publisher_ref placements, product slot and loop values override publisher defaults while repeated screen_resolution and motion values must equal the publisher facts.",
+  "type": "object",
+  "properties": {
+    "slot_duration_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Scheduled duration of one ad slot in seconds; not the creative-duration contract."
+    },
+    "loop_duration_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration."
+    },
+    "screen_resolution": {
+      "$ref": "/schemas/core/dooh-screen-resolution.json"
+    },
+    "motion": {
+      "$ref": "/schemas/enums/dooh-motion-type.json",
+      "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
+    },
+    "location": {
+      "$ref": "/schemas/core/dooh-location.json",
+      "x-added-in": "3.3.0"
+    },
+    "impression_basis": {
+      "$ref": "/schemas/enums/impression-estimation-basis.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). Methodology tier the seller plans to estimate this placement's audience on, so a buyer can compare and filter products before buying. A product mixing screens on different tiers declares it per placement. Delivery reports the realised tiers, which can include the seller's model on a sensor-equipped screen while its sensor is not reporting. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
+    },
+    "audience_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). Planning audience per play for this placement: the `impressions / plays` the seller's forecasts use. Optional on `currency_measured` placements."
+    }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "slot_fits_loop": {
+        "left_path": "slot_duration_seconds",
+        "operator": "less_than_or_equal",
+        "right_path": "loop_duration_seconds",
+        "evaluate_after": "publisher_ref_resolution"
+      },
+      "publisher_ref_resolution": {
+        "override_fields": [
+          "slot_duration_seconds",
+          "loop_duration_seconds"
+        ],
+        "inherit_when_omitted": true,
+        "must_equal_fields": [
+          "screen_resolution",
+          "motion"
+        ],
+        "identifier_merge": "union_by_type_and_value"
+      }
+    },
+    "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
+  },
+  "additionalProperties": true
+}

@@ -6,45 +6,19 @@
   "type": "object",
   "definitions": {
     "PublisherDoohScreenResolution": {
+      "$ref": "/schemas/core/dooh-screen-resolution.json",
       "title": "Publisher DOOH Screen Resolution",
-      "type": "object",
-      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
-      "properties": {
-        "width": { "type": "integer", "description": "Screen width in pixels.", "minimum": 1 },
-        "height": { "type": "integer", "description": "Screen height in pixels.", "minimum": 1 }
-      },
-      "required": ["width", "height"],
-      "additionalProperties": true
+      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen."
     },
     "PublisherDoohAddress": {
+      "$ref": "/schemas/core/dooh-address.json",
       "title": "Publisher DOOH Address",
-      "type": "object",
-      "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise.",
-      "properties": {
-        "line1": { "type": "string", "description": "Street address line (e.g., '89 E 42nd St')." },
-        "city": { "type": "string", "description": "City name." },
-        "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
-        "postal_code": { "type": "string", "description": "Postal or ZIP code." },
-        "country": { "$ref": "/schemas/core/country-code.json", "description": "ISO 3166-1 alpha-2 country code." }
-      },
-      "additionalProperties": true
+      "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise."
     },
     "PublisherDoohLocation": {
+      "$ref": "/schemas/core/dooh-location.json",
       "title": "Publisher DOOH Location",
-      "type": "object",
-      "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows.",
-      "properties": {
-        "lat": {
-          "$ref": "/schemas/core/latitude.json",
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lon": {
-          "$ref": "/schemas/core/longitude.json",
-          "description": "Longitude in decimal degrees (WGS 84). Uses `lon`, matching OpenRTB 2.6 and OpenOOH geo field naming used by DOOH data partners and measurement currencies, rather than this spec's general targeting.json `lng` convention."
-        },
-        "address": { "$ref": "#/definitions/PublisherDoohAddress" }
-      },
-      "additionalProperties": true
+      "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows."
     },
     "PublisherDoohPlacementAttributes": {
       "title": "Publisher DOOH Placement Attributes",

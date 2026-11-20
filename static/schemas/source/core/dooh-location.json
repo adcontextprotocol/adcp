@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/dooh-location.json",
+  "title": "DOOH Location",
+  "description": "The disclosed geographic location of an installed DOOH or OOH placement: coordinates and address. All fields are optional, and changes to the location never change the placement's identity.",
+  "type": "object",
+  "properties": {
+    "lat": {
+      "$ref": "/schemas/core/latitude.json",
+      "description": "Latitude in decimal degrees (WGS 84)."
+    },
+    "lon": {
+      "$ref": "/schemas/core/longitude.json",
+      "description": "Longitude in decimal degrees (WGS 84). Uses `lon`, matching OpenRTB 2.6 and OpenOOH geo field naming used by DOOH data partners and measurement currencies, rather than this spec's general targeting.json `lng` convention."
+    },
+    "address": {
+      "$ref": "/schemas/core/dooh-address.json"
+    }
+  },
+  "additionalProperties": true
+}

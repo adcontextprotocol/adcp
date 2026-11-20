@@ -1,0 +1,25 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: dooh placement. The corrections the review chose; every other change is a $ref to an
+  identical definition.
+changes:
+  - location: core/pixel-size.json#
+    keyword: not
+    new:
+      required:
+        - unit
+    direction: tighten
+    side: both
+    note: >-
+      formats/canonical/image.json#/properties/sizes/items -> new:core/pixel-size.json. Verdict delta:
+      (object):not:tighten:correction. Witness: formats/canonical/display_tag.json /sizes/0 =
+      {"width":1,"height":1,"unit":{}} (tighten).
+  - location: core/pixel-size.json#
+    keyword: additionalProperties
+    old: false
+    direction: loosen
+    side: both
+    note: >-
+      formats/canonical/image_carousel.json#/properties/card_image_sizes/items -> new:core/pixel-size.json. Verdict
+      delta: (object):additionalProperties:loosen:correction. The tool's witness search found none (no loosen witness
+      attributed to this line in 4 root(s)).

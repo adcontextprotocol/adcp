@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/dooh-screen-resolution.json",
+  "title": "DOOH Screen Resolution",
+  "description": "The physical resolution of a screen in pixels. Canonical format dimensions remain authoritative for creative acceptance.",
+  "type": "object",
+  "properties": {
+    "width": {
+      "type": "integer",
+      "description": "Screen width in pixels.",
+      "minimum": 1
+    },
+    "height": {
+      "type": "integer",
+      "description": "Screen height in pixels.",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "width",
+    "height"
+  ],
+  "additionalProperties": true
+}

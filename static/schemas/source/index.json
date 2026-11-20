@@ -65,6 +65,10 @@
           "$ref": "/schemas/core/canonical-placement.json",
           "description": "Compact canonical product placement"
         },
+        "canonical-dooh-placement-attributes": {
+          "$ref": "/schemas/core/canonical-dooh-placement-attributes.json",
+          "description": "DOOH installed-surface and scheduled-loop facts. These fields do not define creative acceptance, which is governed exclusively by effective canonical format_options. Visual placements may declare screen_resolution and motion; audio-only placements omit those screen-specific fields. For publisher_ref placements, product slot and loop values override publisher defaults while repeated screen_resolution and motion values must equal the publisher facts."
+        },
         "canonical-installment": {
           "$ref": "/schemas/core/canonical-installment.json",
           "description": "Compact closed installment on a canonical product, identified by (collection_ref, installment_id)"
@@ -2332,6 +2336,18 @@
           "$ref": "/schemas/core/country-subdivision-value-set.json",
           "description": "A non-empty set of ISO 3166-2 country subdivision codes."
         },
+        "dooh-address": {
+          "$ref": "/schemas/core/dooh-address.json",
+          "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise."
+        },
+        "dooh-location": {
+          "$ref": "/schemas/core/dooh-location.json",
+          "description": "The disclosed geographic location of an installed DOOH or OOH placement: coordinates and address. All fields are optional, and changes to the location never change the placement's identity."
+        },
+        "dooh-screen-resolution": {
+          "$ref": "/schemas/core/dooh-screen-resolution.json",
+          "description": "The physical resolution of a screen in pixels. Canonical format dimensions remain authoritative for creative acceptance."
+        },
         "evidence-max-age": {
           "$ref": "/schemas/core/evidence-max-age.json",
           "description": "The maximum age of evidence, as a duration in seconds, minutes, hours, or days. Campaign-relative durations are not allowed."
@@ -2384,6 +2400,10 @@
           "$ref": "/schemas/core/numeric-value-range.json",
           "description": "A range of numeric values with a minimum, a maximum, and an optional unit."
         },
+        "pixel-size": {
+          "$ref": "/schemas/core/pixel-size.json",
+          "description": "A width and height in pixels."
+        },
         "postal-address": {
           "$ref": "/schemas/core/postal-address.json",
           "description": "A postal address: street, city, region, postal code, and country."
@@ -2391,6 +2411,10 @@
         "radius": {
           "$ref": "/schemas/core/radius.json",
           "description": "A distance from a point, with its unit."
+        },
+        "render-dimensions": {
+          "$ref": "/schemas/core/render-dimensions.json",
+          "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels."
         },
         "target-frequency": {
           "$ref": "/schemas/core/target-frequency.json",

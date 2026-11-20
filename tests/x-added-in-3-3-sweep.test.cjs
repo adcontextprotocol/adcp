@@ -7,10 +7,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveSchema, schemaAt } = require('./helpers/named-scalar-schemas.cjs');
 
 const SRC = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const load = (f) => JSON.parse(fs.readFileSync(path.join(SRC, f), 'utf8'));
-const at = (obj, keys) => keys.reduce((o, k) => o[k], obj);
+// Reads through each `$ref` on the way; the site at the end keeps its own annotations.
+const at = (obj, keys) => schemaAt(obj, ...keys);
 
 const WHOLE_FILE_3_3 = [
   // Account requests (account.requests, #8280).
