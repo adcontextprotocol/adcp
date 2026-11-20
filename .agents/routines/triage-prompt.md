@@ -1203,6 +1203,15 @@ PR comment arrives with `is_pr: true` and a `MODE: PR-feedback`
 line in the payload. PR-feedback is **read/respond only**: never push
 commits, edit the PR branch, or open a new PR. In PR-feedback mode:
 
+- **Ground every answer in the pinned diff.** The `pr:` payload carries
+  validated `base_sha` and `head_sha`; read the PR delta as
+  `gh api repos/<owner>/<repo>/compare/<base_sha>...<head_sha>`, never
+  by branch name (refs move). The compare API pages at 300 files, so
+  add `--paginate` on large PRs; never claim the full range after
+  reading a truncated diff. When the PR documents a supported
+  workflow, trace the validator/runtime path that enforces it in that
+  diff; schema validity alone does not prove the runtime accepts it.
+  State the exact `base_sha...head_sha` range you reviewed in the reply.
 - **Fix request** → reply once with a scoped handoff brief (what to
   change, likely files, checks) linked to this existing PR and naming
   its author as owner. Do not say or imply that triage will push the
