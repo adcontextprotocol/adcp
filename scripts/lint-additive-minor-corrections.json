@@ -2087,6 +2087,30 @@
         "quote": "\"identifier\": { \"type\": \"string\", \"description\": \"Property identifier - domain for websites, bundle ID for apps\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on identifier in brand.json. A property identifier value, which brand.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-definition-enrichment.json",
+      "pointer": "/properties/taxonomy/properties/value_mappings/items/properties/taxonomy_value_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/signal-definition.json",
+        "quote": "\"id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Taxonomy node identifier.\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on the taxonomy node id in core/signal-definition.json. A taxonomy node ID, which core/signal-taxonomy-node-id.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-definition.json",
+      "pointer": "/properties/taxonomy/properties/value_mappings/items/properties/taxonomy_value_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/signal-definition.json",
+        "quote": "\"id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Taxonomy node identifier.\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on the taxonomy node id in core/signal-definition.json. A taxonomy node ID, which core/signal-taxonomy-node-id.json keeps non-empty."
     }
   ]
 }

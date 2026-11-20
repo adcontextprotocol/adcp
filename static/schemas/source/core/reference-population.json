@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reference-population.json",
+  "title": "Reference Population",
+  "description": "A versioned reference population that an estimate is calculated against, identified by system, population ID, and version.",
+  "type": "object",
+  "properties": {
+    "system": {
+      "$ref": "/schemas/core/https-url.json"
+    },
+    "population_id": {
+      "$ref": "/schemas/core/reference-population-id.json"
+    },
+    "version": {
+      "$ref": "/schemas/core/reference-population-version.json"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "system",
+    "population_id",
+    "version"
+  ],
+  "additionalProperties": true
+}

@@ -11,6 +11,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { schemaAt } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
@@ -41,12 +42,15 @@ function readSchema(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, relativePath), 'utf8'));
 }
 
+// Reads through each `$ref` on the way to the site; the site itself is returned as written.
 function at(document, pointer) {
-  return pointer
-    .split('/')
-    .slice(1)
-    .map(segment => segment.replaceAll('~1', '/').replaceAll('~0', '~'))
-    .reduce((node, segment) => node[segment], document);
+  return schemaAt(
+    document,
+    ...pointer
+      .split('/')
+      .slice(1)
+      .map(segment => segment.replaceAll('~1', '/').replaceAll('~0', '~')),
+  );
 }
 
 async function compile(schema) {

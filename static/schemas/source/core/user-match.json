@@ -9,19 +9,7 @@
       "type": "array",
       "description": "Universal ID values for user matching",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "$ref": "/schemas/enums/uid-type.json",
-            "description": "Universal ID type"
-          },
-          "value": {
-            "type": "string",
-            "description": "Universal ID value"
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/universal-id.json"
       },
       "minItems": 1
     },

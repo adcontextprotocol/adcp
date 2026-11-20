@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-taxonomy-value.json",
+  "title": "Signal Taxonomy Value",
+  "description": "A taxonomy node a signal maps to: node ID, optional path, and modifiers.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "/schemas/core/signal-taxonomy-node-id.json",
+      "description": "Taxonomy node identifier."
+    },
+    "path": {
+      "type": "string",
+      "description": "Optional human-readable or taxonomy-native path for display and review."
+    },
+    "modifiers": {
+      "type": "array",
+      "description": "Optional taxonomy-specific modifiers that qualify the node.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": true
+}

@@ -38,16 +38,8 @@
       "description": "composition uses fraction in [0,1], index uses ratio, and reach_estimate uses count."
     },
     "baseline": {
-      "type": "object",
-      "description": "Reference population against which the estimate was calculated.",
-      "properties": {
-        "system": { "$ref": "/schemas/core/https-url.json" },
-        "population_id": { "$ref": "/schemas/core/reference-population-id.json" },
-        "version": { "$ref": "/schemas/core/reference-population-version.json" },
-        "description": { "type": "string" }
-      },
-      "required": ["system", "population_id", "version"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/reference-population.json",
+      "description": "Reference population against which the estimate was calculated."
     },
     "evidence_type": {
       "$ref": "/schemas/enums/audience-evidence-type.json",

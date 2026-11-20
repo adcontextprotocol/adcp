@@ -14,15 +14,7 @@
     "value": { "type": "number", "minimum": 0 },
     "unit": { "$ref": "/schemas/enums/audience-evidence-unit.json" },
     "baseline": {
-      "type": "object",
-      "properties": {
-        "system": { "$ref": "/schemas/core/https-url.json" },
-        "population_id": { "$ref": "/schemas/core/reference-population-id.json" },
-        "version": { "$ref": "/schemas/core/reference-population-version.json" },
-        "description": { "type": "string" }
-      },
-      "required": ["system", "population_id", "version"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/reference-population.json"
     },
     "evidence_type": { "$ref": "/schemas/enums/audience-evidence-type.json" },
     "methodology": { "$ref": "/schemas/enums/audience-evidence-methodology.json" },

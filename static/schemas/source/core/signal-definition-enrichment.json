@@ -34,78 +34,8 @@
       "minItems": 1
     },
     "taxonomy": {
-      "type": "object",
-      "description": "Optional taxonomy metadata describing what this signal means in an external audience, content, retail-media, or provider-owned taxonomy.",
-      "properties": {
-        "ref": {
-          "type": "string",
-          "format": "uri"
-        },
-        "version": {
-          "type": "string"
-        },
-        "segtax": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "etag": {
-          "type": "string"
-        },
-        "values": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "$ref": "/schemas/core/signal-taxonomy-node-id.json"
-              },
-              "path": {
-                "type": "string"
-              },
-              "modifiers": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["id"],
-            "additionalProperties": true
-          }
-        },
-        "value_mappings": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "properties": {
-              "value": {
-                "type": "string"
-              },
-              "taxonomy_value_id": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              },
-              "modifiers": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["value", "taxonomy_value_id"],
-            "additionalProperties": true
-          }
-        },
-        "parent_match_behavior": {
-          "$ref": "/schemas/enums/signal-parent-match-behavior.json"
-        }
-      },
-      "required": ["ref", "values"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/signal-taxonomy.json",
+      "description": "Optional taxonomy metadata describing what this signal means in an external audience, content, retail-media, or provider-owned taxonomy."
     },
     "segmentation_criteria": {
       "$ref": "/schemas/core/signal-segmentation-criteria.json"
@@ -137,28 +67,7 @@
       "$ref": "/schemas/enums/signal-lookback-window.json"
     },
     "onboarder": {
-      "type": "object",
-      "properties": {
-        "match_keys": {
-          "type": "array",
-          "minItems": 1,
-          "description": "Identifiers the onboarder matched on. `full_name` replaces `name`, which is deprecated in 3.3 and removed in 4.0; receivers treat the two as the same key.",
-          "items": {
-            "$ref": "/schemas/enums/signal-match-key.json"
-          }
-        },
-        "pre_onboarding_audience_expansion": {
-          "type": "boolean"
-        },
-        "pre_onboarding_device_expansion": {
-          "type": "boolean"
-        },
-        "pre_onboarding_precision_level": {
-          "$ref": "/schemas/enums/signal-pre-onboarding-precision.json"
-        }
-      },
-      "required": ["match_keys"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/signal-onboarder.json"
     },
     "countries": {
       "type": "array",
@@ -180,41 +89,7 @@
       "description": "Data provider's declared GDPR Article 9 basis for the underlying signal definition when special-category data is involved and Article 9 applies, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own Article 9 basis for the provider-declared basis."
     },
     "modeling": {
-      "type": "object",
-      "properties": {
-        "method": {
-          "$ref": "/schemas/enums/signal-modeling-method.json"
-        },
-        "seed_source": {
-          "type": "object",
-          "properties": {
-            "type": {
-              "$ref": "/schemas/enums/signal-training-data-type.json"
-            },
-            "provider_signed": {
-              "type": "boolean",
-              "description": "Provider assertion that the seed source carries a signed attestation. Consumers MUST NOT treat this boolean alone as cryptographic proof."
-            }
-          },
-          "required": ["type", "provider_signed"],
-          "additionalProperties": true
-        },
-        "training_data_jurisdictions": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "/schemas/core/country-code.json"
-          }
-        },
-        "ai_act_risk_class": {
-          "$ref": "/schemas/enums/ai-act-risk-class.json"
-        },
-        "disclosure": {
-          "$ref": "/schemas/core/signal-modeling-disclosure.json"
-        }
-      },
-      "required": ["method", "seed_source", "training_data_jurisdictions", "ai_act_risk_class"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/signal-modeling.json"
     },
     "data_subject_rights": {
       "$ref": "/schemas/core/data-subject-rights-routing.json",

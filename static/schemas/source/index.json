@@ -2540,6 +2540,10 @@
           "$ref": "/schemas/core/data-subject-rights-routing.json",
           "description": "Where data subjects send rights requests: the upstream source domain, contact channels, response time commitment, and CCPA opt-out URL. It is a contact reference, not a machine-callable API."
         },
+        "demographic-signals-execution": {
+          "$ref": "/schemas/core/demographic-signals-execution.json",
+          "description": "A demographic targeting execution through signals: one or more signal references."
+        },
         "diagnostic-value-labels": {
           "$ref": "/schemas/core/diagnostic-value-labels.json",
           "description": "Human-readable diagnostic labels keyed by values present in the value list; extra keys are a conformance error. Labels are non-authoritative and must not be used to resolve or apply targeting."
@@ -2688,6 +2692,10 @@
           "$ref": "/schemas/core/readiness-resource.json",
           "description": "A resource that satisfies an execution requirement: its resource ID and an optional name."
         },
+        "reference-population": {
+          "$ref": "/schemas/core/reference-population.json",
+          "description": "A versioned reference population that an estimate is calculated against, identified by system, population ID, and version."
+        },
         "render-dimensions": {
           "$ref": "/schemas/core/render-dimensions.json",
           "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels."
@@ -2703,6 +2711,34 @@
         "rights-grant-attestation-reference": {
           "$ref": "/schemas/core/rights-grant-attestation-reference.json",
           "description": "An attestation reference for a rights grant: a brand-issued claim whose subject is a rights-grant resource."
+        },
+        "signal-catalog-entry": {
+          "$ref": "/schemas/core/signal-catalog-entry.json",
+          "description": "A signal in a signal catalog: identity, name and description, type, provider, coverage, deployments, and pricing options."
+        },
+        "signal-modeling": {
+          "$ref": "/schemas/core/signal-modeling.json",
+          "description": "A disclosure of how a modeled signal is built: modeling method, seed source, training data jurisdictions, and EU AI Act risk class."
+        },
+        "signal-modeling-seed-source": {
+          "$ref": "/schemas/core/signal-modeling-seed-source.json",
+          "description": "The seed data source for a modeled signal: its training data type and whether the provider signed it."
+        },
+        "signal-onboarder": {
+          "$ref": "/schemas/core/signal-onboarder.json",
+          "description": "A disclosure of how offline data is onboarded: match keys, and whether audience or device expansion was applied before onboarding and at what precision."
+        },
+        "signal-taxonomy": {
+          "$ref": "/schemas/core/signal-taxonomy.json",
+          "description": "Taxonomy metadata describing what a signal means in an external audience, content, retail-media, or provider-owned taxonomy."
+        },
+        "signal-taxonomy-value": {
+          "$ref": "/schemas/core/signal-taxonomy-value.json",
+          "description": "A taxonomy node a signal maps to: node ID, optional path, and modifiers."
+        },
+        "signal-taxonomy-value-mapping": {
+          "$ref": "/schemas/core/signal-taxonomy-value-mapping.json",
+          "description": "Maps one categorical allowed_values[] string to a stable taxonomy node identifier."
         },
         "structured-font": {
           "$ref": "/schemas/core/structured-font.json",
@@ -2727,6 +2763,10 @@
         "travel-time": {
           "$ref": "/schemas/core/travel-time.json",
           "description": "A travel time limit used to compute an isochrone, with its unit."
+        },
+        "universal-id": {
+          "$ref": "/schemas/core/universal-id.json",
+          "description": "A universal user ID: an ID type and its value."
         },
         "voice-synthesis": {
           "$ref": "/schemas/core/voice-synthesis.json",

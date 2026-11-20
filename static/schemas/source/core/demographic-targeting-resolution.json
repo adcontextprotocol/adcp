@@ -60,49 +60,10 @@
           "additionalProperties": true
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "signals",
-              "default": "signals"
-            },
-            "signal_refs": {
-              "type": "array",
-              "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
-              "items": {
-                "$ref": "/schemas/core/signal-ref.json"
-              },
-              "minItems": 1,
-              "uniqueItems": true
-            },
-            "ext": {
-              "$ref": "/schemas/core/ext.json"
-            }
-          },
-          "required": ["type", "signal_refs"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/demographic-signals-execution.json"
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "gender_values",
-              "default": "gender_values",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0"
-            },
-            "ext": {
-              "$ref": "/schemas/core/ext.json",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0"
-            }
-          },
-          "required": [
-            "type"
-          ],
-          "additionalProperties": true,
+          "$ref": "#/definitions/gender_values_execution",
           "x-status": "experimental",
           "x-added-in": "3.3.0"
         },
@@ -173,37 +134,9 @@
                   "additionalProperties": true
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "signals",
-                      "default": "signals",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "signal_refs": {
-                      "type": "array",
-                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
-                      "items": {
-                        "$ref": "/schemas/core/signal-ref.json"
-                      },
-                      "minItems": 1,
-                      "uniqueItems": true,
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "signal_refs"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/demographic-signals-execution.json",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0"
                 }
               ],
               "description": "Exact age execution. Signal references MUST carry age-only predicates; dropping a correlated gender constraint is forbidden.",
@@ -213,58 +146,12 @@
             "gender": {
               "oneOf": [
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "gender_values",
-                      "default": "gender_values",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "#/definitions/gender_values_execution"
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "signals",
-                      "default": "signals",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "signal_refs": {
-                      "type": "array",
-                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
-                      "items": {
-                        "$ref": "/schemas/core/signal-ref.json"
-                      },
-                      "minItems": 1,
-                      "uniqueItems": true,
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "signal_refs"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/demographic-signals-execution.json",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0"
                 }
               ],
               "description": "Exact gender execution. Signal references MUST carry gender-only predicates; dropping a correlated age constraint is forbidden. Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
@@ -540,6 +427,29 @@
       "type": "string",
       "minLength": 1,
       "x-entity": "demographic_interval_id"
+    },
+    "gender_values_execution": {
+      "title": "Gender Values Execution",
+      "description": "A demographic targeting execution that applies gender values directly.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "gender_values",
+          "default": "gender_values",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true
     }
   }
 }

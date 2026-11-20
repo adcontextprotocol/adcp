@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-taxonomy.json",
+  "title": "Signal Taxonomy",
+  "description": "Taxonomy metadata describing what a signal means in an external audience, content, retail-media, or provider-owned taxonomy.",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "type": "string",
+      "format": "uri",
+      "description": "URI identifying the taxonomy or taxonomy documentation."
+    },
+    "version": {
+      "type": "string",
+      "description": "Version identifier for the taxonomy when the taxonomy has versioned definitions."
+    },
+    "segtax": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "OpenRTB segtax code when the taxonomy maps to an OpenRTB segment taxonomy."
+    },
+    "etag": {
+      "type": "string",
+      "description": "Optional validator for custom taxonomy definitions so consumers can detect drift between signal publication and taxonomy resolution."
+    },
+    "values": {
+      "type": "array",
+      "description": "Taxonomy node values that describe this signal. These are meaning/discovery metadata for the signal definition, not the values a buyer submits in package targeting expressions.",
+      "minItems": 1,
+      "items": {
+        "$ref": "/schemas/core/signal-taxonomy-value.json"
+      }
+    },
+    "value_mappings": {
+      "type": "array",
+      "description": "For categorical signals, maps package-targeting allowed_values[] strings to stable taxonomy node identifiers. The allowed_values[] strings remain the wire values buyers submit; this mapping explains how those strings resolve into the published taxonomy. Each value_mappings[].value SHOULD match one of the signal's allowed_values[] entries; JSON Schema draft-07 cannot enforce this cross-array constraint.",
+      "minItems": 1,
+      "items": {
+        "$ref": "/schemas/core/signal-taxonomy-value-mapping.json"
+      }
+    },
+    "parent_match_behavior": {
+      "$ref": "/schemas/enums/signal-parent-match-behavior.json",
+      "description": "Whether this signal definition supports treating a parent taxonomy node as matching descendant nodes for discovery/filtering or seller-side expansion. 'exact_only' means only explicitly listed node ids match. 'descendants_supported' means the seller can expand known, version-pinned parent nodes to descendants internally, typically by ORing the children in its execution system. 'unknown' means the provider has not declared parent-node behavior. This field is metadata about discovery/translation behavior, not a package targeting operator."
+    }
+  },
+  "required": [
+    "ref",
+    "values"
+  ],
+  "additionalProperties": true
+}
