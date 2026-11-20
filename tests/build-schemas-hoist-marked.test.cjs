@@ -427,7 +427,7 @@ test('bundles a $ref with call-site keys beside the hoisted marked schema', asyn
     },
   });
 
-  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, errorCount: 0 });
+  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, failures: [] });
   const bundled = JSON.parse(fs.readFileSync(path.join(out, rel), 'utf8'));
   const [single, list] = bundled.properties.thing.oneOf;
   assert.deepEqual(single, {
@@ -455,7 +455,7 @@ test('a lone $ref with call-site keys does not become the canonical marked schem
     properties: { thing: SINGLE_SITE },
   });
 
-  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, errorCount: 0 });
+  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, failures: [] });
   const bundled = JSON.parse(fs.readFileSync(path.join(out, rel), 'utf8'));
   assert.equal(bundled.properties.thing.$ref, '#/$defs/Thing');
   assert.equal(bundled.properties.thing.deprecated, true);

@@ -862,7 +862,8 @@ function discoverExtensions(extensionsDir) {
         path: filePath
       });
     } catch (error) {
-      console.warn(`   ⚠️  Failed to parse extension ${file}: ${error.message}`);
+      // Dropping the extension would publish a registry without it.
+      throw new Error(`Extension ${file}: ${error.message}`);
     }
   }
 
@@ -882,10 +883,9 @@ function filterExtensionsForVersion(extensions, targetVersion) {
   return extensions.filter(ext => {
     const { valid_from, valid_until } = ext.schema;
 
-    // Must have valid_from
+    // Must have valid_from; without it the extension fits no version.
     if (!valid_from) {
-      console.warn(`   ⚠️  Extension ${ext.namespace} missing valid_from, skipping`);
-      return false;
+      throw new Error(`Extension ${ext.namespace} is missing valid_from`);
     }
 
     // Check valid_from <= targetVersion
@@ -1113,8 +1113,10 @@ function indexScenarioTasks(repoRoot) {
       }
       if (!entry.name.endsWith('.yaml')) continue;
       let doc;
+      // A storyboard that does not parse would drop its tasks from the
+      // manifest's specialisms, so it fails the build.
       try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
-      catch { continue; }
+      catch (error) { throw new Error(`Manifest generation: cannot parse ${path.relative(repoRoot, p)}: ${error.message}`); }
       if (!doc || typeof doc !== 'object' || typeof doc.id !== 'string') continue;
       if (!Array.isArray(doc.phases)) continue;
       index.set(doc.id, collectTasksFromPhases(doc.phases));
@@ -1670,8 +1672,12 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
         continue;
       }
 
+      // A `$ref` the bundler cannot resolve is a build failure: keeping it
+      // would publish a bundle that claims to be self-contained but points
+      // at a schema that does not exist.
+      let refContent;
       try {
-        let refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
         if (fragment) {
           if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
           refContent = fragment
@@ -1685,36 +1691,35 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
               return current[segment];
             }, refContent);
         }
-        // Create a new set including this ref for the recursive call
-        const newAncestors = new Set(ancestorRefs);
-        newAncestors.add(ancestorKey);
-        // Recursively resolve refs in the referenced schema
-        const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors, options);
-        // Merge the resolved content. Drop `$schema` (only meaningful at
-        // document root). Preserve `$id` on the inlined subtree so SDK
-        // error reporting can name the deep sub-schema (#3868) — if the
-        // parent already declared its own `$id` (the deprecated-alias
-        // pattern: `{ $id: ".../signal-pricing-option.json", $ref: ".../vendor-pricing-option.json" }`),
-        // keep the parent's `$id` so the alias's identity wins over the
-        // target's.
-        const { $schema, $id: refId, ...rest } = resolvedRef;
-        if (rest[HOIST_MARKER] === true && Object.keys(schema).some(k => k !== '$ref')) {
-          // The target is a canonical named type (`x-adcp-hoist`) and the
-          // call-site adds keys beside the `$ref` (e.g. `deprecated` and a
-          // `description` on one branch of a union). Merging would produce
-          // a second, different copy of the named type, so keep the target
-          // body intact for `hoistMarkedSchemas`, which turns this node
-          // into `{ $ref: "#/$defs/<Title>", ...call-site keys }`.
-          result[HOIST_TARGET_KEY] = refId === undefined ? rest : { ...rest, $id: refId };
-          continue;
-        }
-        Object.assign(result, rest);
-        if (refId !== undefined && result.$id === undefined) {
-          result.$id = refId;
-        }
       } catch (error) {
-        // If we can't resolve, keep the original $ref
-        result[key] = value;
+        throw new Error(`Cannot resolve $ref ${value}: ${error.message}`);
+      }
+      // Create a new set including this ref for the recursive call
+      const newAncestors = new Set(ancestorRefs);
+      newAncestors.add(ancestorKey);
+      // Recursively resolve refs in the referenced schema
+      const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors, options);
+      // Merge the resolved content. Drop `$schema` (only meaningful at
+      // document root). Preserve `$id` on the inlined subtree so SDK
+      // error reporting can name the deep sub-schema (#3868) — if the
+      // parent already declared its own `$id` (the deprecated-alias
+      // pattern: `{ $id: ".../signal-pricing-option.json", $ref: ".../vendor-pricing-option.json" }`),
+      // keep the parent's `$id` so the alias's identity wins over the
+      // target's.
+      const { $schema, $id: refId, ...rest } = resolvedRef;
+      if (rest[HOIST_MARKER] === true && Object.keys(schema).some(k => k !== '$ref')) {
+        // The target is a canonical named type (`x-adcp-hoist`) and the
+        // call-site adds keys beside the `$ref` (e.g. `deprecated` and a
+        // `description` on one branch of a union). Merging would produce
+        // a second, different copy of the named type, so keep the target
+        // body intact for `hoistMarkedSchemas`, which turns this node
+        // into `{ $ref: "#/$defs/<Title>", ...call-site keys }`.
+        result[HOIST_TARGET_KEY] = refId === undefined ? rest : { ...rest, $id: refId };
+        continue;
+      }
+      Object.assign(result, rest);
+      if (refId !== undefined && result.$id === undefined) {
+        result.$id = refId;
       }
     } else {
       result[key] = resolveRefs(value, sourceDir, ancestorRefs, options);
@@ -2379,13 +2384,16 @@ const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
 /**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
+ * @returns {{ successCount: number, failures: Array<{ schema: string, message: string }> }}
  */
 async function generateBundledSchemas(sourceDir, bundledDir, version) {
   ensureDir(bundledDir);
 
   const schemaFiles = findSchemaFiles(sourceDir);
   let successCount = 0;
-  let errorCount = 0;
+  // Every root that fails to bundle, as { schema, message }. The loop keeps
+  // going so one build lists every failure; main() fails the build on any.
+  const failures = [];
 
   // Only bundle request/response schemas - these are the "root" schemas
   // that tools actually validate against. Core objects like product.json
@@ -2482,12 +2490,24 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       fs.writeFileSync(outputPath, JSON.stringify(dereferenced, null, 2));
       successCount++;
     } catch (error) {
-      console.warn(`   ⚠️  Failed to bundle ${relativePath}: ${error.message}`);
-      errorCount++;
+      console.error(`   ❌ Failed to bundle ${relativePath}: ${error.message}`);
+      failures.push({ schema: relativePath, message: error.message });
     }
   }
 
-  return { successCount, errorCount };
+  return { successCount, failures };
+}
+
+/**
+ * Fails the build when any root failed to bundle. main() calls it after it
+ * writes every other output, so one run lists every failure.
+ * @param {Array<{ bundledDir: string, schema: string, message: string }>} failures
+ */
+function assertNoBundleFailures(failures) {
+  if (failures.length === 0) return;
+  const lines = failures.map(({ bundledDir, schema, message }) =>
+    `   ${path.relative(path.join(__dirname, '..'), path.join(bundledDir, schema))}: ${message}`);
+  throw new Error(`${failures.length} bundled schema(s) failed to build:\n${lines.join('\n')}`);
 }
 
 function generateMcpProjectionForVersion(versionDir, urlVersion) {
@@ -2757,6 +2777,9 @@ async function main() {
   // Ensure dist directory exists
   ensureDir(DIST_DIR);
 
+  // Roots that failed to bundle, across every tree this run builds.
+  const bundleFailures = [];
+
   if (isRelease) {
     // RELEASE MODE: Create a new versioned directory
     const versionDir = path.join(DIST_DIR, version);
@@ -2788,8 +2811,9 @@ async function main() {
     // Generate bundled schemas for release
     const bundledDir = path.join(versionDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/${version}/bundled/`);
-    const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
-    console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    const { successCount, failures } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
+    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
+    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
     console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
     generateMcpProjectionForVersion(versionDir, version);
 
@@ -2815,7 +2839,8 @@ async function main() {
 
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
-    await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
+    const latestBundled = await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
+    bundleFailures.push(...latestBundled.failures.map(failure => ({ bundledDir: latestBundledDir, ...failure })));
     generateMcpProjectionForVersion(latestDir, 'latest');
 
     // Generate skill schemas from the release version
@@ -2824,6 +2849,7 @@ async function main() {
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
     writeRootSchemaDiscovery();
+    assertNoBundleFailures(bundleFailures);
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
     try {
       execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
@@ -2885,8 +2911,9 @@ async function main() {
     // Generate bundled schemas for latest
     const bundledDir = path.join(latestDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
-    const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
-    console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    const { successCount, failures } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
+    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
+    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
     console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
     generateMcpProjectionForVersion(latestDir, 'latest');
 
@@ -2896,6 +2923,7 @@ async function main() {
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
     writeRootSchemaDiscovery();
+    assertNoBundleFailures(bundleFailures);
 
     // Show available paths
     const latestPerMinor = getLatestPatchPerMinor();
