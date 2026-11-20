@@ -430,7 +430,9 @@ must get none unless `test/catalog/false-alarms.json` lists it. See
 `test/catalog/README.md`.
 
 The same file runs the `oneof` command on the fixtures in
-`test/oneof-fixtures/`, one directory per result (P, W, and U), with and
-without `--report-only`.
+`test/oneof-fixtures/`, one directory per result (P, W, and U) and one with
+names that need escaping in a Markdown table, with and without
+`--report-only`. Each row of the Markdown table must read back as its site's
+location and witness.
 
 Run both with `npm run test:schema-equivalence`.

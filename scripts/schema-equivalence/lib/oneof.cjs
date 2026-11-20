@@ -319,9 +319,27 @@ async function checkOneOf(tree) {
   return { sites: results, counts, problems: graph.problems };
 }
 
-function cell(text, max = 220) {
-  const s = String(text).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+function oneLine(text, max) {
+  const s = String(text).replace(/\r\n?|\n/g, ' ');
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/** Plain text in a Markdown table cell: backslashes first, then pipes. */
+function textCell(text, max = 220) {
+  return oneLine(text, max).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+}
+
+/**
+ * A code span in a Markdown table cell. Backslashes in a code span are
+ * literal, and GitHub's table parser reads every `\|` as a pipe before it
+ * parses the span, so only pipes get a backslash. The fence is one backtick
+ * longer than any run of backticks inside.
+ */
+function codeCell(text, max = 220) {
+  const s = oneLine(text, max).split('|').join('\\|');
+  const fence = '`'.repeat(Math.max(0, ...(s.match(/`+/g) || []).map(run => run.length)) + 1);
+  const pad = /^[ `]|[ `]$/.test(s) ? ' ' : '';
+  return `${fence}${pad}${s}${pad}${fence}`;
 }
 
 /** A Markdown report: counts, then one table row per `oneOf` (W and U first). */
@@ -338,10 +356,10 @@ function formatOneOf(report) {
   const sorted = [...sites].sort((a, b) => order[a.result] - order[b.result] || a.location.localeCompare(b.location));
   for (const s of sorted) {
     let detail;
-    if (s.result === 'W') detail = `branches ${s.passing.join(', ')} of ${s.branches} accept \`${cell(stableStringify(s.witness), 180)}\``;
-    else if (s.result === 'U') detail = s.reason;
-    else detail = s.rules.join(', ');
-    lines.push(`| ${s.result} | \`${cell(s.location, 160)}\` | ${cell(detail)} |`);
+    if (s.result === 'W') detail = `branches ${s.passing.join(', ')} of ${s.branches} accept ${codeCell(stableStringify(s.witness), 180)}`;
+    else if (s.result === 'U') detail = textCell(s.reason);
+    else detail = textCell(s.rules.join(', '));
+    lines.push(`| ${s.result} | ${codeCell(s.location, 160)} | ${detail} |`);
   }
   return lines.join('\n');
 }

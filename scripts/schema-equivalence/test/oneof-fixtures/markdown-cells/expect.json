@@ -1,0 +1,6 @@
+{
+  "why": "Names with a backslash before a pipe, and a backtick, still read back from the Markdown table as the location and witness they are.",
+  "exit": 1,
+  "counts": { "P": 0, "W": 1, "U": 0 },
+  "witness": { "cells.json#/properties/a\\|b/oneOf": { "c\\|`d": "a", "e": "a" } }
+}

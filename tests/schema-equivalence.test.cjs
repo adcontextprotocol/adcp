@@ -63,6 +63,12 @@ describe('schema-equivalence CLI fixtures', { concurrency: 8 }, () => {
 
 const ONEOF_FIXTURES = path.join(__dirname, '..', 'scripts', 'schema-equivalence', 'test', 'oneof-fixtures');
 
+// Reads a row of the oneof Markdown table as GitHub does: a pipe ends a cell
+// unless a backslash precedes it, `\|` reads as `|`, and a code span keeps its
+// backslashes.
+const tableRow = line => line.slice(1, -1).split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
+const codeSpan = text => /^(`+) ?(.*?) ?\1$/.exec(text)[2];
+
 describe('schema-equivalence oneof check', { concurrency: 4 }, () => {
   for (const name of fs.readdirSync(ONEOF_FIXTURES).sort()) {
     const dir = path.join(ONEOF_FIXTURES, name);
@@ -83,6 +89,14 @@ describe('schema-equivalence oneof check', { concurrency: 4 }, () => {
       const reportOnly = await run(['oneof', '--dir', dir, '--report-only'], dir);
       assert.equal(reportOnly.code, 0, '--report-only exits 0');
       assert.deepEqual(reportOnly.report.counts, expect.counts);
+      const markdown = execFileSync(process.execPath, [CLI, 'oneof', '--dir', dir, '--report-only'], { cwd: dir }).toString();
+      const rows = markdown.split('\n').filter(line => /^\| [PWU] \|/.test(line)).map(tableRow);
+      assert.equal(rows.length, report.sites.length, markdown);
+      for (const [result, location, detail] of rows) {
+        const site = byLocation.get(codeSpan(location));
+        assert.ok(site, `a site for the row ${location}`);
+        if (result === 'W') assert.deepEqual(JSON.parse(codeSpan(detail.replace(/^.*? accept /, ''))), site.witness);
+      }
     });
   }
 });
