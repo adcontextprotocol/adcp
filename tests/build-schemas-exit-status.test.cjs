@@ -2,11 +2,11 @@
 /**
  * `npm run build:schemas` fails when a root schema fails to bundle.
  *
- * Each case runs scripts/build-schemas.cjs in a temporary copy of the build
- * inputs, so the real dist/ is never touched. In the broken copy, two roots
- * each mark two distinct schemas with one `x-adcp-hoist` title, the fault
- * that #9123 hit. The build must keep going, list both, exit 1, and leave no
- * build stamp, so scripts/built-schemas.cjs rebuilds the tree next time.
+ * Each case runs scripts/build-schemas.cjs with `--root` against a small
+ * fixture tree in a temporary directory, so the real dist/ is never touched.
+ * The fixture has two bundled roots and no tools. In the broken tree, each
+ * root marks two distinct schemas with one `x-adcp-hoist` title, the fault
+ * that #9123 hit. The build must keep going, list both roots, and exit 1.
  */
 
 'use strict';
@@ -18,49 +18,55 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
-const REPO_ROOT = path.resolve(__dirname, '..');
-const BUILD_SCRIPTS = ['build-schemas.cjs', 'mcp-schema-projection.cjs', 'built-schemas.cjs'];
-const COLLISION_ROOTS = {
-  'media-buy/get-products-request.json': 'FixtureProductsCollision',
-  'creative/list-creatives-request.json': 'FixtureCreativesCollision',
-};
+const BUILD_SCRIPT = path.join(__dirname, '..', 'scripts', 'build-schemas.cjs');
+const ROOTS = ['core/tasks-get-alpha-request.json', 'core/tasks-get-beta-request.json'];
 
 const tempDirs = [];
 test.after(() => {
   for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** Copies the build inputs into a temporary repository root. */
-function copyBuildInputs() {
+function writeJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(value, null, 2));
+}
+
+/**
+ * Writes a repository tree with the smallest source the build accepts: a
+ * registry, one error code, no task types, a permissive manifest schema, and
+ * the bundled roots. `marked(title)` gives the two schemas each root marks
+ * with `x-adcp-hoist`.
+ */
+function writeFixtureTree(marked) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-build-exit-'));
   tempDirs.push(root);
-  fs.mkdirSync(path.join(root, 'scripts'));
-  for (const script of BUILD_SCRIPTS) {
-    fs.copyFileSync(path.join(REPO_ROOT, 'scripts', script), path.join(root, 'scripts', script));
+  const source = path.join(root, 'static/schemas/source');
+  writeJson(path.join(root, 'package.json'), { version: '0.0.0' });
+  writeJson(path.join(source, 'index.json'), {});
+  writeJson(path.join(source, 'manifest.schema.json'), {});
+  writeJson(path.join(source, 'enums/task-type.json'), { enum: [] });
+  writeJson(path.join(source, 'enums/error-code.json'), {
+    enum: ['FIXTURE_ERROR'],
+    enumMetadata: { FIXTURE_ERROR: { recovery: 'terminal', suggestion: 'Fix the fixture.' } },
+    enumDescriptions: { FIXTURE_ERROR: 'A fixture error. Recovery: terminal.' },
+  });
+  for (const relativePath of ROOTS) {
+    const title = `Fixture${path.basename(relativePath, '.json').replace(/\W/g, '')}`;
+    const [first, second] = marked(title);
+    writeJson(path.join(source, relativePath), {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: `/schemas/${relativePath}`,
+      type: 'object',
+      properties: { first, second },
+    });
   }
-  fs.copyFileSync(path.join(REPO_ROOT, 'package.json'), path.join(root, 'package.json'));
-  for (const dir of ['static/schemas/source', 'static/compliance/source']) {
-    fs.cpSync(path.join(REPO_ROOT, dir), path.join(root, dir), { recursive: true });
-  }
-  fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'dir');
   return root;
 }
 
-function editSourceSchema(root, relativePath, edit) {
-  const file = path.join(root, 'static/schemas/source', relativePath);
-  const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
-  edit(schema);
-  fs.writeFileSync(file, JSON.stringify(schema, null, 2));
-}
-
-/** Runs the build in `root`; resolves with its exit status and output. */
+/** Runs the build against `root`; resolves with its exit status and output. */
 function runBuild(root) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env };
-    delete env.ADCP_SCHEMA_BUILD_LOCK_HELD;
-    const child = spawn(process.execPath, [path.join(root, 'scripts', 'build-schemas.cjs')], {
-      cwd: root,
-      env,
+    const child = spawn(process.execPath, [BUILD_SCRIPT, '--root', root], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
@@ -71,43 +77,30 @@ function runBuild(root) {
   });
 }
 
-const stampPath = root => path.join(root, 'dist/schemas/latest/.build-inputs.sha256');
-
-// Start both builds at once; each test awaits its own.
-const cleanRoot = copyBuildInputs();
-const cleanBuild = runBuild(cleanRoot);
-
-const brokenRoot = copyBuildInputs();
-for (const [root, title] of Object.entries(COLLISION_ROOTS)) {
-  editSourceSchema(brokenRoot, root, schema => {
-    schema.properties.fixture_collision = {
-      oneOf: [
-        { 'x-adcp-hoist': true, title, type: 'string' },
-        { 'x-adcp-hoist': true, title, type: 'integer' },
-      ],
-    };
-  });
-}
-const brokenBuild = runBuild(brokenRoot);
+const marker = (title, type) => ({ 'x-adcp-hoist': true, title, type });
 
 test('a build where every root bundles exits 0', async () => {
-  const { status, output } = await cleanBuild;
+  // The same marked schema twice is one named type: it hoists cleanly.
+  const root = writeFixtureTree(title => [marker(title, 'string'), marker(title, 'string')]);
+  const { status, output } = await runBuild(root);
   assert.equal(status, 0, output);
-  assert.doesNotMatch(output, /Failed to bundle|failed to build/);
-  assert.ok(fs.existsSync(stampPath(cleanRoot)), 'a successful build records its inputs');
+  for (const relativePath of ROOTS) {
+    const bundled = JSON.parse(
+      fs.readFileSync(path.join(root, 'dist/schemas/latest/bundled', relativePath), 'utf8'));
+    assert.deepEqual(bundled.properties.first, bundled.properties.second);
+  }
 });
 
 test('a build where roots fail to bundle lists every failure and exits 1', async () => {
-  const { status, output } = await brokenBuild;
+  // Two different schemas under one title cannot share a $defs name.
+  const root = writeFixtureTree(title => [marker(title, 'string'), marker(title, 'integer')]);
+  const { status, output } = await runBuild(root);
   assert.equal(status, 1, output);
   const summary = output.slice(output.indexOf('❌ Build failed:'));
   assert.match(summary, /2 bundled schema\(s\) failed to build/);
-  for (const [root, title] of Object.entries(COLLISION_ROOTS)) {
+  for (const relativePath of ROOTS) {
     assert.ok(
-      summary.includes(`dist/schemas/latest/bundled/${root}: x-adcp-hoist: two distinct schemas marked with title '${title}'`),
+      summary.includes(`dist/schemas/latest/bundled/${relativePath}: x-adcp-hoist: two distinct schemas marked with title`),
       summary);
   }
-  // The other roots still bundle, and the failed tree is not stamped as built.
-  assert.match(output, /Bundled \d+ schemas \(2 failed\)/);
-  assert.ok(!fs.existsSync(stampPath(brokenRoot)), 'a failed build must not record its inputs');
 });

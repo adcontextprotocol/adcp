@@ -38,10 +38,26 @@ const {
   generateMcpSchemaProjection,
 } = require('./mcp-schema-projection.cjs');
 
-const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
-const DIST_DIR = path.join(__dirname, '../dist/schemas');
-const PACKAGE_JSON = path.join(__dirname, '../package.json');
-const SKILLS_DIR = path.join(__dirname, '../skills');
+// The repository tree the build reads and writes. `--root <dir>` points a
+// command-line build at another tree with the same layout (tests build a
+// small fixture this way); it is honored only when this file is the entry
+// point, so modules that require it always see this repository.
+const DEFAULT_REPO_ROOT = path.join(__dirname, '..');
+function repoRootFromArgs(argv) {
+  const index = argv.indexOf('--root');
+  if (index === -1) return DEFAULT_REPO_ROOT;
+  if (!argv[index + 1]) throw new Error('--root requires a directory argument');
+  return path.resolve(argv[index + 1]);
+}
+const REPO_ROOT = require.main === module ? repoRootFromArgs(process.argv.slice(2)) : DEFAULT_REPO_ROOT;
+// scripts/built-schemas.cjs locks and stamps this repository's
+// dist/schemas/latest; a build of another tree must not touch either.
+const BUILDS_THIS_REPOSITORY = REPO_ROOT === DEFAULT_REPO_ROOT;
+
+const SOURCE_DIR = path.join(REPO_ROOT, 'static/schemas/source');
+const DIST_DIR = path.join(REPO_ROOT, 'dist/schemas');
+const PACKAGE_JSON = path.join(REPO_ROOT, 'package.json');
+const SKILLS_DIR = path.join(REPO_ROOT, 'skills');
 const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
 
 function resolveBuildTimestamp(env = process.env, now = new Date()) {
@@ -2506,13 +2522,20 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
 function assertNoBundleFailures(failures) {
   if (failures.length === 0) return;
   const lines = failures.map(({ bundledDir, schema, message }) =>
-    `   ${path.relative(path.join(__dirname, '..'), path.join(bundledDir, schema))}: ${message}`);
+    `   ${path.relative(REPO_ROOT, path.join(bundledDir, schema))}: ${message}`);
   throw new Error(`${failures.length} bundled schema(s) failed to build:\n${lines.join('\n')}`);
 }
 
 function generateMcpProjectionForVersion(versionDir, urlVersion) {
   const targetDir = path.join(versionDir, 'mcp', MCP_PROTOCOL_VERSION);
   const manifestPath = path.join(versionDir, 'manifest.json');
+  // The projection and its role profiles project the manifest's tools. A
+  // tree with none (a `--root` fixture; this repository's manifest schema
+  // requires at least one) has nothing to project.
+  if (Object.keys(JSON.parse(fs.readFileSync(manifestPath, 'utf8')).tools || {}).length === 0) {
+    console.log(`   ✓ No tools in manifest.json; MCP ${MCP_PROTOCOL_VERSION} projection skipped`);
+    return;
+  }
   const stats = generateMcpSchemaProjection({
     sourceDir: SOURCE_DIR,
     targetDir,
@@ -2805,7 +2828,7 @@ async function main() {
     }
 
     // Generate the canonical tool/error/specialism manifest (adcp#3725).
-    const manifestStats = writeManifest(SOURCE_DIR, versionDir, version, version, path.join(__dirname, '..'));
+    const manifestStats = writeManifest(SOURCE_DIR, versionDir, version, version, REPO_ROOT);
     console.log(`📑 Generated manifest.json (${manifestStats.tools} tools, ${manifestStats.mutating} mutating, ${manifestStats.error_codes} error codes, ${manifestStats.specialisms} specialisms)`);
 
     // Generate bundled schemas for release
@@ -2835,7 +2858,7 @@ async function main() {
     buildExtensions(SOURCE_DIR, latestDir, version);
 
     // Manifest for latest/.
-    writeManifest(SOURCE_DIR, latestDir, 'latest', version, path.join(__dirname, '..'));
+    writeManifest(SOURCE_DIR, latestDir, 'latest', version, REPO_ROOT);
 
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
@@ -2852,7 +2875,7 @@ async function main() {
     assertNoBundleFailures(bundleFailures);
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
     try {
-      execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+      execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: REPO_ROOT, stdio: 'inherit' });
     } catch (error) {
       // Not in a git repo or git add failed - that's okay for non-CI builds
       console.log(`   (git add skipped - not in git context or git not available)`);
@@ -2905,7 +2928,7 @@ async function main() {
     }
 
     // Generate the canonical tool/error/specialism manifest (adcp#3725).
-    const manifestStats = writeManifest(SOURCE_DIR, latestDir, 'latest', version, path.join(__dirname, '..'));
+    const manifestStats = writeManifest(SOURCE_DIR, latestDir, 'latest', version, REPO_ROOT);
     console.log(`📑 Generated manifest.json (${manifestStats.tools} tools, ${manifestStats.mutating} mutating, ${manifestStats.error_codes} error codes, ${manifestStats.specialisms} specialisms)`);
 
     // Generate bundled schemas for latest
@@ -2951,7 +2974,7 @@ async function main() {
 
   // Record the inputs latest/ was built from, so tests and tooling that read
   // the built tree (scripts/built-schemas.cjs) rebuild only when they change.
-  require('./built-schemas.cjs').writeBuildStamp();
+  if (BUILDS_THIS_REPOSITORY) require('./built-schemas.cjs').writeBuildStamp();
 
   console.log('');
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
@@ -2994,7 +3017,8 @@ module.exports = {
 
 if (require.main === module) {
   // One build of dist/schemas/latest at a time (scripts/built-schemas.cjs).
-  require('./built-schemas.cjs').withBuildLock(main).catch(err => {
+  const build = BUILDS_THIS_REPOSITORY ? require('./built-schemas.cjs').withBuildLock(main) : main();
+  build.catch(err => {
     console.error('❌ Build failed:', err.message);
     process.exit(1);
   });
