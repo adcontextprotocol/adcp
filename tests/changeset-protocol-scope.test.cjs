@@ -13,6 +13,7 @@ const {
   isChangesetEditOnlyMaintenance,
   isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
+  isReleaseAuditChangesetMaintenance,
   isStoryboardBranchRegistrationOnly,
   parseNameStatus,
 } = require('../scripts/check-changeset-protocol-scope.cjs');
@@ -43,6 +44,9 @@ const emptyChangeset = `---
 
 No package release.
 `;
+
+const rewordedProtocolChangeset = protocolChangeset.replace('Update the protocol.', 'Clarify the protocol.');
+const releaseAudit = { headRef: 'release-audit/3.3.0-beta.1' };
 
 function readFiles(files) {
   return filePath => files[filePath] || '';
@@ -268,6 +272,76 @@ violations = findChangesetProtocolScopeViolations(
   readFiles({ '.changeset/existing-protocol-fix.md': protocolChangeset })
 );
 assert.strictEqual(violations.length, 1, 'Editing protocol changeset prose without a classification downgrade still fails');
+
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'M', paths: ['.changeset/existing-protocol-fix.md'] }],
+  readFiles({ '.changeset/existing-protocol-fix.md': rewordedProtocolChangeset }),
+  readFiles({ '.changeset/existing-protocol-fix.md': protocolChangeset }),
+  releaseAudit
+);
+assert.deepStrictEqual(violations, [], 'Release-audit branches can edit protocol changeset text');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: ['.changeset/existing-protocol-fix.md'] },
+    { status: 'D', paths: ['.changeset/old-app-fix.md'] },
+  ],
+  readFiles({ '.changeset/existing-protocol-fix.md': majorProtocolChangeset }),
+  readFiles({ '.changeset/existing-protocol-fix.md': protocolChangeset }),
+  releaseAudit
+);
+assert.deepStrictEqual(violations, [], 'Release-audit branches can escalate a misclassified changeset bump');
+
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'M', paths: ['.changeset/existing-protocol-fix.md'] }],
+  readFiles({ '.changeset/existing-protocol-fix.md': majorProtocolChangeset }),
+  readFiles({ '.changeset/existing-protocol-fix.md': protocolChangeset }),
+  { headRef: 'fix/release-audit/escalate' }
+);
+assert.strictEqual(violations.length, 1, 'Only the release-audit/ head-branch prefix relaxes changeset edits');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: ['.changeset/existing-protocol-fix.md'] },
+    { status: 'M', paths: ['server/src/billing/subscription-sync.ts'] },
+  ],
+  readFiles({ '.changeset/existing-protocol-fix.md': majorProtocolChangeset }),
+  readFiles({ '.changeset/existing-protocol-fix.md': protocolChangeset }),
+  releaseAudit
+);
+assert.strictEqual(violations.length, 1, 'Release-audit branches that touch non-changeset files are checked normally');
+
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'A', paths: ['.changeset/new-protocol-fix.md'] }],
+  readFiles({ '.changeset/new-protocol-fix.md': protocolChangeset }),
+  readFiles({}),
+  releaseAudit
+);
+assert.strictEqual(violations.length, 1, 'Release-audit branches cannot add new protocol changesets');
+
+assert.strictEqual(
+  isReleaseAuditChangesetMaintenance(
+    [{ status: 'M', paths: ['.changeset/existing-protocol-fix.md'] }],
+    'main'
+  ),
+  false,
+  'Changeset edits from other branches are not release-audit maintenance'
+);
+
+assert.strictEqual(
+  isReleaseAuditChangesetMaintenance(
+    [{ status: 'R090', paths: ['.changeset/old-name.md', '.changeset/new-name.md'] }],
+    releaseAudit.headRef
+  ),
+  false,
+  'Release-audit maintenance does not cover renamed changesets'
+);
+
+assert.strictEqual(
+  isReleaseAuditChangesetMaintenance([], releaseAudit.headRef),
+  false,
+  'An empty diff is not release-audit maintenance'
+);
 
 assert.strictEqual(
   isChangesetClassificationMaintenance(
