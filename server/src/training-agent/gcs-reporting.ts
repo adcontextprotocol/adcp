@@ -483,21 +483,40 @@ export function getTrainingGcsReporting(): TrainingGcsReporting | undefined {
   runtime?.assertServing();
   return runtime;
 }
-export async function initializeTrainingGcsReporting(): Promise<void> {
+// Waits between startup attempts. A bluegreen rollout boots new machines
+// while the old ones still hold their pools, and the primary can be slow to
+// accept a connection then; six attempts with a 10 s connect budget each take
+// about 90 s before the boot fails as before.
+export const TRAINING_REPORTING_INIT_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 16_000];
+
+export async function initializeTrainingGcsReporting(retryDelaysMs: readonly number[] = TRAINING_REPORTING_INIT_RETRY_DELAYS_MS): Promise<void> {
   const config = trainingGcsReportingConfig();
   if (!config || runtime) return;
   const database = getDatabaseConfig();
   if (!database) throw new Error('Reporting requires the application PostgreSQL primary.');
-  const db = new Pool({ connectionString: database.connectionString, ssl: database.ssl, max: 4,
-    connectionTimeoutMillis: database.connectionTimeoutMillis || 5000, idleTimeoutMillis: 30_000,
-    options: `-c search_path=${TRAINING_REPORTING_SCHEMA},pg_catalog -c statement_timeout=30000 -c lock_timeout=5000` });
-  db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
-  try {
-    runtime = await TrainingGcsReporting.create(config, db, new Storage({ projectId: 'adcp-production', keyFilename: config.credentialsFile, timeout: 10_000, retryOptions: { totalTimeout: 30, maxRetries: 2 } }));
-  } catch (error) {
-    logger.error({ failure: describeReportingInitFailure(error) }, 'Durable GCS reporting initialization failed');
-    await db.end();
-    throw new Error('Durable GCS reporting initialization failed; check authority, migrations, credentials and bucket policy.');
+  const attempts = retryDelaysMs.length + 1;
+  for (let attempt = 1; ; attempt += 1) {
+    // A fresh pool per attempt, so a failed one holds no connection while
+    // the next waits.
+    const db = new Pool({ connectionString: database.connectionString, ssl: database.ssl, max: 4,
+      connectionTimeoutMillis: database.connectionTimeoutMillis || 5000, idleTimeoutMillis: 30_000,
+      options: `-c search_path=${TRAINING_REPORTING_SCHEMA},pg_catalog -c statement_timeout=30000 -c lock_timeout=5000` });
+    db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
+    try {
+      runtime = await TrainingGcsReporting.create(config, db, new Storage({ projectId: 'adcp-production', keyFilename: config.credentialsFile, timeout: 10_000, retryOptions: { totalTimeout: 30, maxRetries: 2 } }));
+      if (attempt > 1) logger.warn({ attempt, attempts }, 'Durable GCS reporting initialized after a retry');
+      return;
+    } catch (error) {
+      await db.end();
+      const retryInMs = retryDelaysMs[attempt - 1];
+      logger.error({ failure: describeReportingInitFailure(error), attempt, attempts, ...(retryInMs !== undefined && { retryInMs }) },
+        'Durable GCS reporting initialization failed');
+      // Fail closed: the boot still fails once every attempt has.
+      if (retryInMs === undefined) {
+        throw new Error('Durable GCS reporting initialization failed; check authority, migrations, credentials and bucket policy.');
+      }
+      await new Promise(resolve => setTimeout(resolve, retryInMs));
+    }
   }
 }
 export async function stopTrainingGcsReporting(): Promise<void> { await runtime?.stop(); }
