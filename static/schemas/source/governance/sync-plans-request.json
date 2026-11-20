@@ -328,10 +328,11 @@
                   "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget.",
                   "properties": {
                     "amount": {
-                      "type": "number"
+                      "type": "number",
+                      "minimum": 0
                     },
                     "currency": {
-                      "type": "string"
+                      "$ref": "/schemas/core/currency-code.json"
                     }
                   },
                   "required": [
@@ -377,10 +378,11 @@
                 "description": "Maximum aggregate budget across all member plans.",
                 "properties": {
                   "amount": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0
                   },
                   "currency": {
-                    "type": "string"
+                    "$ref": "/schemas/core/currency-code.json"
                   }
                 },
                 "required": [

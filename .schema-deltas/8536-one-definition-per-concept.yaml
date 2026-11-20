@@ -1,7 +1,7 @@
 # Delta manifest for #8536 (format: scripts/schema-equivalence/README.md, "Delta manifest").
 title: >-
   #8536 against its merge base with main: the drift corrections, the two drifted enums, the 63-character DNS label
-  limit, the SLA duration pattern, and the HTTPS origin trailing slash
+  limit, the SLA duration pattern, the HTTPS origin trailing slash, and the experimental money constraints
 changes:
   - location: core/domain-name.json#
     keyword: maxLength
@@ -319,3 +319,41 @@ changes:
     direction: loosen
     side: none
     note: '#8923: the disclosed attempted_agent_origin takes the same pattern as core/https-origin.json; it keeps maxLength 2048.'
+  - location: >-
+      governance/sync-plans-request.json#/properties/plans/items/properties/delegations/items/properties/budget_limit/properties/amount
+    keyword: minimum
+    new: 0
+    direction: tighten
+    side: request
+    note: '#8471: the experimental sync_plans delegation budget_limit amount is non-negative, like every other money amount.'
+  - location: >-
+      governance/sync-plans-request.json#/properties/plans/items/properties/portfolio/properties/total_budget_cap/properties/amount
+    keyword: minimum
+    new: 0
+    direction: tighten
+    side: request
+    note: '#8471: the experimental sync_plans portfolio total_budget_cap amount is non-negative.'
+  - location: core/currency-code.json#
+    keyword: pattern
+    new: ^[A-Z]{3}$
+    direction: tighten
+    side: both
+    note: >-
+      #8471: the three experimental money currencies that were plain strings (sync_plans budget_limit and
+      total_budget_cap, si_send_message handoff intent price) reference core/currency-code.json, the ISO 4217 code
+      every other money object states.
+  - location: sponsored-intelligence/si-send-message-response.json#/properties/handoff/properties/intent/properties/price
+    keyword: required
+    new:
+      - amount
+      - currency
+    direction: tighten
+    side: response
+    note: '#8471: the experimental SI handoff price requires both fields, like every other money object.'
+  - location: >-
+      sponsored-intelligence/si-send-message-response.json#/properties/handoff/properties/intent/properties/price/properties/amount
+    keyword: minimum
+    new: 0
+    direction: tighten
+    side: response
+    note: '#8471: the experimental SI handoff price amount is non-negative.'

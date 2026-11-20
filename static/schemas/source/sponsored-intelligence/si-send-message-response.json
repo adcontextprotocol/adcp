@@ -80,12 +80,17 @@
               "description": "Price information",
               "properties": {
                 "amount": {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 "currency": {
-                  "type": "string"
+                  "$ref": "/schemas/core/currency-code.json"
                 }
-              }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ]
             }
           },
           "additionalProperties": true

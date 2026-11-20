@@ -15,6 +15,7 @@ Sites that meant the same thing as a named schema, and stated a different constr
 - The SLA window and creative review SLA `response_max` and `completion_max` reference `core/sla-duration.json`, which rejects `PT`, `P1DT`, and any other value ending in a bare `T`, because none is an ISO 8601 duration (#8905). It states the pattern of `core/iso8601-duration.json`. A zero bound such as `PT0S` stays valid.
 - Trademark and brand claim `countries` require an uppercase ISO 3166-1 alpha-2 code, and the targeting modification selector `system` requires a postal system from `enums/postal-system.json`.
 - `core/domain-name.json` states the RFC 1035 limits, 253 characters for the name and 63 for each label, so every domain name site gains them. `upstream_source_domain`, where `format: hostname` already set both limits, also requires a lowercase domain without a trailing dot.
+- Three experimental money objects take the constraints every other money object states (#8471): the `sync_plans` delegation `budget_limit` and portfolio `total_budget_cap`, and the `si_send_message` handoff intent `price`. Their `amount` is non-negative and their `currency` is an ISO 4217 code, and the handoff `price` requires both fields.
 
 **Looser, where the stricter copy rejected a published value:**
 
