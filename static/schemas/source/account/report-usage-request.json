@@ -152,59 +152,53 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Signal usage for a single campaign",
-      "data": {
-        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
-        "reporting_period": {
-          "start": "2025-03-01T00:00:00Z",
-          "end": "2025-03-31T23:59:59Z"
-        },
-        "usage": [
-          {
-            "account": {
-              "account_id": "acct_pinnacle_signals"
-            },
-            "signal_agent_segment_id": "luxury_auto_intenders",
-            "pricing_option_id": "po_lux_auto_cpm",
-            "impressions": 4200000,
-            "media_spend": 21000,
-            "vendor_cost": 2100,
-            "currency": "USD"
-          }
-        ]
-      }
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+      "reporting_period": {
+        "start": "2025-03-01T00:00:00Z",
+        "end": "2025-03-31T23:59:59Z"
+      },
+      "usage": [
+        {
+          "account": {
+            "account_id": "acct_pinnacle_signals"
+          },
+          "signal_agent_segment_id": "luxury_auto_intenders",
+          "pricing_option_id": "po_lux_auto_cpm",
+          "impressions": 4200000,
+          "media_spend": 21000,
+          "vendor_cost": 2100,
+          "currency": "USD"
+        }
+      ]
     },
     {
-      "description": "Multi-account batch across two campaigns",
-      "data": {
-        "idempotency_key": "8b7a9c2d-3456-4789-abcd-ef0123456789",
-        "reporting_period": {
-          "start": "2025-03-01T00:00:00Z",
-          "end": "2025-03-31T23:59:59Z"
-        },
-        "usage": [
-          {
-            "account": {
-              "account_id": "acct_pinnacle_signals"
-            },
-            "signal_agent_segment_id": "luxury_auto_intenders",
-            "pricing_option_id": "po_lux_auto_cpm",
-            "impressions": 2100000,
-            "vendor_cost": 1050,
-            "currency": "USD"
+      "idempotency_key": "8b7a9c2d-3456-4789-abcd-ef0123456789",
+      "reporting_period": {
+        "start": "2025-03-01T00:00:00Z",
+        "end": "2025-03-31T23:59:59Z"
+      },
+      "usage": [
+        {
+          "account": {
+            "account_id": "acct_pinnacle_signals"
           },
-          {
-            "account": {
-              "account_id": "acct_nova"
-            },
-            "signal_agent_segment_id": "eco_conscious_shoppers",
-            "pricing_option_id": "po_eco_cpm",
-            "impressions": 800000,
-            "vendor_cost": 400,
-            "currency": "USD"
-          }
-        ]
-      }
+          "signal_agent_segment_id": "luxury_auto_intenders",
+          "pricing_option_id": "po_lux_auto_cpm",
+          "impressions": 2100000,
+          "vendor_cost": 1050,
+          "currency": "USD"
+        },
+        {
+          "account": {
+            "account_id": "acct_nova"
+          },
+          "signal_agent_segment_id": "eco_conscious_shoppers",
+          "pricing_option_id": "po_eco_cpm",
+          "impressions": 800000,
+          "vendor_cost": 400,
+          "currency": "USD"
+        }
+      ]
     }
   ]
 }

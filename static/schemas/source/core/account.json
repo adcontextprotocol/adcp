@@ -290,122 +290,104 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Direct advertiser account",
-      "data": {
-        "account_id": "acc_acme_direct",
-        "name": "Acme",
-        "advertiser": "Acme Corp",
-        "brand": {
-          "domain": "acme-corp.com"
-        },
-        "operator": "acme-corp.com",
-        "status": "active",
-        "billing": "operator",
-        "account_scope": "brand",
-        "rate_card": "acme_vip_2024",
-        "payment_terms": "net_30"
-      }
+      "account_id": "acc_acme_direct",
+      "name": "Acme",
+      "advertiser": "Acme Corp",
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "acme-corp.com",
+      "status": "active",
+      "billing": "operator",
+      "account_scope": "brand",
+      "rate_card": "acme_vip_2024",
+      "payment_terms": "net_30"
     },
     {
-      "description": "Advertiser account with agency billing proxy",
-      "data": {
-        "account_id": "acc_acme_pinnacle",
-        "name": "Acme c/o Pinnacle",
-        "advertiser": "Acme Corp",
-        "billing_proxy": "Pinnacle Media",
-        "brand": {
-          "domain": "acme-corp.com"
-        },
-        "operator": "pinnacle-media.com",
-        "status": "active",
-        "billing": "operator",
-        "account_scope": "operator_brand",
-        "rate_card": "acme_vip_2024",
-        "payment_terms": "net_60"
-      }
+      "account_id": "acc_acme_pinnacle",
+      "name": "Acme c/o Pinnacle",
+      "advertiser": "Acme Corp",
+      "billing_proxy": "Pinnacle Media",
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "pinnacle-media.com",
+      "status": "active",
+      "billing": "operator",
+      "account_scope": "operator_brand",
+      "rate_card": "acme_vip_2024",
+      "payment_terms": "net_60"
     },
     {
-      "description": "Agency as direct buyer",
-      "data": {
-        "account_id": "acc_pinnacle",
-        "name": "Pinnacle",
-        "advertiser": "Pinnacle Media",
-        "brand": {
-          "domain": "pinnacle-media.com"
-        },
-        "operator": "pinnacle-media.com",
-        "status": "active",
-        "billing": "operator",
-        "account_scope": "operator",
-        "rate_card": "agency_standard",
-        "payment_terms": "net_45"
-      }
+      "account_id": "acc_pinnacle",
+      "name": "Pinnacle",
+      "advertiser": "Pinnacle Media",
+      "brand": {
+        "domain": "pinnacle-media.com"
+      },
+      "operator": "pinnacle-media.com",
+      "status": "active",
+      "billing": "operator",
+      "account_scope": "operator",
+      "rate_card": "agency_standard",
+      "payment_terms": "net_45"
     },
     {
-      "description": "Account with brand identity and operator (via sync_accounts)",
-      "data": {
-        "account_id": "acc_spark_001",
-        "name": "Spark (via Pinnacle)",
-        "advertiser": "Nova Brands",
-        "status": "active",
-        "brand": {
-          "domain": "nova-brands.com",
-          "brand_id": "spark"
-        },
-        "operator": "pinnacle-media.com",
-        "billing": "agent",
-        "account_scope": "operator_brand",
-        "payment_terms": "net_30"
-      }
+      "account_id": "acc_spark_001",
+      "name": "Spark (via Pinnacle)",
+      "advertiser": "Nova Brands",
+      "status": "active",
+      "brand": {
+        "domain": "nova-brands.com",
+        "brand_id": "spark"
+      },
+      "operator": "pinnacle-media.com",
+      "billing": "agent",
+      "account_scope": "operator_brand",
+      "payment_terms": "net_30"
     },
     {
-      "description": "Pending account awaiting seller approval",
-      "data": {
-        "account_id": "acc_glow_pending",
-        "name": "Glow",
-        "advertiser": "Nova Brands",
-        "status": "pending_approval",
-        "brand": {
-          "domain": "nova-brands.com",
-          "brand_id": "glow"
-        },
-        "operator": "pinnacle-media.com",
-        "billing": "operator",
-        "account_scope": "brand"
-      }
+      "account_id": "acc_glow_pending",
+      "name": "Glow",
+      "advertiser": "Nova Brands",
+      "status": "pending_approval",
+      "brand": {
+        "domain": "nova-brands.com",
+        "brand_id": "glow"
+      },
+      "operator": "pinnacle-media.com",
+      "billing": "operator",
+      "account_scope": "brand"
     },
     {
-      "description": "Agency operates but advertiser is billed directly with structured billing entity",
-      "data": {
-        "account_id": "acc_acme_direct_bill",
-        "name": "Acme (billed direct)",
-        "advertiser": "Acme Corp",
-        "brand": {
-          "domain": "acme-corp.com"
+      "account_id": "acc_acme_direct_bill",
+      "name": "Acme (billed direct)",
+      "advertiser": "Acme Corp",
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "pinnacle-media.com",
+      "status": "active",
+      "billing": "advertiser",
+      "billing_entity": {
+        "legal_name": "Acme Corporation GmbH",
+        "vat_id": "DE987654321",
+        "address": {
+          "street": "Hauptstrasse 42",
+          "city": "Munich",
+          "postal_code": "80331",
+          "country": "DE"
         },
-        "operator": "pinnacle-media.com",
-        "status": "active",
-        "billing": "advertiser",
-        "billing_entity": {
-          "legal_name": "Acme Corporation GmbH",
-          "vat_id": "DE987654321",
-          "address": {
-            "street": "Hauptstrasse 42",
-            "city": "Munich",
-            "postal_code": "80331",
-            "country": "DE"
-          },
-          "contacts": [
-            {
-              "role": "billing",
-              "name": "AP Department",
-              "email": "billing@acme-corp.com"
-            }
-          ]
-        },
-        "account_scope": "operator_brand",
-        "payment_terms": "net_30"
-      }
+        "contacts": [
+          {
+            "role": "billing",
+            "name": "AP Department",
+            "email": "billing@acme-corp.com"
+          }
+        ]
+      },
+      "account_scope": "operator_brand",
+      "payment_terms": "net_30"
     }
   ]
 }

@@ -111,39 +111,33 @@
   ],
   "examples": [
     {
-      "description": "Staged update promoted after review",
-      "data": {
-        "idempotency_key": "whk_01JC4N2T3VXQ5M7K9N1P3R5S7U",
-        "notification_id": "su_acme_hero_video_rev_2026_11_02_promoted",
-        "notification_type": "creative.staged_update_changed",
-        "fired_at": "2026-11-03T09:05:00Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_acme_pinnacle",
-        "creative_id": "acme_hero_video",
-        "revision_id": "rev_2026_11_02",
-        "outcome": "promoted",
-        "creative_status": "approved",
-        "observed_at": "2026-11-03T09:04:41Z",
-        "initiator": "seller"
-      }
+      "idempotency_key": "whk_01JC4N2T3VXQ5M7K9N1P3R5S7U",
+      "notification_id": "su_acme_hero_video_rev_2026_11_02_promoted",
+      "notification_type": "creative.staged_update_changed",
+      "fired_at": "2026-11-03T09:05:00Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_acme_pinnacle",
+      "creative_id": "acme_hero_video",
+      "revision_id": "rev_2026_11_02",
+      "outcome": "promoted",
+      "creative_status": "approved",
+      "observed_at": "2026-11-03T09:04:41Z",
+      "initiator": "seller"
     },
     {
-      "description": "Staged update rejected; the prior version keeps serving (on_rejection keeps_prior)",
-      "data": {
-        "idempotency_key": "whk_01JC4P5V6XYR8P0L2M4Q6S8T0V",
-        "notification_id": "su_acme_hero_video_rev_2026_11_04_rejected",
-        "notification_type": "creative.staged_update_changed",
-        "fired_at": "2026-11-05T14:20:00Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_acme_pinnacle",
-        "creative_id": "acme_hero_video",
-        "revision_id": "rev_2026_11_04",
-        "outcome": "rejected",
-        "rejection_reason": "Updated end card references a claim the seller's content policy does not allow.",
-        "creative_status": "approved",
-        "observed_at": "2026-11-05T14:18:09Z",
-        "initiator": "seller"
-      }
+      "idempotency_key": "whk_01JC4P5V6XYR8P0L2M4Q6S8T0V",
+      "notification_id": "su_acme_hero_video_rev_2026_11_04_rejected",
+      "notification_type": "creative.staged_update_changed",
+      "fired_at": "2026-11-05T14:20:00Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_acme_pinnacle",
+      "creative_id": "acme_hero_video",
+      "revision_id": "rev_2026_11_04",
+      "outcome": "rejected",
+      "rejection_reason": "Updated end card references a claim the seller's content policy does not allow.",
+      "creative_status": "approved",
+      "observed_at": "2026-11-05T14:18:09Z",
+      "initiator": "seller"
     }
   ]
 }

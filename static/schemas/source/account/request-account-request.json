@@ -85,24 +85,18 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Agency requests an operator-billed account for one advertiser",
-      "data": {
-        "adcp_version": "3.3",
-        "idempotency_key": "3f1d2a8c-6b0e-4c7a-9d51-8e2f4a6b9c10",
-        "brand": { "domain": "renault.fr", "countries": ["FR"] },
-        "operator": "wppmedia.fr",
-        "currency": "EUR",
-        "billing": "operator",
-        "billing_entity": { "legal_name": "WPP Media France SAS" }
-      }
+      "adcp_version": "3.3",
+      "idempotency_key": "3f1d2a8c-6b0e-4c7a-9d51-8e2f4a6b9c10",
+      "brand": { "domain": "renault.fr", "countries": ["FR"] },
+      "operator": "wppmedia.fr",
+      "currency": "EUR",
+      "billing": "operator",
+      "billing_entity": { "legal_name": "WPP Media France SAS" }
     },
     {
-      "description": "Pick one candidate after an ambiguous result",
-      "data": {
-        "adcp_version": "3.3",
-        "idempotency_key": "8c2e7d41-0a9b-4f63-b5d8-1e4c7a2f9b30",
-        "account_id": "act_1029384756"
-      }
+      "adcp_version": "3.3",
+      "idempotency_key": "8c2e7d41-0a9b-4f63-b5d8-1e4c7a2f9b30",
+      "account_id": "act_1029384756"
     }
   ]
 }

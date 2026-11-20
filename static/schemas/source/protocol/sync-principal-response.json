@@ -142,35 +142,32 @@
   },
   "examples": [
     {
-      "description": "Principal configuration updated",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "applied",
-          "action": "updated",
-          "dry_run": false,
-          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
-          "principal_kind": "buyer_agent",
-          "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
-          "configuration": {
-            "notification_configs": [],
-            "reporting_destinations": [
-              {
+      "status": "completed",
+      "result": {
+        "kind": "applied",
+        "action": "updated",
+        "dry_run": false,
+        "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+        "principal_kind": "buyer_agent",
+        "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+        "configuration": {
+          "notification_configs": [],
+          "reporting_destinations": [
+            {
+              "destination_id": "analytics-warehouse",
+              "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+              "state": "ready",
+              "configuration": {
+                "pattern": "warehouse_materialization",
                 "destination_id": "analytics-warehouse",
-                "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
-                "state": "ready",
-                "configuration": {
-                  "pattern": "warehouse_materialization",
-                  "destination_id": "analytics-warehouse",
-                  "active": true,
-                  "provider": { "domain": "data-warehouse.example" },
-                  "transport": "bigquery",
-                  "location": "pinnacle-analytics.adcp_reporting",
-                  "accepted_verification_profiles": ["native_commit", "canonical_digest"]
-                }
+                "active": true,
+                "provider": { "domain": "data-warehouse.example" },
+                "transport": "bigquery",
+                "location": "pinnacle-analytics.adcp_reporting",
+                "accepted_verification_profiles": ["native_commit", "canonical_digest"]
               }
-            ]
-          }
+            }
+          ]
         }
       }
     }

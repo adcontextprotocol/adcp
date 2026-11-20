@@ -82,26 +82,23 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Preflight a video manifest against canonical video_hosted and a fictional publisher product in one round-trip",
-      "data": {
-        "manifest": {
-          "format_kind": "video_hosted",
-          "assets": {
-            "video_main": {
-              "asset_type": "video",
-              "url": "https://cdn.acme.example/spring-30s.mp4",
-              "duration_ms": 30000,
-              "width": 1080,
-              "height": 1920
-            }
-          },
-          "brand": { "domain": "acme.example" }
+      "manifest": {
+        "format_kind": "video_hosted",
+        "assets": {
+          "video_main": {
+            "asset_type": "video",
+            "url": "https://cdn.acme.example/spring-30s.mp4",
+            "duration_ms": 30000,
+            "width": 1080,
+            "height": 1920
+          }
         },
-        "targets": [
-          { "kind": "canonical", "id": "video_hosted" },
-          { "kind": "product", "id": "streamhaus_vertical_video_us" }
-        ]
-      }
+        "brand": { "domain": "acme.example" }
+      },
+      "targets": [
+        { "kind": "canonical", "id": "video_hosted" },
+        { "kind": "product", "id": "streamhaus_vertical_video_us" }
+      ]
     }
   ]
 }

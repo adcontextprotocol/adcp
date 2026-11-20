@@ -212,24 +212,21 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Daily official analytics for every authorized account, partitioned by account",
-      "data": {
-        "subscription_id": "analytics-daily",
-        "subscription_version": 1,
-        "active": true,
-        "scope": { "all_authorized_accounts": true },
-        "selector": {
-          "feed_purpose": "analytics",
-          "period_duration": "P1D",
-          "required_finality": "official",
-          "dimensions": ["package", "creative"],
-          "match": "exact"
-        },
-        "reconciliation_mode": "delivery_only",
-        "destination": {
-          "destination_id": "reporting-archive",
-          "path_template": "analytics/{account_id}/{period_start}"
-        }
+      "subscription_id": "analytics-daily",
+      "subscription_version": 1,
+      "active": true,
+      "scope": { "all_authorized_accounts": true },
+      "selector": {
+        "feed_purpose": "analytics",
+        "period_duration": "P1D",
+        "required_finality": "official",
+        "dimensions": ["package", "creative"],
+        "match": "exact"
+      },
+      "reconciliation_mode": "delivery_only",
+      "destination": {
+        "destination_id": "reporting-archive",
+        "path_template": "analytics/{account_id}/{period_start}"
       }
     }
   ]

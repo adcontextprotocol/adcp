@@ -293,105 +293,90 @@
   ],
   "examples": [
     {
-      "description": "Meta Reels — narrows video_hosted (vertical orientation)",
-      "data": {
-        "format_kind": "video_hosted",
-        "params": {
-          "orientation": "vertical",
-          "aspect_ratio": "9:16",
-          "duration_ms_range": [3000, 90000],
-          "min_width": 1080,
-          "min_height": 1920,
-          "max_file_size_mb": 200,
-          "video_codecs": ["h264"],
-          "audio_codecs": ["aac"],
-          "headline_max_chars": 25,
-          "primary_text_max_chars": 72,
-          "captions": "recommended",
-          "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
-          "composition_model": "deterministic",
-          "platform_extensions": [
-            { "uri": "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel", "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2" }
-          ]
-        }
+      "format_kind": "video_hosted",
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_range": [3000, 90000],
+        "min_width": 1080,
+        "min_height": 1920,
+        "max_file_size_mb": 200,
+        "video_codecs": ["h264"],
+        "audio_codecs": ["aac"],
+        "headline_max_chars": 25,
+        "primary_text_max_chars": 72,
+        "captions": "recommended",
+        "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+        "composition_model": "deterministic",
+        "platform_extensions": [
+          { "uri": "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel", "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2" }
+        ]
       }
     },
     {
-      "description": "IAB Medium Rectangle (300x250) — narrows image",
-      "data": {
-        "format_kind": "image",
-        "params": {
-          "width": 300,
-          "height": 250,
-          "max_file_size_kb": 200,
-          "image_formats": ["jpg", "png", "gif"],
-          "ssl_required": true,
-          "composition_model": "deterministic",
-          "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"]
-        }
+      "format_kind": "image",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "max_file_size_kb": 200,
+        "image_formats": ["jpg", "png", "gif"],
+        "ssl_required": true,
+        "composition_model": "deterministic",
+        "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"]
       }
     },
     {
-      "description": "Québec French-only display image — same image shape with a seller-enforced creative locale constraint",
-      "data": {
-        "format_kind": "image",
-        "format_option_id": "quebec_display_image",
-        "display_name": "Québec display image — French creative",
-        "canonical_formats_only": true,
-        "locale_policy": {
-          "accepted_language_ranges": ["fr"]
-        },
-        "params": {
-          "width": 300,
-          "height": 250,
-          "max_file_size_kb": 200,
-          "image_formats": ["jpg", "png"]
-        }
+      "format_kind": "image",
+      "format_option_id": "quebec_display_image",
+      "display_name": "Québec display image — French creative",
+      "canonical_formats_only": true,
+      "locale_policy": {
+        "accepted_language_ranges": ["fr"]
+      },
+      "params": {
+        "width": 300,
+        "height": 250,
+        "max_file_size_kb": 200,
+        "image_formats": ["jpg", "png"]
       }
     },
     {
-      "description": "Podcast 30s host-read — narrows audio_hosted with a `script` slot the seller's host reads verbatim. No separate `inputs` map; the script lives in the manifest's `assets` like any other text asset.",
-      "data": {
-        "format_kind": "audio_hosted",
-        "params": {
-          "duration_ms_exact": 30000,
-          "audio_codecs": ["mp3", "aac"],
-          "audio_sample_rates": [44100, 48000],
-          "audio_channels": ["stereo"],
-          "loudness_lufs": -16,
-          "asset_source": "publisher_host_recorded",
-          "buyer_asset_acceptance": "rejected",
-          "composition_model": "deterministic",
-          "slots": [
-            { "asset_group_id": "script", "required": true, "asset_type": "text", "max_chars": 800 },
-            { "asset_group_id": "offering_ref", "required": false, "asset_type": "text" }
-          ],
-          "production_window_business_days": 7
-        }
+      "format_kind": "audio_hosted",
+      "params": {
+        "duration_ms_exact": 30000,
+        "audio_codecs": ["mp3", "aac"],
+        "audio_sample_rates": [44100, 48000],
+        "audio_channels": ["stereo"],
+        "loudness_lufs": -16,
+        "asset_source": "publisher_host_recorded",
+        "buyer_asset_acceptance": "rejected",
+        "composition_model": "deterministic",
+        "slots": [
+          { "asset_group_id": "script", "required": true, "asset_type": "text", "max_chars": 800 },
+          { "asset_group_id": "offering_ref", "required": false, "asset_type": "text" }
+        ],
+        "production_window_business_days": 7
       }
     },
     {
-      "description": "StreamHaus Branded Feature — a still-custom branded-content format with format_schema pointing at the fictional seller's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally. `canonical_formats_only: true` is required for custom declarations because no v1 named format expresses this bespoke composition.",
-      "data": {
-        "format_kind": "custom",
-        "canonical_formats_only": true,
-        "format_shape": "branded_content",
-        "format_schema": {
-          "uri": "https://ads.streamhaus.example/schemas/formats/branded_feature_v1",
-          "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
-        },
-        "format_option_id": "streamhaus_branded_feature",
-        "display_name": "StreamHaus branded feature",
-        "applies_to_channels": ["display"],
-        "params": {
-          "components": [
-            { "placement_type": "feature_header", "required": true },
-            { "placement_type": "sponsored_story_card", "required": true },
-            { "placement_type": "sponsorship_lockup", "required": true }
-          ],
-          "exclusivity_window_hours": 12,
-          "ssl_required": true
-        }
+      "format_kind": "custom",
+      "canonical_formats_only": true,
+      "format_shape": "branded_content",
+      "format_schema": {
+        "uri": "https://ads.streamhaus.example/schemas/formats/branded_feature_v1",
+        "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
+      },
+      "format_option_id": "streamhaus_branded_feature",
+      "display_name": "StreamHaus branded feature",
+      "applies_to_channels": ["display"],
+      "params": {
+        "components": [
+          { "placement_type": "feature_header", "required": true },
+          { "placement_type": "sponsored_story_card", "required": true },
+          { "placement_type": "sponsorship_lockup", "required": true }
+        ],
+        "exclusivity_window_hours": 12,
+        "ssl_required": true
       }
     }
   ]

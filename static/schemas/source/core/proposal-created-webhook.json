@@ -77,19 +77,16 @@
   "not": { "required": ["proposal"] },
   "examples": [
     {
-      "description": "New event inventory for an open opportunity",
-      "data": {
-        "idempotency_key": "whk_01K9P2M7RX4D8B6T3N0Q5V1C9Z",
-        "notification_id": "prop_nova_za_evt_07",
-        "notification_type": "proposal.created",
-        "fired_at": "2026-10-23T09:14:05Z",
-        "subscriber_id": "buyer-proposals",
-        "account_id": "acc_nova_za",
-        "proposal_id": "prop_nova_za_evt_07",
-        "opportunity_id": "opp_nova_za_q4",
-        "later_reason": "event_package",
-        "expires_at": "2026-10-30T23:59:59Z"
-      }
+      "idempotency_key": "whk_01K9P2M7RX4D8B6T3N0Q5V1C9Z",
+      "notification_id": "prop_nova_za_evt_07",
+      "notification_type": "proposal.created",
+      "fired_at": "2026-10-23T09:14:05Z",
+      "subscriber_id": "buyer-proposals",
+      "account_id": "acc_nova_za",
+      "proposal_id": "prop_nova_za_evt_07",
+      "opportunity_id": "opp_nova_za_q4",
+      "later_reason": "event_package",
+      "expires_at": "2026-10-30T23:59:59Z"
     }
   ]
 }

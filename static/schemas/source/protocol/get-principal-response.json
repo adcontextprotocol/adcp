@@ -178,55 +178,46 @@
   },
   "examples": [
     {
-      "description": "Current principal configuration with a superseded generation",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "current",
-          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
-          "principal_kind": "buyer_agent",
-          "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
-          "configuration": {
-            "notification_configs": [],
-            "reporting_destinations": [
-              {
+      "status": "completed",
+      "result": {
+        "kind": "current",
+        "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+        "principal_kind": "buyer_agent",
+        "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+        "configuration": {
+          "notification_configs": [],
+          "reporting_destinations": [
+            {
+              "destination_id": "analytics-warehouse",
+              "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+              "prior_destination_refs": ["dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"],
+              "state": "ready",
+              "configuration": {
+                "pattern": "warehouse_materialization",
                 "destination_id": "analytics-warehouse",
-                "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
-                "prior_destination_refs": ["dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"],
-                "state": "ready",
-                "configuration": {
-                  "pattern": "warehouse_materialization",
-                  "destination_id": "analytics-warehouse",
-                  "active": true,
-                  "provider": { "domain": "data-warehouse.example" },
-                  "transport": "bigquery",
-                  "location": "pinnacle-analytics.adcp_reporting",
-                  "accepted_verification_profiles": ["native_commit", "canonical_digest"]
-                }
+                "active": true,
+                "provider": { "domain": "data-warehouse.example" },
+                "transport": "bigquery",
+                "location": "pinnacle-analytics.adcp_reporting",
+                "accepted_verification_profiles": ["native_commit", "canonical_digest"]
               }
-            ]
-          }
+            }
+          ]
         }
       }
     },
     {
-      "description": "Registered buyer agent has a durable principal record but no standing configuration",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "recognized",
-          "principal_kind": "buyer_agent",
-          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
-        }
+      "status": "completed",
+      "result": {
+        "kind": "recognized",
+        "principal_kind": "buyer_agent",
+        "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
       }
     },
     {
-      "description": "Stable authenticated caller has no durable principal record",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "unconfigured"
-        }
+      "status": "completed",
+      "result": {
+        "kind": "unconfigured"
       }
     }
   ]

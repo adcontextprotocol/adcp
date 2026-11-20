@@ -40,24 +40,18 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Headline constraint with count bounds",
-      "data": {
-        "asset_group_id": "headlines",
-        "asset_type": "text",
-        "required": true,
-        "min_count": 3,
-        "max_count": 15
-      }
+      "asset_group_id": "headlines",
+      "asset_type": "text",
+      "required": true,
+      "min_count": 3,
+      "max_count": 15
     },
     {
-      "description": "Landscape image constraint with count bounds",
-      "data": {
-        "asset_group_id": "images_landscape",
-        "asset_type": "image",
-        "required": true,
-        "min_count": 1,
-        "max_count": 20
-      }
+      "asset_group_id": "images_landscape",
+      "asset_type": "image",
+      "required": true,
+      "min_count": 1,
+      "max_count": 20
     }
   ]
 }

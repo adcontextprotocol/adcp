@@ -53,13 +53,10 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Acquire a pre-bootstrap checkpoint",
-      "data": {
-        "adcp_version": "3.2",
-        "account": {"account_id": "acc_luma_shared"},
-        "starting_position": "latest",
-        "max_results": 100
-      }
+      "adcp_version": "3.2",
+      "account": {"account_id": "acc_luma_shared"},
+      "starting_position": "latest",
+      "max_results": 100
     }
   ]
 }
