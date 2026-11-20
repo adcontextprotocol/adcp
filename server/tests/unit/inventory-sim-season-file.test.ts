@@ -238,6 +238,22 @@ describe('season files', () => {
     expect(eventMessage).toContain('events[0].end_date');
   });
 
+  it('refuses a product that sells a collection on another placement', () => {
+    const seed = structuredClone(CONTENT_SEASON);
+    seed.products[0].collection_ids = ['weekly_dispatch'];
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'content-copy'));
+    expect(message).toContain('products[0]');
+    expect(message).toContain('weekly_dispatch');
+  });
+
+  it('refuses a sponsorship product with no collections', () => {
+    const seed = structuredClone(CONTENT_SEASON);
+    delete seed.products[1].collection_ids;
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'content-copy'));
+    expect(message).toContain('products[1]');
+    expect(message).toContain('covers no inventory');
+  });
+
   it('refuses empty and multi-document files', () => {
     expect(invalidSeedMessage(() => readSeasonFile(write('empty.yaml', '')))).toContain('empty');
     expect(invalidSeedMessage(() => readSeasonFile(write('comments.yaml', '# nothing here\n')))).toContain('empty');
