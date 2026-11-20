@@ -69,15 +69,17 @@ no part.
   Klessinger, Sartiani, Scherzinger, arXiv 2603.25306;
   https://gitlab.lip6.fr/benali1/refutationalnormalizationforjsonschema),
   commit `8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf`, decided 891 pairs in
-  both directions. `../catalog-generator/oracle-bundle.cjs` wrote its input,
+  both directions; 889 of those verdicts stand. `../catalog-generator/oracle-bundle.cjs` wrote its input,
   with one definition per `$ref` target and side, and with `discriminator`
   turned into the formula Ajv evaluates. The prototype is GPLv3; only its
   verdicts and witnesses are in this repository. They are a frozen record as
   of 2026-11-20. Nothing runs the prototype. The generator keeps a frozen
   verdict while the pair's files stay the same.
-- **Hand verdicts (`decided_by: manual`).** 37 pairs use constructs the
+- **Hand verdicts (`decided_by: manual`).** 39 pairs use constructs the
   prototype didn't model like Ajv: `format`, astral characters, `.`,
-  lookahead, and `uniqueItems`. Each carries a hand verdict with its reason.
+  lookahead, `uniqueItems`, and `multipleOf` on doubles. Each carries a hand
+  verdict with its reason. Two of them replace prototype verdicts that
+  assumed exact numbers where Ajv computes `x / m !== parseInt(x / m)`.
   "The oracle" in those reasons is the prototype. Every non-inclusion a hand
   verdict claims has an Ajv-confirmed witness, and no witness contradicts an
   inclusion it claims.
@@ -116,7 +118,10 @@ each pair by these rules:
   `uri`, which subsumes reads by the RFC grammars and not as `ajv-formats`
   does. It is also `unproven` when a pattern names a surrogate code point,
   because subsumes models strings as Unicode scalar values and can't see a
-  lone surrogate.
+  lone surrogate. Last, it is `unproven` when the pair uses `multipleOf`,
+  `type: integer` beside a numeric bound, or a number above 2^53 in
+  magnitude, because subsumes reasons over exact numbers and Ajv over
+  doubles, with `parseInt` for `multipleOf`.
 - `unknown` stays `unknown`, with the reason subsumes gives.
 
 A `yes` or `no` must agree with the frozen or hand verdict. On a

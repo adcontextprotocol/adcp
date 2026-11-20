@@ -547,9 +547,9 @@ const OPAQUE = [
     construct: 'numeric-bounds', items: [
       ['integer-minimum-vs-exclusive', { type: 'integer', minimum: 1 }, { type: 'integer', exclusiveMinimum: 0 }, 'eq'],
       ['redundant-exclusive-maximum', { type: 'number', maximum: 5, exclusiveMaximum: 10 }, { type: 'number', maximum: 5 }, 'eq'],
-      ['integer-as-multipleof-one', { type: 'integer' }, { type: 'number', multipleOf: 1 }, 'eq'],
+      ['integer-as-multipleof-one', { type: 'integer' }, { type: 'number', multipleOf: 1 }, 'tighten', { manual: { base_in_head: false, head_in_base: true, reason: 'Ajv checks multipleOf on doubles as x / m !== parseInt(x / m). parseInt(1e21) is 1, so 1e21 passes type integer and fails multipleOf 1. A number that passes multipleOf 1 equals its parseInt, so it is an integer.', witnesses: [1e21] } }],
       ['minimum-to-exclusive', { type: 'number', minimum: 0 }, { type: 'number', exclusiveMinimum: 0 }, 'diff'],
-      ['multipleof-tightened', { type: 'number', multipleOf: 2 }, { type: 'number', multipleOf: 4 }, 'diff'],
+      ['multipleof-tightened', { type: 'number', multipleOf: 2 }, { type: 'number', multipleOf: 4 }, 'diff', { manual: { base_in_head: false, head_in_base: false, reason: 'Ajv checks multipleOf on doubles as x / m !== parseInt(x / m). 2 is no multiple of 4. 2e21 / 4 is 5e20, which passes, but 2e21 / 2 is 1e21, whose parseInt is 1, so 2e21 fails multipleOf 2.', witnesses: [2, 2e21] } }],
     ],
   },
   {

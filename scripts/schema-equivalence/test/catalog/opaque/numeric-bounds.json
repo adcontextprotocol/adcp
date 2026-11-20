@@ -30,10 +30,12 @@
       "decided_by": "oracle",
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },
@@ -74,7 +76,7 @@
     },
     {
       "id": "opaque/numeric-bounds/integer-as-multipleof-one/top",
-      "rule": "numeric-bounds is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "rule": "numeric-bounds is compared exactly; a real change must be reported",
       "context": "top",
       "root": "a.json",
       "base": {
@@ -91,17 +93,27 @@
         }
       },
       "verdict": {
-        "equivalent": true,
-        "base_in_head": true,
+        "equivalent": false,
+        "base_in_head": false,
         "head_in_base": true
       },
-      "decided_by": "oracle",
+      "decided_by": "manual",
+      "manual_reason": "Ajv checks multipleOf on doubles as x / m !== parseInt(x / m). parseInt(1e21) is 1, so 1e21 passes type integer and fails multipleOf 1. A number that passes multipleOf 1 equals its parseInt, so it is an integer.",
+      "witnesses": [
+        {
+          "payload": 1e+21,
+          "base": true,
+          "head": false
+        }
+      ],
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "multipleOf, which Ajv checks on doubles with parseInt"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "multipleOf, which Ajv checks on doubles with parseInt"
         }
       }
     },
@@ -169,14 +181,20 @@
       "verdict": {
         "equivalent": false,
         "base_in_head": false,
-        "head_in_base": true
+        "head_in_base": false
       },
-      "decided_by": "oracle",
+      "decided_by": "manual",
+      "manual_reason": "Ajv checks multipleOf on doubles as x / m !== parseInt(x / m). 2 is no multiple of 4. 2e21 / 4 is 5e20, which passes, but 2e21 / 2 is 1e21, whose parseInt is 1, so 2e21 fails multipleOf 2.",
       "witnesses": [
         {
           "payload": 2,
           "base": true,
           "head": false
+        },
+        {
+          "payload": 2e+21,
+          "base": false,
+          "head": true
         }
       ],
       "subsumes": {
@@ -185,7 +203,8 @@
           "counterexample": 2
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "multipleOf, which Ajv checks on doubles with parseInt"
         }
       }
     }

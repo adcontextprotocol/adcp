@@ -21,7 +21,10 @@
  *   - `unproven` for a `yes` on a pair that uses `format` `date-time`, `uuid`
  *     or `uri` (subsumes reads them by the RFC grammars, not as ajv-formats
  *     does), or a pattern that names a surrogate code point (subsumes models
- *     strings as Unicode scalar values and can't see lone surrogates);
+ *     strings as Unicode scalar values and can't see lone surrogates), or
+ *     that uses `multipleOf`, `type: integer` beside a numeric bound, or a
+ *     number above 2^53 in magnitude (subsumes reasons over exact numbers;
+ *     Ajv uses doubles, and parseInt for `multipleOf`);
  *   - `unknown` stays `unknown`.
  */
 
@@ -36,6 +39,7 @@ const SUBSUMES_REPO = 'https://github.com/georg-wolflein/subsumes';
 const SUBSUMES_COMMIT = '9a9d00afa3e1c46015949a74faa91b4ce71f4ab0';
 const INSTALL = `cargo install --locked --git ${SUBSUMES_REPO} --rev ${SUBSUMES_COMMIT} harness`;
 const UNPROVEN_FORMATS = new Set(['date-time', 'uuid', 'uri']);
+const NUMERIC_BOUNDS = new Set(['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum']);
 const AJV_RULES = new Set(Object.keys(createAjv().RULES.all));
 
 /** The harness binary, installed by `cargo install` at the pinned commit. */
@@ -135,10 +139,16 @@ function namesSurrogate(s) {
 /** Why a `yes` on this pair is not evidence under Ajv, or null. */
 function unprovenReason(pair) {
   const reasons = new Set();
+  let integer = false;
+  let bound = false;
   const walk = (v) => {
+    if (typeof v === 'number' && Math.abs(v) > 2 ** 53) reasons.add('a number above 2^53 in magnitude, where Ajv\'s doubles lose integers');
     if (Array.isArray(v)) return v.forEach(walk);
     if (!v || typeof v !== 'object') return;
     for (const [k, x] of Object.entries(v)) {
+      if (k === 'multipleOf') reasons.add('multipleOf, which Ajv checks on doubles with parseInt');
+      if (k === 'type' && [].concat(x).includes('integer')) integer = true;
+      if (NUMERIC_BOUNDS.has(k)) bound = true;
       if (k === 'format' && UNPROVEN_FORMATS.has(x)) reasons.add(`format ${x} differs from ajv-formats`);
       if (k === 'pattern' && typeof x === 'string' && namesSurrogate(x)) reasons.add('a pattern names a surrogate code point');
       if (k === 'patternProperties' && Object.keys(x).some(namesSurrogate)) reasons.add('a pattern names a surrogate code point');
@@ -146,6 +156,7 @@ function unprovenReason(pair) {
     }
   };
   walk([pair.base, pair.head]);
+  if (integer && bound) reasons.add('type integer beside numeric bounds, which Ajv compares as doubles');
   return reasons.size ? [...reasons].join('; ') : null;
 }
 

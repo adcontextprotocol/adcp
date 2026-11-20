@@ -44,10 +44,12 @@
       "decided_by": "oracle",
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },
@@ -106,10 +108,12 @@
       "decided_by": "oracle",
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },
@@ -158,10 +162,12 @@
       "decided_by": "oracle",
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },
@@ -224,10 +230,12 @@
       "decided_by": "oracle",
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },
@@ -298,10 +306,12 @@
       "decided_by": "oracle",
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },
@@ -406,10 +416,12 @@
       "decided_by": "oracle",
       "subsumes": {
         "base_in_head": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },

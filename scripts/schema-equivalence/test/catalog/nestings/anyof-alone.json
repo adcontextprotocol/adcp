@@ -100,7 +100,8 @@
           "counterexample": -1
         },
         "head_in_base": {
-          "verdict": "yes"
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
         }
       }
     },
