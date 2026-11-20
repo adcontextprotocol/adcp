@@ -1,10 +1,13 @@
 /**
  * Season files: load a `SeasonSeed` from YAML or JSON.
  *
- * A zod pass checks the shape and reports every problem with its path; the
- * references the engine leaves unchecked are then listed together; the
- * engine's own checks (shares sum to 1, references resolve) then run through
- * `trafficFor`, which also primes the traffic cache for the returned seed.
+ * Loading makes three passes, each reporting every problem it finds:
+ * 1. A zod pass checks the shape and dates, with the path of each problem.
+ * 2. A reference pass checks what the engine leaves unchecked: product
+ *    properties, product collections and the ids traffic events target.
+ * 3. The engine's own checks run through `trafficFor` (shares sum to 1, ids
+ *    resolve), which also primes the traffic cache for the returned seed. Then
+ *    every product must cover some inventory.
  * Nothing is defaulted here, so a loaded seed equals the one that was written.
  */
 import fs from 'node:fs';
@@ -170,9 +173,10 @@ function dottedPath(path: ReadonlyArray<PropertyKey>): string {
   return out || '(root)';
 }
 
-/** References the engine does not resolve: a product's `property_ids` and the
- * ids a traffic event targets. Each would load and then match nothing. */
-export function referenceProblems(seed: SeasonSeed): string[] {
+/** References the engine does not resolve: a product's `property_ids` and
+ * `collection_ids`, and the ids a traffic event targets. Each would load and
+ * then match nothing. */
+function referenceProblems(seed: SeasonSeed): string[] {
   const problems: string[] = [];
   const propertyIds = new Set(seed.properties.map(p => p.property_id));
   const placementIds = new Set(seed.placements.map(p => p.placement_id));
@@ -189,6 +193,15 @@ export function referenceProblems(seed: SeasonSeed): string[] {
       const path = `products[${i}].property_ids[${j}]`;
       if (!propertyIds.has(id)) problems.push(`${path}: unknown property ${id}`);
       else if (!served.has(id)) problems.push(`${path}: property ${id} is not on any of the product's placements`);
+    });
+  });
+  const collections = new Map((seed.collections ?? []).map(c => [c.collection_id, c]));
+  seed.products.forEach((product, i) => {
+    product.collection_ids?.forEach((id, j) => {
+      const collection = collections.get(id);
+      if (collection && !product.placement_ids.includes(collection.placement_id)) {
+        problems.push(`products[${i}].collection_ids[${j}]: collection ${id} is not on any of the product's placements`);
+      }
     });
   });
   (seed.events ?? []).forEach((event, i) => {
@@ -209,12 +222,18 @@ export function parseSeasonSeed(input: unknown, source: string): SeasonSeed {
   const seed: SeasonSeed = parsed.data;
   const problems = referenceProblems(seed);
   if (problems.length > 0) invalid(source, problems);
+  let traffic;
   try {
-    trafficFor(seed);
+    traffic = trafficFor(seed);
   } catch (error) {
     if (error instanceof Error) invalid(source, [error.message]);
     throw error;
   }
+  const uncovered = seed.products
+    .map((product, i) => ({ product, i }))
+    .filter(({ product }) => traffic.eligibleCells(product.product_id).length === 0)
+    .map(({ product, i }) => `products[${i}]: product ${product.product_id} covers no inventory`);
+  if (uncovered.length > 0) invalid(source, uncovered);
   return seed;
 }
 
