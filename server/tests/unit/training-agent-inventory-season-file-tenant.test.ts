@@ -118,7 +118,7 @@ describe('inventory tenant on a season file', () => {
       packages: [{ product_id: 'banner_guaranteed', pricing_option_id: 'banner_guaranteed_cpm', budget: 800, impressions: 100_000 }],
     });
     expectCanonical('create_media_buy', buy);
-    expect(buy.media_buy_status).toBe('pending_start');
+    expect(buy.media_buy_status).toBe('pending_creatives');
     expect(buy.packages[0].impressions).toBe(100_000);
     expect(buy.currency).toBe('USD');
 
