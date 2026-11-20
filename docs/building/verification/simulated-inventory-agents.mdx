@@ -105,6 +105,18 @@ The simulation is deterministic: the same calls at the same simulated times alwa
 
 A content product lists the installments scheduled in the requested flight, with each one's `status` as known at your sandbox time: `scheduled`, then `published`, `postponed` (with the new `scheduled_at`) or `cancelled` once its date passes. A sponsorship package buys every installment of its product scheduled in its flight.
 
+## A month in five calls
+
+On `/inventory-adserver/mcp`:
+
+1. Pin the clock before the flight: `sandbox_clock` `advance_time` `to` `2026-12-31T12:00:00Z`.
+2. [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for 2027-01-01 to 2027-01-31 with one package on `sports_hero_guaranteed` (`pricing_option_id` `sports_hero_guaranteed_cpm`, `impressions` 180000).
+3. `create_media_buy` for the same flight with one package on `preroll_auction` (`preroll_auction_cpm`, `bid_price` 10). Two buys keep each one's `daily_breakdown` separate.
+4. `sandbox_clock` `advance_time` `by` `P31D`.
+5. [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) for both buys.
+
+In the daily breakdown, the guarantee drops to under half its usual delivery during the outage and delivers above its earlier pace afterwards. The auction package's delivery differs from the forecast [`get_products`](/docs/media-buy/task-reference/get_products) gave for the same flight.
+
 ## Run on your own season
 
 The two tenants run on any season you supply as a file, so you can test against your own sites, products and scripted events. Run the training agent on your machine and point a tenant at the file. The hosted test agent serves only its shipped seasons, so a season file never leaves your machine.
@@ -134,7 +146,7 @@ products:
     rate_cpm: 8
 ```
 
-The file is checked against the `SeasonSeed` shape, and then against the engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Ids are unique and every reference resolves. Each placement has `base_daily_impressions`, and each guaranteed product has `rate_cpm`.
+The file is checked against the `SeasonSeed` shape, and then against the engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Ids are unique and every reference resolves. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`.
 
 Set one environment variable per tenant:
 
@@ -147,38 +159,30 @@ A tenant whose variable is unset or empty serves its shipped season. A tenant wh
 
 Change `seed_id` whenever you change a season file. A market already stored under an unchanged `seed_id` would replay under the new traffic.
 
-The server needs PostgreSQL. Start the one in `docker-compose.yml`, create the schema the migrations expect (see the [local bootstrap](https://github.com/adcontextprotocol/adcp/blob/main/docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap)), then start the server from the repository root:
+The server needs PostgreSQL. Start the one in `docker-compose.yml`, create the schema the migrations expect, then start the server from the repository root. The one-line `create schema` is enough for a throwaway local database. The [local bootstrap](https://github.com/adcontextprotocol/adcp/blob/main/docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap) in the runbook has the full setup.
 
 ```bash
 docker compose up -d --wait postgres
 docker compose exec -T postgres psql -U adcp -d adcp_registry \
   -c "create schema if not exists training_reporting_gcs authorization adcp"
 
-NODE_ENV=development PORT=3917 RUN_MIGRATIONS=true SKIP_REPO_INDEX=true \
+PORT=3917 RUN_MIGRATIONS=true FLY_PROCESS_GROUP=web \
   DATABASE_URL="postgresql://adcp:localdev@localhost:$(docker compose port postgres 5432 | sed 's/.*://')/adcp_registry" \
-  ALLOW_INSECURE_COOKIES=true DEV_USER_EMAIL=dev@example.com DEV_USER_ID=dev-user-123 \
-  AGENT_TOKEN_ENCRYPTION_SECRET='local-dev-encryption-key-32chars!' \
-  WORKOS_API_KEY=sk_test_dummy_local_dev_00000000000 WORKOS_CLIENT_ID=client_dummy_local_dev_00000000 \
+  WORKOS_API_KEY=placeholder-not-a-key WORKOS_CLIENT_ID=placeholder-not-a-client-id \
   WORKOS_COOKIE_PASSWORD='local-dev-cookie-password-that-is-at-least-32-chars-long' \
   PUBLIC_TEST_AGENT_TOKEN=local-token \
   TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE=server/tests/fixtures/inventory-sim/small-season.yaml \
   npx tsx server/src/index.ts
 ```
 
-The WorkOS, `AGENT_TOKEN_ENCRYPTION_SECRET` and `WORKOS_COOKIE_PASSWORD` values are local-only placeholders that only satisfy the server's start-up checks. The tenants are at `http://localhost:3917/api/training-agent/inventory-adserver/mcp` and `.../inventory-content/mcp`, and `local-token` is their bearer token. The log shows `inventory-adserver: season small-season from server/tests/fixtures/inventory-sim/small-season.yaml`.
+The WorkOS values are placeholders that only satisfy the server's start-up checks. `FLY_PROCESS_GROUP=web` starts the server without its background crawlers and scheduled jobs, which would otherwise reach external hosts. The tenants are at `http://localhost:3917/api/training-agent/inventory-adserver/mcp` and `.../inventory-content/mcp`, and `local-token` is their bearer token. The log shows `inventory-adserver: season small-season from server/tests/fixtures/inventory-sim/small-season.yaml`.
+
+To start from a shipped season instead of the starter, print one as YAML. The content season, for example, has collections the starter lacks:
+
+```bash
+npx tsx --input-type=module -e "import { seasonToYaml } from './server/src/training-agent/inventory-sim/season-file.js'; import { CONTENT_SEASON } from './server/src/training-agent/inventory-sim/engine/index.js'; process.stdout.write(seasonToYaml(CONTENT_SEASON))" > my-season.yaml
+```
 
 To use a season without a server, read it with `readSeasonFile` from `server/src/training-agent/inventory-sim/season-file.ts`, and pass the result to `InventorySimulation.create(seed, nowMs)`, where `nowMs` is the start instant, from `server/src/training-agent/inventory-sim/engine/`.
-
-## A month in five calls
-
-On `/inventory-adserver/mcp`:
-
-1. Pin the clock before the flight: `sandbox_clock` `advance_time` `to` `2026-12-31T12:00:00Z`.
-2. [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for 2027-01-01 to 2027-01-31 with one package on `sports_hero_guaranteed` (`pricing_option_id` `sports_hero_guaranteed_cpm`, `impressions` 180000).
-3. `create_media_buy` for the same flight with one package on `preroll_auction` (`preroll_auction_cpm`, `bid_price` 10). Two buys keep each one's `daily_breakdown` separate.
-4. `sandbox_clock` `advance_time` `by` `P31D`.
-5. [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) for both buys.
-
-In the daily breakdown, the guarantee drops to under half its usual delivery during the outage and delivers above its earlier pace afterwards. The auction package's delivery differs from the forecast [`get_products`](/docs/media-buy/task-reference/get_products) gave for the same flight.
 
 The engine behind these tenants lives in `server/src/training-agent/inventory-sim/engine/` and has no dependencies on the rest of the test agent, so it can move into `@adcp/sdk` if that proves useful.
