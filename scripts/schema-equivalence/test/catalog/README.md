@@ -51,8 +51,11 @@ combinations, instead of sampling them:
 A pair record has `id`, `rule`, `context`, `root`, the `base` and `head`
 files (each with its `$id`), `verdict` (`equivalent`, `base_in_head`,
 `head_in_base`; `null` where a hand verdict leaves a direction open),
-`decided_by`, `manual_reason` for hand verdicts, and `witnesses`: payloads
-with their validity on each side.
+`decided_by`, `manual_reason` for hand verdicts, `witnesses`: payloads
+with their validity on each side, and `subsumes`: the subsumes verdict per
+direction (see [Rerun oracle](#rerun-oracle)). Each file names the prototype
+commit (`oracle_commit`), the date its record was frozen (`oracle_frozen`), and
+the subsumes commit (`subsumes_commit`).
 
 ## How the verdicts were decided
 
@@ -85,10 +88,47 @@ plays no part.
 
 The prototype is GPLv3. Its code, its datasets, and the runner that links
 against it are not in this repository; only the verdicts and witnesses are.
-To regenerate, build the prototype, write a runner that prints one JSON line
-per problem file (`{"file", "verdict", "witness"}`), and run:
+Its verdicts are a frozen record of commit `8064ad83` as of 2026-11-20, and
+nothing reruns it. The generator produced them with a runner that prints one
+JSON line per problem file (`{"file", "verdict", "witness"}`):
 
 ```bash
 node scripts/schema-equivalence/test/catalog-generator/generate.cjs \
   --oracle /path/to/runner --work /tmp/catalog-work
 ```
+
+## Rerun oracle
+
+subsumes (https://github.com/georg-wolflein/subsumes, MIT), commit
+`9a9d00afa3e1c46015949a74faa91b4ce71f4ab0` (v0.4.0), is the oracle you rerun.
+It implements the prototype's algorithm in Rust, with `format` asserted and
+patterns read as ECMA-262 with the `u` flag. It has no command line tool, so
+the script uses its `harness run` binary. CI doesn't run it.
+
+```bash
+cargo install --locked --git https://github.com/georg-wolflein/subsumes \
+  --rev 9a9d00afa3e1c46015949a74faa91b4ce71f4ab0 harness
+node scripts/schema-equivalence/catalog-oracle-subsumes.cjs
+```
+
+With `cargo install --root DIR`, set `SUBSUMES_ROOT=DIR`. The script checks
+every pair in both directions and writes the `subsumes` record of each pair.
+It bundles each side as the prototype's input is bundled, `discriminator`
+included, and translates it to draft 2020-12, the only dialect subsumes reads.
+It records a verdict by these rules:
+
+- `no` comes with a counterexample that the repo's Ajv configuration confirms
+  against the pair's files. Without that confirmation, the verdict is
+  `unknown`.
+- `yes` is `unproven` when the pair uses `format` `date-time`, `uuid`, or
+  `uri`, which subsumes reads by the RFC grammars and not as `ajv-formats`
+  does. It is also `unproven` when a pattern names a surrogate code point,
+  because subsumes models strings as Unicode scalar values and can't see a
+  lone surrogate.
+- `unknown` stays `unknown`, with the reason subsumes gives.
+
+The labels don't change. A `yes` or `no` must agree with the prototype's
+verdict, or with the hand verdict. On a disagreement, or a decided direction
+that a hand verdict leaves open, the script names the pair, writes nothing,
+and exits 1. Give such a pair a hand verdict in
+`../catalog-generator/pairs.cjs` whose reason notes the disagreement.

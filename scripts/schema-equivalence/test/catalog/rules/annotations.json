@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "rules/annotations/annotations-dropped/top",
@@ -34,7 +36,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/annotations-dropped/allOf",
@@ -83,7 +93,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/annotations-dropped/not",
@@ -122,7 +140,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/annotations-dropped/ref",
@@ -175,7 +201,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/annotations-dropped/cycle",
@@ -236,7 +270,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/annotations-dropped/discriminator",
@@ -331,7 +373,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/informational-keywords/top",
@@ -362,7 +412,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/informational-keywords/allOf",
@@ -407,7 +465,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/informational-keywords/not",
@@ -442,7 +508,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/informational-keywords/ref",
@@ -491,7 +565,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/informational-keywords/cycle",
@@ -548,7 +630,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/informational-keywords/discriminator",
@@ -639,7 +729,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/unused-definitions/top",
@@ -670,7 +768,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/unused-definitions/allOf",
@@ -715,7 +821,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/unused-definitions/not",
@@ -750,7 +864,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/unused-definitions/ref",
@@ -799,7 +921,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/unused-definitions/cycle",
@@ -854,7 +984,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/unused-definitions/discriminator",
@@ -945,7 +1083,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/referenced-definition-changed/top",
@@ -988,7 +1134,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "aaaaa"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/annotations/referenced-definition-changed/not",
@@ -1035,7 +1190,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "aaaaa"
+        }
+      }
     }
   ]
 }

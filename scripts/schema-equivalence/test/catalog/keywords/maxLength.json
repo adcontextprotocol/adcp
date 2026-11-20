@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "keywords/maxLength/max-length-lowered/top",
@@ -32,7 +34,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "aaaaaaaaaa"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/maxLength/max-length-lowered/ref",
@@ -85,7 +96,18 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": "aaaaaaaaaa"
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/maxLength/max-length-removed/top",
@@ -117,7 +139,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "aaaaaaaaaaa"
+        }
+      }
     },
     {
       "id": "keywords/maxLength/max-length-removed/ref",
@@ -169,7 +200,18 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": "aaaaaaaaaaa"
+          }
+        }
+      }
     }
   ]
 }

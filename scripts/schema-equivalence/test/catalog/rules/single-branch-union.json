@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "rules/single-branch-union/single-anyof/top",
@@ -29,7 +31,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-anyof/allOf",
@@ -73,7 +83,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-anyof/not",
@@ -107,7 +125,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-anyof/ref",
@@ -155,7 +181,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-anyof/cycle",
@@ -211,7 +245,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-anyof/discriminator",
@@ -301,7 +343,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof/top",
@@ -331,7 +381,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof/allOf",
@@ -375,7 +433,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof/not",
@@ -409,7 +475,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof/ref",
@@ -457,7 +531,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof/cycle",
@@ -513,7 +595,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof/discriminator",
@@ -603,7 +693,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof-under-discriminator/top",
@@ -667,7 +765,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": null
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/single-branch-union/single-oneof-under-discriminator/not",
@@ -737,7 +844,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": null
+        }
+      }
     }
   ]
 }

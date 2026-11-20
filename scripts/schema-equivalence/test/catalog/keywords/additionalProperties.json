@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "keywords/additionalProperties/additional-properties-closed/top",
@@ -45,7 +47,18 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "b": null
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/additionalProperties/additional-properties-closed/ref",
@@ -109,7 +122,20 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": {
+              "b": null
+            }
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/additionalProperties/additional-properties-schema-opened/top",
@@ -156,7 +182,18 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "b": ""
+          }
+        }
+      }
     },
     {
       "id": "keywords/additionalProperties/additional-properties-schema-opened/ref",
@@ -223,7 +260,20 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": {
+              "b": ""
+            }
+          }
+        }
+      }
     }
   ]
 }

@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "rules/allof/nested-allof-flattened/top",
@@ -47,7 +49,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/nested-allof-flattened/allOf",
@@ -109,7 +119,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/nested-allof-flattened/not",
@@ -161,7 +179,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/nested-allof-flattened/ref",
@@ -227,7 +253,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/nested-allof-flattened/cycle",
@@ -301,7 +335,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/nested-allof-flattened/discriminator",
@@ -409,7 +451,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/true-members-dropped/top",
@@ -439,7 +489,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/true-members-dropped/allOf",
@@ -483,7 +541,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/true-members-dropped/not",
@@ -517,7 +583,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/true-members-dropped/ref",
@@ -565,7 +639,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/true-members-dropped/cycle",
@@ -621,7 +703,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/true-members-dropped/discriminator",
@@ -711,7 +801,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/duplicate-member-dropped/top",
@@ -752,7 +850,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/duplicate-member-dropped/allOf",
@@ -807,7 +913,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/duplicate-member-dropped/not",
@@ -852,7 +966,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/duplicate-member-dropped/ref",
@@ -911,7 +1033,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/duplicate-member-dropped/cycle",
@@ -978,7 +1108,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/duplicate-member-dropped/discriminator",
@@ -1079,7 +1217,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/member-order/top",
@@ -1117,7 +1263,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/member-order/allOf",
@@ -1169,7 +1323,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/member-order/not",
@@ -1211,7 +1373,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/member-order/ref",
@@ -1267,7 +1437,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/member-order/cycle",
@@ -1331,7 +1509,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/member-order/discriminator",
@@ -1429,7 +1615,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/single-member/top",
@@ -1459,7 +1653,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/single-member/allOf",
@@ -1503,7 +1705,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/single-member/not",
@@ -1537,7 +1747,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/single-member/ref",
@@ -1585,7 +1803,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/single-member/cycle",
@@ -1641,7 +1867,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/single-member/discriminator",
@@ -1731,7 +1965,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/allof-to-anyof/top",
@@ -1776,7 +2018,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": ""
+        }
+      }
     },
     {
       "id": "rules/allof/allof-to-anyof/not",
@@ -1835,7 +2086,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": ""
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/allof/false-member/top",
@@ -1871,7 +2131,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": ""
+        }
+      }
     },
     {
       "id": "rules/allof/false-member/not",
@@ -1911,7 +2180,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": ""
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     }
   ]
 }

@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "opaque/uniqueitems/unique-single-value/top",
@@ -32,7 +34,17 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "Every item is 1, so the items are unique exactly when there is at most one."
+      "manual_reason": "Every item is 1, so the items are unique exactly when there is at most one.",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/L0/uniqueItems in schema B is not supported"
+        },
+        "head_in_base": {
+          "verdict": "unknown",
+          "reason": "#/$defs/L0/uniqueItems in schema A is not supported"
+        }
+      }
     },
     {
       "id": "opaque/uniqueitems/unique-items-added/top",
@@ -74,7 +86,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R0/uniqueItems in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     }
   ]
 }

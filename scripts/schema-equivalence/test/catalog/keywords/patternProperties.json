@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "keywords/patternProperties/pattern-property-added/top",
@@ -55,7 +57,18 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "x-": null
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/patternProperties/pattern-property-added/ref",
@@ -116,7 +129,20 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": {
+              "x-": null
+            }
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/patternProperties/pattern-property-schema-widened/top",
@@ -162,7 +188,18 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "x-": 0
+          }
+        }
+      }
     },
     {
       "id": "keywords/patternProperties/pattern-property-schema-widened/ref",
@@ -228,7 +265,20 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": {
+              "x-": 0
+            }
+          }
+        }
+      }
     }
   ]
 }

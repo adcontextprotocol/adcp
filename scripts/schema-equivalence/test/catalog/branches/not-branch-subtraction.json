@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "branches/not-branch-subtraction/anyof-const-branches/top",
@@ -115,7 +117,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/anyof-const-branches/allOf",
@@ -245,7 +255,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/anyof-const-branches/not",
@@ -365,7 +383,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/anyof-const-branches/ref",
@@ -499,7 +525,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/anyof-const-branches/cycle",
@@ -641,7 +675,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/anyof-const-branches/discriminator",
@@ -817,7 +859,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/oneof-const-branches/top",
@@ -933,7 +983,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/oneof-const-branches/allOf",
@@ -1063,7 +1121,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/oneof-const-branches/not",
@@ -1183,7 +1249,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/oneof-const-branches/ref",
@@ -1317,7 +1391,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/oneof-const-branches/cycle",
@@ -1459,7 +1541,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/oneof-const-branches/discriminator",
@@ -1635,7 +1725,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/type-branches/top",
@@ -1685,7 +1783,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/type-branches/allOf",
@@ -1749,7 +1855,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/type-branches/not",
@@ -1803,7 +1917,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/type-branches/ref",
@@ -1871,7 +1993,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/type-branches/cycle",
@@ -1947,7 +2077,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/type-branches/discriminator",
@@ -2057,7 +2195,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/overlapping-branch/top",
@@ -2106,7 +2252,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "aaa"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/overlapping-branch/not",
@@ -2159,7 +2314,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "aaa"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/top",
@@ -2274,7 +2438,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/allOf",
@@ -2403,7 +2575,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/not",
@@ -2522,7 +2702,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/ref",
@@ -2655,7 +2843,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/cycle",
@@ -2796,7 +2992,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/discriminator",
@@ -2971,7 +3175,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-narrower-than-branch/top",
@@ -3106,7 +3318,21 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "bitrate": null,
+            "duration": null,
+            "kind": "image",
+            "width": 0
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "branches/not-branch-subtraction/not-operand-narrower-than-branch/not",
@@ -3244,7 +3470,21 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "bitrate": null,
+            "duration": null,
+            "kind": "image",
+            "width": 0
+          }
+        }
+      }
     }
   ]
 }

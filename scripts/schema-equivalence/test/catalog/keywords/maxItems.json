@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "keywords/maxItems/max-items-lowered/top",
@@ -42,7 +44,20 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": [
+            null,
+            null,
+            null
+          ]
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/maxItems/max-items-lowered/ref",
@@ -111,7 +126,22 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": [
+              null,
+              null,
+              null
+            ]
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/maxItems/max-items-raised/top",
@@ -148,7 +178,20 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": [
+            null,
+            null,
+            null
+          ]
+        }
+      }
     },
     {
       "id": "keywords/maxItems/max-items-raised/ref",
@@ -271,7 +314,22 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": [
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      }
     }
   ]
 }

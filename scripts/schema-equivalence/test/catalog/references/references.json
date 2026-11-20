@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "references/extract-to-file",
@@ -68,7 +70,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/inline-from-file",
@@ -136,7 +146,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/definition-extracted-to-file",
@@ -209,7 +227,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/ref-spelling",
@@ -281,7 +307,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/ref-chain-alias",
@@ -357,7 +391,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/ref-to-other-file-definition",
@@ -405,7 +447,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/ref-sibling-on-file-ref",
@@ -445,7 +495,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/ref-sibling-on-file-ref-dropped",
@@ -497,7 +555,18 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaa"
+          }
+        }
+      }
     },
     {
       "id": "references/target-file-tightened",
@@ -550,7 +619,18 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaaaaaaaa"
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/target-file-loosened",
@@ -603,7 +683,18 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaaaaaaaa"
+          }
+        }
+      }
     },
     {
       "id": "references/ref-retargeted",
@@ -666,7 +757,18 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaaaaaaa"
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/same-ref-string-different-files",
@@ -724,7 +826,21 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "c": ""
+          }
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "c": 0
+          }
+        }
+      }
     },
     {
       "id": "references/recursive-unrolled-once",
@@ -782,7 +898,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/recursive-root-ref",
@@ -827,7 +951,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/recursive-across-files",
@@ -879,7 +1011,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/recursive-extracted",
@@ -928,7 +1068,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/cycle-entered-elsewhere",
@@ -980,7 +1128,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/recursive-tightened-one-level-down",
@@ -1061,7 +1217,20 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "child": {
+              "v": 10
+            }
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/recursive-tightened-everywhere",
@@ -1121,7 +1290,18 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": -1
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "references/recursion-cut-at-depth-two",
@@ -1183,7 +1363,20 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "child": {
+              "child": {}
+            }
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     }
   ]
 }

@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "keywords/format/format-added/top",
@@ -32,7 +34,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R0/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/format/format-added/ref",
@@ -85,7 +96,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R1/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/format/format-removed/top",
@@ -118,7 +138,17 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uuid differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": ""
+        }
+      }
     },
     {
       "id": "keywords/format/format-removed/ref",
@@ -171,7 +201,19 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uuid differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": ""
+          }
+        }
+      }
     },
     {
       "id": "keywords/format/format-date-time-to-date/top",
@@ -210,7 +252,17 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "0000-01-01t00:00:00z"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "0000-01-01"
+        }
+      }
     },
     {
       "id": "keywords/format/format-date-time-to-date/ref",
@@ -271,7 +323,21 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": "0000-01-01t00:00:00z"
+          }
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": "0000-01-01"
+          }
+        }
+      }
     },
     {
       "id": "keywords/format/format-uri-to-uri-reference/top",
@@ -305,7 +371,17 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uri differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": ""
+        }
+      }
     },
     {
       "id": "keywords/format/format-uri-to-uri-reference/ref",
@@ -359,7 +435,19 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uri differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": ""
+          }
+        }
+      }
     },
     {
       "id": "keywords/format/format-hostname-bounded/top",
@@ -394,7 +482,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R0/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "keywords/format/format-hostname-bounded/ref",
@@ -449,7 +546,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R1/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     }
   ]
 }

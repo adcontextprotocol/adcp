@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "rules/zero-bounds/required-empty/top",
@@ -24,7 +26,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/required-empty/allOf",
@@ -63,7 +73,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/required-empty/not",
@@ -92,7 +110,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/required-empty/ref",
@@ -135,7 +161,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/required-empty/cycle",
@@ -186,7 +220,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/required-empty/discriminator",
@@ -271,7 +313,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-zero/top",
@@ -296,7 +346,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-zero/allOf",
@@ -335,7 +393,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-zero/not",
@@ -364,7 +430,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-zero/ref",
@@ -407,7 +481,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-zero/cycle",
@@ -458,7 +540,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-zero/discriminator",
@@ -543,7 +633,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-zero/top",
@@ -568,7 +666,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-zero/allOf",
@@ -607,7 +713,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-zero/not",
@@ -636,7 +750,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-zero/ref",
@@ -679,7 +801,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-zero/cycle",
@@ -730,7 +860,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-zero/discriminator",
@@ -815,7 +953,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-zero/top",
@@ -840,7 +986,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-zero/allOf",
@@ -879,7 +1033,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-zero/not",
@@ -908,7 +1070,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-zero/ref",
@@ -951,7 +1121,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-zero/cycle",
@@ -1002,7 +1180,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-zero/discriminator",
@@ -1087,7 +1273,15 @@
         "base_in_head": true,
         "head_in_base": true
       },
-      "decided_by": "oracle"
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-false/top",
@@ -1113,7 +1307,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it).",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-false/allOf",
@@ -1153,7 +1355,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it).",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-false/not",
@@ -1183,7 +1393,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it).",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-false/ref",
@@ -1227,7 +1445,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it).",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-false/cycle",
@@ -1279,7 +1505,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it).",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-false/discriminator",
@@ -1365,7 +1599,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it).",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-one/top",
@@ -1397,7 +1639,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": ""
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minlength-one/not",
@@ -1433,7 +1684,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": ""
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-one/top",
@@ -1465,7 +1725,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": []
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minitems-one/not",
@@ -1501,7 +1770,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": []
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-one/top",
@@ -1533,7 +1811,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {}
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/minproperties-one/not",
@@ -1569,7 +1856,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {}
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-true/top",
@@ -1605,7 +1901,16 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "unknown",
+          "reason": "#/$defs/L0/uniqueItems in schema A is not supported"
+        }
+      }
     },
     {
       "id": "rules/zero-bounds/uniqueitems-true/not",
@@ -1645,7 +1950,16 @@
           "base": true,
           "head": false
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/L0/not/uniqueItems in schema B is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     }
   ]
 }

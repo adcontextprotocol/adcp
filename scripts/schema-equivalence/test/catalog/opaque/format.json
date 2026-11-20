@@ -1,5 +1,7 @@
 {
   "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
   "pairs": [
     {
       "id": "opaque/format/format-uuid-implies-max-length/top",
@@ -27,7 +29,17 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "ajv-formats 3.0.1 uuid is /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, at most 9 + 36 = 45 characters, so maxLength 45 removes nothing."
+      "manual_reason": "ajv-formats 3.0.1 uuid is /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, at most 9 + 36 = 45 characters, so maxLength 45 removes nothing.",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uuid differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "unproven",
+          "reason": "format uuid differs from ajv-formats"
+        }
+      }
     },
     {
       "id": "opaque/format/format-date-implies-length/top",
@@ -56,7 +68,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "ajv-formats 3.0.1 full date matches /^(\\d\\d\\d\\d)-(\\d\\d)-(\\d\\d)$/ first, so every date is exactly 10 characters."
+      "manual_reason": "ajv-formats 3.0.1 full date matches /^(\\d\\d\\d\\d)-(\\d\\d)-(\\d\\d)$/ first, so every date is exactly 10 characters.",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "opaque/format/format-on-non-string/top",
@@ -82,7 +102,15 @@
         "head_in_base": true
       },
       "decided_by": "manual",
-      "manual_reason": "ajv-formats email is a string format; Ajv applies it to strings only, so it asserts nothing on an integer."
+      "manual_reason": "ajv-formats email is a string format; Ajv applies it to strings only, so it asserts nothing on an integer.",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
     },
     {
       "id": "opaque/format/format-changed/top",
@@ -121,7 +149,17 @@
           "base": false,
           "head": true
         }
-      ]
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "0000-01-01"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "0000-01-01t00:00:00z"
+        }
+      }
     }
   ]
 }
