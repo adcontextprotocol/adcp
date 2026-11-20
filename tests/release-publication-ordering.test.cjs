@@ -856,7 +856,8 @@ test("workflow wiring binds tested SHA, approval, exact recovery, and publicatio
     /check-release-state.cjs recovery/,
   );
   // Publishing the committed release uses publication-scoped freshness; the
-  // checks before the Changesets path keep the strict exact-head fence.
+  // start fences use `start` (strict unless the run publishes a committed
+  // release), and the Changesets branch keeps the strict exact-head fence.
   const uploadRun = step("Upload protocol tarball to GitHub Release").run;
   assert.match(uploadRun, /check-release-state\.cjs publication-current/);
   assert.doesNotMatch(uploadRun, /check-release-state\.cjs current/);
@@ -864,10 +865,10 @@ test("workflow wiring binds tested SHA, approval, exact recovery, and publicatio
     "Require current release branch",
     "Recheck current release branch after installation",
   ])
-    assert.equal(step(name).run, "node scripts/check-release-state.cjs current");
+    assert.equal(step(name).run, "node scripts/check-release-state.cjs start");
   assert.match(
     step("Detect committed release artifacts").run,
-    /node scripts\/check-release-state\.cjs current\n/,
+    /node scripts\/check-release-state\.cjs start\n[\s\S]*\nelse\n[\s\S]*node scripts\/check-release-state\.cjs current\n/,
   );
   const backfill = fs.readFileSync(
     path.join(root, "scripts/backfill-cdn-artifacts.sh"),

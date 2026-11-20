@@ -99,6 +99,9 @@ jobs:
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
             "${VERSION}.tgz"
 
+      # Transient R2 errors are retried by the CLI (AWS_MAX_ATTEMPTS), then by
+      # a bounded per-object resume below. Safe only because writes are
+      # conditional and existing objects must match byte-for-byte.
       - name: Upload only missing immutable R2 objects
         env:
           VERSION: ${{ inputs.version }}
@@ -108,6 +111,8 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          AWS_MAX_ATTEMPTS: '10'
+          AWS_RETRY_MODE: adaptive
         run: |
           set -euo pipefail
           if [[ -z "${R2_ACCOUNT_ID:-}" || -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
@@ -118,45 +123,79 @@ jobs:
           node "$RUNNER_TEMP/check-release-state.cjs" published "$VERSION"
           endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-          upload_immutable() {
+          transient_r2_error() {
+            grep -Eq 'ServiceUnavailable|SlowDown|InternalError|RequestTimeout|Throttl|PreconditionFailed|\((500|502|503|504|412)\)|Could not connect|Connection was closed|Connection reset|Read timeout|timed out|EndpointConnectionError' "$1"
+          }
+
+          # One attempt of the conditional sequence, run in a subshell under
+          # set -e. Exit 75 is a transient storage error; anything else is final.
+          upload_immutable_once() {
             local source="$1"
             local key="$2"
             local content_type="$3"
-            local existing head_error
+            local existing aws_error
             existing="$(mktemp)"
-            head_error="$(mktemp)"
+            aws_error="$(mktemp)"
 
             if aws s3api head-object \
               --bucket "${BUCKET}" \
               --key "${key}" \
               --endpoint-url "${endpoint}" \
               --region auto \
-              --no-cli-pager >/dev/null 2>"${head_error}"; then
-              aws s3 cp "s3://${BUCKET}/${key}" "${existing}" \
+              --no-cli-pager >/dev/null 2>"${aws_error}"; then
+              if ! aws s3 cp "s3://${BUCKET}/${key}" "${existing}" \
                 --endpoint-url "${endpoint}" \
                 --region auto \
                 --no-progress \
-                --only-show-errors
+                --only-show-errors 2>"${aws_error}"; then
+                cat "${aws_error}" >&2
+                transient_r2_error "${aws_error}" && exit 75
+                exit 1
+              fi
               if ! cmp -s "${source}" "${existing}"; then
                 echo "::error::R2 object ${key} exists with different bytes; refusing overwrite"
                 exit 1
               fi
               echo "Verified existing immutable object ${key}"
-              return 0
+              exit 0
             fi
 
-            if ! grep -Eq '(404|Not Found)' "${head_error}"; then
-              cat "${head_error}" >&2
+            if ! grep -Eq '(404|Not Found)' "${aws_error}"; then
+              cat "${aws_error}" >&2
+              transient_r2_error "${aws_error}" && exit 75
               echo "::error::Could not safely determine whether R2 object ${key} exists"
               exit 1
             fi
 
             node "$RUNNER_TEMP/check-release-state.cjs" publication-current "$VERSION"
-            aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$source" \
+            if ! aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$source" \
               --if-none-match '*' --endpoint-url "$endpoint" --region auto --no-cli-pager \
-              --cache-control 'public, max-age=31536000, immutable' --content-type "$content_type"
+              --cache-control 'public, max-age=31536000, immutable' --content-type "$content_type" 2>"${aws_error}"; then
+              cat "${aws_error}" >&2
+              transient_r2_error "${aws_error}" && exit 75
+              exit 1
+            fi
             node "$RUNNER_TEMP/check-release-state.cjs" publication-current "$VERSION"
             echo "Uploaded missing immutable object ${key}"
+          }
+
+          # A lost write response resumes as "exists, byte-compare"; a racing
+          # writer's 412 resumes the same way. Never an overwrite.
+          upload_immutable() {
+            local attempt status
+            for attempt in 1 2 3; do
+              set +e
+              (set -e; upload_immutable_once "$@")
+              status=$?
+              set -e
+              if [ "$status" -eq 0 ]; then return 0; fi
+              if [ "$status" -ne 75 ] || [ "$attempt" -eq 3 ]; then
+                echo "::error::Could not publish R2 object $2 (attempt ${attempt} of 3)"
+                exit "$status"
+              fi
+              echo "::warning::Transient R2 error on $2 (attempt ${attempt} of 3); resuming in $((30 * attempt * attempt))s."
+              sleep $((30 * attempt * attempt))
+            done
           }
 
           upload_immutable "dist/protocol/${VERSION}.tgz" "protocol/${VERSION}.tgz" 'application/gzip'
@@ -203,6 +242,8 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          AWS_MAX_ATTEMPTS: '10'
+          AWS_RETRY_MODE: adaptive
         run: bash "$RUNNER_TEMP/recover-cdn-version-trees.sh" upload
 
       - name: Verify recovered public CDN trees

@@ -302,6 +302,25 @@ run_cmd() {
 # object byte-for-byte; conditional creation closes the head/put overwrite race.
 # Only this private original-Git body is read after the full committed preflight;
 # concurrent working-tree writes cannot change the bytes supplied to AWS.
+#
+# A transient storage error (R2 answering ServiceUnavailable after the CLI's
+# own AWS_MAX_ATTEMPTS, a throttle, a dropped connection) resumes that one
+# object's whole conditional sequence a bounded number of times, with backoff,
+# instead of failing a long publication. Resuming is safe only because the
+# sequence never overwrites: it re-checks the fence, re-reads existence, and
+# either byte-compares the existing object or creates it with If-None-Match: *.
+# A write whose response was lost therefore resumes as "exists, compare", and
+# a 412 from a racing writer resumes the same way. Byte mismatches, fence
+# refusals and anything not recognised as transient are never retried.
+r2_object_attempts="${R2_OBJECT_ATTEMPTS:-3}"
+r2_resume_delay="${R2_RESUME_DELAY_SECONDS:-30}"
+if [[ ! "$r2_object_attempts" =~ ^[1-5]$ || ! "$r2_resume_delay" =~ ^[0-9]{1,3}$ ]]; then
+  echo "R2_OBJECT_ATTEMPTS must be 1-5 and R2_RESUME_DELAY_SECONDS 0-999." >&2
+  exit 2
+fi
+transient_r2_error() {
+  grep -Eq 'ServiceUnavailable|SlowDown|InternalError|RequestTimeout|Throttl|PreconditionFailed|\((500|502|503|504|412)\)|Could not connect|Connection was closed|Connection reset|Read timeout|timed out|EndpointConnectionError' "$1"
+}
 immutable_tmpdir=""
 immutable_lists_dir=""
 cleanup_immutable_body() {
@@ -317,46 +336,75 @@ verify_immutable_body() {
     exit 1
   fi
 }
+# One attempt of the conditional sequence for one object. It runs in a
+# subshell under set -e: exit 75 marks a transient storage error the caller
+# may resume; every other failure exits non-zero and is final.
+put_immutable_once() {
+  local source="$1" body_digest="$2" key="$3" cache_control="$4" content_type="$5"
+  local existing="$immutable_tmpdir/existing" aws_error="$immutable_tmpdir/aws-error"
+  rm -f "$existing" "$aws_error"
+  verify_immutable_body "$source" "$body_digest"
+  node "$fence_script" "$fence_mode"
+  if aws s3api head-object --bucket "$bucket" --key "$key" \
+      --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager >/dev/null 2>"$aws_error"; then
+    if ! aws s3 cp "s3://${bucket}/${key}" "$existing" "${common_aws_args[@]}" 2>"$aws_error"; then
+      cat "$aws_error" >&2
+      transient_r2_error "$aws_error" && exit 75
+      exit 1
+    fi
+    verify_immutable_body "$source" "$body_digest"
+    if ! cmp -s "$source" "$existing"; then
+      echo "Immutable object differs: $key; refusing overwrite." >&2
+      exit 1
+    fi
+  else
+    if ! grep -Eq 'An error occurred \(404\)|\(NoSuchKey\)' "$aws_error"; then
+      cat "$aws_error" >&2
+      transient_r2_error "$aws_error" && exit 75
+      exit 1
+    fi
+    node "$fence_script" "$fence_mode"
+    verify_immutable_body "$source" "$body_digest"
+    if ! aws s3api put-object --bucket "$bucket" --key "$key" --body "$source" \
+        --if-none-match '*' --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
+        --no-cli-pager --cache-control "$cache_control" --content-type "$content_type" >/dev/null 2>"$aws_error"; then
+      cat "$aws_error" >&2
+      transient_r2_error "$aws_error" && exit 75
+      exit 1
+    fi
+  fi
+  node "$fence_script" "$fence_mode"
+}
 put_immutable() {
   local source="$1" key="$2" cache_control="$3" content_type="$4"
-  local existing head_error body_digest
+  local body_digest attempt status delay
   immutable_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/adcp-immutable-body.XXXXXX")"
   trap cleanup_immutable_publication EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  existing="$immutable_tmpdir/existing"
-  head_error="$immutable_tmpdir/head-error"
   # One exact original blob read per object; no per-object tree/API enumeration.
   # Missing/unapproved paths and unsupported tree objects fail before AWS calls.
   (umask 077; git cat-file blob "${RELEASE_SHA}:${source}" > "$immutable_tmpdir/body")
   source="$immutable_tmpdir/body"
   body_digest="$(sha256sum "$source" | cut -d ' ' -f1)"
   verify_immutable_body "$source" "$body_digest"
-  node "$fence_script" "$fence_mode"
-  if aws s3api head-object --bucket "$bucket" --key "$key" \
-      --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager >/dev/null 2>"$head_error"; then
-    aws s3 cp "s3://${bucket}/${key}" "$existing" "${common_aws_args[@]}"
-    verify_immutable_body "$source" "$body_digest"
-    if ! cmp -s "$source" "$existing"; then
-      echo "Immutable object differs: $key; refusing overwrite." >&2
-      rm -f "$existing" "$head_error"
-      exit 1
+  for ((attempt = 1; ; attempt++)); do
+    set +e
+    (set -e; put_immutable_once "$source" "$body_digest" "$key" "$cache_control" "$content_type")
+    status=$?
+    set -e
+    if [[ "$status" -eq 0 ]]; then break; fi
+    if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+    if [[ "$attempt" -ge "$r2_object_attempts" ]]; then
+      echo "R2 stayed unavailable for $key after $attempt attempt(s); objects already written are complete and immutable. Resume with recover-protocol-cdn.yml (surfaces=all)." >&2
+      exit 75
     fi
-  else
-    if ! grep -Eq 'An error occurred \(404\)|\(NoSuchKey\)' "$head_error"; then
-      cat "$head_error" >&2
-      rm -f "$existing" "$head_error"
-      exit 1
-    fi
-    node "$fence_script" "$fence_mode"
-    verify_immutable_body "$source" "$body_digest"
-    aws s3api put-object --bucket "$bucket" --key "$key" --body "$source" \
-      --if-none-match '*' --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
-      --no-cli-pager --cache-control "$cache_control" --content-type "$content_type" >/dev/null
-  fi
+    delay=$((r2_resume_delay * attempt * attempt))
+    echo "::warning::Transient R2 error on ${key} (attempt ${attempt} of ${r2_object_attempts}); resuming this object in ${delay}s."
+    sleep "$delay"
+  done
   cleanup_immutable_body
   immutable_tmpdir=""
-  node "$fence_script" "$fence_mode"
 }
 
 publish_filtered() {
