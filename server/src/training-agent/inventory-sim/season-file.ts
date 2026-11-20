@@ -4,7 +4,8 @@
  * Loading makes three passes, each reporting every problem it finds:
  * 1. A zod pass checks the shape and dates, with the path of each problem.
  * 2. A reference pass checks what the engine leaves unchecked: product
- *    properties, product collections and the ids traffic events target.
+ *    properties, product collections, the ids traffic events target and,
+ *    when the host lists the formats it supports, placement formats.
  * 3. The engine's own checks run through `trafficFor` (shares sum to 1, ids
  *    resolve), which also primes the traffic cache for the returned seed. Then
  *    every product must cover some inventory.
@@ -173,11 +174,30 @@ function dottedPath(path: ReadonlyArray<PropertyKey>): string {
   return out || '(root)';
 }
 
+/** What the host that loads a season can serve. */
+export interface SeasonFileOptions {
+  /** The format labels the host maps onto its format catalogue. When given,
+   * a placement format outside it is refused. */
+  formats?: ReadonlySet<string>;
+}
+
 /** References the engine does not resolve: a product's `property_ids` and
  * `collection_ids`, and the ids a traffic event targets. Each would load and
- * then match nothing. */
-function referenceProblems(seed: SeasonSeed): string[] {
+ * then match nothing. With `formats`, also placement formats the host does
+ * not know. */
+function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): string[] {
   const problems: string[] = [];
+  if (formats) {
+    let unsupported = false;
+    seed.placements.forEach((placement, i) => {
+      placement.formats.forEach((format, j) => {
+        if (formats.has(format)) return;
+        unsupported = true;
+        problems.push(`placements[${i}].formats[${j}]: unsupported format ${format}`);
+      });
+    });
+    if (unsupported) problems.push(`supported formats: ${[...formats].sort().join(', ')}`);
+  }
   const propertyIds = new Set(seed.properties.map(p => p.property_id));
   const placementIds = new Set(seed.placements.map(p => p.placement_id));
   const regionIds = new Set(seed.regions.map(r => r.region_id));
@@ -214,13 +234,13 @@ function referenceProblems(seed: SeasonSeed): string[] {
 }
 
 /** Validate `input` as a season seed. `source` names it in error messages. */
-export function parseSeasonSeed(input: unknown, source: string): SeasonSeed {
+export function parseSeasonSeed(input: unknown, source: string, options: SeasonFileOptions = {}): SeasonSeed {
   const parsed = seasonSeedSchema.safeParse(input);
   if (!parsed.success) {
     invalid(source, parsed.error.issues.map(issue => `${dottedPath(issue.path)}: ${issue.message}`));
   }
   const seed: SeasonSeed = parsed.data;
-  const problems = referenceProblems(seed);
+  const problems = referenceProblems(seed, options.formats);
   if (problems.length > 0) invalid(source, problems);
   let traffic;
   try {
@@ -238,7 +258,7 @@ export function parseSeasonSeed(input: unknown, source: string): SeasonSeed {
 }
 
 /** Read a YAML or JSON season file (JSON is valid YAML). */
-export function readSeasonFile(path: string): SeasonSeed {
+export function readSeasonFile(path: string, options: SeasonFileOptions = {}): SeasonSeed {
   const text = fs.readFileSync(path, 'utf8');
   const documents = parseAllDocuments(text, { schema: 'core' });
   if (documents.length > 1) invalid(path, ['a season file must hold one document, found several']);
@@ -250,7 +270,7 @@ export function readSeasonFile(path: string): SeasonSeed {
       return `${path}${pos ? `:${pos.line}:${pos.col}` : ''}: ${error.message.split('\n')[0]}`;
     }));
   }
-  return parseSeasonSeed(document.toJS(), path);
+  return parseSeasonSeed(document.toJS(), path, options);
 }
 
 /** Serialize a season as YAML that `readSeasonFile` loads back unchanged. */
