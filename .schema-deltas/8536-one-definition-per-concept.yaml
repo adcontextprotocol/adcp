@@ -1,7 +1,7 @@
 # Delta manifest for #8536 (format: scripts/schema-equivalence/README.md, "Delta manifest").
 title: >-
   #8536 against its merge base with main: the drift corrections, the two drifted enums, the 63-character DNS label
-  limit, and the SLA duration pattern
+  limit, the SLA duration pattern, and the HTTPS origin trailing slash
 changes:
   - location: core/domain-name.json#
     keyword: maxLength
@@ -303,3 +303,19 @@ changes:
     direction: tighten
     side: request
     note: (a) governance_context, 10 request sites, adds the printable ASCII pattern from 3.2.8 core/protocol-envelope.json.
+  - location: core/https-origin.json#
+    keyword: pattern
+    old: ^https://[^/?#@]+$
+    new: ^https://[^/?#@]+/?$
+    direction: loosen
+    side: both
+    note: >-
+      #8923: an HTTPS origin accepts one trailing slash, the form a WHATWG URL serializer writes for an empty path.
+      Receivers compare these values by canonical origin. Witness: https://issuer.example/.
+  - location: error-details/governance-agent-not-accepted.json#/oneOf/0/properties/attempted_agent_origin
+    keyword: pattern
+    old: ^https://[^/?#@]+$
+    new: ^https://[^/?#@]+/?$
+    direction: loosen
+    side: none
+    note: '#8923: the disclosed attempted_agent_origin takes the same pattern as core/https-origin.json; it keeps maxLength 2048.'

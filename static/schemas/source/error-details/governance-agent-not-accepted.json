@@ -12,9 +12,9 @@
         "attempted_agent_origin": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://[^/?#@]+$",
+          "pattern": "^https://[^/?#@]+/?$",
           "maxLength": 2048,
-          "description": "Parsed HTTPS origin only. The seller MUST strip userinfo, path, query, and fragment and MUST NOT echo the raw candidate URL."
+          "description": "Parsed HTTPS origin only. The seller MUST strip userinfo, path, query, and fragment and MUST NOT echo the raw candidate URL. A trailing slash is allowed. Receivers compare these values by canonical origin (docs/reference/url-canonicalization.mdx#canonical-origin), so `https://host` and `https://host/` name the same origin."
         },
         "accepted_governance_agents": { "$ref": "/schemas/governance/accepted-governance-agents.json" }
       },

@@ -57,7 +57,7 @@
         },
         "origin": {
           "$ref": "/schemas/core/https-origin.json",
-          "description": "Canonical HTTPS origin with no path, query, fragment, or userinfo. This identifies the issuer; it does not authorize a fetch."
+          "description": "Canonical HTTPS origin with no path, query, fragment, or userinfo. This identifies the issuer; it does not authorize a fetch. Receivers compare these values by canonical origin (docs/reference/url-canonicalization.mdx#canonical-origin), so `https://host` and `https://host/` name the same origin."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"

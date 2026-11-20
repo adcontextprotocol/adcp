@@ -88,7 +88,8 @@
             "properties": {
               "type": { "type": "string", "const": "origin" },
               "origin": {
-                "$ref": "/schemas/core/https-origin.json"
+                "$ref": "/schemas/core/https-origin.json",
+                "description": "HTTPS origin of an accepted attestation issuer. Receivers compare these values by canonical origin (docs/reference/url-canonicalization.mdx#canonical-origin), so `https://host` and `https://host/` name the same origin."
               },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },

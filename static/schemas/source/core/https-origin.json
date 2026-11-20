@@ -2,8 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/https-origin.json",
   "title": "HTTPS Origin",
-  "description": "HTTPS origin with no path, query, fragment, or userinfo.",
+  "description": "HTTPS origin with no path, query, fragment, or userinfo. A trailing slash is allowed: a URL serializer writes an empty path as `/`, and RFC 3986 section 6.2.3 treats the two spellings as equivalent. Receivers compare these values by canonical origin (docs/reference/url-canonicalization.mdx#canonical-origin), so `https://host` and `https://host/` name the same origin.",
   "type": "string",
   "format": "uri",
-  "pattern": "^https://[^/?#@]+$"
+  "pattern": "^https://[^/?#@]+/?$"
 }

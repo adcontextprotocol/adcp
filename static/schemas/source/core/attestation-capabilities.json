@@ -70,7 +70,7 @@
           },
           "credential_origins": {
             "type": "array",
-            "description": "Canonical HTTPS origins from which credential_uri locators may be fetched for this issuer. Exact origin matching happens after URL canonicalization and before DNS resolution. Paths in the credential URI may vary; userinfo is forbidden.",
+            "description": "Canonical HTTPS origins from which credential_uri locators may be fetched for this issuer. Exact origin matching happens after URL canonicalization and before DNS resolution. Paths in the credential URI may vary; userinfo is forbidden. Receivers compare these values by canonical origin (docs/reference/url-canonicalization.mdx#canonical-origin), so `https://host` and `https://host/` name the same origin.",
             "items": {
               "$ref": "/schemas/core/https-origin.json"
             },

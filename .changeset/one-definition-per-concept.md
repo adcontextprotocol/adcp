@@ -24,6 +24,10 @@ Sites that meant the same thing as a named schema, and stated a different constr
 
 - `core/iana-timezone.json` drops its character pattern and its `not: {const: inventory_local}`. A timezone is a string of 1 to 255 characters that must resolve in the implementation's IANA Time Zone Database, and no value either rule rejected resolves there. The daypart `timezone` is the only site that accepts `inventory_local`, as a `const` branch beside the IANA identifier.
 
+**Looser, so an origin survives a URL parser:**
+
+- `core/https-origin.json` and the disclosed `attempted_agent_origin` accept one trailing slash, `^https://[^/?#@]+/?$` (#8923). A URL serializer writes an empty path as `/`, so `https://issuer.example` round-trips to `https://issuer.example/`, which the old pattern rejected. Receivers compare these values by canonical origin, so both spellings name the same origin.
+
 **Planned for 4.0:**
 
 - `core/iana-timezone.json` plans a 4.0 limit of 64 characters with `x-max-length-4.0: 64`, so every timezone site carries it. The longest IANA timezone identifier is 32 characters. 3.x keeps the `maxLength: 255` that 3.2.8 published.
