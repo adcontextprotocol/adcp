@@ -160,6 +160,11 @@ describe('season files', () => {
     expect(message).toContain('  regions[1].share: ');
   });
 
+  it('names the field of a date that is not YYYY-MM-DD', () => {
+    const file = write('bad-date.yaml', MINIMAL_YAML.replace('start_date: 2027-01-01', 'start_date: 2027-1-5'));
+    expect(invalidSeedMessage(() => readSeasonFile(file))).toContain('  start_date: ');
+  });
+
   it('refuses digit separators', () => {
     const file = write('separators.yaml', MINIMAL_YAML.replace('base_daily_impressions: 10000', 'base_daily_impressions: 2_200_000'));
     expect(invalidSeedMessage(() => readSeasonFile(file))).toContain('placements[0].base_daily_impressions');

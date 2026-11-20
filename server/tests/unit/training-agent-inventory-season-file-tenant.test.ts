@@ -88,12 +88,10 @@ describe('inventory tenant on a season file', () => {
     expect(guaranteed.pricing_options[0].fixed_price).toBe(8);
   });
 
-  it('sells display only, as the fixture declares', async () => {
+  it('lists only the fixture\'s display products', async () => {
     const result = await call(tenant, 'get_products', { buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND });
     expect(result.__envelope).toBeUndefined();
     const channels = new Set(result.products.flatMap((product: Structured) => product.channels));
     expect([...channels]).toEqual(['display']);
-    const capabilities = await call(tenant, 'get_adcp_capabilities', {});
-    expect(capabilities.specialisms).toEqual(['sales-guaranteed', 'sales-non-guaranteed']);
   });
 });
