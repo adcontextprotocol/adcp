@@ -262,9 +262,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // (#8899, #8900) bring it to 1_426_550 bytes; bound at 1_427_000.
 // Defaulting every tagged-union tag to its const brings it to 1_430_635 bytes.
 // Replacing repeated inline object copies with shared definitions puts their
-// titles and descriptions in the controller closure: 1_439_891 bytes measured;
-// bound at 1_440_000.
-const PARITY_COMPILE_LIMIT = 1_440_000;
+// titles and descriptions in the controller closure: 1_440_524 bytes measured;
+// bound at 1_441_000.
+const PARITY_COMPILE_LIMIT = 1_441_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

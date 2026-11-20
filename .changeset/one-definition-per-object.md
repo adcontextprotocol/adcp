@@ -13,3 +13,5 @@ Ranges, durations, and money-like objects have one definition each under `core/`
 DOOH placement objects and pixel sizes have one definition each under `core/`: `pixel-size`, `dooh-address`, `dooh-location`, `dooh-screen-resolution`, and `render-dimensions`. Every pixel size rejects `unit`, and the `image_carousel` card size is open like the others.
 
 Property identifiers and tag metadata have one definition each: `core/tag-metadata.json`, `core/tag-metadata-map.json`, `core/platform-independent-distribution-identifier.json`, and `core/distribution-identifier.json`. Property, placement, and test-controller identifiers reference `core/identifier.json` and take its domain and subdomain value rules.
+
+Account and agent objects have one definition each under `core/`: `account-setup`, `account-change-resource`, `account-change-parent-ids`, `webhook-delivery-auth`, `buyer-agent-ref`, and `readiness-resource`. The account setup `url` is an `https` URL (`core/https-url.json`).

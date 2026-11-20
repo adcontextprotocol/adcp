@@ -19,44 +19,14 @@
       "description": "Where the buyer binds the resource, in the form of `error.field`, on `buy_products`, the next step from `list_products`: `purchases[].optimization_goals[].event_sources[].event_source_id` for an event source, `purchases[].catalog_ids[]` for a catalog. Not the legacy `create_media_buy` `packages[]` paths. Omitted for `downstream_connection`. For `event_source` and `catalog`, SHOULD be present when `ready` or `selection_required`."
     },
     "resolved": {
-      "type": "object",
-      "description": "The resource to use when `readiness_status` is `ready`, for `event_source` and `catalog`; REQUIRED then. The buyer MUST still bind `resource_id`: `ready` does not waive binding (`not_bound` per `error-details/execution-requirement-unmet.json`).",
-      "properties": {
-        "resource_id": {
-          "$ref": "#/definitions/readiness_resource_id",
-          "description": "Directly usable in `binding_field`: the `event_source_id` from `sync_event_sources` (including a seller-managed source) or a `catalog_id`. Never a raw platform ID unless that is what the field accepts."
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable name of the resource on the seller's platform."
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": ["resource_id"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/readiness-resource.json",
+      "description": "The resource to use when `readiness_status` is `ready`, for `event_source` and `catalog`; REQUIRED then. The buyer MUST still bind `resource_id`: `ready` does not waive binding (`not_bound` per `error-details/execution-requirement-unmet.json`)."
     },
     "candidates": {
       "type": "array",
       "description": "Resources the account has, when `selection_required`, for `event_source` and `catalog`. Account-scoped, never disclosed across accounts. Lists resources the seller has no evidence would fail the requirement; MAY include one whose event types or catalog type it cannot verify.",
       "items": {
-        "type": "object",
-        "properties": {
-          "resource_id": {
-            "$ref": "#/definitions/readiness_resource_id",
-            "description": "Directly usable in `binding_field`, as for `resolved.resource_id`."
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name of the resource on the seller's platform."
-          },
-          "ext": {
-            "$ref": "/schemas/core/ext.json"
-          }
-        },
-        "required": ["resource_id"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/readiness-resource.json"
       },
       "minItems": 2,
       "uniqueItems": true
@@ -297,10 +267,7 @@
   "x-added-in": "3.3.0",
   "definitions": {
     "readiness_resource_id": {
-      "title": "Readiness Resource ID",
-      "description": "Event source ID or catalog ID that a buyer binds to satisfy an execution requirement.",
-      "type": "string",
-      "minLength": 1
+      "$ref": "/schemas/core/readiness-resource-id.json"
     }
   }
 }

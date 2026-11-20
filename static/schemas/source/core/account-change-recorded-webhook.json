@@ -42,9 +42,7 @@
         "type": {"$ref": "/schemas/core/account-change-resource-type.json"},
         "resource_id": {"$ref": "/schemas/core/account-change-resource-id.json"},
         "parent_ids": {
-          "type": "object",
-          "additionalProperties": {"type": "string", "maxLength": 255},
-          "maxProperties": 12
+          "$ref": "/schemas/core/account-change-parent-ids.json"
         }
       },
       "required": ["type", "resource_id"],

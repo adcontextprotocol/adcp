@@ -233,13 +233,8 @@
             "properties": {
               "pattern": { "type": "string", "const": "tmp_identity_match", "default": "tmp_identity_match" },
               "buyer_agent": {
-                "type": "object",
-                "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url.",
-                "properties": {
-                  "agent_url": { "type": "string", "format": "uri" }
-                },
-                "required": ["agent_url"],
-                "additionalProperties": true
+                "$ref": "/schemas/core/buyer-agent-ref.json",
+                "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url."
               }
             },
             "required": ["pattern"],

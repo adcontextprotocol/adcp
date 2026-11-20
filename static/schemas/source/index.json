@@ -749,6 +749,10 @@
           "$ref": "/schemas/core/execution-requirement-readiness.json",
           "description": "Experimental per-account readiness of one execution requirement: status, candidates, the resolved resource, or the connection state."
         },
+        "readiness-resource-id": {
+          "$ref": "/schemas/core/readiness-resource-id.json",
+          "description": "Event source ID or catalog ID that a buyer binds to satisfy an execution requirement."
+        },
         "product-execution-requirement": {
           "$ref": "/schemas/core/product-execution-requirement.json",
           "description": "Experimental account resource (event source, catalog, or downstream connection) a product needs before a package on it can be created."
@@ -2328,6 +2332,22 @@
           "$ref": "/schemas/core/tool-name.json",
           "description": "Name of a tool in the protocol manifest, including tools that are not AdCP tasks."
         },
+        "account-change-parent-ids": {
+          "$ref": "/schemas/core/account-change-parent-ids.json",
+          "description": "IDs of the parent resources that disambiguate a nested resource, keyed by resource type."
+        },
+        "account-change-resource": {
+          "$ref": "/schemas/core/account-change-resource.json",
+          "description": "The stable identity of a changed resource: resource type, account ID, resource ID, and any parent IDs needed to disambiguate nested resources. Resource types are open for forward compatibility."
+        },
+        "account-setup": {
+          "$ref": "/schemas/core/account-setup.json",
+          "description": "Next steps a human must complete before an account can activate."
+        },
+        "buyer-agent-ref": {
+          "$ref": "/schemas/core/buyer-agent-ref.json",
+          "description": "A reference to a buyer agent by its agent URL."
+        },
         "closed-money": {
           "$ref": "/schemas/core/closed-money.json",
           "description": "A monetary amount and its currency."
@@ -2420,6 +2440,10 @@
           "$ref": "/schemas/core/radius.json",
           "description": "A distance from a point, with its unit."
         },
+        "readiness-resource": {
+          "$ref": "/schemas/core/readiness-resource.json",
+          "description": "A resource that satisfies an execution requirement: its resource ID and an optional name."
+        },
         "render-dimensions": {
           "$ref": "/schemas/core/render-dimensions.json",
           "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels."
@@ -2443,6 +2467,10 @@
         "travel-time": {
           "$ref": "/schemas/core/travel-time.json",
           "description": "A travel time limit used to compute an isochrone, with its unit."
+        },
+        "webhook-delivery-auth": {
+          "$ref": "/schemas/core/webhook-delivery-auth.json",
+          "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config."
         }
       },
       "requirements": {

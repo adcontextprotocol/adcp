@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-parent-ids.json",
+  "title": "Account Change Parent IDs",
+  "description": "IDs of the parent resources that disambiguate a nested resource, keyed by resource type.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "string",
+    "maxLength": 255
+  },
+  "maxProperties": 12
+}

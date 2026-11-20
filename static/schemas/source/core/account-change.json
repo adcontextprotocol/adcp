@@ -24,33 +24,8 @@
       "description": "Optional stable identifier grouping records produced by one committed operation or one external-source ingestion batch. Each independently repairable authoritative identity still receives its own record; batch_id does not change cursor ordering or notification identity."
     },
     "resource": {
-      "type": "object",
-      "description": "Stable identity of the changed resource. Resource types are open for forward compatibility. account_id is always present; resource_id identifies the changed entity and parent_ids supplies any IDs needed to disambiguate nested resources.",
-      "properties": {
-        "type": {
-          "$ref": "/schemas/core/account-change-resource-type.json",
-          "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, account_financials, or invoice."
-        },
-        "account_id": {
-          "$ref": "/schemas/core/account-id.json",
-          "description": "Seller-assigned account containing the resource."
-        },
-        "resource_id": {
-          "$ref": "/schemas/core/account-change-resource-id.json",
-          "description": "Canonical identifier for the resource within its type. For an account change this equals account_id."
-        },
-        "parent_ids": {
-          "type": "object",
-          "description": "Additional canonical parent identifiers needed to repair a nested resource, for example media_buy_id and package_id for a creative assignment. Keys and values MUST NOT contain sensitive payload data.",
-          "additionalProperties": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "maxProperties": 12
-        }
-      },
-      "required": ["type", "account_id", "resource_id"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/account-change-resource.json",
+      "description": "Stable identity of the changed resource. Resource types are open for forward compatibility. account_id is always present; resource_id identifies the changed entity and parent_ids supplies any IDs needed to disambiguate nested resources."
     },
     "action": {
       "$ref": "/schemas/core/account-change-action.json",

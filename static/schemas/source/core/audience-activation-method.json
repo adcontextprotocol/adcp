@@ -23,16 +23,7 @@
       "properties": {
         "pattern": { "type": "string", "const": "tmp_identity_match", "default": "tmp_identity_match" },
         "buyer_agent": {
-          "type": "object",
-          "properties": {
-            "agent_url": {
-              "type": "string",
-              "format": "uri",
-              "description": "Buyer agent's registered agent URL. Canonical identifier, mirroring trusted_match.providers[].agent_url."
-            }
-          },
-          "required": ["agent_url"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/buyer-agent-ref.json"
         }
       },
       "required": ["pattern", "buyer_agent"],

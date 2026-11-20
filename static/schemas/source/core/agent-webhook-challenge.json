@@ -29,65 +29,8 @@
       "description": "Exact seller agent URL whose RFC 9421 webhook profile key signs this challenge and that will send subsequent webhooks."
     },
     "delivery_auth": {
-      "type": "object",
-      "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config.",
-      "properties": {
-        "mode": {
-          "$ref": "/schemas/enums/webhook-delivery-auth-mode.json",
-          "description": "Future webhook delivery authentication mode. `rfc9421` is used when notification_configs[].authentication is absent; Bearer and HMAC-SHA256 are the deprecated legacy modes selected by notification_configs[].authentication."
-        },
-        "credential_fingerprint": {
-          "$ref": "/schemas/core/credential-fingerprint.json",
-          "description": "SHA-256 hex fingerprint of the exact legacy credential string supplied in notification_configs[].authentication.credentials. Required when mode is Bearer or HMAC-SHA256; absent for rfc9421."
-        }
-      },
-      "required": [
-        "mode"
-      ],
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "rfc9421"
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          "then": {
-            "not": {
-              "required": [
-                "credential_fingerprint"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "mode": {
-                "type": "string",
-                "enum": [
-                  "Bearer",
-                  "HMAC-SHA256"
-                ]
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          "then": {
-            "required": [
-              "credential_fingerprint"
-            ]
-          }
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/webhook-delivery-auth.json",
+      "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config."
     },
     "event_types": {
       "type": "array",
