@@ -170,6 +170,74 @@ describe('season files', () => {
     expect(invalidSeedMessage(() => readSeasonFile(file))).toContain('placements[0].base_daily_impressions');
   });
 
+  it('refuses a product property that is unknown', () => {
+    const file = write(
+      'product-unknown-property.yaml',
+      MINIMAL_YAML.replace('    placement_ids: [banner]', '    placement_ids: [banner]\n    property_ids: [missing]'),
+    );
+    const message = invalidSeedMessage(() => readSeasonFile(file));
+    expect(message).toContain('products[0].property_ids[0]');
+    expect(message).toContain('missing');
+  });
+
+  it('refuses a product property its placements do not serve', () => {
+    const file = write(
+      'product-unserved-property.yaml',
+      MINIMAL_YAML
+        .replace('properties:\n', 'properties:\n  - { property_id: harbor_weekly, name: Harbor, domain: harbor.example }\n')
+        .replace('    placement_ids: [banner]', '    placement_ids: [banner]\n    property_ids: [harbor_weekly]'),
+    );
+    const message = invalidSeedMessage(() => readSeasonFile(file));
+    expect(message).toContain('products[0].property_ids[0]');
+    expect(message).toContain('harbor_weekly');
+  });
+
+  it('refuses a traffic event naming an unknown region, property or placement', () => {
+    const file = write(
+      'event-unknown-references.yaml',
+      `${MINIMAL_YAML}events:
+  - type: traffic_multiplier
+    event_id: surge
+    description: Surge
+    start_date: 2027-01-05
+    end_date: 2027-01-07
+    multiplier: 2
+    placement_ids: [no_placement]
+    property_ids: [no_property]
+    region_ids: [no_region]
+`,
+    );
+    const message = invalidSeedMessage(() => readSeasonFile(file));
+    expect(message).toContain('events[0].placement_ids[0]');
+    expect(message).toContain('no_placement');
+    expect(message).toContain('events[0].property_ids[0]');
+    expect(message).toContain('no_property');
+    expect(message).toContain('events[0].region_ids[0]');
+    expect(message).toContain('no_region');
+  });
+
+  it('refuses a date that is not on the calendar', () => {
+    const start = write('feb30.yaml', MINIMAL_YAML.replace('start_date: 2027-01-01', 'start_date: 2027-02-30'));
+    const startMessage = invalidSeedMessage(() => readSeasonFile(start));
+    expect(startMessage).toContain(`Season ${start} is invalid`);
+    expect(startMessage).toContain('start_date');
+
+    const event = write(
+      'apr31.yaml',
+      `${MINIMAL_YAML}events:
+  - type: traffic_multiplier
+    event_id: surge
+    description: Surge
+    start_date: 2027-04-01
+    end_date: 2027-04-31
+    multiplier: 2
+`,
+    );
+    const eventMessage = invalidSeedMessage(() => readSeasonFile(event));
+    expect(eventMessage).toContain(`Season ${event} is invalid`);
+    expect(eventMessage).toContain('events[0].end_date');
+  });
+
   it('refuses empty and multi-document files', () => {
     expect(invalidSeedMessage(() => readSeasonFile(write('empty.yaml', '')))).toContain('empty');
     expect(invalidSeedMessage(() => readSeasonFile(write('comments.yaml', '# nothing here\n')))).toContain('empty');

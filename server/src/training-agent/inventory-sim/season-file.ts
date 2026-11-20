@@ -2,6 +2,7 @@
  * Season files: load a `SeasonSeed` from YAML or JSON.
  *
  * A zod pass checks the shape and reports every problem with its path; the
+ * references the engine leaves unchecked are then listed together; the
  * engine's own checks (shares sum to 1, references resolve) then run through
  * `trafficFor`, which also primes the traffic cache for the returned seed.
  * Nothing is defaulted here, so a loaded seed equals the one that was written.
@@ -11,8 +12,17 @@ import { parseAllDocuments, stringify } from 'yaml';
 import { z } from 'zod';
 import { EngineError, trafficFor, type SeasonSeed } from './engine/index.js';
 
+/** True when a `YYYY-MM-DD` string names a real day (2027-02-30 does not). */
+function isCalendarDate(date: string): boolean {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === date;
+}
+
 const channel = z.enum(['display', 'olv', 'podcast', 'newsletter', 'creator_video']);
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date');
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date')
+  .refine(isCalendarDate, 'not a calendar date');
 const installmentChannel = z.enum(['podcast', 'newsletter', 'creator_video']);
 
 const cellRates = z.strictObject({
@@ -160,6 +170,36 @@ function dottedPath(path: ReadonlyArray<PropertyKey>): string {
   return out || '(root)';
 }
 
+/** References the engine does not resolve: a product's `property_ids` and the
+ * ids a traffic event targets. Each would load and then match nothing. */
+export function referenceProblems(seed: SeasonSeed): string[] {
+  const problems: string[] = [];
+  const propertyIds = new Set(seed.properties.map(p => p.property_id));
+  const placementIds = new Set(seed.placements.map(p => p.placement_id));
+  const regionIds = new Set(seed.regions.map(r => r.region_id));
+  const placements = new Map(seed.placements.map(p => [p.placement_id, p]));
+  const check = (path: string, ids: string[] | undefined, known: Set<string>, kind: string) => {
+    ids?.forEach((id, j) => {
+      if (!known.has(id)) problems.push(`${path}[${j}]: unknown ${kind} ${id}`);
+    });
+  };
+  seed.products.forEach((product, i) => {
+    const served = new Set(product.placement_ids.flatMap(id => placements.get(id)?.property_ids ?? []));
+    product.property_ids?.forEach((id, j) => {
+      const path = `products[${i}].property_ids[${j}]`;
+      if (!propertyIds.has(id)) problems.push(`${path}: unknown property ${id}`);
+      else if (!served.has(id)) problems.push(`${path}: property ${id} is not on any of the product's placements`);
+    });
+  });
+  (seed.events ?? []).forEach((event, i) => {
+    if (event.type !== 'traffic_multiplier') return;
+    check(`events[${i}].placement_ids`, event.placement_ids, placementIds, 'placement');
+    check(`events[${i}].property_ids`, event.property_ids, propertyIds, 'property');
+    check(`events[${i}].region_ids`, event.region_ids, regionIds, 'region');
+  });
+  return problems;
+}
+
 /** Validate `input` as a season seed. `source` names it in error messages. */
 export function parseSeasonSeed(input: unknown, source: string): SeasonSeed {
   const parsed = seasonSeedSchema.safeParse(input);
@@ -167,10 +207,12 @@ export function parseSeasonSeed(input: unknown, source: string): SeasonSeed {
     invalid(source, parsed.error.issues.map(issue => `${dottedPath(issue.path)}: ${issue.message}`));
   }
   const seed: SeasonSeed = parsed.data;
+  const problems = referenceProblems(seed);
+  if (problems.length > 0) invalid(source, problems);
   try {
     trafficFor(seed);
   } catch (error) {
-    if (error instanceof EngineError && error.code === 'INVALID_SEED') invalid(source, [error.message]);
+    if (error instanceof Error) invalid(source, [error.message]);
     throw error;
   }
   return seed;
