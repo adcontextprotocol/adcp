@@ -183,7 +183,10 @@ async function runFullSuite() {
   }
 }
 
-async function main() {
+async function main(argv = process.argv.slice(2)) {
+  // `npm run verify:local -- --full` runs the whole suite regardless of what
+  // is staged.
+  if (argv.includes('--full')) return runFullSuite();
   const plan = planServerUnitRun(stagedFiles(), existsSync);
 
   if (plan.kind === 'skip') {
