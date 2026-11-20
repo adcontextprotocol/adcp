@@ -1,0 +1,115 @@
+{
+  "$comment": "Structural twins recorded by scripts/lint-schema-value-domains.cjs. Each entry has a verdict from a closed set and a reason: replace (a later change replaces the copy with a $ref to the kernel type), merge (the schemas mean one thing; a later change keeps one and makes the others reference it), or alias (a deliberate compatibility name, kept until the next major version). This list only shrinks: fix a twin, then delete its entry. Twins that are distinct concepts belong under distinct_structures in scripts/schema-value-domains.json, not here.",
+  "entries": [
+    {
+      "check": "kernel-twin",
+      "site": "core/performance-feedback.json#/properties/measurement_period",
+      "kernel_type": "core/datetime-range.json",
+      "verdict": "replace",
+      "reason": "An inline copy of the datetime range. A later change references core/datetime-range.json."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "core/brand-id.json",
+        "core/property-id.json",
+        "core/property-tag.json"
+      ],
+      "verdict": "merge",
+      "reason": "One validation class, the lowercase slug. A later change names one slug ID type; each file then references it and keeps its own x-entity."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "core/missing-metric.json",
+        "core/performance-feedback-metric.json"
+      ],
+      "verdict": "merge",
+      "reason": "Both identify a metric with the same standard and vendor discriminator. A later change keeps one metric identity type."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "core/tasks-get-request.json",
+        "protocol/get-task-status-request.json"
+      ],
+      "verdict": "alias",
+      "reason": "Two names for the get-task request, kept for callers of either name until the next major version."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "core/tasks-get-response.json",
+        "protocol/get-task-status-response.json"
+      ],
+      "verdict": "alias",
+      "reason": "Two names for the get-task response, kept for callers of either name until the next major version."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "core/tasks-list-request.json",
+        "protocol/list-tasks-request.json"
+      ],
+      "verdict": "alias",
+      "reason": "Two names for the list-tasks request, kept for callers of either name until the next major version."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "core/tasks-list-response.json",
+        "protocol/list-tasks-response.json"
+      ],
+      "verdict": "alias",
+      "reason": "Two names for the list-tasks response, kept for callers of either name until the next major version."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "creative/sync-creatives-async-response-submitted.json",
+        "media-buy/build-creative-async-response-submitted.json",
+        "media-buy/sync-catalogs-async-response-submitted.json",
+        "media-buy/update-media-buy-async-response-submitted.json"
+      ],
+      "verdict": "replace",
+      "reason": "Each re-declares the submitted task envelope, without task_id.minLength and without the version and protocol envelopes. A later change makes each one reference core/compact-task-submitted.json (#8470)."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "enums/canonical-media-buy-action-mode.json",
+        "enums/media-buy-action-mode.json"
+      ],
+      "verdict": "merge",
+      "reason": "One list of the ways a seller honors a media buy action. A later change keeps one list; only media-buy-action-mode is marked extensible today, and the merge settles that."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "enums/catalog-action.json",
+        "enums/creative-action.json"
+      ],
+      "verdict": "merge",
+      "reason": "One list of what a sync did to each item. A later change keeps one sync item action list."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "media-buy/build-creative-async-response-working.json",
+        "media-buy/create-media-buy-async-response-working.json",
+        "media-buy/update-media-buy-async-response-working.json"
+      ],
+      "verdict": "replace",
+      "reason": "Each re-declares the working task payload without current_step.maxLength. A later change makes each one reference core/compact-task-working.json."
+    },
+    {
+      "check": "named-twin",
+      "types": [
+        "media-buy/get-products-async-response-working.json",
+        "signals/get-signals-async-response-working.json"
+      ],
+      "verdict": "replace",
+      "reason": "Each re-declares the working task payload without current_step.maxLength and the step minimums. A later change makes each one reference core/compact-task-working.json."
+    }
+  ]
+}
