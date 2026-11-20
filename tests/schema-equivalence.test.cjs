@@ -61,6 +61,32 @@ describe('schema-equivalence CLI fixtures', { concurrency: 8 }, () => {
   }
 });
 
+const ONEOF_FIXTURES = path.join(__dirname, '..', 'scripts', 'schema-equivalence', 'test', 'oneof-fixtures');
+
+describe('schema-equivalence oneof check', { concurrency: 4 }, () => {
+  for (const name of fs.readdirSync(ONEOF_FIXTURES).sort()) {
+    const dir = path.join(ONEOF_FIXTURES, name);
+    const expect = JSON.parse(fs.readFileSync(path.join(dir, 'expect.json'), 'utf8'));
+    it(`${name}: ${expect.why}`, async () => {
+      const { code, report, stderr } = await run(['oneof', '--dir', dir], dir);
+      assert.ok(report, `no JSON report; stderr: ${stderr}`);
+      assert.deepEqual(report.counts, expect.counts, JSON.stringify(report.sites, null, 1));
+      assert.equal(code, expect.exit);
+      const byLocation = new Map(report.sites.map(s => [s.location, s]));
+      for (const [loc, rules] of Object.entries(expect.rules || {})) assert.deepEqual(byLocation.get(loc).rules, rules, loc);
+      for (const [loc, payload] of Object.entries(expect.witness || {})) {
+        const site = byLocation.get(loc);
+        assert.equal(site.result, 'W', loc);
+        assert.deepEqual(site.witness, payload, loc);
+        assert.ok(site.passing.length >= 2, 'the witness matches two or more branches');
+      }
+      const reportOnly = await run(['oneof', '--dir', dir, '--report-only'], dir);
+      assert.equal(reportOnly.code, 0, '--report-only exits 0');
+      assert.deepEqual(reportOnly.report.counts, expect.counts);
+    });
+  }
+});
+
 describe('schema-equivalence CLI on git refs', () => {
   it('HEAD against itself reports zero differences', async () => {
     const { code, report, stderr } = await run(['--base', 'HEAD', '--head', 'HEAD'], path.join(__dirname, '..'));

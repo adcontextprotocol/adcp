@@ -1,0 +1,5 @@
+{
+  "why": "Two patterns with different first characters are disjoint, but the prover does not reason about regular expressions and the witness search finds no overlap.",
+  "exit": 1,
+  "counts": { "P": 0, "W": 0, "U": 1 }
+}

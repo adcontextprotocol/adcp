@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/patterns.json",
+  "oneOf": [
+    { "type": "string", "pattern": "^a" },
+    { "type": "string", "pattern": "^b" }
+  ]
+}

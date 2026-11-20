@@ -512,7 +512,11 @@ class Graph {
       }
     }
     const empty = !Object.keys(kw).length && !Object.keys(kids).length && !Object.keys(node.info).length;
-    if (!empty) members.push({ n: this.addPlain(node.origin, kw, kids, node.info), via: '' });
+    if (!empty) {
+      const copy = this.addPlain(node.origin, kw, kids, node.info);
+      this.nodes[copy].copyOf = node.copyOf !== undefined ? node.copyOf : node.id;
+      members.push({ n: copy, via: '' });
+    }
     if (members.length === 0) return this.TRUE;
     if (members.length === 1) return members[0].n;
     return this.add({ kind: 'conj', origin: node.origin, members, info: {} });

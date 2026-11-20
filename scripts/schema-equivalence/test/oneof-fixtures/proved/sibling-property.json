@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sibling-property.json",
+  "type": "object",
+  "properties": { "params": { "type": "object" } },
+  "allOf": [
+    {
+      "if": { "properties": { "scenario": { "const": "x" } } },
+      "then": {
+        "properties": {
+          "params": {
+            "oneOf": [
+              { "properties": { "arm": { "const": "submitted" } }, "required": ["arm"] },
+              { "properties": { "arm": { "const": "completed" } }, "required": ["arm"] }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

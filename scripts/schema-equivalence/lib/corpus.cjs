@@ -36,13 +36,17 @@ const PUBLISHED = /^https:\/\/adcontextprotocol\.org\/schemas\/(.+)$/;
 const SEMVER_SEGMENT = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 class TreeValidator {
-  /** `lazy` loads only the documents a compiled root reaches (cheap to create). */
-  constructor(tree, { lazy = false } = {}) {
+  /**
+   * `lazy` loads only the documents a compiled root reaches (cheap to create).
+   * `allErrors` keeps every error, as the repo's configuration does; verdict-only
+   * callers leave it off for speed.
+   */
+  constructor(tree, { lazy = false, allErrors = false } = {}) {
     this.tree = tree;
     this.cache = new Map();
     this.problems = [];
     this.ajv = createAjv({
-      allErrors: false,
+      allErrors,
       loadSchema: async (uri) => {
         const m = PUBLISHED.exec(uri);
         const rel = m ? m[1] : uri.replace(/^\/schemas\//, '');

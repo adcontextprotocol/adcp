@@ -33,6 +33,50 @@ node scripts/schema-equivalence/cli.cjs verify-build
 The exit status is 0 when the check passes, 1 when it fails, and 2 for a usage
 or tool error. Run `--help` for every option.
 
+## The oneof check
+
+`oneof` proves or refutes every `oneOf` that the published roots reach at one
+ref, through any number of `$ref`s, and gives each one of three results:
+
+- **P, proved.** The tool proves every branch pair disjoint (see the rules
+  under "Guarded rewrite rules"), under the context where the `oneOf` is
+  evaluated, and names the rules it used. A `oneOf` with one branch is P, and
+  so is one under an Ajv `discriminator` that compiles: Ajv checks an object
+  against the one branch its tag selects and lets non-objects pass, so an
+  overlap cannot reject a payload.
+- **W, witnessed.** A payload matches two or more branches. Ajv, with the
+  repo options and every schema registered, rejects it at the `oneOf` with a
+  single `oneOf` error, and each branch Ajv names accepts the payload on its
+  own. The search builds candidates from the branch schemas: instances of each
+  branch (guided through the `oneOf`, from the branch alone, with a few enum
+  choices, and with one optional property at a time), each pair of them merged
+  in both orders, and plain values of every JSON type. The witness is
+  minimized by deleting keys while it stays a witness.
+- **U, undecided.** Neither.
+
+```bash
+node scripts/schema-equivalence/cli.cjs oneof --ref origin/main
+node scripts/schema-equivalence/cli.cjs oneof --ref HEAD --report-only --json oneof.json
+```
+
+The check exits 1 when any result is W or U, and `--report-only` prints the
+same table and exits 0. It has no baseline and no allowlist. The table is
+Markdown, so CI appends it to the job summary.
+
+The context matters for P. A `oneOf` whose branches overlap only on values
+that an enclosing schema rejects is P: in
+`compliance/comply-test-controller-request.json`, the branches of
+`allOf/11/then/properties/params/oneOf` both accept `0`, but the root's
+`properties/params` has `type: object`, so no payload reaches the `oneOf`
+with a non-object.
+
+This check is a proof-based replacement for `scripts/audit-oneof.mjs`, which
+classifies each `oneOf` from the required names of its branches and follows
+one `$ref` hop. The audit's "narrowable" verdict (each branch has a required
+key of its own) does not stop a payload from carrying both keys, and its
+"dangerous" verdict is often a set of branches that `not`, closed objects, or
+nested tags separate. `oneof` decides each case with a proof or a payload.
+
 ## How the tool reads each ref
 
 The tool reads `static/schemas/source/**` at each ref straight from the git
@@ -384,5 +428,9 @@ construct catalog in `test/catalog/`, whose verdicts were decided without the
 tool. A pair that is not equivalent must get a difference; an equivalent pair
 must get none unless `test/catalog/false-alarms.json` lists it. See
 `test/catalog/README.md`.
+
+The same file runs the `oneof` command on the fixtures in
+`test/oneof-fixtures/`, one directory per result (P, W, and U), with and
+without `--report-only`.
 
 Run both with `npm run test:schema-equivalence`.

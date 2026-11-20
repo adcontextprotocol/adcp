@@ -1,0 +1,6 @@
+{
+  "why": "Each branch requires its own key, and nothing stops a payload from carrying both, which matches both branches.",
+  "exit": 1,
+  "counts": { "P": 0, "W": 1, "U": 0 },
+  "witness": { "either-key.json#/oneOf": { "a": "a", "b": "a" } }
+}

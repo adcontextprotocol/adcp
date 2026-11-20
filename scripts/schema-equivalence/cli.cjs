@@ -7,6 +7,7 @@
  *
  *   node scripts/schema-equivalence/cli.cjs [--base REF] [--head REF] [options]
  *   node scripts/schema-equivalence/cli.cjs verify-build
+ *   node scripts/schema-equivalence/cli.cjs oneof [--ref REF | --dir DIR] [--report-only]
  *
  * Exit status: 0 pass, 1 check failed, 2 usage or tool error.
  */
@@ -21,12 +22,13 @@ const { loadManifest, parseManifest, matchManifest, skeleton } = require('./lib/
 const { collectCorpus, differential, sitesFromEntries, probeValues, TreeValidator } = require('./lib/corpus.cjs');
 const { generateWitnesses } = require('./lib/witness.cjs');
 const { formatText } = require('./lib/report.cjs');
+const { checkOneOf, formatOneOf } = require('./lib/oneof.cjs');
 
 // The repository whose refs are compared; --repo changes it (tests use a scratch repository).
 let REPO = path.resolve(__dirname, '..', '..');
 const DELTA_DIR = '.schema-deltas';
 
-const USAGE = `Usage: node scripts/schema-equivalence/cli.cjs [verify-build] [options]
+const USAGE = `Usage: node scripts/schema-equivalence/cli.cjs [verify-build | oneof] [options]
 
 Compare the published schema roots at two refs (or two directories).
 
@@ -49,7 +51,15 @@ Compare the published schema roots at two refs (or two directories).
   --repo DIR            the git repository to read refs from (default: this one)
 
 verify-build: compare static/schemas/source with dist/schemas/latest and
-dist/schemas/latest/bundled (run \`npm run build:schemas\` first).`;
+dist/schemas/latest/bundled (run \`npm run build:schemas\` first).
+
+oneof: prove or refute every oneOf the published roots reach, at one ref.
+  Each oneOf is P (branches proved disjoint), W (a payload that matches two or
+  more branches, confirmed by Ajv), or U (undecided). Exits 1 on any W or U.
+  --ref REF             the ref to check (default: HEAD)
+  --dir DIR             check a directory instead; DIR plays static/schemas/source
+  --report-only         print the results and exit 0
+  --json FILE           write the JSON report (- for stdout)`;
 
 function displayPath(f) {
   const rel = path.relative(REPO, f);
@@ -106,6 +116,9 @@ async function main() {
       json: { type: 'string' },
       quiet: { type: 'boolean', default: false },
       repo: { type: 'string' },
+      ref: { type: 'string' },
+      dir: { type: 'string' },
+      'report-only': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
   });
@@ -115,7 +128,8 @@ async function main() {
   }
   if (values.repo) REPO = path.resolve(values.repo);
   const mode = positionals[0] || 'check';
-  if (!['check', 'verify-build'].includes(mode)) fail(`unknown command ${mode}\n\n${USAGE}`);
+  if (!['check', 'verify-build', 'oneof'].includes(mode)) fail(`unknown command ${mode}\n\n${USAGE}`);
+  if (mode === 'oneof') return oneofMode(values);
 
   let base;
   let head;
@@ -238,6 +252,26 @@ async function main() {
   }
   if (!values.quiet) process.stdout.write(`${formatText(report)}\n`);
   return report.ok ? 0 : 1;
+}
+
+/** The oneof command: every reachable oneOf at one ref, proved (P), witnessed (W), or undecided (U). */
+async function oneofMode(values) {
+  if (values.ref && values.dir) fail('--ref and --dir are exclusive');
+  const tree = values.dir
+    ? loadFromDir(path.resolve(values.dir), values['dist-dir'] && path.resolve(values['dist-dir']))
+    : loadFromRef(REPO, values.ref || 'HEAD');
+  const t0 = Date.now();
+  const result = await checkOneOf(tree);
+  const report = { command: 'oneof', label: tree.label, commit: tree.commit, ...result, ms: Date.now() - t0 };
+  report.ok = result.counts.W === 0 && result.counts.U === 0 && result.problems.length === 0;
+  if (values.json) {
+    const text = `${JSON.stringify(report, null, 2)}\n`;
+    if (values.json === '-') process.stdout.write(text);
+    else fs.writeFileSync(values.json, text);
+  }
+  if (!values.quiet) process.stdout.write(`${formatOneOf(report)}\n`);
+  if (result.problems.length) process.stderr.write(`${result.problems.length} unresolved or invalid schema locations\n`);
+  return report.ok || values['report-only'] ? 0 : 1;
 }
 
 // Set the exit code instead of calling process.exit(), which drops whatever a

@@ -3,7 +3,8 @@ name: Schema equivalence
 # Proves what a schema change does to the set of valid payloads: canonical
 # forms of every published root at the PR's base and with the PR merged,
 # the PR's delta manifest (.schema-deltas/*.yaml), a corpus differential,
-# and one witness payload per declared difference.
+# and one witness payload per declared difference. A report-only step
+# proves or refutes every oneOf at the PR head.
 # See scripts/schema-equivalence/README.md.
 
 on:
@@ -71,6 +72,22 @@ jobs:
             } >> "${GITHUB_STEP_SUMMARY}"
           fi
 
+      # Proves or refutes every oneOf the published roots reach, at the PR
+      # head: P (branches proved disjoint), W (a payload that matches two or
+      # more branches, confirmed by Ajv), or U (undecided). This step stays
+      # report-only until the 16 overlaps on main are fixed in a separate PR;
+      # then drop --report-only so any W or U fails the job. The PR head is
+      # the merge commit's second parent, one of the two fetched commits.
+      - name: oneOf check (report only)
+        if: always()
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node scripts/schema-equivalence/cli.cjs oneof \
+            --ref "${PR_HEAD}" --report-only \
+            --json schema-equivalence-oneof.json > schema-equivalence-oneof.md
+          cat schema-equivalence-oneof.md >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Upload the JSON report
         if: always()
         uses: actions/upload-artifact@v7.0.1
@@ -79,5 +96,6 @@ jobs:
           path: |
             schema-equivalence.json
             schema-equivalence.txt
+            schema-equivalence-oneof.json
           if-no-files-found: ignore
           retention-days: 14

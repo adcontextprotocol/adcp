@@ -1,0 +1,6 @@
+{
+  "why": "Branches a closed object separates, and branches that a sibling property schema limits to objects, where a required tag separates them.",
+  "exit": 0,
+  "counts": { "P": 2, "W": 0, "U": 0 },
+  "rules": { "closed.json#/oneOf": ["closed-object"], "sibling-property.json#/allOf/0/then/properties/params/oneOf": ["tag-values"] }
+}

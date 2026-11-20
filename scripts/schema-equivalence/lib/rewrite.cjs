@@ -275,4 +275,4 @@ function applyRules(graph, color) {
   return new Rewriter(graph, color).run();
 }
 
-module.exports = { applyRules, disjoint, facts };
+module.exports = { applyRules, disjoint, facts, ajvDiscriminatorMapping };
