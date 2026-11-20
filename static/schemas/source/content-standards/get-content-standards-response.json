@@ -11,6 +11,7 @@
   ],
   "oneOf": [
     {
+      "title": "GetContentStandardsSuccess",
       "type": "object",
       "description": "Success response - returns the content standards configuration",
       "allOf": [
@@ -28,6 +29,7 @@
       }
     },
     {
+      "title": "GetContentStandardsError",
       "type": "object",
       "description": "Error response",
       "properties": {
