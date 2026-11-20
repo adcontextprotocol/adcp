@@ -1,0 +1,113 @@
+id: media_buy_seller/package_correlation_legacy_fallback
+version: "1.0.0"
+title: "Legacy package correlation fallback without product_id"
+category: media_buy_seller
+summary: "Models the mixed-seller compatibility path where a legacy package response omits product_id and buyers correlate by package context.buyer_ref."
+track: media_buy
+required_tools:
+  - get_media_buys
+
+narrative: |
+  Current sellers MUST echo package product_id for explicit create_media_buy
+  package requests. Legacy sellers may still return package objects without
+  product_id. Buyers and SDKs targeting mixed seller populations need an
+  executable compatibility vector for that legacy response shape: correlate the
+  seller-assigned package_id back to the requested line item through package
+  context, commonly context.buyer_ref.
+
+  This storyboard is a compatibility fixture, not the current seller
+  conformance path. The runner seeds a legacy-shaped media buy whose package
+  intentionally omits product_id, then verifies get_media_buys still surfaces
+  package-level context so a buyer can recover the mapping.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - sells_media
+  examples:
+    - "Compatibility test harnesses validating buyer-side package correlation"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner seeds a legacy-shaped media buy via seed_media_buy. Sellers or
+    SDK test harnesses that do not implement seed_media_buy grade this scenario
+    not_applicable rather than failing current seller conformance.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  media_buys:
+    - media_buy_id: "legacy_package_correlation_buy"
+      status: "active"
+      currency: "USD"
+      total_budget: 5000
+      confirmed_at: "2026-04-01T00:00:00Z"
+      revision: 1
+      context:
+        correlation_id: "legacy-package-correlation-media-buy"
+      packages:
+        - package_id: "pkg_legacy_context_only"
+          budget: 5000
+          currency: "USD"
+          context:
+            buyer_ref: "legacy-line-001"
+
+phases:
+  - id: read_legacy_package
+    title: "Read a legacy package shape"
+    narrative: |
+      The buyer reads a seeded media buy whose package intentionally has no
+      product_id. The response must still include package context.buyer_ref,
+      giving the buyer a stable fallback mapping from package_id to the line
+      item it submitted.
+    steps:
+      - id: get_seeded_legacy_buy
+        title: "Get seeded legacy media buy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: package_correlation_legacy_fallback
+        stateful: true
+        expected: |
+          Return the seeded media buy with:
+          - media_buys[0].packages[0].package_id present
+          - media_buys[0].packages[0].product_id absent, modeling the legacy response
+          - media_buys[0].packages[0].context.buyer_ref preserved for fallback correlation
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "legacy_package_correlation_buy"
+          context:
+            correlation_id: "package_correlation_legacy_fallback--get_seeded_legacy_buy"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].media_buy_id"
+            value: "legacy_package_correlation_buy"
+            description: "The seeded legacy media buy is returned"
+          - check: field_value
+            path: "media_buys[0].packages[0].package_id"
+            value: "pkg_legacy_context_only"
+            description: "Package has the seller-assigned package_id buyers must persist"
+          - check: field_absent
+            path: "media_buys[0].packages[0].product_id"
+            description: "Legacy-shaped package omits product_id; this scenario verifies fallback behavior, not current seller conformance"
+          - check: field_value
+            path: "media_buys[0].packages[0].context.buyer_ref"
+            value: "legacy-line-001"
+            description: "Package context preserves buyer_ref for buyer-side fallback correlation"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "package_correlation_legacy_fallback--get_seeded_legacy_buy"
+            description: "Response context correlation_id returned unchanged"
