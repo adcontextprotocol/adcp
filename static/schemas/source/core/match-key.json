@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/match-key.json",
   "title": "Match Key",
-  "description": "One identifier a party can resolve, the entity scopes it resolves at, and the uses it supports. Capability only: MUST NOT carry match rates, audience sizes, coverage, or per-user or per-graph data. Two keys are compatible at scope S when they share uid_type, both list S in scopes, and their vendor domains are equal when both declare vendor. Sellers using this shape list media_buy.match_keys in experimental_features.",
+  "description": "One identifier a party can resolve, the entity scopes it resolves at, and the uses it supports. Capability only: MUST NOT carry match rates, audience sizes, coverage, or per-user or per-graph data. Two keys are compatible at scope S when they share uid_type, both list S in scopes, their vendor domains are equal when both declare vendor, and they declare the same scope_resolution (absent means graph). Sellers using this shape list media_buy.match_keys in experimental_features.",
   "x-added-in": "3.3.0",
   "x-status": "experimental",
   "type": "object",
@@ -13,7 +13,7 @@
     },
     "vendor": {
       "$ref": "/schemas/core/brand-ref.json",
-      "description": "Graph or resolution vendor that produces this key at the declared scopes. Required when uid_type is other, when scopes include households, and when a maid or publisher_first_party key lists individuals: those scopes always come from a graph, so the graph is named."
+      "description": "Party that forms the entity at the declared scopes: the graph or resolution vendor, or the seller itself when it forms the entity (scope_resolution serve_time, or a graph the seller runs). Names who forms the entity, not who supplied input data such as an IP or device-signal feed. Required when uid_type is other, when scopes include households, and when a maid or publisher_first_party key lists individuals: the party that forms those entities is named."
     },
     "scopes": {
       "type": "array",
@@ -27,6 +27,15 @@
       "minItems": 1,
       "maxItems": 5,
       "uniqueItems": true
+    },
+    "scope_resolution": {
+      "type": "string",
+      "enum": ["graph", "serve_time"],
+      "enumDescriptions": {
+        "graph": "A persistent graph, licensed or run by the seller and named in vendor, resolves the key to the declared scopes. The grouping is stable between requests, apart from graph refreshes.",
+        "serve_time": "The seller groups the key into the declared scopes at request time from network and device signals, for example IP address and user agent, without a persistent graph. vendor is the seller's own domain. The grouping can change between requests as addresses are reassigned or devices move between networks."
+      },
+      "description": "How the key reaches its non-native scopes (households, or individuals for maid and publisher_first_party). Absent means graph, so existing declarations keep their meaning. A key with serve_time is compatible only with keys that also declare serve_time and the same vendor, which in practice means the same forming party, usually one seller: two sellers that each group by IP form different households for the same home."
     },
     "uses": {
       "type": "array",
@@ -61,7 +70,7 @@
       "then": { "required": ["vendor"] }
     },
     {
-      "description": "Household resolution always comes from a graph.",
+      "description": "Household resolution always names the party that forms the household: a graph vendor, or the seller when scope_resolution is serve_time.",
       "if": {
         "properties": { "scopes": { "contains": { "const": "households" } } },
         "required": ["scopes"]
