@@ -47,6 +47,27 @@ AdCP separates hosted video bytes (`video_hosted`) from VAST delivery (`video_va
 
 For linear television the same `video_hosted` canonical narrows to a broadcast mezzanine file (`mxf` container, `mpeg2` / `avc_intra` / `xavc` codecs) with an optional experimental `loudness` requirement. See [Broadcast creative](/docs/creative/channels/broadcast#delivery-files).
 
+## Video host reads and creator embeds
+
+For a video podcast host read or an ad read embedded in a creator's own video, the publisher's talent films the read. The buyer supplies a script or brief instead of video. For example:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
+  "format_kind": "video_hosted",
+  "params": {
+    "asset_source": "publisher_host_recorded",
+    "buyer_asset_acceptance": "rejected",
+    "production_window_business_days": 7,
+    "slots": [
+      { "asset_group_id": "script", "asset_type": "text", "required": true }
+    ]
+  }
+}
+```
+
+The buyer obtains and reviews the filmed creative through the publisher's `build_creative` capability. See [canonical format overrides](/docs/creative/canonical-formats) for draft preview and refinement.
+
 ## VAST
 
 ```json
