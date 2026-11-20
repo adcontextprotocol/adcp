@@ -29,33 +29,16 @@
           "type": "array",
           "description": "Per-feature breakdown with explanations. Mirrors validate_content_delivery feature shape so calibration loops can correlate against production verdicts by policy_id.",
           "items": {
-            "type": "object",
-            "properties": {
-              "feature_id": {
-                "type": "string",
-                "description": "Which feature was evaluated. Data features come from the content-standards feature catalog (e.g., 'brand_safety', 'brand_suitability', 'competitor_adjacency'). Record-level structural checks use reserved namespaces: 'record:malformed_artifact'. Reserved prefixes: 'record:', 'delivery:'."
-              },
-              "status": {
-                "$ref": "/schemas/enums/feature-check-status.json"
-              },
-              "policy_id": {
-                "type": "string",
-                "description": "Policy ID that triggered this result. Enables the calibration loop to iterate on specific policies by correlating sample outcomes to policy ids.",
-                "x-entity": "governance_registry_policy"
-              },
-              "explanation": {
-                "type": "string",
-                "description": "Human-readable explanation of why this feature passed or failed"
-              },
-              "confidence": {
-                "$ref": "/schemas/core/fraction.json",
-                "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
+            "allOf": [
+              {
+                "$ref": "/schemas/core/feature-check-result.json"
               }
-            },
-            "required": [
-              "feature_id",
-              "status"
-            ]
+            ],
+            "properties": {
+              "policy_id": {
+                "x-entity": "governance_registry_policy"
+              }
+            }
           }
         },
         "context": {

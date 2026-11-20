@@ -1,0 +1,1407 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: content standards. The corrections the review chose; every other change is a $ref to an
+  identical definition.
+changes:
+  - location: core/page-cursor.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: request
+    note: >-
+      collection/get-collection-list-request.json#/properties/pagination -> new:core/bulk-pagination-request.json.
+      Witness: collection/get-collection-list-request.json /pagination/cursor = "" (tighten).
+  - location: core/feature-check-result.json#
+    keyword: properties
+    new:
+      type:
+        - object
+      properties:
+        allowed_values:
+          type:
+            - array
+        max_value:
+          type:
+            - number
+        min_value:
+          type:
+            - number
+    direction: tighten
+    side: response
+    note: >-
+      content-standards/calibrate-content-response.json#/oneOf/0/properties/features/items ->
+      new:core/feature-check-result.json. Verdict lists no delta for this keyword. Witness:
+      content-standards/calibrate-content-response.json /features/0/requirement = null (tighten).
+  - location: core/calibration-exemplars.json#/properties/fail/items
+    keyword: required
+    old:
+      - artifact_id
+      - assets
+      - property_rid
+    direction: loosen
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. Witness: content-standards/content-standards.json
+      /calibration_exemplars/fail/0 = {"type":"url","value":"https://example.com/x"} (loosen).
+  - location: core/calibration-exemplars.json#/properties/fail/items
+    keyword: type
+    old:
+      - object
+    direction: none
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. Masked by the oneOf: both branches state type object, so removing type
+      object from the items changes no payload's verdict.
+  - location: core/calibration-exemplars.json#/properties/fail/items
+    keyword: oneOf
+    new:
+      - required:
+          - type
+          - value
+        type:
+          - object
+        properties:
+          language:
+            maxLength: 63
+            minLength: 2
+            pattern: >-
+              ^(?:[a-z]{2,8}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*(?:-[0-9a-wy-z](?:-[a-z0-9]{2,8})+)*(?:-x(?:-[a-z0-9]{1,8})+)?|x(?:-[a-z0-9]{1,8})+)$
+            type:
+              - string
+          type:
+            const: url
+          value:
+            format: uri
+            type:
+              - string
+      - required:
+          - artifact_id
+          - assets
+          - property_rid
+        type:
+          - object
+        properties:
+          artifact_id:
+            type:
+              - string
+          assets:
+            maxItems: 200
+            type:
+              - array
+            items:
+              discriminator:
+                propertyName: type
+              oneOf:
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/0
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/1
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/2
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/3
+          format_id:
+            required:
+              - agent_url
+              - id
+            type:
+              - object
+            dependencies:
+              height:
+                - width
+              pixel_ratio:
+                - height
+                - width
+              width:
+                - height
+            properties:
+              agent_url:
+                format: uri
+                type:
+                  - string
+              duration_ms:
+                minimum: 1
+                type:
+                  - number
+              height:
+                minimum: 1
+                type:
+                  - integer
+              id:
+                pattern: ^[a-zA-Z0-9_-]+$
+                type:
+                  - string
+              pixel_ratio:
+                exclusiveMinimum: 0
+                type:
+                  - number
+              width:
+                minimum: 1
+                type:
+                  - integer
+          format_kind:
+            enum:
+              - agent_placement
+              - audio_daast
+              - audio_hosted
+              - audio_vast
+              - coordinated_placements
+              - custom
+              - display_tag
+              - html5
+              - image
+              - image_carousel
+              - native_in_feed
+              - responsive_creative
+              - seller_rendered_stateful_display
+              - sponsored_placement
+              - video_hosted
+              - video_vast
+          identifiers:
+            type:
+              - object
+            properties:
+              apple_podcast_id:
+                type:
+                  - string
+              podcast_guid:
+                type:
+                  - string
+              rss_url:
+                format: uri
+                type:
+                  - string
+              spotify_collection_id:
+                type:
+                  - string
+              youtube_video_id:
+                type:
+                  - string
+          last_update_time:
+            format: date-time
+            type:
+              - string
+          metadata:
+            type:
+              - object
+            properties:
+              author:
+                type:
+                  - string
+              canonical:
+                format: uri
+                type:
+                  - string
+              json_ld:
+                type:
+                  - array
+                items:
+                  $at: content-standards/artifact.json#/properties/metadata/properties/json_ld/items
+              keywords:
+                type:
+                  - string
+              open_graph:
+                type:
+                  - object
+              twitter_card:
+                type:
+                  - object
+          property_rid:
+            type:
+              - string
+          provenance:
+            type:
+              - object
+            properties:
+              ai_tool:
+                required:
+                  - name
+                type:
+                  - object
+                properties:
+                  name:
+                    $at: core/provenance.json#/properties/ai_tool/properties/name
+                  provider:
+                    $at: core/provenance.json#/properties/ai_tool/properties/provider
+                  version:
+                    $at: core/provenance.json#/properties/ai_tool/properties/version
+              c2pa:
+                required:
+                  - manifest_url
+                type:
+                  - object
+                properties:
+                  manifest_url:
+                    $at: core/provenance.json#/properties/c2pa/properties/manifest_url
+              created_time:
+                format: date-time
+                type:
+                  - string
+              declared_at:
+                format: date-time
+                type:
+                  - string
+              declared_by:
+                required:
+                  - role
+                type:
+                  - object
+                properties:
+                  agent_url:
+                    $at: core/provenance.json#/properties/declared_by/properties/agent_url
+                  role:
+                    $at: core/provenance.json#/properties/declared_by/properties/role
+              digital_source_type:
+                enum:
+                  - algorithmic_media
+                  - composite_capture
+                  - composite_synthetic
+                  - composite_with_trained_algorithmic_media
+                  - data_driven_media
+                  - digital_capture
+                  - digital_creation
+                  - human_edits
+                  - trained_algorithmic_media
+              disclosure:
+                required:
+                  - required
+                type:
+                  - object
+                properties:
+                  jurisdictions:
+                    $at: core/provenance.json#/properties/disclosure/properties/jurisdictions
+                  required:
+                    $at: core/provenance.json#/properties/disclosure/properties/required
+              embedded_provenance:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/embedded_provenance/items
+              ext:
+                type:
+                  - object
+              human_oversight:
+                enum:
+                  - directed
+                  - edited
+                  - none
+                  - prompt_only
+                  - selected
+              synthetic_depiction:
+                type:
+                  - boolean
+              verification:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/verification/items
+              watermarks:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/watermarks/items
+          published_time:
+            format: date-time
+            type:
+              - string
+          url:
+            format: uri
+            type:
+              - string
+          variant_id:
+            type:
+              - string
+    direction: tighten
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. The URL reference is admitted by the required removal above (its witness);
+      this line only adds the union. Witness, checked by hand: content-standards/content-standards.json
+      /calibration_exemplars/fail/0 =
+      {"property_rid":"rid_1","artifact_id":"article_1","assets":[],"type":"url","value":"https://example.com/a"} is
+      valid at the base (an artifact) and invalid at the head, where it matches both branches. The request copies'
+      union already rejects it. #9170's guard on the URL branch, ported at the merge of #8536 fefaf661cb, accepts it
+      again.
+  - location: core/calibration-exemplars.json#/properties/fail/items
+    keyword: properties
+    old:
+      artifact_id:
+        type:
+          - string
+      assets:
+        maxItems: 200
+        type:
+          - array
+        items:
+          discriminator:
+            propertyName: type
+          oneOf:
+            - required:
+                - type
+                - url
+              type:
+                - object
+              properties:
+                access:
+                  $at: content-standards/artifact.json#/$defs/asset_access
+                alt_text:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/alt_text
+                caption:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/caption
+                height:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/height
+                provenance:
+                  $at: core/provenance.json#
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/type
+                url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/url
+                width:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/width
+            - required:
+                - type
+                - url
+              type:
+                - object
+              properties:
+                access:
+                  $at: content-standards/artifact.json#/$defs/asset_access
+                duration_ms:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/duration_ms
+                provenance:
+                  $at: core/provenance.json#
+                thumbnail_url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/thumbnail_url
+                transcript:
+                  $at: content-standards/artifact.json#/$defs/transcript
+                transcript_format:
+                  $at: content-standards/artifact.json#/$defs/transcript_format
+                transcript_source:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/transcript_source
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/type
+                url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/url
+            - required:
+                - type
+                - url
+              type:
+                - object
+              properties:
+                access:
+                  $at: content-standards/artifact.json#/$defs/asset_access
+                duration_ms:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/duration_ms
+                provenance:
+                  $at: core/provenance.json#
+                transcript:
+                  $at: content-standards/artifact.json#/$defs/transcript
+                transcript_format:
+                  $at: content-standards/artifact.json#/$defs/transcript_format
+                transcript_source:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/transcript_source
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/type
+                url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/url
+            - required:
+                - content
+                - type
+              type:
+                - object
+              properties:
+                content:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/content
+                content_format:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/content_format
+                heading_level:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/heading_level
+                language:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/language
+                provenance:
+                  $at: core/provenance.json#
+                role:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/role
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/type
+      format_id:
+        required:
+          - agent_url
+          - id
+        type:
+          - object
+        dependencies:
+          height:
+            - width
+          pixel_ratio:
+            - height
+            - width
+          width:
+            - height
+        properties:
+          agent_url:
+            format: uri
+            type:
+              - string
+          duration_ms:
+            minimum: 1
+            type:
+              - number
+          height:
+            minimum: 1
+            type:
+              - integer
+          id:
+            pattern: ^[a-zA-Z0-9_-]+$
+            type:
+              - string
+          pixel_ratio:
+            exclusiveMinimum: 0
+            type:
+              - number
+          width:
+            minimum: 1
+            type:
+              - integer
+      format_kind:
+        enum:
+          - agent_placement
+          - audio_daast
+          - audio_hosted
+          - audio_vast
+          - coordinated_placements
+          - custom
+          - display_tag
+          - html5
+          - image
+          - image_carousel
+          - native_in_feed
+          - responsive_creative
+          - seller_rendered_stateful_display
+          - sponsored_placement
+          - video_hosted
+          - video_vast
+      identifiers:
+        type:
+          - object
+        properties:
+          apple_podcast_id:
+            type:
+              - string
+          podcast_guid:
+            type:
+              - string
+          rss_url:
+            format: uri
+            type:
+              - string
+          spotify_collection_id:
+            type:
+              - string
+          youtube_video_id:
+            type:
+              - string
+      last_update_time:
+        format: date-time
+        type:
+          - string
+      metadata:
+        type:
+          - object
+        properties:
+          author:
+            type:
+              - string
+          canonical:
+            format: uri
+            type:
+              - string
+          json_ld:
+            type:
+              - array
+            items:
+              type:
+                - object
+          keywords:
+            type:
+              - string
+          open_graph:
+            type:
+              - object
+          twitter_card:
+            type:
+              - object
+      property_rid:
+        type:
+          - string
+      provenance:
+        type:
+          - object
+        properties:
+          ai_tool:
+            required:
+              - name
+            type:
+              - object
+            properties:
+              name:
+                type:
+                  - string
+              provider:
+                type:
+                  - string
+              version:
+                type:
+                  - string
+          c2pa:
+            required:
+              - manifest_url
+            type:
+              - object
+            properties:
+              manifest_url:
+                format: uri
+                type:
+                  - string
+          created_time:
+            format: date-time
+            type:
+              - string
+          declared_at:
+            format: date-time
+            type:
+              - string
+          declared_by:
+            required:
+              - role
+            type:
+              - object
+            properties:
+              agent_url:
+                format: uri
+                type:
+                  - string
+              role:
+                enum:
+                  - advertiser
+                  - agency
+                  - creator
+                  - platform
+                  - tool
+          digital_source_type:
+            enum:
+              - algorithmic_media
+              - composite_capture
+              - composite_synthetic
+              - composite_with_trained_algorithmic_media
+              - data_driven_media
+              - digital_capture
+              - digital_creation
+              - human_edits
+              - trained_algorithmic_media
+          disclosure:
+            required:
+              - required
+            type:
+              - object
+            properties:
+              jurisdictions:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/disclosure/properties/jurisdictions/items
+              required:
+                type:
+                  - boolean
+          embedded_provenance:
+            minItems: 1
+            type:
+              - array
+            items:
+              required:
+                - method
+                - provider
+              type:
+                - object
+              properties:
+                embedded_at:
+                  $at: core/provenance.json#/properties/embedded_provenance/items/properties/embedded_at
+                method:
+                  $at: enums/embedded-provenance-method.json#
+                provider:
+                  $at: core/provenance.json#/properties/embedded_provenance/items/properties/provider
+                standard:
+                  $at: core/provenance.json#/properties/embedded_provenance/items/properties/standard
+                verify_agent:
+                  $at: core/verifier-agent-ref.json#
+          ext:
+            type:
+              - object
+          human_oversight:
+            enum:
+              - directed
+              - edited
+              - none
+              - prompt_only
+              - selected
+          synthetic_depiction:
+            type:
+              - boolean
+          verification:
+            minItems: 1
+            type:
+              - array
+            items:
+              required:
+                - result
+                - verified_by
+              type:
+                - object
+              properties:
+                confidence:
+                  $at: core/fraction.json#
+                details_url:
+                  $at: core/provenance.json#/properties/verification/items/properties/details_url
+                result:
+                  $at: core/provenance.json#/properties/verification/items/properties/result
+                verified_by:
+                  $at: core/provenance.json#/properties/verification/items/properties/verified_by
+                verified_time:
+                  $at: core/provenance.json#/properties/verification/items/properties/verified_time
+          watermarks:
+            minItems: 1
+            type:
+              - array
+            items:
+              required:
+                - media_type
+                - provider
+              type:
+                - object
+              properties:
+                c2pa_action:
+                  $at: enums/c2pa-watermark-action.json#
+                embedded_at:
+                  $at: core/provenance.json#/properties/watermarks/items/properties/embedded_at
+                media_type:
+                  $at: enums/watermark-media-type.json#
+                provider:
+                  $at: core/provenance.json#/properties/watermarks/items/properties/provider
+                verify_agent:
+                  $at: core/verifier-agent-ref.json#
+      published_time:
+        format: date-time
+        type:
+          - string
+      url:
+        format: uri
+        type:
+          - string
+      variant_id:
+        type:
+          - string
+    direction: loosen
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. The tool's witness search found none (cannot attribute: properties/items is
+      not written at content-standards/artifact.json#).
+  - location: core/calibration-exemplars.json#/properties/pass/items
+    keyword: required
+    old:
+      - artifact_id
+      - assets
+      - property_rid
+    direction: loosen
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. Witness: content-standards/content-standards.json
+      /calibration_exemplars/pass/0 = {"type":"url","value":"https://example.com/x"} (loosen).
+  - location: core/calibration-exemplars.json#/properties/pass/items
+    keyword: type
+    old:
+      - object
+    direction: none
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. Masked by the oneOf: both branches state type object, so removing type
+      object from the items changes no payload's verdict.
+  - location: core/calibration-exemplars.json#/properties/pass/items
+    keyword: oneOf
+    new:
+      - required:
+          - type
+          - value
+        type:
+          - object
+        properties:
+          language:
+            maxLength: 63
+            minLength: 2
+            pattern: >-
+              ^(?:[a-z]{2,8}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*(?:-[0-9a-wy-z](?:-[a-z0-9]{2,8})+)*(?:-x(?:-[a-z0-9]{1,8})+)?|x(?:-[a-z0-9]{1,8})+)$
+            type:
+              - string
+          type:
+            const: url
+          value:
+            format: uri
+            type:
+              - string
+      - required:
+          - artifact_id
+          - assets
+          - property_rid
+        type:
+          - object
+        properties:
+          artifact_id:
+            type:
+              - string
+          assets:
+            maxItems: 200
+            type:
+              - array
+            items:
+              discriminator:
+                propertyName: type
+              oneOf:
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/0
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/1
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/2
+                - $at: content-standards/artifact.json#/properties/assets/items/oneOf/3
+          format_id:
+            required:
+              - agent_url
+              - id
+            type:
+              - object
+            dependencies:
+              height:
+                - width
+              pixel_ratio:
+                - height
+                - width
+              width:
+                - height
+            properties:
+              agent_url:
+                format: uri
+                type:
+                  - string
+              duration_ms:
+                minimum: 1
+                type:
+                  - number
+              height:
+                minimum: 1
+                type:
+                  - integer
+              id:
+                pattern: ^[a-zA-Z0-9_-]+$
+                type:
+                  - string
+              pixel_ratio:
+                exclusiveMinimum: 0
+                type:
+                  - number
+              width:
+                minimum: 1
+                type:
+                  - integer
+          format_kind:
+            enum:
+              - agent_placement
+              - audio_daast
+              - audio_hosted
+              - audio_vast
+              - coordinated_placements
+              - custom
+              - display_tag
+              - html5
+              - image
+              - image_carousel
+              - native_in_feed
+              - responsive_creative
+              - seller_rendered_stateful_display
+              - sponsored_placement
+              - video_hosted
+              - video_vast
+          identifiers:
+            type:
+              - object
+            properties:
+              apple_podcast_id:
+                type:
+                  - string
+              podcast_guid:
+                type:
+                  - string
+              rss_url:
+                format: uri
+                type:
+                  - string
+              spotify_collection_id:
+                type:
+                  - string
+              youtube_video_id:
+                type:
+                  - string
+          last_update_time:
+            format: date-time
+            type:
+              - string
+          metadata:
+            type:
+              - object
+            properties:
+              author:
+                type:
+                  - string
+              canonical:
+                format: uri
+                type:
+                  - string
+              json_ld:
+                type:
+                  - array
+                items:
+                  $at: content-standards/artifact.json#/properties/metadata/properties/json_ld/items
+              keywords:
+                type:
+                  - string
+              open_graph:
+                type:
+                  - object
+              twitter_card:
+                type:
+                  - object
+          property_rid:
+            type:
+              - string
+          provenance:
+            type:
+              - object
+            properties:
+              ai_tool:
+                required:
+                  - name
+                type:
+                  - object
+                properties:
+                  name:
+                    $at: core/provenance.json#/properties/ai_tool/properties/name
+                  provider:
+                    $at: core/provenance.json#/properties/ai_tool/properties/provider
+                  version:
+                    $at: core/provenance.json#/properties/ai_tool/properties/version
+              c2pa:
+                required:
+                  - manifest_url
+                type:
+                  - object
+                properties:
+                  manifest_url:
+                    $at: core/provenance.json#/properties/c2pa/properties/manifest_url
+              created_time:
+                format: date-time
+                type:
+                  - string
+              declared_at:
+                format: date-time
+                type:
+                  - string
+              declared_by:
+                required:
+                  - role
+                type:
+                  - object
+                properties:
+                  agent_url:
+                    $at: core/provenance.json#/properties/declared_by/properties/agent_url
+                  role:
+                    $at: core/provenance.json#/properties/declared_by/properties/role
+              digital_source_type:
+                enum:
+                  - algorithmic_media
+                  - composite_capture
+                  - composite_synthetic
+                  - composite_with_trained_algorithmic_media
+                  - data_driven_media
+                  - digital_capture
+                  - digital_creation
+                  - human_edits
+                  - trained_algorithmic_media
+              disclosure:
+                required:
+                  - required
+                type:
+                  - object
+                properties:
+                  jurisdictions:
+                    $at: core/provenance.json#/properties/disclosure/properties/jurisdictions
+                  required:
+                    $at: core/provenance.json#/properties/disclosure/properties/required
+              embedded_provenance:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/embedded_provenance/items
+              ext:
+                type:
+                  - object
+              human_oversight:
+                enum:
+                  - directed
+                  - edited
+                  - none
+                  - prompt_only
+                  - selected
+              synthetic_depiction:
+                type:
+                  - boolean
+              verification:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/verification/items
+              watermarks:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/watermarks/items
+          published_time:
+            format: date-time
+            type:
+              - string
+          url:
+            format: uri
+            type:
+              - string
+          variant_id:
+            type:
+              - string
+    direction: tighten
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. The URL reference is admitted by the required removal above (its witness);
+      this line only adds the union. Witness, checked by hand: content-standards/content-standards.json
+      /calibration_exemplars/pass/0 =
+      {"property_rid":"rid_1","artifact_id":"article_1","assets":[],"type":"url","value":"https://example.com/a"} is
+      valid at the base (an artifact) and invalid at the head, where it matches both branches. The request copies'
+      union already rejects it. #9170's guard on the URL branch, ported at the merge of #8536 fefaf661cb, accepts it
+      again.
+  - location: core/calibration-exemplars.json#/properties/pass/items
+    keyword: properties
+    old:
+      artifact_id:
+        type:
+          - string
+      assets:
+        maxItems: 200
+        type:
+          - array
+        items:
+          discriminator:
+            propertyName: type
+          oneOf:
+            - required:
+                - type
+                - url
+              type:
+                - object
+              properties:
+                access:
+                  $at: content-standards/artifact.json#/$defs/asset_access
+                alt_text:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/alt_text
+                caption:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/caption
+                height:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/height
+                provenance:
+                  $at: core/provenance.json#
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/type
+                url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/url
+                width:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/1/properties/width
+            - required:
+                - type
+                - url
+              type:
+                - object
+              properties:
+                access:
+                  $at: content-standards/artifact.json#/$defs/asset_access
+                duration_ms:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/duration_ms
+                provenance:
+                  $at: core/provenance.json#
+                thumbnail_url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/thumbnail_url
+                transcript:
+                  $at: content-standards/artifact.json#/$defs/transcript
+                transcript_format:
+                  $at: content-standards/artifact.json#/$defs/transcript_format
+                transcript_source:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/transcript_source
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/type
+                url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/2/properties/url
+            - required:
+                - type
+                - url
+              type:
+                - object
+              properties:
+                access:
+                  $at: content-standards/artifact.json#/$defs/asset_access
+                duration_ms:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/duration_ms
+                provenance:
+                  $at: core/provenance.json#
+                transcript:
+                  $at: content-standards/artifact.json#/$defs/transcript
+                transcript_format:
+                  $at: content-standards/artifact.json#/$defs/transcript_format
+                transcript_source:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/transcript_source
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/type
+                url:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/3/properties/url
+            - required:
+                - content
+                - type
+              type:
+                - object
+              properties:
+                content:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/content
+                content_format:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/content_format
+                heading_level:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/heading_level
+                language:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/language
+                provenance:
+                  $at: core/provenance.json#
+                role:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/role
+                type:
+                  $at: content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/type
+      format_id:
+        required:
+          - agent_url
+          - id
+        type:
+          - object
+        dependencies:
+          height:
+            - width
+          pixel_ratio:
+            - height
+            - width
+          width:
+            - height
+        properties:
+          agent_url:
+            format: uri
+            type:
+              - string
+          duration_ms:
+            minimum: 1
+            type:
+              - number
+          height:
+            minimum: 1
+            type:
+              - integer
+          id:
+            pattern: ^[a-zA-Z0-9_-]+$
+            type:
+              - string
+          pixel_ratio:
+            exclusiveMinimum: 0
+            type:
+              - number
+          width:
+            minimum: 1
+            type:
+              - integer
+      format_kind:
+        enum:
+          - agent_placement
+          - audio_daast
+          - audio_hosted
+          - audio_vast
+          - coordinated_placements
+          - custom
+          - display_tag
+          - html5
+          - image
+          - image_carousel
+          - native_in_feed
+          - responsive_creative
+          - seller_rendered_stateful_display
+          - sponsored_placement
+          - video_hosted
+          - video_vast
+      identifiers:
+        type:
+          - object
+        properties:
+          apple_podcast_id:
+            type:
+              - string
+          podcast_guid:
+            type:
+              - string
+          rss_url:
+            format: uri
+            type:
+              - string
+          spotify_collection_id:
+            type:
+              - string
+          youtube_video_id:
+            type:
+              - string
+      last_update_time:
+        format: date-time
+        type:
+          - string
+      metadata:
+        type:
+          - object
+        properties:
+          author:
+            type:
+              - string
+          canonical:
+            format: uri
+            type:
+              - string
+          json_ld:
+            type:
+              - array
+            items:
+              type:
+                - object
+          keywords:
+            type:
+              - string
+          open_graph:
+            type:
+              - object
+          twitter_card:
+            type:
+              - object
+      property_rid:
+        type:
+          - string
+      provenance:
+        type:
+          - object
+        properties:
+          ai_tool:
+            required:
+              - name
+            type:
+              - object
+            properties:
+              name:
+                type:
+                  - string
+              provider:
+                type:
+                  - string
+              version:
+                type:
+                  - string
+          c2pa:
+            required:
+              - manifest_url
+            type:
+              - object
+            properties:
+              manifest_url:
+                format: uri
+                type:
+                  - string
+          created_time:
+            format: date-time
+            type:
+              - string
+          declared_at:
+            format: date-time
+            type:
+              - string
+          declared_by:
+            required:
+              - role
+            type:
+              - object
+            properties:
+              agent_url:
+                format: uri
+                type:
+                  - string
+              role:
+                enum:
+                  - advertiser
+                  - agency
+                  - creator
+                  - platform
+                  - tool
+          digital_source_type:
+            enum:
+              - algorithmic_media
+              - composite_capture
+              - composite_synthetic
+              - composite_with_trained_algorithmic_media
+              - data_driven_media
+              - digital_capture
+              - digital_creation
+              - human_edits
+              - trained_algorithmic_media
+          disclosure:
+            required:
+              - required
+            type:
+              - object
+            properties:
+              jurisdictions:
+                minItems: 1
+                type:
+                  - array
+                items:
+                  $at: core/provenance.json#/properties/disclosure/properties/jurisdictions/items
+              required:
+                type:
+                  - boolean
+          embedded_provenance:
+            minItems: 1
+            type:
+              - array
+            items:
+              required:
+                - method
+                - provider
+              type:
+                - object
+              properties:
+                embedded_at:
+                  $at: core/provenance.json#/properties/embedded_provenance/items/properties/embedded_at
+                method:
+                  $at: enums/embedded-provenance-method.json#
+                provider:
+                  $at: core/provenance.json#/properties/embedded_provenance/items/properties/provider
+                standard:
+                  $at: core/provenance.json#/properties/embedded_provenance/items/properties/standard
+                verify_agent:
+                  $at: core/verifier-agent-ref.json#
+          ext:
+            type:
+              - object
+          human_oversight:
+            enum:
+              - directed
+              - edited
+              - none
+              - prompt_only
+              - selected
+          synthetic_depiction:
+            type:
+              - boolean
+          verification:
+            minItems: 1
+            type:
+              - array
+            items:
+              required:
+                - result
+                - verified_by
+              type:
+                - object
+              properties:
+                confidence:
+                  $at: core/fraction.json#
+                details_url:
+                  $at: core/provenance.json#/properties/verification/items/properties/details_url
+                result:
+                  $at: core/provenance.json#/properties/verification/items/properties/result
+                verified_by:
+                  $at: core/provenance.json#/properties/verification/items/properties/verified_by
+                verified_time:
+                  $at: core/provenance.json#/properties/verification/items/properties/verified_time
+          watermarks:
+            minItems: 1
+            type:
+              - array
+            items:
+              required:
+                - media_type
+                - provider
+              type:
+                - object
+              properties:
+                c2pa_action:
+                  $at: enums/c2pa-watermark-action.json#
+                embedded_at:
+                  $at: core/provenance.json#/properties/watermarks/items/properties/embedded_at
+                media_type:
+                  $at: enums/watermark-media-type.json#
+                provider:
+                  $at: core/provenance.json#/properties/watermarks/items/properties/provider
+                verify_agent:
+                  $at: core/verifier-agent-ref.json#
+      published_time:
+        format: date-time
+        type:
+          - string
+      url:
+        format: uri
+        type:
+          - string
+      variant_id:
+        type:
+          - string
+    direction: loosen
+    side: response
+    note: >-
+      new:core/calibration-exemplars.json. The tool's witness search found none (cannot attribute: properties/items is
+      not written at content-standards/artifact.json#).
+  - location: core/locale-tag.json#
+    keyword: maxLength
+    new: 63
+    direction: tighten
+    side: request
+    note: >-
+      content-standards/create-content-standards-request.json#/properties/calibration_exemplars ->
+      new:core/calibration-exemplars.json. Witness: content-standards/create-content-standards-request.json
+      /calibration_exemplars/fail/0/language =
+      "aa-Aaaa-AA-aaaaa-aaaaa-aaaaa-aaaaa-aaaaa-aaaaa-aaaaa-aaaaa-aaaaa-aaaaa-aaaaa... (tighten).
+  - location: core/locale-tag.json#
+    keyword: minLength
+    new: 2
+    direction: none
+    side: request
+    note: >-
+      content-standards/create-content-standards-request.json#/properties/calibration_exemplars ->
+      new:core/calibration-exemplars.json. Masked by the pattern: every string core/locale-tag.json's pattern accepts
+      has at least 2 characters, so minLength 2 changes no payload's verdict.
+  - location: core/locale-tag.json#
+    keyword: pattern
+    new: >-
+      ^(?:[a-z]{2,8}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*(?:-[0-9a-wy-z](?:-[a-z0-9]{2,8})+)*(?:-x(?:-[a-z0-9]{1,8})+)?|x(?:-[a-z0-9]{1,8})+)$
+    direction: tighten
+    side: request
+    note: >-
+      content-standards/create-content-standards-request.json#/properties/calibration_exemplars ->
+      new:core/calibration-exemplars.json. Witness: content-standards/create-content-standards-request.json
+      /calibration_exemplars/fail/0/language = "EN" (tighten).

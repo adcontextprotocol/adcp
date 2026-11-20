@@ -29,3 +29,5 @@ Delivery and reporting objects have one definition each under `core/`, including
 Media buy lifecycle objects have one definition each under `core/`, including `cancellation`, `accepted-proposal`, `io-acceptance`, `catalog-match`, `media-buy-submitted`, and `media-buy-failed-result`. Catalog match IDs and IO acceptance IDs take their named bounds, and the `build_creative` per-leaf `catalog_item_ref` requires `item_id`.
 
 Governance and attestation objects have one definition each under `core/`, including `governance-finding`, `governance-delivery-statement`, `governance-delivery-metrics`, `governance-delivery-observation`, `plan-budget-summary`, and the attestation identity definitions. Retained delivery statements require `reporting_period`, and regulatory jurisdictions are ISO 3166-1 alpha-2 codes.
+
+Content standards objects have one definition each under `core/`: `calibration-exemplars`, `calibration-url-reference`, `feature-check-result`, and `bulk-pagination`. Calibration URL languages are BCP 47 tags (`core/locale-tag.json`), and bulk pagination cursors are non-empty.

@@ -40,20 +40,8 @@
       "minItems": 1
     },
     "calibration_exemplars": {
-      "type": "object",
-      "description": "Training/test set to calibrate policy interpretation. Provides concrete examples of pass/fail decisions.",
-      "properties": {
-        "pass": {
-          "type": "array",
-          "items": { "$ref": "/schemas/content-standards/artifact.json" },
-          "description": "Artifacts that pass the content standards"
-        },
-        "fail": {
-          "type": "array",
-          "items": { "$ref": "/schemas/content-standards/artifact.json" },
-          "description": "Artifacts that fail the content standards"
-        }
-      }
+      "$ref": "/schemas/core/calibration-exemplars.json",
+      "description": "Training/test set to calibrate policy interpretation. Provides concrete examples of pass/fail decisions."
     },
     "pricing_options": {
       "type": "array",

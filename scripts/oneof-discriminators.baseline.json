@@ -96,16 +96,6 @@
       "variants": 2,
       "note": "0:[verdict] | 1:[errors]"
     },
-    "content-standards/create-content-standards-request.json##/properties/calibration_exemplars/properties/fail/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
-    "content-standards/create-content-standards-request.json##/properties/calibration_exemplars/properties/pass/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
     "content-standards/create-content-standards-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
@@ -126,16 +116,6 @@
       "variants": 2,
       "note": "0:[standards] | 1:[errors]"
     },
-    "content-standards/update-content-standards-request.json##/properties/calibration_exemplars/properties/fail/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
-    "content-standards/update-content-standards-request.json##/properties/calibration_exemplars/properties/pass/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
     "content-standards/validate-content-delivery-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
@@ -155,6 +135,16 @@
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:string | 1:req=[family]"
+    },
+    "core/calibration-exemplars.json##/properties/fail/items/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
+    },
+    "core/calibration-exemplars.json##/properties/pass/items/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
     },
     "core/catchment.json##/oneOf": {
       "kind": "narrowable",

@@ -17,16 +17,6 @@
       "rationale": "Existing content-standards scope language values are retained for wire compatibility."
     },
     {
-      "path": "content-standards/create-content-standards-request.json#/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
-    },
-    {
-      "path": "content-standards/create-content-standards-request.json#/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
-    },
-    {
       "path": "content-standards/create-content-standards-request.json#/properties/scope/properties/languages_any",
       "disposition": "legacy-language-boundary",
       "rationale": "Existing create-request scope language values are retained for wire compatibility."
@@ -35,16 +25,6 @@
       "path": "content-standards/list-content-standards-request.json#/properties/languages",
       "disposition": "legacy-language-boundary",
       "rationale": "Existing list filter language values predate the canonical primitive."
-    },
-    {
-      "path": "content-standards/update-content-standards-request.json#/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
-    },
-    {
-      "path": "content-standards/update-content-standards-request.json#/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
     },
     {
       "path": "content-standards/update-content-standards-request.json#/properties/scope/properties/languages_any",

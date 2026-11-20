@@ -2378,6 +2378,138 @@
         "quote": "\"signature_id\": { \"type\": \"string\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on signature_id in media-buy/accept-proposal-request.json. An electronic signature reference, which core/io-acceptance.json keeps non-empty."
+    },
+    {
+      "file": "collection/get-collection-list-request.json",
+      "pointer": "/properties/pagination/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/get-media-buy-artifacts-request.json",
+      "pointer": "/properties/pagination/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on core/locale-tag.json in core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "property/get-property-list-request.json",
+      "pointer": "/properties/pagination/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
     }
   ]
 }

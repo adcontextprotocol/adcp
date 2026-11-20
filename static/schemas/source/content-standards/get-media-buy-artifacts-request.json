@@ -36,20 +36,8 @@
       "description": "Filter to specific time period"
     },
     "pagination": {
-      "type": "object",
-      "description": "Pagination parameters. Uses higher limits than standard pagination because artifact result sets can be very large.",
-      "properties": {
-        "max_results": {
-          "$ref": "/schemas/core/bulk-page-size.json",
-          "default": 1000,
-          "description": "Maximum number of artifacts to return per page"
-        },
-        "cursor": {
-          "type": "string",
-          "description": "Opaque cursor from a previous response to fetch the next page"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/bulk-pagination.json",
+      "description": "Pagination parameters. Uses higher limits than standard pagination because artifact result sets can be very large."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

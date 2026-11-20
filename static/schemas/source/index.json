@@ -2520,9 +2520,21 @@
           "$ref": "/schemas/core/build-catalog-item-ref.json",
           "description": "Identifies the catalog item a build_creative fan-out produced a creative for."
         },
+        "bulk-pagination": {
+          "$ref": "/schemas/core/bulk-pagination.json",
+          "description": "Pagination parameters for bulk list requests, with higher page-size limits than standard pagination."
+        },
         "buyer-agent-ref": {
           "$ref": "/schemas/core/buyer-agent-ref.json",
           "description": "A reference to a buyer agent by its agent URL."
+        },
+        "calibration-exemplars": {
+          "$ref": "/schemas/core/calibration-exemplars.json",
+          "description": "Example pass and fail cases that calibrate how a policy is interpreted. Each example is a URL reference or a full content artifact."
+        },
+        "calibration-url-reference": {
+          "$ref": "/schemas/core/calibration-url-reference.json",
+          "description": "URL reference: a specific page to fetch and evaluate."
         },
         "cancellation": {
           "$ref": "/schemas/core/cancellation.json",
@@ -2619,6 +2631,10 @@
         "evidence-max-age": {
           "$ref": "/schemas/core/evidence-max-age.json",
           "description": "The maximum age of evidence, as a duration in seconds, minutes, hours, or days. Campaign-relative durations are not allowed."
+        },
+        "feature-check-result": {
+          "$ref": "/schemas/core/feature-check-result.json",
+          "description": "The result of checking one feature against a policy: status, the requirement checked, an explanation, and a confidence."
         },
         "fixed-duration": {
           "$ref": "/schemas/core/fixed-duration.json",
