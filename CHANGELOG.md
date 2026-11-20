@@ -1207,6 +1207,21 @@
   
   Directory scenarios in `scenarios.json` can carry `requests`, which a harness signs with a named key and verifies against that directory. D03 and D11 use them: a request signed with a key that has no valid directory signature gets `403`. D15 adds malformed extra Ed25519 keys, one with no `x` and one with a 31-byte `x`, which a verifier ignores.
 
+## 3.2.12
+
+### Patch Changes
+
+- 2d7e736: Campaign governance errata: make the task pages, audit-trail, safety-model and overview pages agree with the specification and schemas (adcp#8733, PR 1 of 3; 3.2.x backport of #8931 without the aggregation-key change, which ships in 3.3). No wire field, enum member or schema validation outcome changes.
+  
+  - Governance mode is described as governance agent configuration, not a plan field set through `sync_plans`. An agent that reports `mode` records the mode in force on each check entry.
+  - The safety model no longer promises budget reservation. Budget checks are point-in-time, as the specification already says. Where the pages said an intent or governance "reserves" an amount, they now say the ledger commits it when the outcome is reported.
+  - The `get_plan_audit_logs` field table names `plans[].entries[].verdict` instead of `status`, and the `delivery` outcome example is buyer-called.
+  - A plan re-sync is no longer described as re-evaluating active campaigns. Active buys are evaluated against the updated plan on their next `check_governance` call.
+  - Drift metrics use the schema vocabulary throughout: `escalations[]`, `escalation_rate`, `escalation_rate_trend`, `thresholds.escalation_rate_min` and `escalation_rate_max`. The `human_review_rate*` and `human_reviews[]` names never existed in a schema.
+  - Geo findings in the examples use `geo_compliance`, matching `categories_evaluated` on the same page.
+  - The legacy `check_governance` response branch (responses without `check_type`) is described as the legacy compatibility shape accepted during 3.x migration.
+- dd9ce2f: Stop the `webhook_emission` storyboard from failing sellers whose `create_media_buy` completes synchronously. When the primary trigger returns the media buy inline, the storyboard now checks that no task webhook arrives for it and skips the emitted-webhook phases. It still grades the webhook-signing JWKS of a synchronous seller that declares `webhook_signing.supported: true`. Triggers that return `submitted`, or `working` without a `media_buy_id`, are still graded on signed webhook delivery. A `working` response that carries `media_buy_id` is classified as synchronous, and its completion webhook fails `synchronous_trigger_silence`, until the runner reads the task status (adcontextprotocol/adcp-client#3682).
+
 ## 3.2.11
 
 ### Patch Changes
