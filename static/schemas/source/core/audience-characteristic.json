@@ -44,6 +44,7 @@
       "additionalProperties": true
     },
     "taxonomy": {
+      "title": "Audience Characteristic Taxonomy",
       "type": "object",
       "description": "External system that defines the dimension or value. Taxonomy metadata is descriptive and does not create exact demographic targeting semantics.",
       "properties": {

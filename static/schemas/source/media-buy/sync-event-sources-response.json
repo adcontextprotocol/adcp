@@ -70,6 +70,7 @@
                 "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
               },
               "setup": {
+                "title": "Event Source Implementation Setup",
                 "type": "object",
                 "description": "Implementation details for activating this event source (e.g. JavaScript tag, pixel URL)",
                 "properties": {

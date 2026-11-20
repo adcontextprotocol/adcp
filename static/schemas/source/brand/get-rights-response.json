@@ -141,6 +141,7 @@
           "type": "array",
           "description": "Results that matched but were filtered out, with reasons",
           "items": {
+            "title": "Excluded Rights Result",
             "type": "object",
             "properties": {
               "brand_id": {

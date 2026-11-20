@@ -166,6 +166,7 @@
               "additionalProperties": true
             },
             {
+              "title": "Per Ad Spend Optimization Target",
               "type": "object",
               "deprecated": true,
               "description": "DEPRECATED legacy target return per unit of ad spend. Normalize to package.bidding.roas with strength target while retaining this event goal and its value-bearing event source. Requires value_field on at least one event_sources entry.",

@@ -33,6 +33,7 @@
       "type": "array",
       "description": "Exceptions that remove periods. An entry without media_buy_id applies to the whole account. Opening or closing one fires principal.changed with reason reporting_subscription_changed. Retained for status_retention_days after until. When the account's covered offerings have different period boundaries, the seller lists one entry per offering_id, each with that offering's cutover instants, as for gaps and timezone_cutovers.",
       "items": {
+        "title": "Reporting Subscription Exclusion",
         "type": "object",
         "properties": {
           "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "description": "The offering whose periods this exception removes, when the account's covered offerings have different period boundaries; from and until are then that offering's cutover instants. Absent: the exception applies to every offering on the account (or buy, with media_buy_id)." },
@@ -97,6 +98,7 @@
       "type": "array",
       "description": "Intervals between a loss of authority and re-grant that the seller did not backfill (backfill_on_regrant false or absent). Periods starting in [from, until) are not owed. With backfill_on_regrant true no gap is recorded. A re-grant after the accounts_unauthorized entry expired is a fresh coverage start from authorized_at, with no gap. Retained for status_retention_days after until. Period boundaries differ between offerings, so when the account's covered offerings have different boundaries the seller lists one entry per offering_id, each with that offering's boundaries; an entry without offering_id applies to every offering on the account.",
       "items": {
+        "title": "Reporting Subscription Authorization Gap",
         "type": "object",
         "properties": {
           "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "description": "The offering whose boundaries from and until use, when covered offerings have different boundaries. Absent: the gap applies to every offering on the account." },

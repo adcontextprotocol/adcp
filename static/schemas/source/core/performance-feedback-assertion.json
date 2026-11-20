@@ -78,6 +78,7 @@
       "description": "Opaque producer-assigned study or model-run reference. Receivers use it for correlation only and MUST NOT interpret it as an experiment-execution instruction."
     },
     "evidence": {
+      "title": "Performance Assertion Evidence Summary",
       "type": "object",
       "x-status": "experimental",
       "description": "Small inline evidence summary used to weight the assertion without transporting the full study.",

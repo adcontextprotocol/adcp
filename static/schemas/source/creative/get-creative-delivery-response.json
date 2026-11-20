@@ -53,6 +53,7 @@
       "type": "array",
       "description": "Creative delivery data with variant breakdowns",
       "items": {
+        "title": "Creative Delivery Record",
         "type": "object",
         "properties": {
           "creative_id": {
@@ -121,6 +122,7 @@
       }
     },
     "pagination": {
+      "title": "Creative Delivery Offset Pagination",
       "type": "object",
       "description": "Pagination information. Present when the request included pagination parameters. **Note:** `get_creative_delivery` uses page-based pagination (`limit`/`offset`) for historical reasons, distinct from the cursor-based [`PaginationResponse`](/schemas/v3/core/pagination-response.json) used by `list_*` tools. Field naming aligned with `PaginationResponse.total_count` in 3.1; the legacy `total` field is retained as a deprecated alias until 4.0. Sellers MUST populate both fields identically; buyers SHOULD prefer `total_count` (the canonical name) and ignore `total` if both are present.",
       "properties": {

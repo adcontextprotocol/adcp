@@ -85,6 +85,7 @@
       "description": "Canonical 3.2 direct selector. Names the canonical format shape this package targets when the buyer is not selecting a published `format_option_ref`. Pair with `params` for dimensions, duration, codecs, or other constraints. New buyers MUST NOT combine this route with `format_option_refs` or deprecated `format_ids`. Receivers handling older 3.x multi-route requests MUST equivalence-check every present route before applying precedence and reject disagreement with `CONFLICTING_SELECTORS`. Product satisfaction is directional: broad `{ format_kind: \"image\" }` does not satisfy a fixed-size product declaration."
     },
     "params": {
+      "title": "Canonical Format Selector Params",
       "type": "object",
       "description": "Parameters for the direct canonical selector in `format_kind`. Shape follows the selected canonical's parameter vocabulary: dimensions (`width`, `height`, `sizes`), duration (`duration_ms_exact`, `duration_ms_range`), codecs, asset-source and slot narrowing, or other canonical-specific constraints. Requires `format_kind`. For fixed-size image selectors, `width` and `height` MUST co-occur; a selector containing only one dimension is schema-invalid. New buyers omit `params` when selecting by `format_option_refs` or `format_ids`; older multi-route requests are accepted only when every route selects the same product option set.",
       "additionalProperties": true

@@ -258,8 +258,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_426_000. The 4.0 length annotations on the named URL and ID schemas
 // (#8899, #8900) bring it to 1_426_550 bytes; bound at 1_427_000.
 // Defaulting every tagged-union tag to its const brings it to 1_430_872 bytes.
-// Bound at 1_431_000.
-const PARITY_COMPILE_LIMIT = 1_431_000;
+// Titling 209 objects after their concepts brings it to 1_432_197 bytes; bound
+// at 1_433_000.
+const PARITY_COMPILE_LIMIT = 1_433_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

@@ -23,6 +23,7 @@
           "type": "array",
           "description": "Results for each creative processed. Items with action='failed' indicate per-item validation/processing failures, not operation-level failures.",
           "items": {
+            "title": "Creative Sync Result",
             "type": "object",
             "properties": {
               "creative_id": {

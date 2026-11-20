@@ -26,6 +26,7 @@
       "description": "Whether the subscription creates new obligations. false is a cutover at deactivated_at: periods that started before it remain owed in full, and no later ones are created. The subscription stays readable for history."
     },
     "scope": {
+      "title": "Reporting Subscription Account Scope",
       "type": "object",
       "description": "Accounts covered. all_authorized_accounts is an explicit acknowledgment, never implicit, and follows the caller's account authority as it changes, including accounts other operators grant later; narrow it with operator_domains when the destination serves one operator. account_ids names specific accounts.",
       "properties": {
@@ -59,6 +60,7 @@
       "description": "Only accounts whose operator is one of these domains are in scope. Keeps an all-accounts subscription feeding an operator-specific destination from picking up accounts another operator grants later."
     },
     "selector": {
+      "title": "Reporting Offering Selector",
       "type": "object",
       "description": "Offering attributes that are stable across sellers. The seller resolves the selector separately for each account and its products. An account, buy, or package with no matching offering is excluded with reason offering_unsupported; that never fails the subscription. Rejects `offering_id`: the selector chooses by stable attributes, never by a seller-specific offering.",
       "properties": {
@@ -104,6 +106,7 @@
       "description": "When true, ends the caller's own active sync_accounts reporting_delivery_configs with the same feed_purpose on in-scope accounts where this subscription resolves an offering, by cutover, and the subscription takes over. Applied once per subscription_version, or when the flag changes to true. Never affects another principal's configurations or accounts this subscription excludes, and never advances an account's revision."
     },
     "destination": {
+      "title": "Reporting Subscription Destination",
       "type": "object",
       "description": "Managed delivery target. Omit to select only API-delivered (Core) offerings. When present, only offerings whose method matches the destination's pattern and transport match.",
       "properties": {

@@ -35,6 +35,7 @@
       "description": "Description of the creative for reviewer context"
     },
     "metadata": {
+      "title": "Creative Approval Metadata",
       "type": "object",
       "description": "Additional creative metadata (duration, dimensions, target audience, etc.)",
       "additionalProperties": true

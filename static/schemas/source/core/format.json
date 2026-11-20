@@ -146,6 +146,7 @@
                 "description": "Unit of measurement for width/height values. Defaults to 'px' when absent. Print formats use 'inches' or 'cm'."
               },
               "responsive": {
+                "title": "Responsive Dimension Flags",
                 "type": "object",
                 "description": "Indicates which dimensions are responsive/fluid",
                 "properties": {
@@ -718,6 +719,7 @@
       }
     },
     "delivery": {
+      "title": "Format Delivery Specification",
       "type": "object",
       "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
       "additionalProperties": true
@@ -771,6 +773,7 @@
       "additionalProperties": true
     },
     "accessibility": {
+      "title": "Format Accessibility Requirements",
       "type": "object",
       "description": "Accessibility posture of this format. Declares the WCAG conformance level that creatives produced by this format will meet.",
       "properties": {

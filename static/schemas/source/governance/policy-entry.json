@@ -89,6 +89,7 @@
       "description": "Name of the issuing body (e.g., \"UK Food Standards Agency\", \"US Federal Trade Commission\")."
     },
     "issuer": {
+      "title": "Policy Issuer",
       "type": "object",
       "description": "Machine-readable identity of the regulator, standards body, or platform operator that issued the policy. Registry publishers SHOULD provide this when independently versioned issuer policies must be distinguished.",
       "properties": {
@@ -116,6 +117,7 @@
       "description": "Implementation notes for governance agent developers. Not used in evaluation prompts."
     },
     "exemplars": {
+      "title": "Policy Exemplars",
       "type": "object",
       "description": "Calibration examples for governance agents, following the Content Standards pattern.",
       "properties": {

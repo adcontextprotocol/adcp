@@ -37,6 +37,7 @@
       "additionalProperties": true
     },
     "bounds": {
+      "title": "Overlay Bounds",
       "type": "object",
       "description": "Position and size of the overlay relative to the asset's own top-left corner. See 'unit' for coordinate interpretation.",
       "properties": {

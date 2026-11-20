@@ -100,6 +100,7 @@
         "layer": { "$ref": "#/definitions/layer" },
         "bounds": { "$ref": "#/definitions/rectangle" },
         "image_ref": {
+          "title": "Image Asset Reference",
           "type": "object",
           "required": ["uri", "digest"],
           "properties": {

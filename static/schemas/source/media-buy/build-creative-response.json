@@ -322,6 +322,7 @@
           "type": "array",
           "description": "One entry per produced creative group. With catalog fan-out, one entry per catalog item (bounded/sampled by max_creatives). This array is the produced group set; use variants[] inside each group for choose-among alternatives.",
           "items": {
+            "title": "Built Creative Group",
             "type": "object",
             "properties": {
               "build_creative_id": {

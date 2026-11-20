@@ -10,6 +10,7 @@
   ],
   "oneOf": [
     {
+      "title": "Report Media Buy Issue Recorded Response",
       "type": "object",
       "properties": {
         "outcome": {

@@ -19,6 +19,7 @@
       "description": "Plain-text explanation of what this transformer produces and how."
     },
     "metadata": {
+      "title": "Transformer Metadata",
       "type": "object",
       "description": "Transformer-specific attributes a buyer can filter or display (e.g. provider, modality, language).",
       "additionalProperties": true

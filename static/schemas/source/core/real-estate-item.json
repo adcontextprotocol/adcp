@@ -65,6 +65,7 @@
       "description": "Number of bathrooms (e.g., 2.5 for two full and one half bath)."
     },
     "area": {
+      "title": "Property Area",
       "type": "object",
       "description": "Property size.",
       "properties": {

@@ -34,6 +34,7 @@
           "description": "The action that was triggered"
         },
         "payload": {
+          "title": "SI Action Response Payload",
           "type": "object",
           "description": "Action-specific response data"
         }

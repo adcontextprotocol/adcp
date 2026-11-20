@@ -19,6 +19,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
+        "title": "Preview Provider Route",
         "type": "object",
         "required": ["format_option_id", "capability_id"],
         "properties": {

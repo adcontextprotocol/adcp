@@ -20,7 +20,7 @@
       "items": { "$ref": "/schemas/enums/adjustment-kind.json" },
       "uniqueItems": true
     },
-    "parameters": { "type": "object", "additionalProperties": true },
+    "parameters": { "title": "Pricing Option Parameters", "type": "object", "additionalProperties": true },
     "event_type": { "$ref": "/schemas/enums/event-type.json" },
     "custom_event_name": { "$ref": "/schemas/core/custom-event-name.json" },
     "event_source_id": { "$ref": "/schemas/core/event-source-id.json", "x-entity": "event_source" },

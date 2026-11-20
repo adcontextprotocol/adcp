@@ -11,10 +11,12 @@
   ],
   "oneOf": [
     {
+      "title": "Validate Content Delivery Success",
       "type": "object",
       "description": "Success response",
       "properties": {
         "summary": {
+          "title": "Content Delivery Validation Summary",
           "type": "object",
           "description": "Summary counts across all records",
           "properties": {
@@ -38,6 +40,7 @@
           "type": "array",
           "description": "Per-record evaluation results",
           "items": {
+            "title": "ContentDeliveryValidationResult",
             "type": "object",
             "properties": {
               "record_id": {

@@ -116,6 +116,7 @@
               "description": "Specific operation that failed"
             },
             "specific_context": {
+              "title": "Error Specific Context",
               "type": "object",
               "description": "Domain-specific error context",
               "additionalProperties": true
@@ -146,6 +147,7 @@
             "description": "Whether this was a request from client or response from server"
           },
           "data": {
+            "title": "Task History Entry Data",
             "type": "object",
             "description": "The full request or response payload",
             "additionalProperties": true

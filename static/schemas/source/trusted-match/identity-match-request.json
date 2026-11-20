@@ -99,6 +99,7 @@
                 "description": "Hash of the signal the proof commits to. The receiver MUST verify it matches the context the receiver expects (e.g. a buyer-issued nonce or the request_id) and that the attestation is within its freshness window; this, plus nullifier-reuse tracking, is the replay defense."
               },
               "proof": {
+                "title": "Identity Attestation Proof",
                 "type": "object",
                 "description": "Scheme-specific verifiable proof material. Opaque to this schema; validated by the scheme's verifier. MUST carry only scheme-defined verification material — never page context or additional user identifiers.",
                 "additionalProperties": true

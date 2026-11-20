@@ -237,6 +237,7 @@
       "description": "Selects an account-scoped transformer (discovered via list_transformers) to perform the build. One transformer per call. When present, the build uses this transformer and target_capability_id/target_capability_ids select which of its outputs to produce — they MUST be a subset of the transformer's output_capability_ids. Deprecated target_format_id fields use the legacy output_format_ids compatibility path. Render configuration goes in `config`."
     },
     "config": {
+      "title": "Build Creative Render Config",
       "type": "object",
       "description": "Typed render configuration for the selected transformer, keyed by each param's `field` (from the transformer's params[] in list_transformers). Example: { \"voice\": \"isaac\", \"speaking_rate\": 1.1, \"mastering_preset\": \"podcast\" }. The agent MUST validate `config` against the transformer's live params for this account and reject unrecognized keys and out-of-range / non-enumerated values with a field-attributed error (e.g. `config.voice`) rather than silently ignoring them — config drives a paid render. Genuinely vendor-specific or experimental knobs not declared as params belong in `ext`, not here. (The schema leaves this object open because legal keys are dynamic per transformer; strict validation is a normative agent obligation.) When `refine_from_build_variant_id` is set, `config` is applied as a DELTA over the parent leaf's config.",
       "additionalProperties": true

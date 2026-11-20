@@ -24,6 +24,7 @@
       "description": "Name of the collection list"
     },
     "change_summary": {
+      "title": "Collection List Change Summary",
       "type": "object",
       "description": "Summary of changes to the resolved list",
       "properties": {

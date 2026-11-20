@@ -392,6 +392,7 @@
                 "minItems": 1,
                 "description": "All identifiers for this panel, one entry per scheme",
                 "items": {
+                  "title": "OOH Panel Identifier",
                   "type": "object",
                   "properties": {
                     "id": {
@@ -564,6 +565,7 @@
           "minimum": 0
         },
         "viewed_seconds_percentiles": {
+          "title": "Viewed Seconds Percentiles",
           "type": "object",
           "description": "Percentile summary of the per-impression in-view durations whose arithmetic mean is reported in `viewed_seconds`. This object MUST use the same reporting row, measurement vendor, viewability `standard`, and `measurable_impressions` population as `viewed_seconds`; sellers MUST omit it when `measurable_impressions` is zero. Percentiles use the nearest-rank definition: sort the N observed durations in ascending order and select rank `ceil(p × N)` (one-based) for percentile p. Values MUST be non-decreasing from p25 through p95. The structured metric identity `viewed_seconds_percentiles` makes this optional surface discoverable and requestable; it is not sortable and the nested object remains the canonical carrier.",
           "properties": {

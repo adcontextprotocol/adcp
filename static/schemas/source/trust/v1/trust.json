@@ -115,6 +115,7 @@
         "pattern": "^[a-z0-9-]+$"
       },
       "additionalProperties": {
+        "title": "Trust Namespace Profile",
         "type": "object"
       }
     },
@@ -165,6 +166,7 @@
             {
               "properties": {
                 "adcp": {
+                  "title": "AdCP Agent Profile",
                   "type": "object",
                   "description": "AdCP profile for an agent entry. Carries the rights-agent fields from brand.json brand_agent_entry.",
                   "properties": {
@@ -267,6 +269,7 @@
             {
               "properties": {
                 "adcp": {
+                  "title": "AdCP Grant Profile",
                   "type": "object",
                   "description": "AdCP profile for a grant.",
                   "properties": {
@@ -320,6 +323,7 @@
             {
               "properties": {
                 "adcp": {
+                  "title": "AdCP Acknowledgement Profile",
                   "type": "object",
                   "description": "AdCP profile for an acknowledgement.",
                   "properties": {
@@ -354,6 +358,7 @@
         {
           "properties": {
             "adcp": {
+              "title": "AdCP Record Profile",
               "type": "object",
               "description": "AdCP profile for the whole record.",
               "properties": {
@@ -451,6 +456,7 @@
           "type": "object",
           "description": "Vendor extensions, namespaced as ext.{vendor}. The top level is closed so it cannot become a catch-all. Never key material or authority.",
           "additionalProperties": {
+            "title": "Trust Vendor Extension Entry",
             "type": "object"
           }
         }

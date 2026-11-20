@@ -17,6 +17,7 @@
       "description": "Resource or relationship affected by this warning. Required so multi-package and multi-creative responses remain machine-joinable."
     },
     "details": {
+      "title": "Warning Details",
       "type": "object",
       "description": "Optional seller-specific structured diagnostics. AdCP 3.2 defines interoperability through code and affected_resource only; buyers MUST NOT require portable keys inside details. Seller extensions that are not direct diagnostics belong in ext.",
       "additionalProperties": true

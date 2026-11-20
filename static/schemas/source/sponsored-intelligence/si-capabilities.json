@@ -83,6 +83,7 @@
       "additionalProperties": true
     },
     "components": {
+      "title": "SI Supported Visual Components",
       "type": "object",
       "description": "Visual components supported",
       "properties": {
@@ -96,6 +97,7 @@
           "maxItems": 16
         },
         "extensions": {
+          "title": "SI Component Platform Extensions",
           "type": "object",
           "description": "Platform-specific extensions (chatgpt_apps_sdk, maps, forms, etc.)",
           "additionalProperties": true

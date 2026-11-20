@@ -36,6 +36,7 @@
       "description": "Version of the methodology used to calculate this value"
     },
     "details": {
+      "title": "Property Feature Vendor Details",
       "type": "object",
       "description": "Additional vendor-specific details about this measurement",
       "additionalProperties": true

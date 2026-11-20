@@ -86,6 +86,7 @@
       "description": "Booking, cancellation, and material submission deadlines for this installment. Present when the installment has time-sensitive inventory that requires advance commitment or material delivery."
     },
     "derivative_of": {
+      "title": "Installment Derivation",
       "type": "object",
       "description": "When this installment is a clip, highlight, or recap derived from a full installment. The source installment_id must reference an installment within the same response.",
       "properties": {

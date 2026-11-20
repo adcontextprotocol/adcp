@@ -40,6 +40,7 @@
       "description": "Version of the methodology used to evaluate this feature"
     },
     "details": {
+      "title": "Creative Feature Result Details",
       "type": "object",
       "description": "Additional vendor-specific details about this evaluation",
       "additionalProperties": true

@@ -65,6 +65,7 @@
       "type": "array",
       "description": "Public content references adjacent to this ad opportunity. Each artifact identifies content via a public identifier the buyer can resolve independently — no private registry sync required.",
       "items": {
+        "title": "Content Artifact Reference",
         "type": "object",
         "properties": {
           "type": {
@@ -97,6 +98,7 @@
       "maxItems": 20
     },
     "geo": {
+      "title": "Viewer Coarse Geo",
       "type": "object",
       "description": "Coarse geographic location of the viewer. Publisher controls granularity — country is sufficient for regulatory compliance and volume filtering, region or metro helps with campaign targeting and valuation. Coarsened to prevent user identification: no postcode, no coordinates. All fields optional.",
       "properties": {

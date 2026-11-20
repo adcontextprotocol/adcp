@@ -14,6 +14,7 @@
     "proposals": {
       "type": "array",
       "items": {
+        "title": "Proposal Listing Entry",
         "type": "object",
         "properties": {
           "proposal": {

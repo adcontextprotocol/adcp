@@ -82,6 +82,7 @@
               "description": "Canonical concept this extension extends (e.g., `tracking`, `cta_vocabulary`, `destinations`, `placement`)."
             },
             "fields": {
+              "title": "Extension Field Schema Fragment",
               "type": "object",
               "description": "JSON Schema fragment declaring the additional fields this extension contributes."
             },
@@ -292,6 +293,7 @@
                       "type": "string"
                     },
                     {
+                      "title": "Filter Exclusion Value Object",
                       "type": "object"
                     }
                   ]

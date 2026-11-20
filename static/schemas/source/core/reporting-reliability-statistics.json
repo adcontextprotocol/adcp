@@ -51,6 +51,7 @@
       "maxItems": 16
     },
     "evidence": {
+      "title": "Reporting Reliability Evidence",
       "type": "object",
       "properties": {
         "basis": { "type": "string", "enum": ["reporting_ledger", "third_party_attestation"] },

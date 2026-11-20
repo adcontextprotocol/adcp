@@ -46,6 +46,7 @@
     "changes_checkpoint": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Opaque durable incremental-repair checkpoint for this periods snapshot. Consumers persist it only after consuming every page, then send it as changes_after. It is bound to authenticated caller, account, and filters and MUST order every committed obligation, revision, adjustment, materialization, consumer status statement, revision receipt, and adjustment receipt without gaps." },
     "account_id": { "$ref": "/schemas/core/account-id.json", "description": "Resolved seller/storefront account identifier." },
     "scope": {
+      "title": "Reporting Status Evaluated Scope",
       "type": "object",
       "description": "Exact denominator evaluated for summary or periods health. complete is valid only when scope_closed is true.",
       "properties": {
@@ -58,6 +59,7 @@
           "type": "array",
           "description": "Exact independently reconciled configuration generations in the denominator. A generation derived from a reporting subscription is listed once per resolved offering, with offering_id, because one subscription version can resolve several offerings (match all, different products, or a resolution change).",
           "items": {
+            "title": "Reporting Configuration Generation Reference",
             "type": "object",
             "properties": {
               "delivery_config_id": { "$ref": "/schemas/core/reporting-delivery-config-id.json" },

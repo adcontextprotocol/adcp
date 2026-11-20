@@ -18,6 +18,7 @@
       "type": "array",
       "description": "Resolved collections that passed filters (if resolve=true). Each entry contains identification and key metadata for seller matching.",
       "items": {
+        "title": "Resolved Collection List Entry",
         "type": "object",
         "properties": {
           "collection_rid": {

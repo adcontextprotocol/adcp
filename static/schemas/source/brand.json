@@ -359,6 +359,7 @@
         "file_size_bytes": { "type": "integer", "description": "File size in bytes" },
         "format": { "type": "string", "description": "File format (e.g., 'jpg', 'mp4', 'mp3')" },
         "metadata": {
+          "title": "Brand Asset Metadata",
           "type": "object",
           "description": "Additional asset-specific metadata",
           "additionalProperties": true
@@ -627,7 +628,7 @@
           "properties": {
             "provider": { "type": "string" },
             "avatar_id": { "type": "string" },
-            "settings": { "type": "object", "additionalProperties": true }
+            "settings": { "title": "Avatar Provider Settings", "type": "object", "additionalProperties": true }
           },
           "additionalProperties": true
         },
@@ -650,6 +651,7 @@
           "deprecated": true
         },
         "contact": {
+          "title": "Brand Contact",
           "type": "object",
           "description": "Brand-level contact information",
           "properties": {
@@ -918,6 +920,7 @@
           "description": "Depth of field preference. shallow: blurred background with subject isolation, deep: everything in focus"
         },
         "subject": {
+          "title": "Photography Subject Guidelines",
           "type": "object",
           "description": "Subject matter guidelines",
           "properties": {
@@ -1105,6 +1108,7 @@
           "description": "Secondary shapes in the brand vocabulary"
         },
         "usage": {
+          "title": "Brand Shape Usage Rules",
           "type": "object",
           "description": "Shape usage rules",
           "properties": {
@@ -1141,6 +1145,7 @@
           "description": "Corner style for icon paths"
         },
         "usage": {
+          "title": "Brand Icon Usage Rules",
           "type": "object",
           "description": "Icon usage rules",
           "properties": {
@@ -1319,6 +1324,7 @@
           "description": "Canonical renderer slots where this rule applies. Use this for deterministic logo-card, profile-mark, end-card, and lockup selection."
         },
         "minimum_size": {
+          "title": "Logo Minimum Size",
           "type": "object",
           "description": "Minimum rendered size needed for legibility.",
           "properties": {

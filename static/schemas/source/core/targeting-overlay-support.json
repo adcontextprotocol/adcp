@@ -38,6 +38,7 @@
           "$ref": "#/definitions/supported"
         },
         {
+          "title": "Geographic Metro Support",
           "type": "object",
           "properties": {
             "systems": {
@@ -102,6 +103,7 @@
       }
     },
     "placeSupport": {
+      "title": "Geographic Place Support",
       "type": "object",
       "description": "Binding permission to select named-place values later, keyed first by identifier system and then by country to avoid namespace and place-type collisions.",
       "properties": {
@@ -334,6 +336,7 @@
           "description": "Deprecated in 3.3. The 3.2 shorthand for { age: true }. Senders MUST send the object; receivers MUST accept true."
         },
         {
+          "title": "Demographic Targeting Support",
           "type": "object",
           "properties": {
             "age": { "$ref": "#/definitions/supported" },
@@ -365,6 +368,7 @@
       "anyOf": [
         { "$ref": "#/definitions/supported" },
         {
+          "title": "Placement Selection Support",
           "type": "object",
           "properties": {
             "max_values_per_package": { "type": "integer", "minimum": 1 },

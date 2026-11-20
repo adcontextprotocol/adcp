@@ -199,6 +199,7 @@
           "description": "Deprecated in 3.3. The 3.2 shorthand for { age: true }. Senders MUST send the object; receivers MUST accept true."
         },
         {
+          "title": "Demographic Targeting Requirement",
           "type": "object",
           "properties": {
             "age": { "$ref": "#/definitions/required" },

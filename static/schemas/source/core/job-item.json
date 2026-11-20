@@ -36,6 +36,7 @@
       "description": "Required experience level."
     },
     "salary": {
+      "title": "Salary Range",
       "type": "object",
       "description": "Salary range. Specify min and/or max with currency and period.",
       "properties": {

@@ -15,6 +15,7 @@
       "type": "array",
       "description": "Audit data for each requested plan.",
       "items": {
+        "title": "Plan Audit Record",
         "type": "object",
         "properties": {
           "plan_id": {
@@ -31,6 +32,7 @@
             "description": "Plan lifecycle status."
           },
           "budget": {
+            "title": "Plan Budget State",
             "type": "object",
             "description": "Budget state.",
             "properties": {
@@ -103,6 +105,7 @@
             }
           },
           "summary": {
+            "title": "Plan Audit Summary",
             "type": "object",
             "description": "Aggregate validation and outcome statistics.",
             "properties": {
@@ -123,6 +126,7 @@
                 "description": "Count of adjustment records accepted by the plan owner, including makegoods."
               },
               "statuses": {
+                "title": "Governance Check Status Counts",
                 "type": "object",
                 "description": "Count of each governance check status.",
                 "properties": {

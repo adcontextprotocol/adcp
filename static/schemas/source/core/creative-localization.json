@@ -38,6 +38,7 @@
   "type": "object",
   "properties": {
     "source": {
+      "title": "Creative Localization Source",
       "type": "object",
       "description": "Identity and locale of the source variant. Its asset payload is the parent creative's top-level `assets` object. Source identifies production provenance; it is not implicitly the serving default.",
       "properties": {

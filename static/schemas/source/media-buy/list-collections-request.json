@@ -27,6 +27,7 @@
       "maxItems": 100
     },
     "filters": {
+      "title": "List Collections Filters",
       "type": "object",
       "description": "Optional filters, applied with the selectors before pagination. Values within one filter are alternatives (OR); different filters combine with AND. Filters run on the seller's copy, so a match on genre, status, talent or kind is a discovery hint: buyers confirm those fields against the publisher's adagents.json before relying on them for suitability. A seller that cannot apply a filter it receives fails the request with VALIDATION_ERROR and never returns a broader result.",
       "properties": {

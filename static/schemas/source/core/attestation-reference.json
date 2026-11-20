@@ -72,6 +72,7 @@
       ]
     },
     "embedded_credential": {
+      "title": "Attestation Embedded Credential",
       "type": "object",
       "description": "Optional inline credential for private, authenticated, or offline delivery. It may accompany locator or be the only delivery path. Its format must be supported by the evaluator, and the evaluator MUST verify the credential exactly as it would a resolved credential.",
       "properties": {
@@ -119,6 +120,7 @@
       "minProperties": 1
     },
     "verify_agent": {
+      "title": "Attestation Verifier Nomination",
       "type": "object",
       "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally. A verifier call goes to the matched accepted_verifiers[] entry's agent_url, never to the presented string.",
       "properties": {

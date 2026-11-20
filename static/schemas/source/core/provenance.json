@@ -54,6 +54,7 @@
       }
     },
     "declared_by": {
+      "title": "Provenance Declarant",
       "type": "object",
       "description": "Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving parties to assess trust.",
       "properties": {
@@ -195,6 +196,7 @@
       "x-max-items-4.0": 4
     },
     "disclosure": {
+      "title": "AI Disclosure Requirements",
       "type": "object",
       "description": "Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and under which jurisdictions.",
       "properties": {
@@ -206,6 +208,7 @@
           "type": "array",
           "description": "Jurisdictions where disclosure obligations apply",
           "items": {
+            "title": "Provenance Disclosure Jurisdiction",
             "type": "object",
             "properties": {
               "country": {

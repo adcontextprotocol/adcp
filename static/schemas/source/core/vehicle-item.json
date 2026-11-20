@@ -44,6 +44,7 @@
       "description": "Trim level (e.g., 'EX', 'Limited', 'Sport')."
     },
     "mileage": {
+      "title": "Vehicle Mileage",
       "type": "object",
       "description": "Odometer reading.",
       "properties": {

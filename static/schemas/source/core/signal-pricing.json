@@ -140,6 +140,7 @@
           "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval."
         },
         "metadata": {
+          "title": "CustomPricingMetadata",
           "type": "object",
           "description": "Structured parameters for the custom model. Keys follow lowercase_snake_case. Values may be primitives, arrays, or nested objects. Must be sufficient for a human to understand the pricing basis and for a downstream system to reconstruct the charge. Vendors SHOULD include a `summary_for_operator` string (one or two sentences, suitable for display in a buyer's operator-review UI) so reviewers across vendors see a consistent prompt. Required operator-review fields (approver role, dollar threshold for automatic approval, escalation contact) MAY be surfaced via additional keys the buyer's review surface recognizes.",
           "additionalProperties": true,

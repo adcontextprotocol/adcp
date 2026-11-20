@@ -12,6 +12,7 @@
     "state_id": { "$ref": "/schemas/core/canvas-state-id.json" },
     "breakpoint_id": { "$ref": "/schemas/core/canvas-breakpoint-id.json" },
     "region": {
+      "title": "Canvas Constraint Region",
       "type": "object",
       "properties": {
         "x": { "type": "number", "minimum": 0 },

@@ -81,6 +81,7 @@
                 "description": "v2 canonical format the v1 pattern projects to."
               },
               "parameters": {
+                "title": "V1 Mapping Canonical Parameters",
                 "type": "object",
                 "description": "Optional parameters that narrow the canonical (e.g., width/height, vast_version). When present, become the params on the projected v2 ProductFormatDeclaration. The shape MUST be valid params for the named canonical.",
                 "additionalProperties": true

@@ -25,6 +25,7 @@
       "description": "One or more usage records. Each record is self-contained: it carries its own account, allowing a single request to span multiple accounts.",
       "minItems": 1,
       "items": {
+        "title": "Usage Record",
         "type": "object",
         "properties": {
           "account": {

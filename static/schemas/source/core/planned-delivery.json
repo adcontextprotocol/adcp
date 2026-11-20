@@ -18,6 +18,7 @@
       "description": "Digest of the proposal commercial_terms. The governance agent compares it to the digest bound during the intent check."
     },
     "geo": {
+      "title": "Planned Delivery Geo",
       "type": "object",
       "description": "Geographic targeting the seller will apply.",
       "properties": {

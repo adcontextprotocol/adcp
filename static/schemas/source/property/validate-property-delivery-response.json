@@ -20,6 +20,7 @@
       "x-entity": "property_list"
     },
     "summary": {
+      "title": "Property Delivery Validation Summary",
       "type": "object",
       "description": "Aggregate validation statistics",
       "properties": {

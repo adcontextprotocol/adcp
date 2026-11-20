@@ -33,6 +33,7 @@
       "type": "array",
       "description": "Stable reasons that some requested scope is not covered by the exact selected offering. These are capability facts, not delivery failures.",
       "items": {
+        "title": "Reporting Coverage Limitation",
         "type": "object",
         "properties": {
           "reason": { "type": "string", "enum": ["offering_unsupported", "account_entitlement_unavailable", "credential_scope_insufficient", "provider_limitation", "capability_unknown"] },

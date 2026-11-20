@@ -34,6 +34,7 @@
       "description": "partial means additional unpublished rules may apply and omission is unknown. complete means this profile is exhaustive only for its declared scope and version."
     },
     "scope": {
+      "title": "Acceptance Policy Profile Scope",
       "type": "object",
       "description": "The boundary within which a complete profile claims exhaustiveness. It is informative for partial profiles and mandatory for complete profiles.",
       "properties": {

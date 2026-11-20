@@ -35,6 +35,7 @@
       "description": "Human-readable summary suitable for an audit queue. Do not include PII, cross-tenant data, or vendor-only report details."
     },
     "details": {
+      "title": "Audit Observation Details",
       "type": "object",
       "description": "Audit-safe structured details. Mirrors the safe allowlist keys used for `PROVENANCE_CLAIM_CONTRADICTED`; value shapes remain observation-specific. Top-level `ext` remains the standard protocol extension point, but details do not allow arbitrary verifier response fields.",
       "properties": {

@@ -55,6 +55,7 @@
       "description": "Method used to produce this coverage forecast."
     },
     "scope": {
+      "title": "Signal Coverage Forecast Denominator",
       "type": "object",
       "description": "Explicit denominator for the coverage forecast. This identifies the inventory, product, account, or custom universe that coverage_rate values are relative to. Additional seller-specific qualifiers are allowed for scopes such as line item type, ad server, inventory class, country, or flight window.",
       "properties": {

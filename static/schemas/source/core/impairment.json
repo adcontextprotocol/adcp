@@ -26,6 +26,7 @@
       "description": "Packages within this media buy whose delivery is degraded by the impairment. MUST list at least one package — cosmetic effects that do not degrade any package's ability to serve MUST NOT be reported as impairments."
     },
     "transition": {
+      "title": "Impairment Status Transition",
       "type": "object",
       "description": "The resource-level status transition that triggered this impairment.",
       "required": ["to"],

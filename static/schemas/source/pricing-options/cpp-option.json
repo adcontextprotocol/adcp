@@ -35,6 +35,7 @@
       "$ref": "/schemas/pricing-options/price-guidance.json"
     },
     "parameters": {
+      "title": "CppParameters",
       "type": "object",
       "description": "CPP-specific parameters for demographic targeting",
       "properties": {

@@ -61,6 +61,7 @@
             "description": "Path to the violating field (e.g., 'assets.video_main.duration_ms')."
           },
           "retry_with": {
+            "title": "Validate Input Retry Hint",
             "type": "object",
             "description": "Optional advisory adjustment hint. Platforms MAY suggest a corrected input shape; buyers MUST treat this as advisory, not authoritative.",
             "additionalProperties": true

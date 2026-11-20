@@ -63,6 +63,7 @@
       "description": "Stable representation identifier, unique within the enclosing CreativeRepresentationSet revision."
     },
     "source": {
+      "title": "Creative Representation Source",
       "type": "object",
       "properties": {
         "system": {

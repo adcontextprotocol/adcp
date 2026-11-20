@@ -45,6 +45,7 @@
       "description": "ISO 8601 timestamp when the agent emitted the event. Advisory — consumers MUST order by event_id (UUID v7), not by created_at, to avoid clock-skew artifacts."
     },
     "payload": {
+      "title": "Wholesale Feed Event Payload",
       "type": "object",
       "description": "Event-type-specific payload. Shape is determined by event_type per the oneOf below."
     }
@@ -151,6 +152,7 @@
           "const": "product"
         },
         "payload": {
+          "title": "Wholesale product priced payload",
           "type": "object",
           "required": ["product_id", "applies_to"],
           "properties": {
@@ -215,6 +217,7 @@
           "const": "product"
         },
         "payload": {
+          "title": "Wholesale product removed payload",
           "type": "object",
           "required": [
             "product_id",
@@ -335,6 +338,7 @@
           "const": "signal"
         },
         "payload": {
+          "title": "Wholesale signal priced payload",
           "type": "object",
           "required": [
             "signal_agent_segment_id",
@@ -394,6 +398,7 @@
           "const": "signal"
         },
         "payload": {
+          "title": "Wholesale signal removed payload",
           "type": "object",
           "required": [
             "signal_agent_segment_id",
@@ -484,6 +489,7 @@
           "const": "collection"
         },
         "payload": {
+          "title": "Wholesale collection card upsert payload",
           "type": "object",
           "required": ["collection", "applies_to"],
           "properties": {
@@ -523,6 +529,7 @@
           "const": "collection"
         },
         "payload": {
+          "title": "Wholesale collection card removed payload",
           "type": "object",
           "required": ["publisher_domain", "collection_id", "applies_to"],
           "properties": {

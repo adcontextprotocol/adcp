@@ -10,6 +10,7 @@
   ],
   "oneOf": [
     {
+      "title": "Get Media Buy Issue Found Response",
       "type": "object",
       "properties": {
         "outcome": {

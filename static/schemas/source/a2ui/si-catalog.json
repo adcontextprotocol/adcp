@@ -218,6 +218,7 @@
       "required": ["items", "template"]
     },
     "Row": {
+      "title": "Row",
       "type": "object",
       "description": "Horizontal layout container",
       "properties": {
@@ -244,6 +245,7 @@
       "required": ["children"]
     },
     "Column": {
+      "title": "Column",
       "type": "object",
       "description": "Vertical layout container",
       "properties": {

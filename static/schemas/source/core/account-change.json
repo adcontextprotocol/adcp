@@ -57,6 +57,7 @@
       "description": "Material change action. Standard values are created, discovered, updated, status_changed, linked, unlinked, deleted, and purged. Future standard or vendor-namespaced values are allowed; receivers MUST treat unknown values as generic invalidations."
     },
     "origin": {
+      "title": "Account Change Origin",
       "type": "object",
       "description": "Server-derived origin classification. The seller MUST NOT trust caller-supplied origin or actor claims.",
       "properties": {

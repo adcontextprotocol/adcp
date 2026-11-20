@@ -8,6 +8,7 @@
   },
   "oneOf": [
     {
+      "title": "Binary Signal Expression",
       "type": "object",
       "description": "Binary signal expression. In grouped package targeting, value is always true; use a parent group with operator 'none' for exclusion.",
       "properties": {

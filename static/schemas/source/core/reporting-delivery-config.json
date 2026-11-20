@@ -14,6 +14,7 @@
     "report_definition_id": { "$ref": "/schemas/core/report-definition-id.json", "x-entity": "reporting_definition", "description": "Exact immutable semantic definition selected from the offering. This makes the expected obligation identity independently derivable and prevents attribution, timezone, source-mapping, or restatement-policy drift behind a profile label." },
     "reporting_profile": { "$ref": "/schemas/core/reporting-profile-id.json", "description": "Versioned semantic profile for the aggregate report, such as media_buy_delivery_v1. It MUST match the selected offering." },
     "scope": {
+      "title": "Reporting Delivery Config Scope",
       "type": "object",
       "description": "Media buys covered by this configuration.",
       "properties": {

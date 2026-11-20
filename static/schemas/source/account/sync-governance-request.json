@@ -37,6 +37,7 @@
                   "description": "Governance agent endpoint URL. Must use HTTPS."
                 },
                 "authentication": {
+                  "title": "Governance Agent Authentication",
                   "type": "object",
                   "description": "Authentication the seller presents when calling this governance agent.",
                   "properties": {

@@ -21,12 +21,13 @@
     "reporting_profile": { "$ref": "/schemas/core/reporting-profile-id.json" },
     "grain": { "$ref": "/schemas/core/reporting-grain.json" },
     "source": {
+      "title": "Reporting Report Definition Source",
       "type": "object",
       "properties": {
         "provider": { "type": "object", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": true },
         "system": { "type": "string", "minLength": 1, "maxLength": 128 },
         "api_version": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "query_semantics": { "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." },
+        "query_semantics": { "title": "Report Query Semantics", "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." },
         "custody": { "$ref": "/schemas/enums/reporting-custody.json", "description": "Whether the producer is the system of record for the numbers or derived them from the upstream provider and system named in this source. Optional; omitted means the definition makes no custody claim. Fixed per definition by report_definition_sha256, so no per-revision field exists.", "x-added-in": "3.3.0" }
       },
       "required": ["provider", "system", "api_version", "query_semantics"],
@@ -47,6 +48,7 @@
     "metrics": {
       "type": "array",
       "items": {
+        "title": "Reporting Report Metric",
         "type": "object",
         "properties": {
           "name": { "type": "string", "minLength": 1, "maxLength": 128 },

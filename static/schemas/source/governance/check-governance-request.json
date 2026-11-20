@@ -266,6 +266,7 @@
       "description": "The AdCP tool being checked (e.g., 'create_media_buy', 'acquire_rights', 'activate_signal'). Present on intent checks (orchestrator). The governance agent uses the presence of tool+payload to identify an intent check."
     },
     "payload": {
+      "title": "Governance Check Payload",
       "type": "object",
       "description": "The full downstream tool arguments exactly as they will be sent to target_agent. Present on intent checks. Governance routing metadata is carried by target_agent, never injected into this object. The governance agent can inspect any field to validate against the plan.",
       "x-adcp-open-payload": true,
@@ -346,6 +347,7 @@
           "description": "Total impressions since the governed action started."
         },
         "geo_distribution": {
+          "title": "Geo Distribution",
           "type": "object",
           "description": "Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages.",
           "additionalProperties": {
@@ -353,6 +355,7 @@
           }
         },
         "channel_distribution": {
+          "title": "Channel Distribution",
           "type": "object",
           "description": "Actual channel distribution. Keys are channel enum values, values are percentages.",
           "additionalProperties": {

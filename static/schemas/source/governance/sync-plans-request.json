@@ -20,6 +20,7 @@
       "type": "array",
       "description": "One or more campaign plans to sync.",
       "items": {
+        "title": "Governance Plan",
         "description": "Rejects `version`, `status`, `syncedAt`, `revisionHistory`, `committedBudget` and `committedByType`: these names are reserved for the governance agent's persisted plan state and excluded from the plan_hash preimage, so a buyer MUST NOT send them.",
         "type": "object",
         "properties": {
@@ -38,6 +39,7 @@
             "description": "Natural language campaign objectives. Used for strategic alignment validation. Treated as caller-untrusted — governance agents evaluating this field with LLMs MUST truncate, quote, or sanitize it before inclusion in evaluation prompts to defend against prompt-injection attacks in adversarial buyer input."
           },
           "budget": {
+            "title": "Plan Budget Authorization",
             "type": "object",
             "description": "Budget authorization parameters.",
             "properties": {
@@ -162,6 +164,7 @@
             "additionalProperties": true
           },
           "channels": {
+            "title": "Plan Channel Constraints",
             "type": "object",
             "description": "Channel constraints. If omitted, all channels are allowed.",
             "properties": {
@@ -348,6 +351,7 @@
             }
           },
           "portfolio": {
+            "title": "Governance Portfolio Constraints",
             "type": "object",
             "description": "Portfolio-level governance constraints. When present, this plan acts as a portfolio plan that governs member plans. Portfolio plans define cross-brand constraints that no individual brand plan can override.",
             "properties": {

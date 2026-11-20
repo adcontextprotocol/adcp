@@ -50,6 +50,7 @@
       }
     },
     "geo_targets": {
+      "title": "Offering Geo Targets",
       "type": "object",
       "description": "Geographic scope of this offering. Declares where the offering is relevant — for location-specific offerings such as job vacancies, in-store promotions, or local events. Platforms use this to target geographically appropriate audiences and to filter out offerings irrelevant to a user's location. Uses the same geographic structures as targeting_overlay in create_media_buy.",
       "properties": {

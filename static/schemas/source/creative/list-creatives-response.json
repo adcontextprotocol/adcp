@@ -11,6 +11,7 @@
   ],
   "properties": {
     "query_summary": {
+      "title": "Creative Query Summary",
       "type": "object",
       "description": "Summary of the query that was executed",
       "properties": {
@@ -260,6 +261,7 @@
             }
           },
           "assignments": {
+            "title": "Creative Assignment Summary",
             "type": "object",
             "description": "Current package assignments (included when include_assignments=true)",
             "properties": {
@@ -496,6 +498,7 @@
             "additionalProperties": true
           },
           "snapshot": {
+            "title": "Creative Delivery Snapshot",
             "type": "object",
             "description": "Lightweight delivery snapshot (included when include_snapshot=true). For detailed performance analytics, use get_creative_delivery.",
             "properties": {

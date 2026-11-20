@@ -14,6 +14,7 @@
       "description": "ID of the component that triggered the action"
     },
     "action": {
+      "title": "A2UI Triggered Action",
       "type": "object",
       "description": "The action that was triggered",
       "properties": {
@@ -22,6 +23,7 @@
           "description": "Action identifier (e.g., 'view_product', 'add_to_cart')"
         },
         "context": {
+          "title": "A2UI Action Context",
           "type": "object",
           "description": "Context data resolved from data model bindings",
           "additionalProperties": true

@@ -15,6 +15,7 @@
       "description": "Pin a specific policy version (semver). If omitted, the current version is used."
     },
     "config": {
+      "title": "Policy Config Overrides",
       "type": "object",
       "description": "Brand-specific parameter overrides for configurable policies. The accepted shape depends on the policy's config_schema.",
       "additionalProperties": true

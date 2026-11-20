@@ -201,11 +201,13 @@
           "default": true
         },
         "simulated": {
+          "title": "Simulated Values",
           "type": "object",
           "description": "Values injected or applied by this call. Shape depends on scenario.",
           "additionalProperties": true
         },
         "cumulative": {
+          "title": "Simulated Delivery Cumulative Totals",
           "type": "object",
           "description": "Running totals across all simulation calls (simulate_delivery only)",
           "additionalProperties": true
@@ -279,6 +281,7 @@
           "default": true
         },
         "forced": {
+          "title": "Forced Directive Echo",
           "type": "object",
           "description": "Echo of the registered directive. The next matching operation call from this sandbox account will return the named arm.",
           "properties": {

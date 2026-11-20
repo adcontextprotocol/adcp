@@ -117,6 +117,7 @@
       "type": "array",
       "description": "Verifier agents the evaluator may call. A presenter's verify_agent nomination must match one of these canonicalized URLs, but the evaluator remains verifier-of-record and chooses whether to use the nominated agent, another accepted agent, or local verification.",
       "items": {
+        "title": "Accepted Attestation Verifier",
         "type": "object",
         "properties": {
           "agent_url": {

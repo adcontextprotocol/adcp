@@ -109,7 +109,7 @@
       "additionalProperties": true
     },
     "reporting_revision": { "$ref": "/schemas/core/reporting-revision.json", "description": "Full immutable revision metadata, identical to the get_reporting_status revision record." },
-    "reporting_rows": { "type": "array", "items": { "type": "object" }, "description": "One page of authoritative logical rows for an exact reporting_revision_id read. Validate every row against the revision's digest-pinned schema; concatenate pages in cursor order before verifying the binding digest." },
+    "reporting_rows": { "type": "array", "items": { "title": "Delivery Reporting Row", "type": "object" }, "description": "One page of authoritative logical rows for an exact reporting_revision_id read. Validate every row against the revision's digest-pinned schema; concatenate pages in cursor order before verifying the binding digest." },
     "pagination": { "$ref": "/schemas/core/pagination-response.json", "description": "Exact revision pages are frozen for the cursor walk. total_count is mandatory for reporting_revision_id and equals reporting_revision.row_count and reporting_revision_binding.row_count; it counts the complete ordered row sequence, not this page." },
     "currency": {
       "$ref": "/schemas/core/currency-code.json",
@@ -714,6 +714,7 @@
                             "$ref": "/schemas/core/delivery-metrics.json"
                           },
                           {
+                            "title": "Demographic Delivery Row",
                             "type": "object",
                             "properties": {
                               "demographic": {
@@ -904,6 +905,7 @@
                             "$ref": "/schemas/core/delivery-metrics.json"
                           },
                           {
+                            "title": "Spot Airing Delivery Row",
                             "type": "object",
                             "properties": {
                               "spot_id": {

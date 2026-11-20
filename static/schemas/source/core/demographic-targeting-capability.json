@@ -6,6 +6,7 @@
   "type": "object",
   "properties": {
     "age": {
+      "title": "Age Targeting Capability",
       "type": "object",
       "description": "Age-targeting execution available for this product.",
       "properties": {
@@ -61,6 +62,7 @@
           "type": "array",
           "description": "Seller-owned age intervals available to enumerated_intervals execution. Bounds are authoritative capability data, not a protocol-wide bucket taxonomy. Exact compilation may union adjacent intervals but MUST NOT introduce gaps or extra ages.",
           "items": {
+            "title": "Demographic Targeting Interval",
             "type": "object",
             "properties": {
               "interval_id": {

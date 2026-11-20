@@ -58,6 +58,7 @@
       "description": "Current effective product/package coverage for the selected offering and resolved account. This setup-time view may change as media buys or provider capabilities change; each period obligation later freezes its own authoritative coverage."
     },
     "setup": {
+      "title": "Reporting Delivery Setup Step",
       "type": "object",
       "description": "Secret-free next step when provider-side authorization or recipient activation cannot be completed automatically.",
       "properties": {

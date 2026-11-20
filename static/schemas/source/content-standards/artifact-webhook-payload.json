@@ -50,6 +50,7 @@
       }
     },
     "pagination": {
+      "title": "Artifact Webhook Batch Info",
       "type": "object",
       "description": "Pagination info when batching large artifact sets",
       "properties": {

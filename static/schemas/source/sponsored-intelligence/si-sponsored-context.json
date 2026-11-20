@@ -92,6 +92,7 @@
           "type": "array",
           "description": "Jurisdictions where this declared disclosure obligation applies.",
           "items": {
+            "title": "SI Sponsored Context Disclosure Jurisdiction",
             "type": "object",
             "properties": {
               "country": {
@@ -127,6 +128,7 @@
       "description": "When this sponsored-context declaration was made."
     },
     "declared_by": {
+      "title": "SI Sponsored Context Declarant",
       "type": "object",
       "description": "Agent or service that attached the declaration.",
       "properties": {

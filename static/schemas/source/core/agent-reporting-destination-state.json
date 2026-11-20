@@ -34,6 +34,7 @@
       "description": "Credential-free desired configuration currently associated with this destination reference."
     },
     "setup": {
+      "title": "Reporting Destination Setup Instruction",
       "type": "object",
       "description": "Closed, non-secret setup instruction. Human-readable messages are deliberately excluded; agents dispatch only the typed action and treat setup_url as an untrusted navigation target.",
       "properties": {

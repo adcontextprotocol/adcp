@@ -35,6 +35,7 @@
       "$ref": "/schemas/pricing-options/price-guidance.json"
     },
     "parameters": {
+      "title": "TimeParameters",
       "type": "object",
       "description": "Time-based pricing parameters",
       "required": ["time_unit"],

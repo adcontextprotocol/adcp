@@ -266,6 +266,7 @@
             "type": "array",
             "description": "Revision history entries, most recent first. Only present when include_history > 0 in the request. Each entry represents a state change or update to the media buy. Entries are append-only: sellers MUST NOT modify or delete previously emitted history entries. Callers MAY cache entries by revision number. Returns min(N, available entries) when include_history exceeds the total.",
             "items": {
+              "title": "Media Buy Revision History Entry",
               "type": "object",
               "properties": {
                 "revision": {
@@ -735,6 +736,7 @@
                   "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot is unavailable for this package."
                 },
                 "snapshot": {
+                  "title": "Package Delivery Snapshot",
                   "type": "object",
                   "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform — not billing-grade data.",
                   "properties": {
