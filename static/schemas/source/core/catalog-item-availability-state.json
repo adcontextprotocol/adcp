@@ -10,17 +10,16 @@
       "minimum": 0,
       "description": "Zero-based index of the corresponding item_availability_queries entry."
     },
-    "catalog_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "catalog" },
-    "catalog_generation": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "catalog_generation" },
-    "item_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "catalog_item" },
+    "catalog_id": { "$ref": "/schemas/core/catalog-id.json" },
+    "catalog_generation": { "$ref": "/schemas/core/catalog-generation.json" },
+    "item_id": { "$ref": "/schemas/core/catalog-item-id.json" },
     "status": {
       "type": "string",
       "enum": ["found", "failed"],
       "description": "found returns current state; failed means the reference could not be read."
     },
     "availability": {
-      "type": "string",
-      "enum": ["active", "suppressed"],
+      "$ref": "/schemas/enums/catalog-item-availability.json",
       "description": "Current buyer-authored overlay state. active does not imply seller approval or delivery eligibility."
     },
     "overlay_revision": {

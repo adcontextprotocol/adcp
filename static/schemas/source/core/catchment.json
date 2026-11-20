@@ -55,8 +55,7 @@
       "description": "Pre-computed GeoJSON geometry defining the catchment boundary. Use this when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom trade area boundaries. Supports Polygon and MultiPolygon types.",
       "properties": {
         "type": {
-          "type": "string",
-          "enum": ["Polygon", "MultiPolygon"],
+          "$ref": "/schemas/enums/geojson-geometry-type.json",
           "description": "GeoJSON geometry type."
         },
         "coordinates": {

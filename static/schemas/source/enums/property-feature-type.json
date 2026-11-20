@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/property-feature-type.json",
+  "title": "Property Feature Type",
+  "description": "Type of values that a property feature produces.",
+  "type": "string",
+  "enum": [
+    "binary",
+    "quantitative",
+    "categorical"
+  ]
+}

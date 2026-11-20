@@ -24,8 +24,17 @@ const REPLACEMENTS = [
   ],
   ['core/registry-event.json', '/$defs/compliancePayload/properties/tracks/additionalProperties', 'pass', 'passed'],
   ['error-details/rate-limited.json', '/properties/scope', 'global', 'all'],
-  ['core/signal-definition.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
-  ['core/signal-definition-enrichment.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
+  ['enums/signal-match-key.json', '', 'name', 'full_name'],
+];
+
+// Sites that carry a replaced value through a named schema.
+const NAMED_SITES = [
+  ['core/signal-definition.json', '/properties/onboarder/properties/match_keys/items', 'enums/signal-match-key.json'],
+  [
+    'core/signal-definition-enrichment.json',
+    '/properties/onboarder/properties/match_keys/items',
+    'enums/signal-match-key.json',
+  ],
 ];
 
 function readSchema(relativePath) {
@@ -63,6 +72,12 @@ test('each replaced value is accepted beside its deprecated original', () => {
       { deprecated: true, 'x-deprecated-in': '3.3.0', 'x-removed-in': '4.0.0', 'x-superseded-by': newValue },
       `${site} enumMetadata.${oldValue}`,
     );
+  }
+});
+
+test('each site that carries a replaced value references its named schema', () => {
+  for (const [file, pointer, named] of NAMED_SITES) {
+    assert.equal(at(readSchema(file), pointer).$ref, `/schemas/${named}`, `${file}#${pointer}`);
   }
 });
 

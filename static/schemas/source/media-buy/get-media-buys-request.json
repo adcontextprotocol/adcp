@@ -27,10 +27,7 @@
     "predecessor_media_buy_id": {
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "media_buy",
+      "$ref": "/schemas/core/media-buy-id.json",
       "description": "Return only the direct successors of this buy: media buys created with this `predecessor_media_buy_id`. Composes with other filters (AND) and, like `media_buy_ids`, suppresses the implicit `[\"active\"]` status default. An unknown or inaccessible ID returns an empty page, not an error. Experimental in AdCP 3.3 (`media_buy.lineage`): send it only to sellers that list that feature id."
     },
     "status_filter": {
@@ -75,10 +72,8 @@
       "default": false
     },
     "webhook_activity_limit": {
-      "type": "integer",
+      "$ref": "/schemas/core/webhook-activity-limit.json",
       "description": "Maximum number of webhook delivery records to return per media buy, ordered most-recent first. Ignored when `include_webhook_activity` is false. Sellers that surface webhook activity MUST retain records for at least 30 days from each record's `completed_at` (see `webhook_activity` description in the response schema for the `pending`-status carve-out); sellers unable to honor that floor MUST omit the field entirely rather than truncate. When a buy has more historical fires than the limit, only the most recent are returned — there is no cursor for older fires; this surface is a debug aid, not a full audit log.",
-      "minimum": 1,
-      "maximum": 200,
       "default": 50
     },
     "pagination": {

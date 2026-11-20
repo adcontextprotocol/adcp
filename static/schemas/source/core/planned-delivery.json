@@ -6,21 +6,15 @@
   "type": "object",
   "properties": {
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Seller-assigned media buy identifier. Optional on a purchase-phase prepare/check because the service may not assign the identifier until commit; required on modification and delivery lifecycle checks.",
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json",
+      "description": "Seller-assigned media buy identifier. Optional on a purchase-phase prepare/check because the service may not assign the identifier until commit; required on modification and delivery lifecycle checks."
     },
     "proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "proposal",
+      "$ref": "/schemas/core/proposal-id.json",
       "description": "Proposal snapshot being executed or currently governing the MediaBuy."
     },
     "proposal_terms_digest": {
-      "type": "string",
-      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "$ref": "/schemas/core/proposal-terms-digest.json",
       "description": "Digest of the proposal commercial_terms. The governance agent compares it to the digest bound during the intent check."
     },
     "geo": {
@@ -82,13 +76,12 @@
       "minimum": 0
     },
     "budget_cap_timezone": {
-      "type": "string",
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "IANA timezone defining the calendar-day boundary for every daily cap on the planned media buy."
     },
     "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code for the budget. Governance execution checks require it whenever total_budget is present and require it to match the intent-authorized currency.",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json",
+      "description": "ISO 4217 currency code for the budget. Governance execution checks require it whenever total_budget is present and require it to match the intent-authorized currency."
     },
     "budget_allocation": {
       "allOf": [

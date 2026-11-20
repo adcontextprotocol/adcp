@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/money.json",
+  "title": "Money",
+  "description": "A non-negative amount in an ISO 4217 currency.",
+  "type": "object",
+  "properties": {
+    "amount": {
+      "type": "number",
+      "description": "Amount in the currency's major unit.",
+      "minimum": 0
+    },
+    "currency": {
+      "$ref": "/schemas/core/currency-code.json"
+    }
+  },
+  "required": [
+    "amount",
+    "currency"
+  ],
+  "additionalProperties": true
+}

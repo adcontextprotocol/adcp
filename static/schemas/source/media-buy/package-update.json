@@ -68,9 +68,8 @@
       "const": true
     },
     "cancellation_reason": {
-      "type": "string",
-      "description": "Reason for canceling this package.",
-      "maxLength": 500
+      "$ref": "/schemas/core/cancellation-reason.json",
+      "description": "Reason for canceling this package."
     },
     "catalogs": {
       "type": "array",
@@ -99,8 +98,7 @@
         "type": "object",
         "properties": {
           "keyword": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/keyword.json",
             "description": "The keyword to target"
           },
           "match_type": {
@@ -124,8 +122,7 @@
         "type": "object",
         "properties": {
           "keyword": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/keyword.json",
             "description": "The keyword to stop targeting"
           },
           "match_type": {
@@ -144,8 +141,7 @@
         "type": "object",
         "properties": {
           "keyword": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/keyword.json",
             "description": "The keyword to exclude"
           },
           "match_type": {
@@ -164,8 +160,7 @@
         "type": "object",
         "properties": {
           "keyword": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/keyword.json",
             "description": "The keyword to stop excluding"
           },
           "match_type": {

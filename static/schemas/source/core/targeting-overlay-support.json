@@ -72,7 +72,7 @@
       "properties": {
         "countries": {
           "type": "object",
-          "propertyNames": { "pattern": "^[A-Z]{2}$" },
+          "propertyNames": { "$ref": "/schemas/core/country-code.json" },
           "additionalProperties": {
             "type": "array",
             "items": { "$ref": "/schemas/core/geo-place-type.json" },
@@ -82,14 +82,13 @@
           "minProperties": 1
         },
         "current_version": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/geo-place-system-version.json",
           "description": "Version applied when a later package overlay omits system_version. Must be present in system_versions."
         },
         "system_versions": {
           "type": "array",
           "description": "Exact catalog versions selectable on later package overlays.",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "$ref": "/schemas/core/geo-place-system-version.json" },
           "minItems": 1,
           "uniqueItems": true
         },

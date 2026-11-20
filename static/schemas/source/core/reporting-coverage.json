@@ -9,16 +9,12 @@
     "ReportingMediaBuyId": {
       "title": "Reporting Media Buy ID",
       "x-adcp-model-context-inline": true,
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "ReportingPackageId": {
       "title": "Reporting Package ID",
       "x-adcp-model-context-inline": true,
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "package"
+      "$ref": "/schemas/core/package-id.json"
     }
   },
   "properties": {

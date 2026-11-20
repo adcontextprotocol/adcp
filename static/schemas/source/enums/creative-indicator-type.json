@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/creative-indicator-type.json",
+  "title": "Creative Indicator Type",
+  "description": "Indicator type that applies to a creative assignment: creative_fatigue or creative_quality_opportunity.",
+  "type": "string",
+  "enum": [
+    "creative_fatigue",
+    "creative_quality_opportunity"
+  ]
+}

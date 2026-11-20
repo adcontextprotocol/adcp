@@ -9,14 +9,12 @@
       "description": "Buyer-visible request field path or paths that breached the accepted commercial envelope. Values MUST NOT name seller-internal objects or identifiers. New emitters SHOULD use the array form even for one path; the scalar form remains valid for compatibility with existing 3.x sellers.",
       "oneOf": [
         {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/definitions/envelope_field_path"
         },
         {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/definitions/envelope_field_path"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -32,5 +30,13 @@
       "description": "Coarse seller-policy dimension that declined the requested shape. Sellers SHOULD populate this when they have a structured reason and disclosure does not expose private thresholds or enforcement controls. When present, it MUST be consistent with the enclosing error.recovery classification."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "envelope_field_path": {
+      "title": "Envelope Field Path",
+      "description": "Buyer-visible request field path that breached the accepted commercial envelope.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
 }

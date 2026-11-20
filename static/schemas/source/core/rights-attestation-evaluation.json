@@ -12,8 +12,7 @@
       "x-entity": "rights_grant"
     },
     "content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Digest of the exact rights constraint evaluated. MUST equal reference.subject.content_digest and evaluation.action_binding.action_digest."
     },
     "reference": {

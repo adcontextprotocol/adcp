@@ -12,18 +12,15 @@
       "description": "Stable implementation identifier."
     },
     "version": {
-      "type": "string",
-      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "$ref": "/schemas/core/renderer-version.json",
       "description": "Exact semantic version of the renderer implementation."
     },
     "export": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/renderer-export-name.json",
       "description": "Renderer export or entry-point name used for this render."
     },
     "rendering_origin": {
-      "type": "string",
-      "enum": ["platform_native", "agent_approximation"],
+      "$ref": "/schemas/enums/rendering-origin.json",
       "description": "Informational implementation origin copied from the selected route. It does not grant authority."
     },
     "tracking_suppressed": {

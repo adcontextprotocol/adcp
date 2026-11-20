@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/creative-review-decision.json",
+  "title": "Creative Review Decision",
+  "description": "Decided review status of a creative: approved or rejected.",
+  "type": "string",
+  "enum": [
+    "approved",
+    "rejected"
+  ]
+}

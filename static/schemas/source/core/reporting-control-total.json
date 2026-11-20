@@ -10,10 +10,7 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+          "$ref": "/schemas/core/control-total-name.json"
         },
         "value": {
           "type": "string",
@@ -22,9 +19,7 @@
         },
         "value_type": { "type": "string", "const": "integer" },
         "unit": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32,
+          "$ref": "/schemas/core/control-total-unit.json",
           "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
         }
       },
@@ -36,10 +31,7 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+          "$ref": "/schemas/core/control-total-name.json"
         },
         "value": {
           "type": "string",
@@ -48,9 +40,7 @@
         },
         "value_type": { "type": "string", "const": "decimal" },
         "unit": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32,
+          "$ref": "/schemas/core/control-total-unit.json",
           "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
         }
       },

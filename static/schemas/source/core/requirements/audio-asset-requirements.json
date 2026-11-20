@@ -39,8 +39,7 @@
     "channels": {
       "type": "array",
       "items": {
-        "type": "string",
-        "enum": ["mono", "stereo"]
+        "$ref": "/schemas/enums/audio-channel-mode.json"
       },
       "description": "Accepted audio channel configurations"
     },

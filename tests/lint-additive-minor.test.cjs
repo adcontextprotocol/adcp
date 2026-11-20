@@ -517,6 +517,11 @@ test('fails when the corrections list names no existing decision record', () => 
   assert.deepEqual(result.errors, ['no decision record for DR-9002 under governance/decisions']);
 });
 
+test('fails when the corrections list names no decision record', () => {
+  const result = analyzePair(applyBound, { correctionsValue: { corrections: [correction()] } });
+  assert.deepEqual(result.errors, ['corrections list must name its decision record, such as DR-0036']);
+});
+
 test('the repository corrections list is valid', () => {
   const value = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lint-additive-minor-corrections.json'), 'utf8'));
   assert.equal(value.decision, 'DR-0036');

@@ -56,9 +56,8 @@
           "description": "Discriminator indicating selection by specific collection IDs within a publisher"
         },
         "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where publisher's adagents.json is hosted"
         },
         "collection_ids": {
           "type": "array",
@@ -83,9 +82,8 @@
           "description": "Discriminator indicating selection by genre within a publisher"
         },
         "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where publisher's adagents.json is hosted"
         },
         "genres": {
           "type": "array",

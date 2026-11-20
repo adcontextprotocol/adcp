@@ -383,6 +383,8 @@ test("normative text closes identity, privacy, atomicity, replay, and correlatio
   assert.match(catalog.properties.ids.description, /listing_id/);
   assert.match(catalog.properties.ids.description, /program_id/);
   assert.match(update.properties.catalog_generation.description, /deleted-and-recreated/i);
-  assert.equal(update.properties.catalog_generation["x-entity"], "catalog_generation");
-  assert.equal(update.properties.item_id["x-entity"], "catalog_item");
+  assert.equal(update.properties.catalog_generation.$ref, "/schemas/core/catalog-generation.json");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(__dirname, "../static/schemas/source/core/catalog-generation.json"), "utf8"))["x-entity"], "catalog_generation");
+  assert.equal(update.properties.item_id.$ref, "/schemas/core/catalog-item-id.json");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(__dirname, "../static/schemas/source/core/catalog-item-id.json"), "utf8"))["x-entity"], "catalog_item");
 });

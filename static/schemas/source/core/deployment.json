@@ -127,9 +127,7 @@
           "x-added-in": "3.3.0"
         },
         "effective_match_rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
+          "$ref": "/schemas/core/fraction.json",
           "description": "Deduplicated match rate; absence is not zero.",
           "x-status": "experimental",
           "x-added-in": "3.3.0"

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/context-summary.json",
+  "title": "Context Summary",
+  "description": "Publisher-written natural-language summary of page or app content for contextual relevance matching.",
+  "type": "string",
+  "maxLength": 500
+}

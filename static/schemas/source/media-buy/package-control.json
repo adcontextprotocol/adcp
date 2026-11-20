@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "package_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "package"
+      "$ref": "/schemas/core/package-id.json"
     },
     "budget": {
       "type": ["number", "null"],
@@ -67,9 +65,7 @@
       "description": "Exercise an already-accepted unilateral package cancellation right. If seller agreement is required, refine the accepted proposal with change_kind amendment; cancellation proposals terminate the whole MediaBuy."
     },
     "cancellation_reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 500
+      "$ref": "/schemas/core/cancellation-reason.json"
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting-input.json",
@@ -78,9 +74,7 @@
     "catalog_ids": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "x-entity": "catalog"
+        "$ref": "/schemas/core/catalog-id.json"
       },
       "minItems": 1,
       "uniqueItems": true,

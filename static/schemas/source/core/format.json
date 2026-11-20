@@ -162,9 +162,8 @@
                 ]
               },
               "aspect_ratio": {
-                "type": "string",
-                "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1', '1.91:1')",
-                "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$"
+                "$ref": "/schemas/core/aspect-ratio.json",
+                "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1', '1.91:1')"
               }
             }
           }

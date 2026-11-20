@@ -76,16 +76,8 @@
               "description": "Product details for checkout"
             },
             "price": {
-              "type": "object",
-              "description": "Price information",
-              "properties": {
-                "amount": {
-                  "type": "number"
-                },
-                "currency": {
-                  "type": "string"
-                }
-              }
+              "$ref": "/schemas/core/money.json",
+              "description": "Price information"
             }
           },
           "additionalProperties": true

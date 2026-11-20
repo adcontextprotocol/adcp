@@ -4,6 +4,7 @@
   "title": "Applicable Package ID",
   "description": "A package identifier to which a package-scoped media-buy action currently applies.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1,
   "x-entity": "package"
 }

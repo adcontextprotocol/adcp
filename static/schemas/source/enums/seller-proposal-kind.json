@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/seller-proposal-kind.json",
+  "title": "Seller Proposal Kind",
+  "description": "Kind of proposal that a seller can initiate: media_buy_update or media_buy_cancellation.",
+  "type": "string",
+  "enum": [
+    "media_buy_update",
+    "media_buy_cancellation"
+  ]
+}

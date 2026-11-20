@@ -536,7 +536,6 @@ schema_removals_not_checked:
     sites:
       - "content-standards/get-media-buy-artifacts-response.json#/oneOf/0/properties/artifacts/items/properties/local_verdict/enumMetadata/pass"
       - "core/registry-event.json#/$defs/compliancePayload/properties/tracks/additionalProperties/enumMetadata/pass"
-      - "core/signal-definition-enrichment.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
-      - "core/signal-definition.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
       - "enums/binary-verdict.json#/enumMetadata/pass"
+      - "enums/signal-match-key.json#/enumMetadata/name"
       - "error-details/rate-limited.json#/properties/scope/enumMetadata/global"

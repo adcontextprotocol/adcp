@@ -28,8 +28,7 @@
               "properties": {
                 "description": { "type": "string" },
                 "recovery": {
-                  "type": "string",
-                  "enum": ["transient", "correctable", "terminal"]
+                  "$ref": "/schemas/enums/error-recovery.json"
                 }
               },
               "required": ["description", "recovery"]

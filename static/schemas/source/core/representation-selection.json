@@ -30,14 +30,11 @@
   "type": "object",
   "properties": {
     "creative_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative"
+      "$ref": "/schemas/core/creative-id.json"
     },
     "revision_id": { "$ref": "/schemas/core/creative-revision-id.json" },
     "revision_content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Verified digest from the complete source representation set. A downstream seller uses this value, not the selected manifest bytes alone, to enforce immutable revision reuse."
     },
     "selected_representation_id": { "type": "string", "minLength": 1, "x-entity": "creative_representation" },
@@ -46,8 +43,7 @@
       "description": "Deterministic strategy applied after compatibility filtering."
     },
     "selected_output_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Digest of the derived seller-bound manifest projection, computed with RFC 8785 JCS after removing exactly top-level `$schema`, `representation_selection`, `creative_id`, `revision_id`, `name`, `tags`, `status`, `weight`, `placement_refs`, `placement_ids`, and `inputs`. Every other field, including unknown delivery fields, is included. The identical exclusion list applies to the returned CreativeManifest and its later CreativeAsset sync wrapper. A selected sync item cannot carry localization in this version. This is the review/execution fingerprint for the projection, distinct from revision_content_digest, which binds the complete source set."
     },
     "execution_vast_version": {
@@ -59,8 +55,7 @@
       "description": "Exact DAAST version verified for seller-assembled first-class DAAST trackers. This is selection lineage and part of the execution review identity; it is not included in selected_output_digest."
     },
     "resolved_by": {
-      "type": "string",
-      "enum": ["buyer", "seller"],
+      "$ref": "/schemas/enums/compatibility-resolver.json",
       "description": "Who performed deterministic compatibility resolution. A buyer may resolve locally from seller discovery. Seller resolution is valid only on the destination sales agent when it advertised representation_resolution; an independent creative agent cannot claim seller-bound compatibility."
     }
   },

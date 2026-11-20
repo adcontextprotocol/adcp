@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/buyer-asset-acceptance.json",
+  "title": "Buyer Asset Acceptance",
+  "description": "Whether a product accepts buyer-uploaded assets.",
+  "type": "string",
+  "enum": [
+    "accepted",
+    "rejected"
+  ]
+}

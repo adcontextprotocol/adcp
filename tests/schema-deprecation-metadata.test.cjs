@@ -177,7 +177,11 @@ test('delivery reporting deprecates cross-buy totals and report-wide currency', 
   for (const schema of [response, webhook]) {
     assert.equal(schema.required.includes('currency'), false);
     const rowCurrency = schema.properties.media_buy_deliveries.items.properties.currency;
-    assert.equal(rowCurrency.type, 'string');
+    assert.equal(rowCurrency.$ref, '/schemas/core/currency-code.json');
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/currency-code.json'), 'utf8')).type,
+      'string',
+    );
     assert.match(rowCurrency.description, /does not perform currency conversion/i);
     assert.match(rowCurrency.description, /mixed-currency buy/i);
 

@@ -6,15 +6,11 @@
   "type": "object",
   "properties": {
     "subscriber_id": {
-      "type": "string",
-      "description": "Buyer- or registry-supplied identifier for this agent-level subscription endpoint. This is the stable logical key within the authenticated caller's agent-level notification config set: re-sending the same subscriber_id replaces that caller's subscriber URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload so multi-subscriber consumers can route by endpoint. MUST be unique within the submitted `notification_configs[]` array.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Buyer- or registry-supplied identifier for this agent-level subscription endpoint. This is the stable logical key within the authenticated caller's agent-level notification config set: re-sending the same subscriber_id replaces that caller's subscriber URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload so multi-subscriber consumers can route by endpoint. MUST be unique within the submitted `notification_configs[]` array."
     },
     "url": {
-      "type": "string",
-      "format": "uri",
+      "$ref": "/schemas/core/webhook-url.json",
       "description": "Webhook endpoint URL. Same wire contract as `push-notification-config.url` and account-level `notification-config.url`: `format: \"uri\"`, no destination-port allowlist enforced by the protocol, SSRF protection via the IP-range check defined in docs/building/by-layer/L1/security.mdx#webhook-url-validation-ssrf. Sellers MUST validate URL syntax, HTTPS usage, hostname normalization, and reserved-range rejection when writing any config, including `active: false` configs. Sellers MUST complete an activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active."
     },
     "event_types": {
@@ -52,29 +48,10 @@
       "description": "When true, the seller also fires caller-eligible notification types added to the enum by later AdCP versions — but only types classified invalidation-only, whose payloads carry identifiers and a repair pointer rather than domain data. Payload-bearing types always require explicit enumeration in event_types; this flag never silently opts a caller into more-sensitive payloads. There is deliberately no wildcard event type. Receivers setting this MUST tolerate unknown notification_type values."
     },
     "authentication": {
-      "type": "object",
+      "$ref": "/schemas/core/notification-authentication.json",
       "deprecated": true,
       "x-removed-in": "4.0.0",
-      "description": "Legacy authentication selector. Same semantics as `push-notification-config.authentication` and account-level `notification-config.authentication`: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on reads.",
-      "properties": {
-        "schemes": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/enums/auth-scheme.json"
-          },
-          "minItems": 1,
-          "maxItems": 1
-        },
-        "credentials": {
-          "type": "string",
-          "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only.",
-          "minLength": 32
-        }
-      },
-      "required": [
-        "schemes"
-      ],
-      "additionalProperties": true
+      "description": "Legacy authentication selector. Same semantics as account-level `notification-config.authentication`, and as `push-notification-config.authentication` except that `credentials` is optional because this configuration is echoed on reads: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on reads."
     },
     "signing_profile": {
       "x-status": "experimental",

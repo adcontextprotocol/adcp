@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
@@ -49,8 +50,9 @@ test('new fields are optional and existing field types and requirements are unch
   assert.deepEqual(item.required, ['audience_id', 'action']);
   assert.equal(item.properties.matched_count.type, 'integer');
   assert.equal(item.properties.matched_count.minimum, 0);
-  assert.equal(item.properties.effective_match_rate.type, 'number');
-  assert.equal(item.properties.effective_match_rate.maximum, 1);
+  const rate = resolveScalar(item.properties.effective_match_rate);
+  assert.equal(rate.type, 'number');
+  assert.equal(rate.maximum, 1);
 });
 
 test('the audience size object is registered in the schema index', () => {

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/membership-action.json",
+  "title": "Membership Action",
+  "description": "Whether a change puts an item in a selection (include) or takes it out (omit).",
+  "type": "string",
+  "enum": ["include", "omit"]
+}

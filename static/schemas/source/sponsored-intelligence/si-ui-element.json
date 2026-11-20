@@ -160,8 +160,7 @@
                   "type": "object",
                   "properties": {
                     "type": {
-                      "type": "string",
-                      "enum": ["mcp", "a2a"],
+                      "$ref": "/schemas/enums/agent-protocol.json",
                       "description": "Integration type"
                     },
                     "label": {

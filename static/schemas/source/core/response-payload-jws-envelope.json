@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "protected": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$",
+      "$ref": "/schemas/core/base64url.json",
       "description": "Base64url-encoded JWS protected header. The decoded header MUST include alg, kid, and typ: adcp-response-payload+jws, and MUST NOT include the RFC 7797 b64 header. Verifiers enforce the key purpose by resolving kid to a JWK with adcp_use: response-signing."
     },
     "payload": {
@@ -15,8 +14,7 @@
       "description": "Decoded signed payload. Signers compute the JWS payload bytes from the RFC 8785/JCS canonicalization of this object."
     },
     "signature": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$",
+      "$ref": "/schemas/core/base64url.json",
       "description": "Base64url-encoded JWS signature over the protected header and canonicalized payload."
     }
   },
@@ -44,8 +42,7 @@
           "description": "Designated task whose response payload is signed."
         },
         "brand_domain": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Brand tenant whose policy store produced the answer. The signer MUST derive this from server-side tenant resolution, not caller-supplied request fields."
         },
         "agent_url": {
@@ -54,8 +51,7 @@
           "description": "Canonical URL of the responding brand agent entry whose response-signing key verifies this envelope."
         },
         "request_hash": {
-          "type": "string",
-          "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+          "$ref": "/schemas/core/request-binding-digest.json",
           "description": "sha256: prefix plus unpadded base64url SHA-256 of the canonical request-binding object for this call."
         },
         "iat": {

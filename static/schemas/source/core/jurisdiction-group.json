@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/jurisdiction-group.json",
+  "title": "Jurisdiction Group",
+  "description": "Profile-local name of a group of jurisdictions, declared in an acceptance policy profile's region_aliases.",
+  "type": "string",
+  "pattern": "^[A-Z][A-Z0-9_-]*$"
+}

@@ -1,0 +1,349 @@
+# Delta manifest for #8536 (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  #8536 against its merge base with main: the drift corrections, the two drifted enums, the 63-character DNS label
+  limit, the SLA duration pattern, the HTTPS origin trailing slash, and the experimental money constraints
+changes:
+  - location: core/domain-name.json#
+    keyword: maxLength
+    new: 253
+    direction: tighten
+    side: both
+    note: >-
+      (a) The named schema takes maxLength 253 (RFC 1035) at every domain site that lacked it. Register: "A domain name
+      is at most 253 characters", 48 entries.
+  - location: core/domain-name.json#
+    keyword: pattern
+    old: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$
+    new: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+    direction: tighten
+    side: both
+    note: >-
+      B1 fix: the domain pattern limits each label to 63 characters (RFC 1035), at every domain site that stated the
+      unbounded-label pattern. Witness: a 64-character label plus .com. No DNS name has a longer label.
+  - location: core/iana-timezone.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: >-
+      (a) commits 12 and 17: 32 timezone sites without a bound gain maxLength 255. Register: "A timezone identifier is 1
+      to 255 characters".
+  - location: core/media-buy-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: (a) The named schema takes maxLength 255 from 3 predecessor_media_buy_id sites.
+  - location: core/iana-timezone.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: '(a) commits 12 and 17: 10 plain-string timezone sites gain minLength 1.'
+  - location: core/account-request-id.json#
+    keyword: pattern
+    new: ^[A-Za-z0-9_.:-]{1,128}$
+    direction: tighten
+    side: both
+    note: (a) The named schema takes the ID pattern from account-request-record request_id. All three roots are new in 3.3.
+  - location: enums/asset-source.json#
+    keyword: enum
+    old:
+      - agent_synthesized
+      - buyer_uploaded
+      - publisher_owned_reference
+      - seller_human_designed
+      - seller_pre_rendered_from_brief
+    new:
+      - agent_synthesized
+      - buyer_uploaded
+      - publisher_host_recorded
+      - publisher_owned_reference
+      - seller_human_designed
+      - seller_pre_rendered_from_brief
+    direction: loosen
+    side: both
+    note: >-
+      (a) Drifted enum: native_in_feed asset_source gains publisher_host_recorded (changeset
+      app-store-and-asset-source-drift).
+  - location: core/domain-name.json#
+    keyword: format
+    old: hostname
+    direction: none
+    side: both
+    note: >-
+      upstream_source_domain only: format hostname is replaced by the lowercase domain pattern, which also limits labels
+      to 63 characters (B1). The pattern line masks this one: reverting only the format removal changes no verdict. The
+      combined change only tightens (see the pattern line).
+  - location: core/domain-name.json#
+    keyword: pattern
+    new: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+    direction: tighten
+    side: both
+    note: >-
+      upstream_source_domain only; acts with the format line. With labels limited to 63 characters (B1), the pattern
+      rejects everything format hostname rejected, plus uppercase and a trailing dot. Witness "Example.com".
+  - location: core/signal-description.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
+    note: >-
+      (a) The named schema takes minLength 1 from the wholesale signal description; signal-definition description gains
+      it.
+  - location: enums/app-store.json#
+    keyword: enum
+    old:
+      - amazon
+      - apple
+      - google
+      - lg
+      - other
+      - roku
+      - samsung
+    new:
+      - amazon
+      - apple
+      - fire_tv
+      - google
+      - lg
+      - other
+      - roku
+      - samsung
+      - vizio
+    direction: loosen
+    side: none
+    note: '(a) Drifted enum: brand.json property store gains fire_tv and vizio.'
+  - location: core/country-code.json#
+    keyword: maxLength
+    old: 2
+    direction: none
+    side: request
+    note: >-
+      Trademark and claim countries items: exactly 2 characters becomes ^[A-Z]{2}$. The pattern line masks this one; the
+      combined change only tightens.
+  - location: core/country-code.json#
+    keyword: minLength
+    old: 2
+    direction: none
+    side: request
+    note: See the maxLength line. The pattern line masks this one.
+  - location: core/country-code.json#
+    keyword: pattern
+    new: ^[A-Z]{2}$
+    direction: tighten
+    side: request
+    note: (a) See the maxLength line. Witness "us".
+  - location: core/aspect-ratio.json#
+    keyword: pattern
+    old: ^\d+:\d+$
+    new: ^[0-9]+(\.[0-9]+)?:[0-9]+(\.[0-9]+)?$
+    direction: loosen
+    side: response
+    note: (a) Whole-number aspect ratios now accept decimals, as 3.2.8 core/format.json publishes 1.91:1.
+  - location: core/proposal-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: (a) proposal_id, 8 sites, adds maxLength 255.
+  - location: core/creative-evaluation-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: (a) The named schema takes maxLength 255 from 2 evaluation_id sites.
+  - location: core/sla-duration.json#
+    keyword: pattern
+    old: ^P(?!$)(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$
+    new: ^P(?=\d|T)(?=.*\d)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?$
+    direction: tighten
+    side: both
+    note: >-
+      B2 and #8905: SLA window and creative review SLA response_max and completion_max reject a value ending in a bare T
+      (PT, P1DT), which is not an ISO 8601 duration. Zero (PT0S, P0D) stays valid. Witness "PT" as completion_max on
+      core/sla-window.json and core/creative-review-sla.json: valid at the base, invalid at the head (plain Ajv, repo
+      options). The tool finds no witness for this line because its regex sampler gives no strings for a pattern with a
+      lookahead, and both sides use one.
+  - location: core/iana-timezone.json#
+    keyword: pattern
+    old: ^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$
+    direction: loosen
+    side: both
+    note: (a) commit 22 drops the character pattern from the named schema; witness "+05:00".
+  - location: core/iana-timezone.json#
+    keyword: not
+    old:
+      const: inventory_local
+    direction: loosen
+    side: both
+    note: (a) commit 22 drops not const inventory_local; witness "inventory_local".
+  - location: enums/postal-system.json#
+    keyword: enum
+    new:
+      - at_plz
+      - au_postcode
+      - ca_fsa
+      - ca_full
+      - cep
+      - ch_plz
+      - code_postal
+      - custom
+      - de_plz
+      - fr_code_postal
+      - fsa
+      - full
+      - gb_full
+      - gb_outward
+      - outward
+      - pin
+      - plz
+      - postal_code
+      - postcode
+      - us_zip
+      - us_zip_plus_four
+      - zip
+      - zip_plus_four
+    direction: tighten
+    side: both
+    note: >-
+      (a) Targeting modification selector system: minLength 1 becomes enums/postal-system.json. Acts with the minLength
+      and type lines.
+  - location: enums/postal-system.json#
+    keyword: minLength
+    old: 1
+    direction: none
+    side: both
+    note: See the enum line. The enum masks this one.
+  - location: enums/postal-system.json#
+    keyword: type
+    old:
+      - string
+    direction: none
+    side: both
+    note: See the enum line; type string is dropped next to an all-string enum, which masks it.
+  - location: core/cancellation-reason.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: (a) The named schema takes minLength 1 from 2 cancellation_reason sites.
+  - location: core/account-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: (a) The named schema takes maxLength 255 from 3 account_id sites.
+  - location: core/reporting-delivery-offering-id.json#
+    keyword: maxLength
+    old: 255
+    new: 128
+    direction: none
+    side: response
+    note: >-
+      The named schema lowers 3 offering_id limits from 255 to 128. The added pattern ^[A-Za-z0-9_.:-]{1,128}$ also
+      bounds the length at 128 and masks this line; the combined change only tightens (see the pattern line).
+  - location: core/reporting-delivery-offering-id.json#
+    keyword: pattern
+    new: ^[A-Za-z0-9_.:-]{1,128}$
+    direction: tighten
+    side: response
+    note: (a) See the maxLength line.
+  - location: core/catalog-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: (a) catalog_ids items, 2 sites, add maxLength 255.
+  - location: core/brief-rejection-reason.json#
+    keyword: maxLength
+    new: 2000
+    direction: tighten
+    side: response
+    note: (a) request_proposals reason adds maxLength 2000.
+  - location: core/seller-suggestion.json#
+    keyword: maxLength
+    new: 1000
+    direction: tighten
+    side: response
+    note: (a) suggestions items, 2 sites, add maxLength 1000.
+  - location: core/reporting-profile-id.json#
+    keyword: pattern
+    new: ^[A-Za-z0-9_.:-]{1,128}$
+    direction: tighten
+    side: response
+    note: (a) reporting_profile, 3 sites, adds the ID pattern.
+  - location: core/reporting-delivery-config-id.json#
+    keyword: pattern
+    new: ^[A-Za-z0-9_.:-]{1,64}$
+    direction: tighten
+    side: response
+    note: (a) delivery_config_id, 2 sites, adds the ID pattern.
+  - location: core/webhook-token.json#
+    keyword: maxLength
+    new: 4096
+    direction: tighten
+    side: request
+    note: (a) Webhook token, 2 sites, adds maxLength 4096.
+  - location: core/signal-description.json#
+    keyword: maxLength
+    new: 2000
+    direction: tighten
+    side: none
+    note: (a) Wholesale signal description gains maxLength 2000.
+  - location: core/signal-name.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: none
+    note: (a) Wholesale signal name gains maxLength 255.
+  - location: core/governance-context.json#
+    keyword: pattern
+    new: ^[\x20-\x7E]+$
+    direction: tighten
+    side: request
+    note: (a) governance_context, 10 request sites, adds the printable ASCII pattern from 3.2.8 core/protocol-envelope.json.
+  - location: core/https-origin.json#
+    keyword: pattern
+    old: ^https://[^/?#@]+$
+    new: ^https://[^/?#@]+/?$
+    direction: loosen
+    side: both
+    note: >-
+      #8923: an HTTPS origin accepts one trailing slash, the form a WHATWG URL serializer writes for an empty path.
+      Receivers compare these values by canonical origin. Witness: https://issuer.example/.
+  - location: error-details/governance-agent-not-accepted.json#/oneOf/0/properties/attempted_agent_origin
+    keyword: pattern
+    old: ^https://[^/?#@]+$
+    new: ^https://[^/?#@]+/?$
+    direction: loosen
+    side: none
+    note: '#8923: the disclosed attempted_agent_origin takes the same pattern as core/https-origin.json; it keeps maxLength 2048.'
+  - location: core/money.json#/properties/amount
+    keyword: minimum
+    new: 0
+    direction: tighten
+    side: both
+    note: >-
+      #8471: the experimental money copies that core/money.json now names, sync_plans budget_limit and
+      total_budget_cap and the si_send_message handoff intent price, gain the non-negative amount every other money
+      object states. Witness: amount -1.
+  - location: core/currency-code.json#
+    keyword: pattern
+    new: ^[A-Z]{3}$
+    direction: tighten
+    side: both
+    note: >-
+      #8471: the three experimental money currencies that were plain strings (sync_plans budget_limit and
+      total_budget_cap, si_send_message handoff intent price) reference core/currency-code.json, the ISO 4217 code
+      every other money object states.
+  - location: core/money.json#
+    keyword: required
+    new:
+      - amount
+      - currency
+    direction: tighten
+    side: response
+    note: >-
+      #8471: the experimental SI handoff price, now core/money.json, requires both fields, like every other money
+      object. The sync_plans copies already required both. Witness: an empty price.

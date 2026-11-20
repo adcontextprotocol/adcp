@@ -59,10 +59,7 @@
   "type": "object",
   "properties": {
     "representation_id": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "x-entity": "creative_representation",
+      "$ref": "/schemas/core/representation-id.json",
       "description": "Stable representation identifier, unique within the enclosing CreativeRepresentationSet revision."
     },
     "source": {

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/buying-mode.json",
+  "title": "Buying Mode",
+  "description": "Buyer intent for a product discovery request: brief, wholesale, or refine.",
+  "type": "string",
+  "enum": [
+    "brief",
+    "wholesale",
+    "refine"
+  ]
+}

@@ -25,13 +25,11 @@
       ]
     },
     "daast_target": {
-      "type": "string",
-      "enum": ["linear", "companion"],
+      "$ref": "/schemas/enums/daast-tracker-target.json",
       "default": "linear"
     },
     "daast_offset": {
-      "type": "string",
-      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
+      "$ref": "/schemas/core/tracker-offset.json"
     },
     "daast_versions": {
       "type": "array",

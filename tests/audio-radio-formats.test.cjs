@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { addNamedScalarSchemas } = require('./helpers/named-scalar-schemas.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const AUDIO_REQUIREMENTS = path.join(
@@ -56,7 +57,7 @@ async function compile(schemaId) {
 
 test('audio asset loudness constraints are optional and typed', () => {
   const schema = readJson(AUDIO_REQUIREMENTS);
-  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema);
+  const validate = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(schema);
 
   assert.equal(validate({}), true, 'loudness constraints must remain optional');
   assert.equal(validate({

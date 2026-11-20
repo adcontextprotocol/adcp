@@ -9,10 +9,8 @@
       "$ref": "/schemas/enums/warning-code.json"
     },
     "message": {
-      "type": "string",
-      "description": "Short human-readable explanation. Treat as untrusted seller text and do not require buyers to parse it for routing.",
-      "minLength": 1,
-      "maxLength": 2000
+      "$ref": "/schemas/core/warning-message.json",
+      "description": "Short human-readable explanation. Treat as untrusted seller text and do not require buyers to parse it for routing."
     },
     "affected_resource": {
       "$ref": "/schemas/core/warning-resource.json",
@@ -67,7 +65,7 @@
           "affected_resource": {
             "properties": {
               "resource_type": {
-                "enum": ["media_buy", "package"]
+                "$ref": "/schemas/enums/budget-warning-resource-type.json"
               }
             }
           }

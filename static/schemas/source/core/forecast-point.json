@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "label": {
-      "type": "string",
-      "maxLength": 128,
+      "$ref": "/schemas/core/forecast-point-label.json",
       "description": "Human-readable name for this forecast point. Required when forecast_range_unit is 'package' so buyer agents can identify and reference individual packages. Optional for other forecast types.",
       "examples": ["Primetime", "Morning Drive", "Large Format Transit"]
     },

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/forecast-point-label.json",
+  "title": "Forecast Point Label",
+  "description": "Human-readable name of one forecast point, such as Primetime.",
+  "type": "string",
+  "maxLength": 128
+}

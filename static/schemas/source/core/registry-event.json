@@ -347,8 +347,7 @@
             },
             "adcp_version": { "type": "string" },
             "grading_profile": {
-              "type": "string",
-              "enum": ["legacy", "spec"],
+              "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile that produced the badge. Historical events emitted before profile selection may omit this field and are Legacy."
             }
           },
@@ -371,8 +370,7 @@
             "reason": { "type": "string" },
             "adcp_version": { "type": "string" },
             "grading_profile": {
-              "type": "string",
-              "enum": ["legacy", "spec"],
+              "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile in force when the badge was lost. Historical events emitted before profile selection may omit this field and are Legacy."
             }
           },
@@ -449,8 +447,7 @@
   ],
   "$defs": {
     "domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json"
     },
     "publisherAdagentsPayload": {
           "type": "object",
@@ -602,8 +599,7 @@
         "markets": {
           "type": "array",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           },
           "uniqueItems": true
         },
@@ -633,8 +629,7 @@
     "countries": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1,
       "uniqueItems": true
@@ -715,8 +710,7 @@
         },
         "countries": { "$ref": "#/$defs/countries" },
         "delegation_type": {
-          "type": "string",
-          "enum": ["direct", "delegated", "ad_network"]
+          "$ref": "/schemas/enums/delegation-type.json"
         },
         "exclusive": { "type": "boolean" },
         "signing_keys": {

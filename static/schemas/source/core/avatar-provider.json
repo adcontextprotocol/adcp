@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/avatar-provider.json",
+  "title": "Avatar Provider",
+  "description": "Avatar video vendor that renders a brand avatar, such as heygen.",
+  "type": "string",
+  "maxLength": 128
+}

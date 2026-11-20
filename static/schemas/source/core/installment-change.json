@@ -8,8 +8,7 @@
   "type": "object",
   "properties": {
     "product_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/product-id.json",
       "x-entity": "product",
       "description": "A product the source proposal purchases, or one that product_changes includes in the same request. The seller checks this membership before it resolves installment_ref, so an unauthorized caller never causes reference resolution."
     },
@@ -18,8 +17,7 @@
       "description": "Installment the action applies to. An omit names one in the product's installments. An include names an installment of a collection the product's collections name. A reference the seller cannot resolve fails the request at task level with REFERENCE_NOT_FOUND, not as an unsatisfied change."
     },
     "action": {
-      "type": "string",
-      "enum": ["include", "omit"],
+      "$ref": "/schemas/enums/membership-action.json",
       "description": "include puts the installment in the selection and omit takes it out. It is required, because a drop that silently defaulted to include is the expensive failure. Swapping a slot is one omit plus one include in the same request."
     }
   },

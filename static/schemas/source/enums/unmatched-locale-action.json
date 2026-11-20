@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/unmatched-locale-action.json",
+  "title": "Unmatched Locale Action",
+  "description": "Seller behavior when no locale variant matches.",
+  "type": "string",
+  "enum": [
+    "serve_default",
+    "do_not_serve"
+  ]
+}

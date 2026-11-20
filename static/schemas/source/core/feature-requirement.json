@@ -24,8 +24,7 @@
       "minItems": 1
     },
     "if_not_covered": {
-      "type": "string",
-      "enum": ["exclude", "include"],
+      "$ref": "/schemas/enums/uncovered-property-action.json",
       "default": "exclude",
       "description": "How to handle properties where this feature is not covered. 'exclude' (default): property is removed from the list. 'include': property passes this requirement (fail-open)."
     },

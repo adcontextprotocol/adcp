@@ -52,10 +52,8 @@
       }
     },
     "cache_ttl": {
-      "type": "integer",
-      "description": "Optional override for the router's default 5-minute response cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching.",
-      "minimum": 0,
-      "maximum": 86400
+      "$ref": "/schemas/core/context-match-cache-ttl.json",
+      "description": "Optional override for the router's default 5-minute response cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching."
     },
     "signals": {
       "type": "object",

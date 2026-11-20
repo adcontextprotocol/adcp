@@ -61,9 +61,23 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Experimental installment refinement (#8967) adds installment-change-set,
   // installment-change and the closed canonical-installment-ref to the
   // refine_proposals input (+3 instances, +3 unique).
-  assert.equal(report.definition_instances, 714);
-  assert.equal(report.unique_definitions, 195);
-  assert.equal(report.repeated_definitions, 136);
+  // Naming the currency code, country code, idempotency key, domain name, and
+  // HTTPS URL (#8525) turns five inline subschemas into definitions (+78
+  // instances, +5 unique). Naming the further repeated scalar concepts adds 209
+  // instances and 61 unique definitions; naming repeated enums adds 27 and 8;
+  // naming every remaining repeat adds 95 and 27. Pointing every site at one
+  // definition adds 57 and 10. With installment refinement on top, whose
+  // product_id and action reference core/product-id.json and
+  // enums/membership-action.json, the report measures 1,182 instances and 306
+  // unique definitions. Naming the legacy webhook authentication object
+  // (#8907), reached from push_notification_config and reporting_webhook,
+  // adds 8 instances and 1 unique, repeated definition: 1,190, 307 and 206.
+  // Naming money (#8471), reached from the media-buy budgets and the
+  // governance commitments, adds 3 instances and 1 unique, repeated
+  // definition: 1,193, 308 and 207.
+  assert.equal(report.definition_instances, 1193);
+  assert.equal(report.unique_definitions, 308);
+  assert.equal(report.repeated_definitions, 207);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -190,7 +204,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 195);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 308);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

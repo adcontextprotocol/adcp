@@ -16,9 +16,7 @@
       "description": "Task-level business-outcome discriminator. The request was understood and processed, but the seller declined to offer products."
     },
     "reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 2000,
+      "$ref": "/schemas/core/brief-rejection-reason.json",
       "description": "Buyer-facing market explanation for the decline. MAY be sanitized to protect confidential seller rules; for example, 'The requested budget is below the minimum for this inventory' rather than naming the internal rule, candidate products, inventory identifiers, or upstream partners that caused the decision. Plain text only."
     },
     "suggestions": {
@@ -27,9 +25,7 @@
       "minItems": 1,
       "maxItems": 20,
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1000
+        "$ref": "/schemas/core/seller-suggestion.json"
       }
     },
     "context": {

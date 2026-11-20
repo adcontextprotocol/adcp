@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/opentype-feature-tag.json",
+  "title": "OpenType Feature Tag",
+  "description": "Four-character OpenType feature tag, such as liga or smcp.",
+  "type": "string",
+  "pattern": "^[a-z0-9]{4}$"
+}

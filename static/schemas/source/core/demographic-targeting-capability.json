@@ -20,15 +20,11 @@
           "uniqueItems": true
         },
         "min_supported_age": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 150,
+          "$ref": "/schemas/core/age-in-years.json",
           "description": "Lowest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted min: omission means no lower age restriction. Required when that execution mode is declared."
         },
         "max_supported_age": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 150,
+          "$ref": "/schemas/core/age-in-years.json",
           "description": "Highest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted max: omission means no upper age restriction, so a request such as min 65 remains 65+ even when max_supported_age is 65. Required when that execution mode is declared."
         },
         "supports_unbounded_min": {
@@ -40,9 +36,8 @@
           "description": "Whether continuous_bounds accepts a predicate with max omitted. When true, the omitted max means no upper age restriction and MUST NOT be replaced by max_supported_age; for example, min 65 remains 65+. When false, the seller MUST reject open-upper predicates. Required when continuous_bounds is declared."
         },
         "unknown_handling": {
-          "type": "string",
-          "description": "How this product handles people whose age is unavailable. selectable honors either include_unknown value; always_excluded supports only false; always_included supports only true. A seller MUST reject a request incompatible with this declaration rather than silently changing it.",
-          "enum": ["selectable", "always_excluded", "always_included"]
+          "$ref": "#/definitions/unknown_handling",
+          "description": "How this product handles people whose age is unavailable. selectable honors either include_unknown value; always_excluded supports only false; always_included supports only true. A seller MUST reject a request incompatible with this declaration rather than silently changing it."
         },
         "supported_bases": {
           "type": "array",
@@ -159,12 +154,7 @@
         "values": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "female",
-              "male",
-              "non_binary"
-            ]
+            "$ref": "/schemas/enums/gender.json"
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -173,12 +163,7 @@
           "x-added-in": "3.3.0"
         },
         "unknown_handling": {
-          "type": "string",
-          "enum": [
-            "selectable",
-            "always_excluded",
-            "always_included"
-          ],
+          "$ref": "#/definitions/unknown_handling",
           "description": "Unstated/unknown gender: selectable allows either include_unknown value; always_excluded only false; always_included only true. MUST reject incompatible requests.",
           "x-status": "experimental",
           "x-added-in": "3.3.0"
@@ -206,5 +191,17 @@
         "gender"
       ]
     }
-  ]
+  ],
+  "definitions": {
+    "unknown_handling": {
+      "title": "Unknown Value Handling",
+      "description": "How a product handles people whose demographic value is unknown: selectable, always_excluded, or always_included.",
+      "type": "string",
+      "enum": [
+        "selectable",
+        "always_excluded",
+        "always_included"
+      ]
+    }
+  }
 }
