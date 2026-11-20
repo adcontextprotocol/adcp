@@ -32,8 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
+
+      # Pull requests and merge groups compare against current main and its
+      # merge base; only that much history is fetched (#8559). Push, schedule
+      # and manual runs read only the checked-out tree.
+      - name: Fetch merge base with main
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        run: bash scripts/fetch-merge-base.sh main
 
       - name: Check for duplicate migration numbers against current main
         run: |
@@ -48,7 +53,6 @@ jobs:
           # migration filenames on the PR branch AND on origin/main, then
           # hunting dupes in that union. The merge_group/push/schedule
           # triggers cover the case where two PRs slip through in parallel.
-          git fetch origin main --depth=1 2>/dev/null || true
 
           # Files on this ref (PR's speculative merge, merge-group commit, or main).
           local_files=$(ls server/src/db/migrations/*.sql 2>/dev/null | xargs -n1 basename || true)

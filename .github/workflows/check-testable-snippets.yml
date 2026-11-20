@@ -9,6 +9,7 @@ on:
       - 'scripts/check-testable-snippets.cjs'
       - 'scripts/docs-example-coverage.cjs'
       - 'scripts/docs-json-field-audit.cjs'
+      - 'scripts/fetch-merge-base.sh'
       - '.github/workflows/check-testable-snippets.yml'
 
 jobs:
@@ -16,8 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0  # Need full history for diff
+
+      # The snippet check diffs against the merge base with the target branch;
+      # only that much history is fetched (#8559).
+      - name: Fetch merge base with the target branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/fetch-merge-base.sh "${BASE_REF}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -25,11 +31,17 @@ jobs:
           node-version: '24'
 
       - name: Check for untested code snippets
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin ${{ github.base_ref }}
-          git diff origin/${{ github.base_ref }}...HEAD --name-only | grep -E '\.(md|mdx)$' > changed_files.txt || true
+          set -euo pipefail
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          printf '%s\n' "${changed}" | grep -E '\.(md|mdx)$' > changed_files.txt || true
 
           if [ -s changed_files.txt ]; then
+            # The clone is blobless below HEAD and the checker diffs one file at
+            # a time; one diff first fetches every missing blob in a single batch.
+            xargs -d '\n' git diff "origin/${BASE_REF}...HEAD" -- < changed_files.txt > /dev/null
             echo "📋 Checking documentation changes for testable snippets..."
             node scripts/check-testable-snippets.cjs
           else
