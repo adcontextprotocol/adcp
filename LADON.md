@@ -78,6 +78,26 @@ algorithms) change. A clarification is patch-eligible only when the prior spec
 was demonstrably ambiguous *and* any conformant 3.1.0 implementation would
 already satisfy the new MUST. "It's just docs" does not apply to normative docs.
 
+### Mandatory: a minor adds no field an older seller would silently ignore
+
+Rule 4 of "What can change in a release" in `docs/reference/versioning.mdx`
+applies to a PR on `main`, which ships in a minor. Check each field it adds to a
+mutating request: the request of a task that creates or changes state, including
+nested objects such as packages. Would a seller on the previous minor of the
+same major ignore the field and commit to something different? Spend,
+targeting, caps, bidding, creative activation, measurement and account identity
+are examples, not the full list. If so, the field is `high` unless two things
+hold:
+
+- the field sits behind a capability the seller declares in
+  `get_adcp_capabilities`, and
+- the spec says buyers MUST NOT send it to a seller that doesn't declare that
+  capability.
+
+A field an older seller can safely ignore needs nothing more. This is the only
+version-gap check. How an SDK bridges releases is up to that SDK, not part of
+the spec.
+
 ### Mandatory: cite governance precedent
 
 When a PR decides a question of protocol policy or convention rather than
