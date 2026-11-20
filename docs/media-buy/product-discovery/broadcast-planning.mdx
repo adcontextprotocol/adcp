@@ -41,6 +41,11 @@ A buyer sends `criteria.planning_goals` on [`request_proposals`](/docs/media-buy
       "currency": "USD"
     }
   },
+  "cost_ceiling": {
+    "metric": "cpm",
+    "amount": 30,
+    "currency": "USD"
+  },
   "max_frequency": {
     "value": 3,
     "window": {
@@ -102,10 +107,11 @@ A buyer sends `criteria.planning_goals` on [`request_proposals`](/docs/media-buy
 
 | Property | Meaning |
 |---|---|
-| `budget_mode` | `set`: the buyer's `budget_range` is the budget. `suggest`: the seller sizes the budget to the other goals and states it in `commercial_terms.total_budget` and `total_budget_guidance`. Not the same as `budget_allocation.mode`, which says how an executed budget is split across packages. |
+| `budget_mode` | `set`: the buyer's `budget_range` is the budget. `suggest`: the seller sizes the budget to the other goals and states it in `commercial_terms.total_budget` and `total_budget_guidance`. A `budget_range` on a `suggest` request is a hard envelope: the suggestion falls inside it, and goals that cannot be met inside it are reported `missed`. A budget written only in the brief prose bounds nothing. Not the same as `budget_allocation.mode`, which says how an executed budget is split across packages. |
 | `objective` | `max_reach` maximizes unduplicated audience. `max_efficiency` minimizes cost per point (CPP) for a rated plan and cost per thousand impressions (CPM) for a counted one. |
 | `delivery_target` | A volume in `grps` or `impressions` over the flight, with an optional `max_cost` ceiling on the plan's effective CPP or CPM, gross or net per `cost_basis`. Effective cost is plan budget divided by delivered units, not a rate-card price. |
-| `max_frequency` | Ceiling on average exposures per person reached over a `window` counted from the first airing. Four broadcast weeks is `{ "interval": 28, "unit": "days" }`; the whole flight is `{ "interval": 1, "unit": "campaign" }`. |
+| `cost_ceiling` | A ceiling on effective CPP or CPM with no delivery target (`metric`, `amount`, `currency`, `cost_basis`), for "keep CPP under $60K". `delivery_target.max_cost` is shorthand for the same goal; sending both is rejected. Refinement `constraints` do not cover it: `constraints.cpm` bounds the fixed CPM rate on a pricing option, and there is no CPP constraint. |
+| `max_frequency` | Ceiling on average exposures per person reached over a `window` counted from the first airing. Two spellings are defined: four broadcast weeks is `{ "interval": 28, "unit": "days" }` and the whole flight is `{ "interval": 1, "unit": "campaign" }`. The seller compares the goal to the `reach_frequency` point with the same window and echoes the window in the goal result. Against a 3 ceiling, the Hearthside plan is met at 28 days (2.8) and missed over the campaign (3.3). |
 | `delivery_rules` | `spot_length_mix`, `max_spots_per_hour` (per station per clock hour), `overbook_percentage`, `daypart_mix` (a share by class such as prime and fringe; send `daypart_targets` when the classes must mean the same windows at every seller), `mix_basis` (`spots` or `budget`, the base of those shares) and `pacing`. |
 | `must_include`, `must_exclude` | Stations (by `station_id` or `facility_id`), markets (as `geo_metros` selections) and programming formats the plan should contain or omit. |
 | `audience_basis` | The provider, demographic and universe the buyer wants figures counted on. |
@@ -140,7 +146,7 @@ Re-optimization is the refinement loop that already exists. The buyer reads `goa
 
 ## Worked example: Hearthside Coffee
 
-The figures below are the plan iHeartMedia's Harmony planner showed on 20 November for Hearthside Coffee Co., a 140-store New England coffee chain: nine markets, 33 stations, $198,476 across a five-week flight from 16 November to 20 December, 3.3 GRPs at $61K a point, 7.0 million impressions at a $28.39 CPM, and 2.8 frequency over four weeks. The request below is the brief Harmony's planner took, with the planner's settings as planning goals.
+The figures below are the plan iHeartMedia's Harmony planner showed on 20 November for Hearthside Coffee Co., a 140-store New England coffee chain: nine markets, 33 stations, $198,476 across a five-week flight from 16 November to 20 December, 3.3 GRPs at $61K a point, 7.0 million impressions at a $28.39 CPM, and 2.8 frequency over four weeks. The request below is the brief Harmony's planner took, with the planner's settings as planning goals. The brief asked for $120K in prose and Harmony suggested $198.5K; because the request sends no structured `budget_range`, nothing bounded the suggestion. A buyer who wanted $120K to bound it would add `offer_filters.budget_range` with a max of 120000, and the seller would plan inside it and report which goals that costs.
 
 ```json
 {
@@ -401,6 +407,10 @@ And its `goal_results`:
   {
     "goal": "max_frequency",
     "status": "met",
+    "window": {
+      "interval": 28,
+      "unit": "days"
+    },
     "target": 3,
     "achieved": 2.8,
     "detail": "Average frequency over the first 28 days is 2.8; over the whole 5-week flight it is 3.3."
@@ -489,6 +499,10 @@ Read against that goal, the draft above would report:
 {
   "goal": "max_frequency",
   "status": "missed",
+  "window": {
+    "interval": 1,
+    "unit": "campaign"
+  },
   "target": 3,
   "achieved": 3.33,
   "detail": "Over the whole 5-week flight average frequency is 3.3; the ceiling is 3."

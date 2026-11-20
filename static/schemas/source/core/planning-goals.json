@@ -46,6 +46,26 @@
       "required": ["metric", "value"],
       "additionalProperties": true
     },
+    "cost_ceiling": {
+      "type": "object",
+      "description": "A ceiling on the plan's effective cost per unit with no delivery target, for 'keep CPP under $60K' or 'no more than a $25 CPM'. It is the same goal as delivery_target.max_cost, which is shorthand for a cost_ceiling whose metric follows the target (grps: cpp, impressions: cpm); a request carrying both is rejected with INVALID_REQUEST naming criteria.planning_goals.cost_ceiling. Effective cost is total plan budget divided by delivered units, in the plan currency. refine_proposals constraints do not cover it: constraints.cpm bounds the fixed CPM rate on the pricing option and there is no CPP constraint. Reported in goal_results as max_cost.",
+      "properties": {
+        "metric": {
+          "type": "string",
+          "enum": ["cpp", "cpm"],
+          "description": "cpp is dollars per gross rating point; cpm is per thousand impressions."
+        },
+        "amount": { "type": "number", "exclusiveMinimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "cost_basis": {
+          "type": "string",
+          "enum": ["gross", "net"],
+          "description": "Whether amount is gross or net of agency commission. Absent means the seller's quoting convention, which it states in the goal result's detail."
+        }
+      },
+      "required": ["metric", "amount", "currency"],
+      "additionalProperties": true
+    },
     "max_frequency": {
       "type": "object",
       "description": "Ceiling on the plan's average frequency: exposures per person reached, over a window. Unlike the integer target_frequency band on a reach optimization goal, it is a decimal ceiling with no floor; a buyer who wants a minimum (3+ effective frequency) has no field for it yet. If the seller cannot forecast frequency over the window it reports the goal not_supported. It is a planning goal evaluated against the seller's forecast, not an enforced per-person cap, which broadcast media cannot apply; for an enforced cap use criteria.media_buy_frequency_cap. A seller MUST NOT present it as a delivery guarantee.",
@@ -57,7 +77,7 @@
         },
         "window": {
           "$ref": "/schemas/core/duration.json",
-          "description": "Window over which frequency is measured, counted from the first airing. Four broadcast weeks is {interval: 28, unit: days}; the whole flight is {interval: 1, unit: campaign}."
+          "description": "Window over which frequency is measured, counted from the first airing. Exactly two spellings are defined: four broadcast weeks is {interval: 28, unit: days}, and the whole flight is {interval: 1, unit: campaign}. Other day counts (7, 14, 21) are valid when the seller reports them in plan_breakdown.totals.reach_frequency. A window longer than the flight is the whole flight. The seller evaluates the goal against the reach_frequency point with the same window and echoes the window in the goal result, so a 2.8 over 28 days is never read against a campaign figure."
         }
       },
       "required": ["value", "window"],

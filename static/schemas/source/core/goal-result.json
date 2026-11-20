@@ -13,6 +13,10 @@
     "status": {
       "$ref": "/schemas/enums/planning-goal-status.json"
     },
+    "window": {
+      "$ref": "/schemas/core/duration.json",
+      "description": "For max_frequency, the window achieved was measured over, as in the request."
+    },
     "target": {
       "type": "number",
       "description": "The figure the buyer asked for, in the goal's unit (see planning-goal-key.json). Absent for goals with no single figure."

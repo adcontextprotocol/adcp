@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/planning-goal-key.json",
   "title": "Planning Goal Key",
-  "description": "The planning goals a seller can evaluate and report on. Each value names the criteria.planning_goals property it reports on (spot_length_mix, max_spots_per_hour, overbook_percentage, daypart_mix and pacing sit under delivery_rules), except max_cost, which reports on delivery_target.max_cost. budget_mode and audience_basis are inputs rather than goals and have no key.",
+  "description": "The planning goals a seller can evaluate and report on. Each value names the criteria.planning_goals property it reports on (spot_length_mix, max_spots_per_hour, overbook_percentage, daypart_mix and pacing sit under delivery_rules), except max_cost, which reports on cost_ceiling or its shorthand delivery_target.max_cost. budget_mode and audience_basis are inputs rather than goals and have no key.",
   "type": "string",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
@@ -22,7 +22,7 @@
   "enumDescriptions": {
     "objective": "planning_goals.objective. Reported met when the plan is the seller's best attempt at the objective within the other goals, with the achieved figure (reach or CPP/CPM) in `achieved`.",
     "delivery_target": "planning_goals.delivery_target.value. target and achieved are in delivery_target.metric (GRPs or impressions).",
-    "max_cost": "planning_goals.delivery_target.max_cost. target and achieved are cost per point (metric grps) or per thousand impressions (metric impressions), in the plan currency.",
+    "max_cost": "planning_goals.cost_ceiling, or its shorthand planning_goals.delivery_target.max_cost. target and achieved are cost per point (metric grps) or per thousand impressions (metric impressions), in the plan currency.",
     "max_frequency": "planning_goals.max_frequency. target and achieved are average exposures per person over max_frequency.window.",
     "spot_length_mix": "planning_goals.delivery_rules.spot_length_mix. No single figure: detail states the planned mix.",
     "max_spots_per_hour": "planning_goals.delivery_rules.max_spots_per_hour. achieved is the highest planned count in any station-hour.",

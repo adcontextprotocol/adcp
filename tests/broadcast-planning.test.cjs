@@ -82,6 +82,7 @@ test('request: every planning goal in one criteria object validates', async () =
     planning_goals: {
       ...REQUEST.full_goals,
       objective: 'max_efficiency',
+      cost_ceiling: { metric: 'cpp', amount: 60000, currency: 'USD', cost_basis: 'gross' },
       delivery_target: { metric: 'grps', value: 100, max_cost: { amount: 1200, currency: 'USD' } },
       must_exclude: { stations: [{ type: 'station_id', value: 'WRKO-AM' }], programming_formats: ['NEWSTALK'] },
       audience_basis: { measurement_source: 'transunion', demographic_system: 'custom', demographic: 'Adults 25-54', universe: 2500000 },
@@ -101,6 +102,8 @@ test('request: malformed planning goals are rejected', async () => {
   assert.equal(bad({ delivery_target: { metric: 'grps' } }), false, 'delivery_target needs a value');
   assert.equal(bad({ delivery_target: { metric: 'clicks', value: 10 } }), false, 'delivery_target metric is grps or impressions');
   assert.equal(bad({ delivery_target: { metric: 'grps', value: 100, max_cost: { amount: 1200 } } }), false, 'max_cost needs a currency');
+  assert.equal(bad({ cost_ceiling: { metric: 'cpc', amount: 1, currency: 'USD' } }), false, 'cost_ceiling metric is cpp or cpm');
+  assert.equal(bad({ cost_ceiling: { amount: 60000, currency: 'USD' } }), false, 'cost_ceiling needs a metric');
   assert.equal(bad({ max_frequency: { value: 3 } }), false, 'max_frequency needs a window');
   assert.equal(bad({ max_frequency: { value: 3, window: { interval: 4, unit: 'weeks' } } }), false, 'weeks is not a duration unit');
   assert.equal(bad({ delivery_rules: { spot_length_mix: [{ duration_seconds: 30 }] } }), false, 'a mix entry needs a share');
@@ -176,6 +179,7 @@ test('goal results: one per requested goal, consistent with the plan', () => {
   const frequency = RESULTS.find((result) => result.goal === 'max_frequency');
   const fourWeeks = PLAN.totals.reach_frequency.find((point) => point.window.interval === 28);
   assert.equal(frequency.target, requested.max_frequency.value);
+  assert.deepEqual(frequency.window, requested.max_frequency.window, 'the result echoes the window it was measured over');
   assert.equal(frequency.achieved, fourWeeks.frequency);
   assert.equal(frequency.status, frequency.achieved <= frequency.target ? 'met' : 'missed');
 

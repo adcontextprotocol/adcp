@@ -78,10 +78,11 @@ replaces per field). Inert on `list_products`, like `outcome_target`.
 
 | Property | Shape |
 |---|---|
-| `budget_mode` | `set` \| `suggest`. The amount stays in `offer_filters.budget_range`. |
+| `budget_mode` | `set` \| `suggest`. The amount stays in `offer_filters.budget_range`; on `suggest` a range is a hard envelope the suggestion falls inside. |
 | `objective` | `max_reach` \| `max_efficiency` (lowest CPP, or CPM when impression-denominated) |
 | `delivery_target` | `{metric: grps\|impressions, value, max_cost?: {amount, currency, cost_basis?}}`; ceiling is effective CPP or CPM, gross or net |
-| `max_frequency` | `{value, window}` with `window` a `duration.json` (28 days, or 1 campaign) |
+| `cost_ceiling` | `{metric: cpp\|cpm, amount, currency, cost_basis?}`: the same ceiling with no target; `max_cost` is shorthand for it. `refine_proposals` `constraints` do not cover it (`constraints.cpm` bounds the rate, there is no CPP) |
+| `max_frequency` | `{value, window}` with `window` a `duration.json`: exactly `{28, days}` (four weeks) or `{1, campaign}` (whole flight), compared to the `reach_frequency` point of the same window and echoed in the goal result |
 | `delivery_rules` | `spot_length_mix[] {duration_seconds, share_percentage}`, `max_spots_per_hour`, `overbook_percentage`, `daypart_mix[] {label, share_percentage, daypart_targets?}`, `mix_basis` (`spots`\|`budget`), `pacing` (existing enum) |
 | `must_include`, `must_exclude` | `plan-scope-selector.json`: `stations[]` (identifiers), `markets[]` (`geo-metro.json`), `programming_formats[]` |
 | `audience_basis` | `plan-audience-basis.json`: the basis the buyer wants figures counted on |
@@ -216,7 +217,7 @@ population ratio (3.1M / 4.2M), not a composition in the trade sense.
    `partial`. Not chosen: a planner wants the best available draft and a report,
    not an empty result, when 3 of 4 goals are met. Hard bounds already exist as
    `constraints`. A per-goal `strength` of `required` or `preferred` is the
-   obvious extension (open question 28).
+   obvious extension (open question 29).
 5. **A new task** (`plan_media`, `optimize_plan`). Not chosen: the lifecycle
    already has an immutable-draft loop with lineage. The missing piece is the
    evaluation, not the verb.
@@ -270,9 +271,14 @@ moves to the next minor if the WG prefers; nothing here is a 4.0 item.
    a percentage over the GRP target, over spots, or over budget?
 9. **Max frequency.** The goal is 3x. The screen shows 2.8x for four weeks and
    3.3x for the campaign. Which does the 3x compare to, and is the window
-   user-selectable?
-10. **Suggest.** The brief said $120K; Suggest returned $198.5K. What does
-    Suggest solve for, and does a stated budget bound it?
+   user-selectable? The draft makes the window explicit: 28 days or the whole
+   flight, echoed in the goal result, so 2.8 is never read against the campaign.
+10. **Suggest with a stated budget.** The brief said $120K; Suggest returned
+    $198.5K. What does Suggest solve for, and what should a stated budget do:
+    ceiling, starting point, or nothing? The draft says a structured
+    `budget_range` is a hard envelope, the suggestion stays inside it, and goals
+    it cannot meet are reported `missed`; a budget only in prose bounds nothing.
+    Is that the behavior Harmony wants?
 11. **Weekly shape.** The legend shows Even pace, Dark week and an average of
     $39,695 a week. Is week budget something a buyer can request (flighting),
     and is reach and frequency by week cumulative?
@@ -292,70 +298,78 @@ moves to the next minor if the WG prefers; nothing here is a 4.0 item.
     not one of those. Which is it, and what impression basis (AQH-based, other)
     sits under `impressions`? Is CPP/CPM gross or net of commission
     (`cost_basis`)?
-17. **Stations at scale.** The catalog is 813 stations. Is a full station
+17. **Standalone cost ceiling.** Buyers say "keep CPP under $60K" with no GRP
+    target. The draft adds `cost_ceiling {metric: cpp|cpm, amount, currency}`
+    and keeps `delivery_target.max_cost` as shorthand. Refinement `constraints`
+    do not cover it (`constraints.cpm` bounds the pricing-option rate; there is
+    no CPP constraint). Is a ceiling without a target something Harmony
+    evaluates, and is effective CPP or CPM what the buyer means?
+18. **Stations at scale.** The catalog is 813 stations. Is a full station
     breakdown acceptable on the wire, or does it need paging?
 
 ### For TV sellers
 
-18. **GRP and currency.** TV GRPs are rated per market against universe
+19. **GRP and currency.** TV GRPs are rated per market against universe
     estimates and measured by a currency (Nielsen, VideoAmp, others) at a
     window (Live, C3, C7). Is `audience_basis` plus `measurement_source` enough,
     or does the plan need the window and the universe estimate version?
-19. **Dimensions.** Station and network, market, daypart (early fringe, access,
+20. **Dimensions.** Station and network, market, daypart (early fringe, access,
     prime, late), program or genre, week, :15/:30/:60. Does `programming_format`
     stretch to genre and program? Do you need `network` as its own dimension
     rather than `custom`?
-20. **Spot length.** `spot_length_mix` is a share of spots. TV plans on :30
+21. **Spot length.** `spot_length_mix` is a share of spots. TV plans on :30
     equivalents. Is a share of spots, of budget or of equivalized units the
     unit? (Tracked with the :30 equivalization gap in #8001.)
-21. **Overbook and guarantees.** Is overbook the same idea as an
+22. **Overbook and guarantees.** Is overbook the same idea as an
     audience-deficiency cushion? Where do makegoods fit relative to a goal that
     is `missed`?
-22. **Per-spot limits.** Spots per hour is a radio term. TV talks about pods,
+23. **Per-spot limits.** Spots per hour is a radio term. TV talks about pods,
     breaks and competitive separation. What should the rule be?
-23. **Reach and frequency.** Is four weeks the standard cume window, and is
+24. **Reach and frequency.** Is four weeks the standard cume window, and is
     effective reach (3+) wanted alongside average frequency?
 
 ### For out-of-home sellers
 
-24. **Do GRPs apply?** Many OOH plans use impressions, reach and frequency, and
+25. **Do GRPs apply?** Many OOH plans use impressions, reach and frequency, and
     "showings" or share of voice rather than GRPs. Is `delivery_target` metric
     `impressions` enough, with `grps` optional?
-25. **Dimensions.** Market, venue or media owner, format (bulletin, poster,
+26. **Dimensions.** Market, venue or media owner, format (bulletin, poster,
     digital), posting period, daypart for digital loops. Which map to the six
     dimensions and which are `custom`?
-26. **Plays, not spots.** A loop's spot length and plays per hour are share of
+27. **Plays, not spots.** A loop's spot length and plays per hour are share of
     voice. Do `max_spots_per_hour` and `spot_length_mix` read as plays per hour
     and loop share, or do we want separate fields? (Compare the DOOH
     `plays` and impression basis work.)
-27. **Index.** Is a Geopath audience index the same thing as `index`, and what
+28. **Index.** Is a Geopath audience index the same thing as `index`, and what
     is its baseline?
 
 ### For the working group
 
-28. **Soft or required goals.** Add a per-goal `strength` of `required` or
+29. **Soft or required goals.** Add a per-goal `strength` of `required` or
     `preferred`, where a missed `required` goal makes the result `partial`?
-29. **Replace or merge.** Is whole-object replace of `planning_goals` on a
+30. **Replace or merge.** Is whole-object replace of `planning_goals` on a
     revision right, or should omitted goals inherit?
-30. **`not_supported` or reject.** A goal the seller cannot plan is reported
+31. **`not_supported` or reject.** A goal the seller cannot plan is reported
     here; `outcome_target` rejects. Keep the difference?
-31. **Legacy `get_products`.** The response fields (`plan_breakdown`,
+32. **Legacy `get_products`.** The response fields (`plan_breakdown`,
     `goal_results`) are on the legacy proposal. The request side
     (`planning_goals`) is only on the compact lifecycle. Is that acceptable, or
     is a legacy `refine` mapping wanted?
-32. **Plan versus delivery.** The screens' "CPM vs plan" and pacing tiles are
+33. **Plan versus delivery.** The screens' "CPM vs plan" and pacing tiles are
     plan-versus-actual. A follow-up RFC could align delivery reporting
     dimensions (`by_station`, `by_daypart`, ...) with these keys so a buyer
     can reconcile variance. Is that wanted?
-33. **Specialism.** `sales-broadcast-tv` and `sales-dooh` exist; radio has no
+34. **Specialism.** `sales-broadcast-tv` and `sales-dooh` exist; radio has no
     specialism. Does a radio seller claim one, or does this need a
     `sales-audio` or `sales-broadcast-radio` claim?
-34. **Certification.** Planning-goals and plan-breakdown conformance (storyboard
+35. **Certification.** Planning-goals and plan-breakdown conformance (storyboard
     steps asserting `goal_results` coverage, breakdown partition sums) is a
     follow-up, and the media-buy specialist module may want a broadcast
     planning exercise.
 
 ## Naming decisions
+
+Brian approved the defaults below (a through h in the coordinator brief).
 
 | Decision | Default in this draft | Why / alternative |
 |---|---|---|

@@ -2,6 +2,10 @@
   {
     "goal": "max_frequency",
     "status": "met",
+    "window": {
+      "interval": 28,
+      "unit": "days"
+    },
     "target": 3,
     "achieved": 2.8,
     "detail": "Average frequency over the first 28 days is 2.8; over the whole 5-week flight it is 3.3."
