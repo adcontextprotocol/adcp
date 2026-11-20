@@ -1,0 +1,67 @@
+name: Release freeze
+
+# Posts the "Release freeze" commit status on every open pull request to a
+# release branch: failure while that branch has a release in flight, success
+# otherwise. See RELEASING.md "Release freeze" for the definition, the
+# `release` label exemption and the required-check setting.
+#
+# pull_request_target (not pull_request) so that fork PRs get a status too.
+# This workflow never checks out, fetches or runs pull request code: it checks
+# out only the evaluator script from main and reads metadata through the API.
+# No pull request field is interpolated into a shell command.
+#
+# Every run re-evaluates every open PR on every release branch, so the status
+# follows the freeze without anyone pushing: when the Version Packages PR
+# changes state, when a Release run starts or ends, when a release is
+# published, and on a schedule as a backstop.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, labeled, unlabeled, closed]
+    branches: [main, 3.2.x, 3.1.x, 3.0.x]
+  workflow_run:
+    workflows: [Release, Recover release artifacts on CDN]
+    types: [requested, completed]
+  release:
+    types: [published]
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+# Runs are serialized so an older evaluation can never overwrite a newer one.
+# GitHub keeps one pending run and cancels older pending ones; nothing is lost
+# because each run sweeps everything.
+concurrency:
+  group: release-freeze
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Evaluate release freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Check out the evaluator from main
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: scripts/release-freeze.cjs
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Set the release freeze status on open pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-freeze.cjs sweep

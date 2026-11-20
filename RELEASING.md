@@ -65,6 +65,67 @@ For a fix that must ship in 3.1.x (after GA, the same flow applies to `3.2.x`):
 Do not downgrade a `minor` or `major` changeset during a backport. Reclassify
 the change on `main` first or leave it for the next minor.
 
+## Release freeze
+
+While a release is in flight on a branch, nothing else may merge into it. A
+merge, even one with no changeset, moves the base of an approved Version
+Packages PR (3.3.0-rc.1 was quarantined that way) or strands a release whose
+run has not started yet (3.3.0-rc.2). The freeze is enforced by the
+**`Release freeze`** commit status, which `.github/workflows/release-freeze.yml`
+sets on the head of every open PR to `main`, `3.2.x`, `3.1.x` and `3.0.x`.
+Each branch's freeze is about that branch's own release.
+
+A branch has a release in flight, and the status is `failure` on its PRs,
+when any of these holds (`scripts/release-freeze.cjs`):
+
+1. its Version Packages PR (head `changeset-release/<branch>` in this
+   repository) is open and not Draft. Changesets keeps a regenerated PR Draft,
+   so the freeze starts when a maintainer marks it ready for review;
+2. the `package.json` version on the branch has no published GitHub Release:
+   a committed but unpublished release, including one stranded by a failed run
+   or waiting for supersession; or
+3. a Release run for a release commit on the branch (one that changes the
+   package version), any Release dispatch (recovery or `prepare_next`), or, on
+   `main`, a `recover-protocol-cdn.yml` run has not completed.
+
+Otherwise the status is `success`. Two kinds of PR are exempt and always get
+`success`:
+
+- the Version Packages PR itself; and
+- PRs labelled **`release`**: supersession plans, release-machinery fixes
+  needed to finish the release, and other recovery work that has to land
+  mid-release. Applying the label takes triage permission. It is an explicit
+  maintainer decision that this PR belongs to the release in flight; remove it
+  once the PR is no longer part of the release.
+
+The status follows the freeze without anyone pushing. Every run of the
+workflow re-evaluates every open PR on every release branch, triggered by PR
+events (including the Version Packages PR moving between Draft and ready, and
+label changes), by every Release and CDN recovery run starting and finishing,
+by a GitHub Release being published, roughly every ten minutes as a backstop
+(GitHub runs schedules on a best-effort basis, sometimes late), and on manual
+dispatch. It reads metadata only, never PR code, and writes a status only
+where it changes. If it can list a branch's PRs but cannot establish whether a
+release is in flight, it posts `error` on that branch's non-exempt PRs, so an
+outage keeps them blocked rather than open. If it cannot list the PRs at all,
+or a status write fails, the last status stands until the next successful
+sweep, and the run fails visibly.
+
+Making the check required is a repository setting: in the ruleset (or branch
+protection rule) for each protected release branch, add **`Release freeze`**
+under *Require status checks to pass*, with **GitHub Actions** as its source.
+Until then the status is advisory. The workflow lives on `main`, so the
+`pull_request_target` trigger fires only for PRs to `main`; PRs to a
+maintenance branch get their status from the next sweep (a Release run, a
+published release, or the schedule) rather than on push, unless the workflow
+is also cherry-picked to that branch. A new head has no status until then, so
+a required check holds it rather than letting it through.
+
+The status closes the window between checks, not the whole race: a PR merged
+in the seconds between a Version Packages PR becoming ready and the next sweep
+can still land. Do not rely on it to time a merge; merge only between
+releases.
+
 ## Cutting a 3.1.x patch
 
 1. Audit `changeset-release/3.1.x`. The PR must show only
@@ -166,7 +227,10 @@ that fold into it. Open and merge that state-only commit as its own PR. Any
 changeset that reaches `main` after `--prepare`, including one in the same PR,
 invalidates the marker: delete it and run `--prepare` again on the new head.
 From the marker PR's merge until the RC release finishes publishing, merge
-nothing else into `main`. The release workflow sees
+nothing else into `main`; the [release freeze](#release-freeze) blocks other
+PRs from the moment the generated PR is marked ready. The marker PR itself
+lands before that, so hold merges by hand between the marker merge and the
+ready transition. The release workflow sees
 the marker, creates the Version Packages PR at `X.Y.0-rc.0`, and generates and
 signs the normal schema, compliance, and protocol artifacts in GitHub Actions.
 That generated PR must receive human approval on its final head SHA. Do not run
@@ -374,11 +438,12 @@ See [GitHub's concurrency contract](https://docs.github.com/en/actions/how-tos/w
 The exact queue/cancellation combination is regression-tested; older actionlint
 parsers require only the specific unsupported `queue`-key diagnostic exception.
 Old
-runs fail their current-branch fence before Changesets; a run already
-publishing a committed release tolerates only the unrelated advances described
-under publication-scoped freshness below. A later push with a stranded committed
-version fails explicitly, including an app-only push, and must use the recovery
-procedure below before Changesets advances the package again.
+runs fail their current-branch fence before Changesets; a run publishing a
+committed release, from its first step on, tolerates only the unrelated
+advances described under publication-scoped freshness below. A later push with
+a stranded committed version fails explicitly, including an app-only push, and
+must use the recovery procedure below before Changesets advances the package
+again.
 
 Before Changesets runs, its fence resolves exactly zero or one open Version
 Packages PR and captures the prior branch OID (or confirmed absence). An existing
@@ -431,21 +496,38 @@ its push/PR requests; it does not lock main. An in-flight request can finish
 after main moves. Such a failure requires inspection and explicit recovery;
 never treat a previous verification or a queued run as current authority.
 
-`scripts/check-release-state.cjs` has two freshness levels:
+`scripts/check-release-state.cjs` has two freshness levels, and a `start`
+mode that picks between them for the steps before artifact detection:
 
 - **`current` (strict).** `origin/<branch>` must equal the tested SHA exactly.
-  This guards everything that can lead to Changesets generation:
-  `verify-release`'s "Require current release branch", the release job's
-  checks before artifact detection, `pending`, `recovery`, `deploy.yml`, and
-  every check in `scripts/fence-changesets.cjs` (including its pre-push hook).
-  A regenerated Version Packages PR must be based on exact current main.
+  This guards everything that can lead to Changesets generation: the start of
+  any run that is not publishing a committed release, the generation branch of
+  "Detect committed release artifacts", `pending`, `deploy.yml`, and every
+  check in `scripts/fence-changesets.cjs` (including its pre-push hook). A
+  regenerated Version Packages PR must be based on exact current main. The
+  `prepare_next` supersession dispatch also stays strict from its first step,
+  because it generates the next candidate and must run on the exact SHA it
+  names.
+- **`start`.** Used by `verify-release`'s and the release job's "Require current
+  release branch", "Recheck current release branch after installation", the
+  publication branch of "Detect committed release artifacts", and `recovery`.
+  When the run's release commit (`RELEASE_SHA`: the pushed merge, or the
+  recovery dispatch's `release_commit`) adds this version's artifacts in its
+  first-parent diff, the same test artifact detection applies, it uses
+  `publication-current` and logs that it did. Anything else, and any dispatch
+  that does not state `prepare_next=false`, uses `current`. Such a run can only
+  go on to publish: once artifacts are detected Changesets is skipped, and the
+  fence-changesets checks stay strict regardless. Before this, an unrelated
+  merge between a release merge and the start of its run (#9125 after
+  3.3.0-rc.2's merge, run `44711592865`) stranded the release and needed an
+  explicit recovery dispatch.
 - **`publication-current` (publication-scoped).** Used only while publishing
-  the already-committed release: inside `committed`, `published`, `approval`
-  and `provenance`; in release.yml from "Require human approval for committed
-  release artifacts" through the GitHub Release upload and the R2 publication
-  (`backfill-cdn-artifacts.sh --version`); and for the per-object checks in
-  `recover-protocol-cdn.yml` / `recover-cdn-version-trees.sh`, whose initial
-  gates stay strict. It accepts a later branch head when the tested SHA is its
+  the already-committed release: through `start` as above; inside `committed`,
+  `published`, `approval` and `provenance`; in release.yml from "Require human
+  approval for committed release artifacts" through the GitHub Release upload
+  and the R2 publication (`backfill-cdn-artifacts.sh --version`); and for the
+  per-object checks in `recover-protocol-cdn.yml` /
+  `recover-cdn-version-trees.sh`, whose initial gates stay strict. It accepts a later branch head when the tested SHA is its
   ancestor (after fetching that head and checking that the fetched OID is the
   advertised one), the parsed `package.json` version is unchanged, and
   `git diff --no-renames` from the tested SHA touches none of:
@@ -510,8 +592,11 @@ always run full verification, because their PR runs use a different
 candidate-version mode. If any of that can't be proven, verification runs
 exactly as before. The skip changes only duplicate verification: the release
 job's approval and provenance checks still run unchanged. On that full
-fallback, the release job's strict start still strands the release if main
-moves during the ~2h verification; recover it with an explicit dispatch.
+fallback, an unrelated merge during the ~2h verification no longer strands the
+release: the release job's `start` fence accepts it under the
+publication-current rules. A merge that changes the version, its artifacts or
+a release-authority file still stops the run; recover it with an explicit
+dispatch.
 
 GitHub assets are staged privately in a draft before release publication. Exactly
 the four signed tuple assets are required; extras and duplicates are rejected. R2
@@ -524,6 +609,27 @@ completion. Consumers needing one complete artifact should use the signed
 GitHub tarball and verify its checksum/signature; CDN completion additionally
 requires a full committed-path byte audit, including JSONL after the separate
 extension-filter fix. Mutable `latest` uploads remain progressive as well.
+
+Transient R2 errors are survivable within bounds. A single `ServiceUnavailable`
+after the CLI's default three attempts failed 3.3.0-rc.2's 38-minute upload
+(run `44726375353`) and needed CDN recovery (run `44758301588`); 3.1.34's
+upload hit the same 503 twice. The R2 upload steps in `release.yml` and
+`recover-protocol-cdn.yml` set `AWS_MAX_ATTEMPTS=10` and
+`AWS_RETRY_MODE=adaptive`. If an object still fails with a recognised transient
+error (5xx, throttling, a dropped connection or timeout, or a 412 from a
+conditional write), `backfill-cdn-artifacts.sh`, `recover-cdn-version-trees.sh`
+and the protocol-tuple recovery resume that one object's whole conditional
+sequence up to twice more, after 30 and 120 seconds, before failing the step.
+The resume is per object rather than a re-run of the step, because a re-run
+re-downloads and byte-compares every object already published.
+
+This is safe only because the sequence never overwrites. Each attempt re-checks
+the publication fence, re-reads existence, and either byte-compares the
+existing object (and, for tree recovery, its content type) or creates it with
+`If-None-Match: *`. A write whose response was lost, which the CLI's own
+retry reports as a 412, resumes as "exists, byte-compare". A byte or
+content-type mismatch, a fence refusal, a 403 or any error not recognised as
+transient fails immediately and is never retried.
 
 Live unscoped bulk backfills are disabled. `--dry-run` remains available for
 inventory; it is not release authorization. Historical CDN recovery must use
@@ -611,8 +717,10 @@ Operational notes:
 
 - **It is slow.** Recovery fences the current branch before and after every
   object, exactly as release publication does, so ~770 objects means ~2,300
-  `git ls-remote` round trips plus the S3 calls. Budget tens of minutes, and
-  expect a transient failure to abort mid-run; re-dispatch resumes safely.
+  `git ls-remote` round trips plus the S3 calls. Budget tens of minutes.
+  Transient R2 errors are retried and resumed per object (see above); one that
+  outlasts that budget, or a fence failure, aborts mid-run, and re-dispatch
+  resumes safely.
 - **It runs from current `main` only.** The job is skipped for any other
   dispatch ref. Its initial gates (the preflight step, and the start of
   `recover-cdn-version-trees.sh` in both upload and verify modes) use the
@@ -647,10 +755,11 @@ release merge is an ancestor, requires the same package version and unchanged
 versioned artifacts, rechecks original final-head maintainer permission and
 merge provenance, and fences
 every publication phase. It never silently repairs from an unrelated push.
-An unrelated main commit during the publication phases is tolerated by
-`publication-current`. A new main commit before artifact detection, or one that
-changes the version, its artifacts or the release-authority files, requires
-another explicit dispatch and verification of the new head. If a later package version has already landed,
+An unrelated main commit at any point of the run, including during its ~2h
+verification, is tolerated: the dispatch's `start` and `recovery` fences use
+`publication-current` because its target commits release artifacts. A main
+commit that changes the version, its artifacts or the release-authority files
+requires another explicit dispatch and verification of the new head. If a later package version has already landed,
 stop for a separately reviewed historical recovery; this path refuses it.
 
 ### Superseding an unpublishable committed prerelease
@@ -675,7 +784,9 @@ gh workflow run release.yml --ref main \
   -f prepare_next=true
 ```
 
-The workflow fails closed unless `main` is still that exact SHA, the named RC
+This dispatch keeps the strict exact-head fence at every step, including its
+start (`start` refuses to relax a dispatch with `prepare_next=true`). The
+workflow fails closed unless `main` is still that exact SHA, the named RC
 artifacts remain byte-identical to their merge, no tag or GitHub Release exists,
 the tarball and pending changesets match the reviewed digests, and the complete
 pending changeset set advances the candidate. The new Version Packages commit
@@ -691,8 +802,10 @@ changeset, so the bot never regenerated the PR, and the squash merge's parent
 and tree differed from the reviewed head. Release run `44300240363` stopped at
 the provenance gate before any tag, GitHub Release or R2 write. A merge with no
 changeset still moves the base of an open Version Packages PR: keep `main`
-frozen from the moment a release PR is approved until it merges, or have the
-PR regenerated and re-reviewed on current `main` first.
+frozen from the moment a release PR is ready until it publishes (the
+[release freeze](#release-freeze) status enforces this once it is required),
+or have the PR regenerated and re-reviewed on current `main` first. Label the
+supersession PR `release` so the freeze lets it land.
 
 For the 2026-09-14 `3.2.0-rc.3` incident, the recovery target is
 `71f9cd5414454e94ccfef87ce25777ead6fad228` (#7485), whose final PR head

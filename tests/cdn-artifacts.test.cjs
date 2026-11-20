@@ -88,6 +88,36 @@ function awsStub() {
   const uploads = [];
   const record = () => fs.appendFileSync(process.env.AWS_TEST_LOG, JSON.stringify({ args, uploads }) + '\n');
   const objects = JSON.parse(fs.readFileSync(process.env.AWS_TEST_OBJECTS, 'utf8'));
+  // Injected storage faults, consumed in order per "<operation> <s3 url>":
+  // `unavailable` is R2's 503 after the CLI's own retries, `forbidden` a 403,
+  // `lost` a write that lands but whose response never arrives, and `race`
+  // another writer creating the same bytes just before this conditional write.
+  const faultKey = service === 's3api' ? `${operation} s3://${value('--bucket')}/${value('--key')}`
+    : operation === 'cp' && source?.startsWith('s3://') ? `get ${source}` : '';
+  let lost = false;
+  if (faultKey && process.env.AWS_TEST_FAULTS && fs.existsSync(process.env.AWS_TEST_FAULTS)) {
+    const faults = JSON.parse(fs.readFileSync(process.env.AWS_TEST_FAULTS, 'utf8'));
+    const fault = faults[faultKey]?.shift();
+    fs.writeFileSync(process.env.AWS_TEST_FAULTS, JSON.stringify(faults));
+    if (fault) fs.appendFileSync(process.env.AWS_TEST_LOG, JSON.stringify({ args, uploads, fault }) + '\n');
+    if (fault === 'unavailable') {
+      console.error('An error occurred (ServiceUnavailable) when calling the PutObject operation (reached max retries: 9): Service Unavailable');
+      process.exit(254);
+    }
+    if (fault === 'forbidden') {
+      console.error('An error occurred (403) when calling the HeadObject operation: Forbidden');
+      process.exit(254);
+    }
+    if (fault === 'race') {
+      const key = `s3://${value('--bucket')}/${value('--key')}`;
+      objects[key] = { key, body: fs.readFileSync(value('--body')).toString('base64'),
+        contentType: value('--content-type'), cacheControl: value('--cache-control') };
+      fs.writeFileSync(process.env.AWS_TEST_OBJECTS, JSON.stringify(objects));
+      console.error('An error occurred (PreconditionFailed) when calling the PutObject operation: At least one of the pre-conditions you specified did not hold');
+      process.exit(254);
+    }
+    lost = fault === 'lost';
+  }
   if (service === 's3api') {
     const key = `s3://${value('--bucket')}/${value('--key')}`;
     if (operation === 'head-object') {
@@ -105,6 +135,10 @@ function awsStub() {
       fs.writeFileSync(process.env.AWS_TEST_OBJECTS, JSON.stringify(objects));
       uploads.push(upload);
       record();
+      if (lost) {
+        console.error('Read timeout on endpoint URL: "https://r2.invalid/test-bucket"');
+        process.exit(255);
+      }
     } else if (operation === 'list-objects-v2') {
       const bucketPrefix = `s3://${value('--bucket')}/`;
       const prefix = value('--prefix');
@@ -544,4 +578,118 @@ test('version-scoped publication refuses an untracked compliance file before AWS
   write(`dist/compliance/${version}/untracked.jsonl`, 'untracked');
   assert.throws(() => publish(dir, ['--version', version, '--skip-latest']), /Uncommitted publication file/);
   assert.equal(fs.readFileSync(path.join(dir, 'aws.jsonl'), 'utf8'), '');
+});
+
+// Transient R2 errors resume one object's conditional sequence a bounded
+// number of times (3.3.0-rc.2's upload failed on a single ServiceUnavailable,
+// run 44726375353). Integrity failures are never retried.
+function publishWithFaults(dir, version, faults, extraEnv = {}) {
+  const faultsFile = path.join(dir, 'faults.json');
+  fs.writeFileSync(faultsFile, JSON.stringify(faults));
+  try {
+    const result = publish(dir, ['--version', version, '--skip-latest'],
+      { AWS_TEST_FAULTS: faultsFile, R2_RESUME_DELAY_SECONDS: '0', ...extraEnv });
+    return { status: 0, ...result };
+  } catch (error) {
+    const calls = fs.readFileSync(path.join(dir, 'aws.jsonl'), 'utf8').split('\n').filter(Boolean).map(JSON.parse);
+    return { status: error.status, stdout: String(error.stdout), stderr: String(error.stderr), calls,
+      uploads: calls.flatMap(call => call.uploads) };
+  }
+}
+const objectCalls = (calls, operation, key) =>
+  calls.filter(call => call.args[1] === operation && call.args[call.args.indexOf('--key') + 1] === key && !call.fault);
+
+test('a transient R2 error resumes that object and publication completes', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir } = fixture(t);
+  const version = VERSIONS[0];
+  const key = `compliance/${version}/${ROWS}`;
+  const result = publishWithFaults(dir, version, { [`put-object s3://test-bucket/${key}`]: ['unavailable', 'unavailable'] });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal((result.stdout.match(/::warning::Transient R2 error on compliance\/3\.2\.0-rc\.0\//g) || []).length, 2);
+  assert.match(result.stdout, /attempt 1 of 3[\s\S]*attempt 2 of 3/);
+  // Each resume re-reads existence before its conditional write.
+  assert.equal(result.calls.filter(call => call.args[1] === 'head-object' && call.args.includes(key)).length, 3);
+  const objects = JSON.parse(fs.readFileSync(path.join(dir, 'objects.json'), 'utf8'));
+  assert.equal(sha256(Buffer.from(objects[`s3://test-bucket/${key}`].body, 'base64')), ROWS_SHA);
+  for (const call of result.calls.filter(call => call.args[1] === 'put-object'))
+    assert.equal(call.args[call.args.indexOf('--if-none-match') + 1], '*');
+});
+
+test('a write whose response was lost resumes as an existing-object comparison, never a rewrite', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir } = fixture(t);
+  const version = VERSIONS[0];
+  const key = `compliance/${version}/${ROWS}`;
+  const result = publishWithFaults(dir, version, { [`put-object s3://test-bucket/${key}`]: ['lost'] });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.uploads.filter(upload => upload.key === `s3://test-bucket/${key}`).length, 1);
+  assert.equal(objectCalls(result.calls, 'put-object', key).length, 1, 'the resume must not write again');
+  assert.ok(result.calls.some(call => call.args[1] === 'cp' && call.args[2] === `s3://test-bucket/${key}`),
+    'the resume must download and byte-compare the object it may have written');
+});
+
+test('a 412 from a racing writer resumes into the byte comparison', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir } = fixture(t);
+  const version = VERSIONS[0];
+  const key = `compliance/${version}/${ROWS}`;
+  // Another writer creates the object, with the right bytes, between this
+  // run's existence check and its conditional write.
+  const result = publishWithFaults(dir, version, { [`put-object s3://test-bucket/${key}`]: ['race'] });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /::warning::Transient R2 error on compliance\/3\.2\.0-rc\.0\/test-vectors/);
+  assert.ok(result.calls.some(call => call.args[1] === 'cp' && call.args[2] === `s3://test-bucket/${key}`));
+  assert.equal(objectCalls(result.calls, 'put-object', key).length, 0, 'the resume compares, it never writes again');
+});
+
+test('R2 that stays unavailable fails the step after the bounded resume', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir } = fixture(t);
+  const version = VERSIONS[0];
+  const key = `compliance/${version}/${ROWS}`;
+  const result = publishWithFaults(dir, version, { [`put-object s3://test-bucket/${key}`]: ['unavailable', 'unavailable', 'unavailable', 'unavailable'] });
+  assert.equal(result.status, 75);
+  assert.match(result.stderr, /R2 stayed unavailable for compliance\/3\.2\.0-rc\.0\/test-vectors\/reporting-reconciliation\/rows\.jsonl after 3 attempt\(s\)/);
+  const faults = JSON.parse(fs.readFileSync(path.join(dir, 'faults.json'), 'utf8'));
+  assert.equal(faults[`put-object s3://test-bucket/${key}`].length, 1, 'exactly three attempts');
+  const objects = JSON.parse(fs.readFileSync(path.join(dir, 'objects.json'), 'utf8'));
+  assert.ok(!Object.hasOwn(objects, `s3://test-bucket/${key}`));
+  // One attempt only when configured so.
+  const { dir: single } = fixture(t);
+  const once = publishWithFaults(single, version, { [`put-object s3://test-bucket/${key}`]: ['unavailable'] }, { R2_OBJECT_ATTEMPTS: '1' });
+  assert.equal(once.status, 75);
+});
+
+test('integrity and permission failures are never retried', { skip: !FENCED_PUBLICATION }, t => {
+  const version = VERSIONS[0];
+  const key = `compliance/${version}/${ROWS}`;
+  // A 403 on the existence check is not "absent" and not transient.
+  const { dir } = fixture(t);
+  const forbidden = publishWithFaults(dir, version, { [`head-object s3://test-bucket/${key}`]: ['forbidden', 'forbidden'] });
+  assert.notEqual(forbidden.status, 0);
+  assert.notEqual(forbidden.status, 75);
+  assert.match(forbidden.stderr, /\(403\)/);
+  assert.doesNotMatch(forbidden.stdout, /Transient R2 error/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'faults.json'), 'utf8'))[`head-object s3://test-bucket/${key}`].length, 1);
+  // Divergent existing bytes stop immediately, even with resume budget left.
+  const { dir: divergent } = fixture(t);
+  const objectsFile = path.join(divergent, 'objects.json');
+  const objects = JSON.parse(fs.readFileSync(objectsFile, 'utf8'));
+  objects[`s3://test-bucket/${key}`] = { key: `s3://test-bucket/${key}`, body: Buffer.from('divergent').toString('base64'),
+    contentType: TYPES.jsonl, cacheControl: IMMUTABLE };
+  fs.writeFileSync(objectsFile, JSON.stringify(objects));
+  const mismatch = publishWithFaults(divergent, version, {});
+  assert.equal(mismatch.status, 1);
+  assert.match(mismatch.stderr, /Immutable object differs/);
+  assert.doesNotMatch(mismatch.stdout, /Transient R2 error/);
+  assert.equal(mismatch.calls.filter(call => call.args[1] === 'head-object' && call.args.includes(key)).length, 1);
+  assert.equal(JSON.parse(fs.readFileSync(objectsFile, 'utf8'))[`s3://test-bucket/${key}`].body,
+    Buffer.from('divergent').toString('base64'));
+});
+
+test('the resume budget is bounded', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir } = fixture(t);
+  for (const [name, value] of [['R2_OBJECT_ATTEMPTS', '0'], ['R2_OBJECT_ATTEMPTS', '6'], ['R2_RESUME_DELAY_SECONDS', '1000'], ['R2_RESUME_DELAY_SECONDS', 'x']]) {
+    const result = publishWithFaults(dir, VERSIONS[0], {}, { [name]: value });
+    assert.equal(result.status, 2, `${name}=${value}`);
+    assert.match(result.stderr, /R2_OBJECT_ATTEMPTS must be 1-5/);
+    assert.equal(result.uploads.length, 0);
+  }
 });

@@ -502,7 +502,9 @@ test('existing draft conflicting asset bytes refuse overwrite and retain the dra
 for (const [name, extra, expectedWrites] of [
   ['different existing bytes', {}, 0],
   ['R2 read failure', {HEAD_ERROR:'1'}, 0],
-  ['conditional write race', {PUT_RACE:'1'}, 0],
+  // A 412 resumes into an existence check; a phantom 412 with no object
+  // behind it exhausts the bounded resume and still fails closed.
+  ['conditional write race', {PUT_RACE:'1', R2_RESUME_DELAY_SECONDS:'0'}, 0],
   ['branch drift during object creation', {ADVANCE_AWS:'1'}, 1],
 ]) test(`immutable R2 ${name} fails closed`, t => {
   const f = mergedFixture(t);
