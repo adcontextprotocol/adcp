@@ -5,7 +5,7 @@
 seed_id: small-season
 rng_seed: small-season-v1
 
-# The simulated calendar: first day (UTC) and how many days it runs. Flights must fall inside it.
+# The simulated calendar: first day (UTC) and how many days it runs.
 start_date: 2026-11-01
 days: 365
 currency: USD

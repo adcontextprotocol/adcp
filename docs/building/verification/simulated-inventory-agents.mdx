@@ -109,7 +109,7 @@ A content product lists the installments scheduled in the requested flight, with
 
 The two tenants run on any season you supply as a file, so you can test against your own sites, products and scripted events. Run the training agent on your machine and point a tenant at the file. The hosted test agent serves only its shipped seasons, so a season file never leaves your machine.
 
-A season is a YAML or JSON file. Its fields are the `SeasonSeed` type in [`engine/types.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/inventory-sim/engine/types.ts). The starter, `server/tests/fixtures/inventory-sim/small-season.yaml`, is a complete season for one site with a guaranteed and an auction product. Copy it and edit it. This is its shape, shortened:
+A season is a YAML or JSON file. Its fields are the `SeasonSeed` type in [`engine/types.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/inventory-sim/engine/types.ts). The starter, `server/tests/fixtures/inventory-sim/small-season.yaml`, is a complete season for one site with a guaranteed and an auction product. Copy it and edit it. The sketch below shows the shape only. It does not load on its own, because it leaves out required fields such as `audience_profiles`, `segments`, `traffic` and `forecast_error`. The starter file is the complete, loadable example.
 
 ```yaml
 seed_id: small-season
@@ -134,7 +134,7 @@ products:
     rate_cpm: 8
 ```
 
-The file is checked against the `SeasonSeed` shape, and then against the engine's own rules, such as shares that sum to 1 and flights that fall inside the calendar.
+The file is checked against the `SeasonSeed` shape, and then against the engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Ids are unique and every reference resolves. Each placement has `base_daily_impressions`, and each guaranteed product has `rate_cpm`.
 
 Set one environment variable per tenant:
 
@@ -143,7 +143,7 @@ Set one environment variable per tenant:
 | Ad server | `TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE` |
 | Content platform | `TRAINING_AGENT_INVENTORY_CONTENT_SEASON_FILE` |
 
-A tenant whose variable is unset or empty serves its shipped season. A tenant whose variable is set serves the file, and logs one line naming it. If the file is missing or invalid, the server refuses to start. The error names the variable, the path and every problem found.
+A tenant whose variable is unset or empty serves its shipped season. A tenant whose variable is set serves the file, and logs one line naming it. If the file is missing or invalid, the server refuses to start. The error names the variable and the path. The shape check lists every problem it finds, and the engine's rules report the first.
 
 Change `seed_id` whenever you change a season file. A market already stored under an unchanged `seed_id` would replay under the new traffic.
 
@@ -165,9 +165,9 @@ NODE_ENV=development PORT=3917 RUN_MIGRATIONS=true SKIP_REPO_INDEX=true \
   npx tsx server/src/index.ts
 ```
 
-The dummy WorkOS values only satisfy the server's start-up checks. The tenants are at `http://localhost:3917/api/training-agent/inventory-adserver/mcp` and `.../inventory-content/mcp`, and `local-token` is their bearer token. The log shows `inventory-adserver: season small-season from server/tests/fixtures/inventory-sim/small-season.yaml`.
+The WorkOS, `AGENT_TOKEN_ENCRYPTION_SECRET` and `WORKOS_COOKIE_PASSWORD` values are local-only placeholders that only satisfy the server's start-up checks. The tenants are at `http://localhost:3917/api/training-agent/inventory-adserver/mcp` and `.../inventory-content/mcp`, and `local-token` is their bearer token. The log shows `inventory-adserver: season small-season from server/tests/fixtures/inventory-sim/small-season.yaml`.
 
-To use a season without a server, read it with `readSeasonFile` from `server/src/training-agent/inventory-sim/season-file.ts`, and pass the result to `InventorySimulation.create` from `server/src/training-agent/inventory-sim/engine/`.
+To use a season without a server, read it with `readSeasonFile` from `server/src/training-agent/inventory-sim/season-file.ts`, and pass the result to `InventorySimulation.create(seed, nowMs)`, where `nowMs` is the start instant, from `server/src/training-agent/inventory-sim/engine/`.
 
 ## A month in five calls
 
