@@ -273,6 +273,26 @@ describe('season files', () => {
   });
 });
 
+describe('season values the tenants put on the wire', () => {
+  const refuses: Array<[string, (yaml: string) => string, string]> = [
+    ['a lowercase currency', y => y.replace('currency: USD', 'currency: usd'), 'currency:'],
+    ['a currency that is not three letters', y => y.replace('currency: USD', 'currency: DOLLARS'), 'currency:'],
+    ['a property domain that is not a hostname', y => y.replace('domain: site.example', 'domain: https://site.example/'), 'properties[0].domain:'],
+    ['an upper-case property domain', y => y.replace('domain: site.example', 'domain: Site.Example'), 'properties[0].domain:'],
+    ['a placement with no formats', y => y.replace('formats: [display_300x250]', 'formats: []'), 'placements[0].formats:'],
+    ['a negative floor', y => y.replace('floor_cpm: 2', 'floor_cpm: -1'), 'placements[0].floor_cpm:'],
+  ];
+
+  it.each(refuses)('refuses %s', (_name, edit, where) => {
+    expect(invalidSeedMessage(() => parseSeasonSeed(parseYaml(edit(MINIMAL_YAML)), 'wire'))).toContain(where);
+  });
+
+  it('accepts a zero floor and a hyphenated multi-label domain', () => {
+    const yaml = MINIMAL_YAML.replace('floor_cpm: 2', 'floor_cpm: 0').replace('domain: site.example', 'domain: news-desk.example.co');
+    expect(parseSeasonSeed(parseYaml(yaml), 'wire').placements[0].floor_cpm).toBe(0);
+  });
+});
+
 describe('season file formats', () => {
   const CUSTOM = MINIMAL_YAML.replace('formats: [display_300x250]', 'formats: [custom_banner, display_300x250]');
   const FORMATS = new Set(['display_300x250', 'video_preroll']);

@@ -136,7 +136,7 @@ products:
     rate_cpm: 8
 ```
 
-The file is checked against the `SeasonSeed` shape, and then against the engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Ids are unique and every reference resolves. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`. Placement `formats` must be format labels the training agent knows, such as `display_300x250` or `video_preroll`; the error for any other lists them.
+The file is checked against the `SeasonSeed` shape, and then against the engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, and every placement lists at least one format. Ids are unique and every reference resolves. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`. Placement `formats` must be format labels the training agent knows, such as `display_300x250` or `video_preroll`; the error for any other lists them.
 
 Set one environment variable per tenant:
 

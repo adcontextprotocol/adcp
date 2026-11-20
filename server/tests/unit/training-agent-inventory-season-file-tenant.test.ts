@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import express from 'express';
+import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import http from 'node:http';
 
 const FIXTURE = path.resolve(
@@ -28,6 +29,16 @@ const ACCOUNT = { brand: { domain: 'inventory-buyer.example' }, operator: 'inven
 const BRAND = { domain: 'inventory-buyer.example' };
 
 type Structured = Record<string, any>;
+
+function expectCanonical(tool: string, value: Structured): void {
+  const validate = getCanonicalToolValidator(tool, 'sync', { adcpVersion: '3.2' }) as
+    | (((payload: unknown) => boolean) & { errors?: unknown })
+    | undefined;
+  expect(validate, `no canonical validator for ${tool}`).toBeDefined();
+  if (value.adcp_error || value.__envelope) throw new Error(`${tool} failed: ${JSON.stringify(value).slice(0, 1500)}`);
+  const ok = validate!(value);
+  expect(ok, `${tool}: ${JSON.stringify(validate!.errors)?.slice(0, 1500)}`).toBe(true);
+}
 
 describe('inventory tenant on a season file', () => {
   let server: http.Server;
@@ -80,7 +91,7 @@ describe('inventory tenant on a season file', () => {
       brand: BRAND,
       filters: { start_date: start.toISOString().slice(0, 10), end_date: end.toISOString().slice(0, 10) },
     });
-    expect(result.__envelope).toBeUndefined();
+    expectCanonical('get_products', result);
     const ids = result.products.map((product: Structured) => product.product_id).sort();
     expect(ids).toEqual(['banner_auction', 'banner_guaranteed']);
     for (const product of result.products) expect(product.forecast.points.length).toBeGreaterThan(0);
@@ -90,8 +101,30 @@ describe('inventory tenant on a season file', () => {
 
   it('lists only the fixture\'s display products', async () => {
     const result = await call(tenant, 'get_products', { buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND });
-    expect(result.__envelope).toBeUndefined();
+    expectCanonical('get_products', result);
     const channels = new Set(result.products.flatMap((product: Structured) => product.channels));
     expect([...channels]).toEqual(['display']);
+  });
+
+  it('books the guaranteed product and reports its delivery', async () => {
+    const start = new Date(Date.parse(WALL_CLOCK.slice(0, 10)) + 2 * DAY_MS);
+    const end = new Date(start.getTime() + 30 * DAY_MS);
+    const buy = await call(tenant, 'create_media_buy', {
+      idempotency_key: 'season-file-guaranteed-00001',
+      account: ACCOUNT,
+      brand: BRAND,
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      packages: [{ product_id: 'banner_guaranteed', pricing_option_id: 'banner_guaranteed_cpm', budget: 800, impressions: 100_000 }],
+    });
+    expectCanonical('create_media_buy', buy);
+    expect(buy.media_buy_status).toBe('pending_start');
+    expect(buy.packages[0].impressions).toBe(100_000);
+    expect(buy.currency).toBe('USD');
+
+    const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [buy.media_buy_id] });
+    expectCanonical('get_media_buy_delivery', delivery);
+    expect(delivery.media_buy_deliveries[0].media_buy_id).toBe(buy.media_buy_id);
+    expect(delivery.media_buy_deliveries[0].totals.impressions).toBe(0);
   });
 });
