@@ -4,5 +4,6 @@
   "title": "Format Option ID",
   "description": "Identifier of a format option within its publisher namespace.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1
 }

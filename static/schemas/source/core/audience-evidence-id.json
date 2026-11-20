@@ -4,6 +4,7 @@
   "title": "Audience Evidence ID",
   "description": "Identifier of an audience evidence item.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1,
   "x-entity": "audience_evidence"
 }

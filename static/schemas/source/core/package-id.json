@@ -4,6 +4,7 @@
   "title": "Package ID",
   "description": "Identifier of a package within a media buy.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1,
   "x-entity": "package"
 }

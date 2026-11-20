@@ -4,5 +4,6 @@
   "title": "Pricing Option ID",
   "description": "Identifier of a pricing option within a product.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1
 }

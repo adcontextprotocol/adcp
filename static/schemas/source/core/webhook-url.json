@@ -4,5 +4,6 @@
   "title": "Webhook URL",
   "description": "URL of an endpoint that receives webhook deliveries. The wire contract is any URI; the sender applies the protocol's SSRF checks before it delivers.",
   "type": "string",
+  "x-max-length-4.0": 2048,
   "format": "uri"
 }

@@ -4,5 +4,6 @@
   "title": "Creative Capability ID",
   "description": "Identifier of a format capability within a creative agent, from get_adcp_capabilities creative.supported_formats[].capability_id.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-zA-Z0-9_-]+$"
 }

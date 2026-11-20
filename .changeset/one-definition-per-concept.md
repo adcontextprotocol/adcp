@@ -31,3 +31,4 @@ Sites that meant the same thing as a named schema, and stated a different constr
 **Planned for 4.0:**
 
 - `core/iana-timezone.json` plans a 4.0 limit of 64 characters with `x-max-length-4.0: 64`, so every timezone site carries it. The longest IANA timezone identifier is 32 characters. 3.x keeps the `maxLength: 255` that 3.2.8 published.
+- `core/https-url.json`, `core/https-origin.json`, and `core/webhook-url.json` plan a 4.0 limit of 2,048 characters with `x-max-length-4.0: 2048` (#8900), and 42 named ID schemas that state no length bound plan 255 with `x-max-length-4.0: 255` (#8899). Producers SHOULD stay within these limits now; 3.x validates neither.

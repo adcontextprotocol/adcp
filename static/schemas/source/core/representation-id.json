@@ -4,6 +4,7 @@
   "title": "Representation ID",
   "description": "Representation identifier unique within one representation set.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1,
   "pattern": "^[a-zA-Z0-9_-]+$",
   "x-entity": "creative_representation"

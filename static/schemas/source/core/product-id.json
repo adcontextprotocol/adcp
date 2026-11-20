@@ -4,5 +4,6 @@
   "title": "Product ID",
   "description": "Identifier of a product in a seller's catalog.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1
 }

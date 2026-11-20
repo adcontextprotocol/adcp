@@ -4,5 +4,6 @@
   "title": "Apple App ID",
   "description": "Numeric Apple App Store identifier.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[0-9]+$"
 }

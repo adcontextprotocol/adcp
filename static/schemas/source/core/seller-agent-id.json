@@ -4,6 +4,7 @@
   "title": "Seller Agent ID",
   "description": "Reserved registry-assigned seller identifier.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-zA-Z0-9_-]+$",
   "minLength": 1
 }

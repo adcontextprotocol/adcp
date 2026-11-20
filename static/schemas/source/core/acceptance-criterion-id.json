@@ -4,5 +4,6 @@
   "title": "Acceptance Criterion ID",
   "description": "Stable identifier of an acceptance criterion, such as domestic_entity or eligible_agency.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z][a-z0-9_.:-]*$"
 }

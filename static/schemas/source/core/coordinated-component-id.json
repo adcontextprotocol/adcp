@@ -4,5 +4,6 @@
   "title": "Coordinated Component ID",
   "description": "Component identifier unique within the components of one coordinated placement.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z][a-z0-9_]*$"
 }

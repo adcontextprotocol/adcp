@@ -4,6 +4,7 @@
   "title": "Acceptance Rule ID",
   "description": "Identifier of one seller acceptance-policy rule.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[A-Za-z0-9_.:-]+$",
   "x-entity": "acceptance_policy_rule"
 }

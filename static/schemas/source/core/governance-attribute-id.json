@@ -4,5 +4,6 @@
   "title": "Governance Attribute ID",
   "description": "Identifier of a governance attribute definition.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z][a-z0-9_]*$"
 }

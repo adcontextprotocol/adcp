@@ -4,5 +4,6 @@
   "title": "Event Source ID",
   "description": "Identifier of an event source configured on an account.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1
 }

@@ -4,5 +4,6 @@
   "title": "Format Local ID",
   "description": "Format identifier within an agent namespace.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-zA-Z0-9_-]+$"
 }

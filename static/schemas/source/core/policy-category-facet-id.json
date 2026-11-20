@@ -4,6 +4,7 @@
   "title": "Policy Category Facet ID",
   "description": "Identifier of a facet of a registry policy category.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z][a-z0-9_]*$",
   "x-entity": "governance_policy_category_facet"
 }

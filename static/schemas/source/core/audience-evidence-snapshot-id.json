@@ -4,6 +4,7 @@
   "title": "Audience Evidence Snapshot ID",
   "description": "Identifier of an immutable audience evidence snapshot.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1,
   "x-entity": "audience_evidence_snapshot"
 }

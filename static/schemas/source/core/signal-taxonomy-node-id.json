@@ -4,5 +4,6 @@
   "title": "Signal Taxonomy Node ID",
   "description": "Identifier of one node in an external taxonomy that describes a signal.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1
 }

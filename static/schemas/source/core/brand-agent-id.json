@@ -4,5 +4,6 @@
   "title": "Brand Agent ID",
   "description": "Identifier of an agent entry in a brand.json.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z0-9_]+$"
 }

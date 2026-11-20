@@ -4,6 +4,7 @@
   "title": "HTTPS URL",
   "description": "Absolute URL that uses the https scheme.",
   "type": "string",
+  "x-max-length-4.0": 2048,
   "format": "uri",
   "pattern": "^https://"
 }

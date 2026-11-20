@@ -4,6 +4,7 @@
   "title": "Collection List ID",
   "description": "Identifier of a collection list.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1,
   "x-entity": "collection_list"
 }

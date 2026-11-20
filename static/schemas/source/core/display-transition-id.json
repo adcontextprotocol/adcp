@@ -4,5 +4,6 @@
   "title": "Display Transition ID",
   "description": "Identifier of a state transition in a stateful display.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z][a-z0-9_]*$"
 }

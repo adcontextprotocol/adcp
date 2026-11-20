@@ -4,5 +4,6 @@
   "title": "Reference Population ID",
   "description": "Identifier of the reference population against which an audience estimate is calculated.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1
 }

@@ -4,5 +4,6 @@
   "title": "Numeric Place ID",
   "description": "Numeric place identifier in the geonames, google_ads, or microsoft_ads system.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[0-9]+$"
 }

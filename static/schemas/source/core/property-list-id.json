@@ -4,6 +4,7 @@
   "title": "Property List ID",
   "description": "Identifier of a property list.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "minLength": 1,
   "x-entity": "property_list"
 }

@@ -4,5 +4,6 @@
   "title": "Custom Acceptance Requirement ID",
   "description": "Identifier of a custom acceptance requirement, as opposed to a stable acceptance criterion.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z][a-z0-9_.:-]*$"
 }

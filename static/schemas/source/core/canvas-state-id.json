@@ -4,5 +4,6 @@
   "title": "Canvas State ID",
   "description": "Identifier of one state of a seller-rendered stateful display unit.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z][a-z0-9_]*$"
 }
