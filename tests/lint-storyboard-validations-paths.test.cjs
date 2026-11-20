@@ -824,3 +824,91 @@ test('loadAllowlist enforces a reason field', () => {
     assert.ok(entry.file && entry.step && entry.path, `entry MUST identify file/step/path: ${JSON.stringify(entry)}`);
   }
 });
+
+// A schema root may carry several combinators at once: `allOf` composing the
+// properties and `oneOf` listing the branches (core/creative-manifest.json).
+// The lint must walk every combinator, not just the first one present.
+function writeFixtureSchema(schema) {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-validations-paths-'));
+  const file = path.join(dir, 'fixture-response.json');
+  fs.writeFileSync(file, JSON.stringify(schema));
+  const schemaDir = path.join(REPO_ROOT, 'static', 'schemas', 'source');
+  return path.relative(schemaDir, file);
+}
+
+function stepDoc(step) {
+  return { phases: [{ id: 'p', steps: [{ id: 's', task: 'noop', ...step }] }] };
+}
+
+test('paths resolve through allOf when the same root also carries oneOf', () => {
+  const ref = writeFixtureSchema({
+    type: 'object',
+    allOf: [{ $ref: '#/definitions/base' }],
+    oneOf: [{ required: ['format_id'] }, { required: ['format_kind'] }],
+    definitions: {
+      base: {
+        type: 'object',
+        properties: {
+          format_kind: { type: 'string' },
+          format_id: { type: 'object', properties: { id: { type: 'string' } } },
+        },
+      },
+    },
+  });
+  const violations = lintDoc(
+    stepDoc({
+      response_schema_ref: ref,
+      validations: [
+        { check: 'field_present', path: 'format_kind' },
+        { check: 'field_present', path: 'format_id.id' },
+        { check: 'field_present', path: 'not_defined_anywhere' },
+      ],
+    }),
+    '/synth/test.yaml',
+  );
+  assert.deepEqual(
+    violations.map((v) => `${v.rule}:${v.validationPath}`),
+    ['path_not_in_schema:not_defined_anywhere'],
+  );
+});
+
+test('expected_arm finds a branch list composed through allOf', () => {
+  const ref = writeFixtureSchema({
+    type: 'object',
+    allOf: [{ $ref: '#/definitions/branches' }],
+    definitions: {
+      branches: {
+        oneOf: [
+          { properties: { status: { const: 'done' }, result: { type: 'string' } }, required: ['status'] },
+          { properties: { errors: { type: 'array' } }, required: ['errors'] },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(
+    lintDoc(
+      stepDoc({
+        response_schema_ref: ref,
+        expected_arm: 'done',
+        validations: [{ check: 'field_present', path: 'result' }],
+      }),
+      '/synth/test.yaml',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    lintDoc(
+      stepDoc({
+        response_schema_ref: ref,
+        expect_error: true,
+        validations: [
+          { check: 'field_present', path: 'errors' },
+          { check: 'field_present', path: 'result' },
+        ],
+      }),
+      '/synth/test.yaml',
+    ).map((v) => `${v.rule}:${v.validationPath}`),
+    ['path_not_in_schema:result'],
+  );
+});

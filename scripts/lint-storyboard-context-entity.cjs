@@ -175,8 +175,8 @@ function loadSchema(ref) {
 /**
  * Walk a JSON Schema node to find the `x-entity` annotation at a dotted path.
  * Follows `$ref`, descends through `properties.<name>` for object steps,
- * through `items` for numeric-index steps, and tries each variant of a
- * `oneOf` / `anyOf`. Returns the annotation string if present, undefined if
+ * through `items` for numeric-index steps, and tries every member of the
+ * node's `oneOf`, `anyOf` and `allOf`. Returns the annotation string if present, undefined if
  * absent, or an `{ ambiguous: [values] }` object if variants disagree.
  */
 function resolveEntityAtPath(node, segments) {
@@ -221,9 +221,8 @@ function resolveEntityAtPath(node, segments) {
 
   // 2. Composite variants. allOf-merged, oneOf/anyOf alternatives — the
   // lint cares whether ANY branch resolves; it reconciles hits below.
-  if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
-    const variants = node.oneOf || node.anyOf || node.allOf;
-    for (const variant of variants) pushHit(resolveEntityAtPath(variant, segments));
+  for (const variant of [...(node.oneOf || []), ...(node.anyOf || []), ...(node.allOf || [])]) {
+    pushHit(resolveEntityAtPath(variant, segments));
   }
 
   const unique = Array.from(new Set(hits));
@@ -276,8 +275,8 @@ function findCompositeDisagreements(node, trail) {
   if (!node || typeof node !== 'object') return [];
   const out = [];
   if (typeof node['x-entity'] === 'string') {
-    const variants = node.oneOf || node.anyOf || node.allOf;
-    if (Array.isArray(variants)) {
+    const variants = [...(node.oneOf || []), ...(node.anyOf || []), ...(node.allOf || [])];
+    if (variants.length > 0) {
       const disagreements = new Set();
       for (const variant of variants) {
         if (variant && typeof variant === 'object' && typeof variant['x-entity'] === 'string' && variant['x-entity'] !== node['x-entity']) {
@@ -603,7 +602,7 @@ function detectAnnotation(node) {
   if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
     // If any variant is annotated, treat as annotated (good enough for
     // coverage counting). The disagreement lint will flag conflicts.
-    const variants = node.oneOf || node.anyOf || node.allOf;
+    const variants = [...(node.oneOf || []), ...(node.anyOf || []), ...(node.allOf || [])];
     for (const variant of variants) {
       const inner = detectAnnotation(variant);
       if (inner.annotated) return inner;
