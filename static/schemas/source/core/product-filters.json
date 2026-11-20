@@ -83,34 +83,8 @@
       "description": "Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
     },
     "budget_range": {
-      "type": "object",
-      "description": "Budget range to filter appropriate products",
-      "properties": {
-        "min": {
-          "type": "number",
-          "description": "Minimum budget amount",
-          "minimum": 0
-        },
-        "max": {
-          "type": "number",
-          "description": "Maximum budget amount",
-          "minimum": 0
-        },
-        "currency": {
-          "$ref": "/schemas/core/currency-code.json",
-          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')"
-        }
-      },
-      "required": ["currency"],
-      "anyOf": [
-        {
-          "required": ["min"]
-        },
-        {
-          "required": ["max"]
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/budget-range.json",
+      "description": "Budget range to filter appropriate products"
     },
     "countries": {
       "type": "array",

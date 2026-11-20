@@ -2324,9 +2324,25 @@
           "$ref": "/schemas/core/tool-name.json",
           "description": "Name of a tool in the protocol manifest, including tools that are not AdCP tasks."
         },
+        "closed-money": {
+          "$ref": "/schemas/core/closed-money.json",
+          "description": "A monetary amount and its currency."
+        },
         "country-subdivision-value-set": {
           "$ref": "/schemas/core/country-subdivision-value-set.json",
           "description": "A non-empty set of ISO 3166-2 country subdivision codes."
+        },
+        "evidence-max-age": {
+          "$ref": "/schemas/core/evidence-max-age.json",
+          "description": "The maximum age of evidence, as a duration in seconds, minutes, hours, or days. Campaign-relative durations are not allowed."
+        },
+        "fixed-duration": {
+          "$ref": "/schemas/core/fixed-duration.json",
+          "description": "A duration in a fixed time unit. The campaign unit is not allowed."
+        },
+        "flight-endpoint": {
+          "$ref": "/schemas/core/flight-endpoint.json",
+          "description": "One end of a flight: an airport code and an optional city."
         },
         "geo-coordinates": {
           "$ref": "/schemas/core/geo-coordinates.json",
@@ -2352,9 +2368,21 @@
           "$ref": "/schemas/core/geojson-geometry.json",
           "description": "A GeoJSON geometry: a geometry type and its coordinates."
         },
+        "half-open-datetime-range": {
+          "$ref": "/schemas/core/half-open-datetime-range.json",
+          "description": "A half-open date-time range: `start` is inclusive and `end` is exclusive."
+        },
         "metro-area": {
           "$ref": "/schemas/core/metro-area.json",
           "description": "A metro area, identified by a metro system and a code in that system."
+        },
+        "numeric-range": {
+          "$ref": "/schemas/core/numeric-range.json",
+          "description": "A range of numeric values with a minimum and a maximum."
+        },
+        "numeric-value-range": {
+          "$ref": "/schemas/core/numeric-value-range.json",
+          "description": "A range of numeric values with a minimum, a maximum, and an optional unit."
         },
         "postal-address": {
           "$ref": "/schemas/core/postal-address.json",
@@ -2363,6 +2391,14 @@
         "radius": {
           "$ref": "/schemas/core/radius.json",
           "description": "A distance from a point, with its unit."
+        },
+        "target-frequency": {
+          "$ref": "/schemas/core/target-frequency.json",
+          "description": "A target frequency band, with a minimum, a maximum, or both, measured over a time window."
+        },
+        "total-budget-guidance": {
+          "$ref": "/schemas/core/total-budget-guidance.json",
+          "description": "Budget guidance as a range in one currency, with a minimum, a recommended amount, a maximum, or any combination."
         },
         "travel-time": {
           "$ref": "/schemas/core/travel-time.json",

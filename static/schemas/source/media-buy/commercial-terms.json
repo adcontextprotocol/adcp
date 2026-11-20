@@ -47,13 +47,7 @@
     "start_time": { "$ref": "/schemas/core/start-timing.json" },
     "end_time": { "type": "string", "format": "date-time" },
     "total_budget": {
-      "type": "object",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "$ref": "/schemas/core/currency-code.json" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": false
+      "$ref": "/schemas/core/closed-money.json"
     },
     "daily_budget_cap": {
       "type": "number",
@@ -100,13 +94,7 @@
       "properties": {
         "effective_at": { "type": "string", "format": "date-time" },
         "fee": {
-          "type": "object",
-          "properties": {
-            "amount": { "type": "number", "minimum": 0 },
-            "currency": { "$ref": "/schemas/core/currency-code.json" }
-          },
-          "required": ["amount", "currency"],
-          "additionalProperties": false
+          "$ref": "/schemas/core/closed-money.json"
         },
         "reason": { "$ref": "/schemas/core/cancellation-reason.json" }
       },

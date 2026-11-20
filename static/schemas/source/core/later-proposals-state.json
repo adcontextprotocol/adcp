@@ -21,7 +21,7 @@
       "description": "Effective cap on later proposals under the current consent: the buyer's value, the protocol default of 5, or a lower seller cap. Required when accepted is true."
     },
     "min_interval": {
-      "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+      "$ref": "/schemas/core/fixed-duration.json",
       "description": "Effective minimum time between later proposals: the buyer's value, the protocol default of 1 day, or a longer seller interval. Required when accepted is true."
     },
     "created_count": {

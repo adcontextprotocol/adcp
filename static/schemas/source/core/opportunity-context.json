@@ -63,7 +63,7 @@
           "description": "Defaults to 5."
         },
         "min_interval": {
-          "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+          "$ref": "/schemas/core/fixed-duration.json",
           "description": "Defaults to 1 day."
         }
       },

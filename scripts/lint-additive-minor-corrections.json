@@ -1946,6 +1946,39 @@
         "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
       },
       "reason": "Applies the bound the published text sets. 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "content-standards/get-media-buy-artifacts-request.json",
+      "pointer": "/properties/time_range",
+      "required": "end",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/datetime-range.json",
+        "quote": "\"required\": [ \"start\", \"end\" ]"
+      },
+      "reason": "Applies the required names the published text sets. A time range is a datetime range, and 3.2.11 published core/datetime-range.json with start and end required."
+    },
+    {
+      "file": "content-standards/get-media-buy-artifacts-request.json",
+      "pointer": "/properties/time_range",
+      "required": "start",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/datetime-range.json",
+        "quote": "\"required\": [ \"start\", \"end\" ]"
+      },
+      "reason": "Applies the required names the published text sets. A time range is a datetime range, and 3.2.11 published core/datetime-range.json with start and end required."
+    },
+    {
+      "file": "core/proposal.json",
+      "pointer": "/properties/total_budget_guidance",
+      "required": "currency",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/canonical-proposal.json",
+        "quote": "\"required\": [ \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published total_budget_guidance in core/canonical-proposal.json with currency required; the proposal copy now references the same definition."
     }
   ]
 }

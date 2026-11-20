@@ -1,0 +1,51 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: values and ranges. The corrections the review chose; every other change is a $ref to an
+  identical definition.
+changes:
+  - location: core/total-budget-guidance.json#
+    keyword: required
+    new:
+      - currency
+    direction: tighten
+    side: both
+    note: >-
+      core/proposal.json#/properties/total_budget_guidance -> new:core/total-budget-guidance.json. Verdict delta:
+      currency:required:tighten:plausible_impact. The tool's witness search found none (no tighten witness attributed to
+      this line in 4 root(s)).
+  - location: core/total-budget-guidance.json#
+    keyword: anyOf
+    new:
+      - required:
+          - recommended
+      - required:
+          - min
+      - required:
+          - max
+    direction: tighten
+    side: both
+    note: >-
+      core/proposal.json#/properties/total_budget_guidance -> new:core/total-budget-guidance.json. Verdict delta:
+      (object):anyOf:tighten:plausible_impact. The tool's witness search found none (cannot attribute: no revert for
+      keyword anyOf).
+  - location: core/currency-code.json#
+    keyword: pattern
+    new: ^[A-Z]{3}$
+    direction: tighten
+    side: both
+    note: >-
+      core/proposal.json#/properties/total_budget_guidance -> new:core/total-budget-guidance.json. Verdict delta:
+      currency:pattern:tighten:correction. The tool's witness search found none (no tighten witness attributed to this
+      line in 4 root(s)).
+  - location: core/half-open-datetime-range.json#
+    keyword: required
+    new:
+      - end
+      - start
+    direction: tighten
+    side: request
+    note: >-
+      content-standards/get-media-buy-artifacts-request.json#/properties/time_range ->
+      new:core/half-open-datetime-range.json. Verdict delta: start:required:tighten:plausible_impact;
+      end:required:tighten:plausible_impact. Witness: content-standards/get-media-buy-artifacts-request.json /time_range
+      = {} (tighten).

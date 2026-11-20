@@ -10,36 +10,12 @@
       "description": "Unique identifier for this flight route or offer."
     },
     "origin": {
-      "type": "object",
-      "description": "Departure airport or city.",
-      "properties": {
-        "airport_code": {
-          "$ref": "/schemas/core/airport-code.json",
-          "description": "IATA airport code (e.g., 'AMS', 'JFK', 'LHR')."
-        },
-        "city": {
-          "type": "string",
-          "description": "City name (e.g., 'Amsterdam', 'New York')."
-        }
-      },
-      "required": ["airport_code"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/flight-endpoint.json",
+      "description": "Departure airport or city."
     },
     "destination": {
-      "type": "object",
-      "description": "Arrival airport or city.",
-      "properties": {
-        "airport_code": {
-          "$ref": "/schemas/core/airport-code.json",
-          "description": "IATA airport code."
-        },
-        "city": {
-          "type": "string",
-          "description": "City name."
-        }
-      },
-      "required": ["airport_code"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/flight-endpoint.json",
+      "description": "Arrival airport or city."
     },
     "airline": {
       "type": "string",

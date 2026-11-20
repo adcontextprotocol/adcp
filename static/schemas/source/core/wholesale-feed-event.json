@@ -706,20 +706,7 @@
           "minItems": 1
         },
         "range": {
-          "type": "object",
-          "properties": {
-            "min": {
-              "type": "number"
-            },
-            "max": {
-              "type": "number"
-            }
-          },
-          "required": [
-            "min",
-            "max"
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/numeric-range.json"
         },
         "signal_type": {
           "$ref": "/schemas/enums/signal-catalog-type.json"

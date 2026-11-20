@@ -72,16 +72,7 @@
         "downloads": { "$ref": "/schemas/core/forecast-range.json" },
         "plays": { "$ref": "/schemas/core/forecast-range.json" },
         "coverage_rate": {
-          "allOf": [
-            { "$ref": "/schemas/core/forecast-range.json" },
-            {
-              "properties": {
-                "low": { "maximum": 1 },
-                "mid": { "maximum": 1 },
-                "high": { "maximum": 1 }
-              }
-            }
-          ],
+          "$ref": "/schemas/core/forecast-rate-range.json",
           "description": "Share of the declared forecast scope represented by this point. For signal coverage forecasts, this is the point's count divided by the coverage_forecast.scope denominator. Range 0.0 to 1.0."
         }
       },
@@ -106,16 +97,7 @@
           "description": "Forecasted impressions expected to meet the viewability threshold defined by standard."
         },
         "viewable_rate": {
-          "allOf": [
-            { "$ref": "/schemas/core/forecast-range.json" },
-            {
-              "properties": {
-                "low": { "maximum": 1 },
-                "mid": { "maximum": 1 },
-                "high": { "maximum": 1 }
-              }
-            }
-          ],
+          "$ref": "/schemas/core/forecast-rate-range.json",
           "description": "Forecasted viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0."
         },
         "viewed_seconds": {

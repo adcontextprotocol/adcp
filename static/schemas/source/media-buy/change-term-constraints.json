@@ -130,13 +130,7 @@
   ],
   "definitions": {
     "money": {
-      "type": "object",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "$ref": "/schemas/core/currency-code.json" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": false
+      "$ref": "/schemas/core/closed-money.json"
     }
   }
 }

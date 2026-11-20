@@ -32,20 +32,8 @@
       "default": false
     },
     "time_range": {
-      "type": "object",
-      "description": "Filter to specific time period",
-      "properties": {
-        "start": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Start of time range (inclusive)"
-        },
-        "end": {
-          "type": "string",
-          "format": "date-time",
-          "description": "End of time range (exclusive)"
-        }
-      }
+      "$ref": "/schemas/core/half-open-datetime-range.json",
+      "description": "Filter to specific time period"
     },
     "pagination": {
       "type": "object",

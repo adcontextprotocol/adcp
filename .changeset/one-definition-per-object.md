@@ -7,3 +7,5 @@ Every branch of a discriminated union states its tag's value as its `default`. W
 209 objects that stand for a concept of their own gain a `title` naming it, so generated types and docs name the concept instead of a path.
 
 Geographic objects have one definition each under `core/`: `geo-coordinates`, `postal-address`, `geo-country-place-types`, `geo-region-countries` (with `geo-region-all-values-selector` and `country-subdivision-value-set`), `geo-proximity`, `metro-area`, `geojson-geometry`, `radius`, and `travel-time`. The `targeting_modification` postal-area selector references `core/postal-country-system.json` and takes its country/system pairing guard.
+
+Ranges, durations, and money-like objects have one definition each under `core/`: `numeric-range`, `numeric-value-range`, `fixed-duration`, `closed-money`, `half-open-datetime-range`, `evidence-max-age`, `target-frequency`, `total-budget-guidance`, and `flight-endpoint`. The proposal `total_budget_guidance` requires `currency` and at least one of `min`, `recommended`, and `max`, as the canonical proposal does, and the `get_media_buy_artifacts` `time_range` requires `start` and `end`.

@@ -1927,7 +1927,7 @@
               "properties": {
                 "supported": { "type": "boolean" },
                 "max_open_duration": {
-                  "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+                  "$ref": "/schemas/core/fixed-duration.json",
                   "description": "Longest window the seller keeps an opportunity open for later proposals, measured from the call that last set consent. It always caps the window, which ends at the earliest of this, later_proposals.until, planning_horizon.end, and closure. The campaign unit is invalid here."
                 }
               },
@@ -3076,19 +3076,8 @@
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
-                "type": "object",
-                "description": "For quantitative features, the valid range",
-                "properties": {
-                  "min": {
-                    "type": "number",
-                    "description": "Minimum value"
-                  },
-                  "max": {
-                    "type": "number",
-                    "description": "Maximum value"
-                  }
-                },
-                "required": ["min", "max"]
+                "$ref": "/schemas/core/numeric-range.json",
+                "description": "For quantitative features, the valid range"
               },
               "categories": {
                 "type": "array",
@@ -3130,19 +3119,8 @@
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
-                "type": "object",
-                "description": "For quantitative features, the valid range",
-                "properties": {
-                  "min": {
-                    "type": "number",
-                    "description": "Minimum value"
-                  },
-                  "max": {
-                    "type": "number",
-                    "description": "Maximum value"
-                  }
-                },
-                "required": ["min", "max"]
+                "$ref": "/schemas/core/numeric-range.json",
+                "description": "For quantitative features, the valid range"
               },
               "categories": {
                 "type": "array",

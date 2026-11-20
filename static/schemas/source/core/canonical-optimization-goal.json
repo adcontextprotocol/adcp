@@ -16,15 +16,7 @@
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
         "reach_unit": { "$ref": "/schemas/enums/reach-unit.json" },
         "target_frequency": {
-          "type": "object",
-          "properties": {
-            "min": { "type": "integer", "minimum": 1 },
-            "max": { "type": "integer", "minimum": 1 },
-            "window": { "$ref": "/schemas/core/duration.json" }
-          },
-          "required": ["window"],
-          "anyOf": [{ "required": ["min"] }, { "required": ["max"] }],
-          "additionalProperties": true
+          "$ref": "/schemas/core/target-frequency.json"
         },
         "view_duration_seconds": { "type": "number", "exclusiveMinimum": 0 },
         "target": {

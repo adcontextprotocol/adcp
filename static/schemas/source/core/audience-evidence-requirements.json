@@ -61,14 +61,7 @@
       "$ref": "/schemas/core/fraction.json"
     },
     "maximum_age": {
-      "allOf": [
-        { "$ref": "/schemas/core/duration.json" },
-        {
-          "properties": {
-            "unit": { "$ref": "/schemas/enums/evidence-age-unit.json" }
-          }
-        }
-      ],
+      "$ref": "/schemas/core/evidence-max-age.json",
       "description": "Maximum age at evaluation time measured from last_updated. Campaign-relative duration is not valid for evidence age."
     },
     "methodology_documentation_required": {

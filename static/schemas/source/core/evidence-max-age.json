@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/evidence-max-age.json",
+  "title": "Maximum Evidence Age",
+  "description": "The maximum age of evidence, as a duration in seconds, minutes, hours, or days. Campaign-relative durations are not allowed.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/duration.json"
+    },
+    {
+      "properties": {
+        "unit": {
+          "$ref": "/schemas/enums/evidence-age-unit.json"
+        }
+      }
+    }
+  ]
+}

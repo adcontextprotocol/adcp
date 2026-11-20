@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/closed-money.json",
+  "title": "Closed Money",
+  "description": "A monetary amount and its currency.",
+  "type": "object",
+  "properties": {
+    "amount": {
+      "type": "number",
+      "minimum": 0
+    },
+    "currency": {
+      "$ref": "/schemas/core/currency-code.json"
+    }
+  },
+  "required": [
+    "amount",
+    "currency"
+  ],
+  "additionalProperties": false
+}
