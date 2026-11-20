@@ -917,6 +917,10 @@
           "$ref": "/schemas/core/reporting-subscription.json",
           "description": "Experimental: principal-level reporting subscription registered through sync_principal"
         },
+        "reporting-dimension-systems": {
+          "$ref": "/schemas/core/reporting-dimension-systems.json",
+          "description": "Experimental: metro and postal systems behind a reporting breakdown, on offerings and subscription selectors"
+        },
         "reporting-subscription-state": {
           "$ref": "/schemas/core/reporting-subscription-state.json",
           "description": "Experimental: seller readback for a principal-level reporting subscription"
