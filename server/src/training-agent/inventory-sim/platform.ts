@@ -325,6 +325,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     if (buy.canceled) return 'canceled';
     if (nowMs >= Date.parse(buy.end_time)) return 'completed';
     if (buy.paused) return 'paused';
+    // No live package has a creative, so none can begin delivery: the buyer
+    // has to act. The simulation still delivers the bookings as seeded.
+    const live = buy.packages.filter(pkg => !pkg.canceled);
+    if (live.length > 0 && live.every(pkg => !pkg.creative_assignments?.length)) return 'pending_creatives';
     if (nowMs < Date.parse(buy.start_time)) return 'pending_start';
     return 'active';
   }

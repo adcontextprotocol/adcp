@@ -125,7 +125,8 @@ describe('inventory tenants', () => {
         packages: [{ product_id: 'sports_hero_guaranteed', pricing_option_id: 'sports_hero_guaranteed_cpm', budget: 2000, impressions: 100_000 }],
       });
       expectCanonical('create_media_buy', guaranteed);
-      expect(guaranteed.media_buy_status).toBe('pending_start');
+      // No package has a creative yet, so none can begin delivery.
+      expect(guaranteed.media_buy_status).toBe('pending_creatives');
       expect(guaranteed.packages[0].impressions).toBe(100_000);
 
       const after = await call(tenant, 'get_products', {
@@ -360,6 +361,8 @@ describe('inventory tenants', () => {
     });
 
     it('syncs a creative and assigns it to a booked package', async () => {
+      const status = async () => (await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, CREATIVE_TOKEN)).media_buys[0].status;
+      expect(await status()).toBe('pending_creatives');
       const result = await sync({
         creatives: [banner('banner_a')],
         assignment_operations: [{ operation: 'assign', creative_id: 'banner_a', package_id: displayPackage, weight: 60 }],
@@ -377,6 +380,8 @@ describe('inventory tenants', () => {
       expectCanonical('get_media_buys', buys);
       expect(buys.media_buys[0].packages[0].creative_approvals).toEqual([{ creative_id: 'banner_a', approval_status: 'approved' }]);
       expect(buys.media_buys[0].packages[1].creative_approvals).toBeUndefined();
+      // One package can now begin delivery, so the buy waits only on its start.
+      expect(await status()).toBe('pending_start');
 
       const again = await sync({ creatives: [banner('banner_a')] });
       expect(again.creatives[0].action).toBe('unchanged');
