@@ -15,7 +15,9 @@
  *     ∩ confirmed  -- ends after confirmed_at, and after the added_at of a
  *                     package resolving the offering (a per-package confirmed_at)
  *     ∩ flight     -- overlaps the flight in effect at the period end
- *     ∩ ¬excepted  -- no excluded[] or gaps[] entry covers its start
+ *     ∩ ¬excepted  -- no excluded[] or gaps[] entry covers its start, and the
+ *                     package_ids entries in effect do not together name
+ *                     every package owed it
  *     ∩ resolved   -- has ended by now; not zero-length
  *
  * Normative sources, quoted where used:
@@ -129,12 +131,17 @@ function scheduleFor(offering, version, input, used) {
       const timeline = override !== undefined
         ? [{ from: -Infinity, zone: checkZone(override, 'selector.period_timezone', used) }]
         : accountZoneTimeline(input, offering.offering_id, used);
+      // cutover: account timezone changes are cutovers "including on billing offerings, where the stub rule above
+      // applies"; reporting-subscription-coverage.json timezone_cutovers: "except on a billing offering, where it is
+      // owed as one stub period [effective_at, first new-timezone boundary)". effective_at is E.
+      const billing = offering.feed_purpose === 'billing';
       const pieces = timeline.map((entry, index) => ({
         from: entry.from,
         until: index + 1 < timeline.length ? timeline[index + 1].from : Infinity,
         calendar: localCalendar(duration, entry.zone),
+        stub: billing && index > 0,
       }));
-      return { key: JSON.stringify(pieces.map(piece => [piece.from, piece.calendar.key])), pieces };
+      return { key: JSON.stringify(pieces.map(piece => [piece.from, piece.calendar.key, piece.stub])), pieces };
     }
     case 'source_timezone': {
       let zone = schedule.period_timezone;
@@ -157,13 +164,17 @@ function scheduleFor(offering, version, input, used) {
   }
 }
 
-/** Every period of a schedule overlapping [lo, hi], tagged with the piece that owns it. */
+/**
+ * Every period of a schedule overlapping [lo, hi], each owned by the piece it starts in. A billing piece that
+ * starts at an account timezone change also owns the stub [E, its first boundary after E), when E is not one of
+ * its boundaries (cutover: "it is empty exactly when E is also an incoming boundary").
+ */
 function schedulePeriods(schedule, lo, hi) {
   const out = [];
   for (const piece of schedule.pieces) {
-    for (const period of piece.calendar.periods(lo, hi)) {
-      if (period.start >= piece.from && period.start < piece.until) out.push(period);
-    }
+    const own = piece.calendar.periods(lo, hi).filter(period => period.start >= piece.from && period.start < piece.until);
+    if (piece.stub && own.length > 0 && own[0].start > piece.from) out.push({ start: piece.from, end: own[0].start, stub: true });
+    out.push(...own);
   }
   return out.sort((a, b) => a.start - b.start || a.end - b.end);
 }
@@ -363,10 +374,10 @@ function exceptionWindows(coverage) {
   const windows = [];
   for (const [index, entry] of (coverage?.excluded ?? []).entries()) {
     // package_ids entries remove packages from the buy's coverage, not periods:
-    // "The buy stays covered for its other packages". When the entry names
-    // every package of the buy that resolves an offering, nothing keeps the buy
-    // covered for that offering, so its periods starting in [from, until) are
-    // removed (see excepted()).
+    // "The buy stays covered for its other packages". When the entries in
+    // effect for a period together name every package of the buy that resolves
+    // the offering and is owed the period, nothing keeps the buy covered for it,
+    // so the period is removed (see excepted()).
     windows.push({
       mediaBuyId: entry.media_buy_id,
       offeringId: entry.offering_id,
@@ -388,17 +399,23 @@ function exceptionWindows(coverage) {
 /**
  * resolvingPackages: the buy's packages that resolve the offering on the side
  * that owns the period and are owed it (it ends after their confirmed_at or
- * added_at). A package_ids window removes the period only when it names every
- * one of them, so a package added later keeps the buy covered only for the
- * periods it is owed.
+ * added_at). An entry without package_ids that applies removes the period. The
+ * package_ids entries compose: coverage, "a period is removed when the
+ * package_ids exceptions in effect for it together name every package that
+ * resolves the offering and is owed that period", so separate entries that
+ * between them take out every owing package remove it, and a package added
+ * later keeps the buy covered only for the periods it is owed.
  */
 function excepted(windows, buyId, offeringId, period, resolvingPackages) {
-  return windows.some(window =>
-    (window.mediaBuyId === undefined || window.mediaBuyId === buyId) &&
-    (window.offeringId === undefined || window.offeringId === offeringId) &&
-    (window.packageIds === undefined
-      || (resolvingPackages.size > 0 && [...resolvingPackages].every(id => window.packageIds.has(id)))) &&
-    period.start >= window.from && period.start < window.until);
+  const named = new Set();
+  for (const window of windows) {
+    if (window.mediaBuyId !== undefined && window.mediaBuyId !== buyId) continue;
+    if (window.offeringId !== undefined && window.offeringId !== offeringId) continue;
+    if (!(period.start >= window.from && period.start < window.until)) continue; // "in effect" for the period
+    if (window.packageIds === undefined) return true;
+    for (const id of window.packageIds) named.add(id);
+  }
+  return resolvingPackages.size > 0 && [...resolvingPackages].every(id => named.has(id));
 }
 
 // ---------------------------------------------------------------------------
