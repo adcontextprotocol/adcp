@@ -8,6 +8,10 @@ on:
     # against an org-wide hosted-runner concurrency cap. `ready_for_review`
     # runs the full matrix when a draft is marked ready. This workflow is not
     # a required check, so skipped draft runs never block a merge.
+    # Version Packages PRs (changeset-release/*) stay drafts until they merge,
+    # so they run the matrix while still draft: release.yml's verified-merge
+    # step reuses the completed run on the exact release head instead of
+    # re-running the whole matrix serially (1.5-2.7 h for 3.3.0-rc.2).
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'server/src/training-agent/**'
@@ -55,8 +59,9 @@ concurrency:
 jobs:
   storyboards:
     name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
-    # Skip draft PRs; push events have no pull_request payload and always run.
-    if: github.event.pull_request.draft != true
+    # Skip draft PRs except Version Packages PRs (see above); push events have
+    # no pull_request payload and always run.
+    if: (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
     # The storyboard matrix is about half of the repo's runner-minutes. Set the
     # STORYBOARD_RUNNER repository variable to a larger-runner label (for
     # example ubuntu-latest-m) to move it off the shared hosted pool; unset,
@@ -564,7 +569,7 @@ jobs:
 
   sales_storyboard_orchestrators:
     name: Sales storyboard orchestrator (${{ matrix.orchestrator }}/8)
-    if: github.event.pull_request.draft != true
+    if: (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
     # Same runner selection as the storyboards matrix above.
     runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
@@ -636,7 +641,7 @@ jobs:
 
   sales_storyboards:
     name: Storyboards (current /sales)
-    if: always() && github.event.pull_request.draft != true
+    if: always() && (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
     needs: sales_storyboard_orchestrators
     runs-on: ubuntu-latest
     timeout-minutes: 10
