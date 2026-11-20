@@ -120,6 +120,10 @@ const ENUM_VALUE_ALLOWLIST = [
   { value: 'instagram_handle',     pathContains: 'enums/distribution-identifier-type.json' },
   { value: 'facebook_page_id',     pathContains: 'enums/distribution-identifier-type.json' },
   { value: 'facebook_page_handle', pathContains: 'enums/distribution-identifier-type.json' },
+  { value: 'linkedin_member_id', pathContains: 'enums/distribution-identifier-type.json' },
+  { value: 'linkedin_member_handle', pathContains: 'enums/distribution-identifier-type.json' },
+  { value: 'linkedin_organization_id', pathContains: 'enums/distribution-identifier-type.json' },
+  { value: 'linkedin_organization_handle', pathContains: 'enums/distribution-identifier-type.json' },
 
   // enums/feed-format.json — widely-adopted open interchange formats.
   { value: 'google_merchant_center', pathContains: 'enums/feed-format.json' },

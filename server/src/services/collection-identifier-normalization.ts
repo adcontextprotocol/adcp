@@ -42,6 +42,10 @@ export const DISTRIBUTION_IDENTIFIER_TYPE_VALUES = [
   'eidr_id',
   'domain',
   'substack_id',
+  'linkedin_member_id',
+  'linkedin_member_handle',
+  'linkedin_organization_id',
+  'linkedin_organization_handle',
 ] as const;
 export type DistributionIdentifierType = typeof DISTRIBUTION_IDENTIFIER_TYPE_VALUES[number];
 export const DISTRIBUTION_IDENTIFIER_TYPE_SET = new Set<string>(DISTRIBUTION_IDENTIFIER_TYPE_VALUES);
@@ -68,6 +72,8 @@ const HANDLE_IDENTIFIER_TYPES = new Set<string>([
   'facebook_page_handle',
   'snapchat_handle',
   'x_handle',
+  'linkedin_member_handle',
+  'linkedin_organization_handle',
 ]);
 
 function normalizeHandle(raw: string): string {
