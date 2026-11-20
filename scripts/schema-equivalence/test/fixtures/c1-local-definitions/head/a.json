@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a.json",
+  "definitions": {
+    "short": {
+      "type": "string",
+      "maxLength": 10
+    }
+  },
+  "type": "object",
+  "properties": {
+    "x": {
+      "$ref": "#/definitions/short"
+    }
+  }
+}

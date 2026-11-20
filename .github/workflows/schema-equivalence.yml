@@ -1,0 +1,101 @@
+name: Schema equivalence
+
+# Proves what a schema change does to the set of valid payloads: canonical
+# forms of every published root at the PR's base and with the PR merged,
+# the PR's delta manifest (.schema-deltas/*.yaml), a corpus differential,
+# and one witness payload per declared difference. A report-only step
+# proves or refutes every oneOf at the PR head.
+# See scripts/schema-equivalence/README.md.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'static/schemas/source/**'
+      - '.schema-deltas/**'
+      - 'scripts/schema-equivalence/**'
+      - 'tests/schema-equivalence.test.cjs'
+      - 'tests/schema-equivalence-catalog.test.cjs'
+      - '.github/workflows/schema-equivalence.yml'
+
+concurrency:
+  group: schema-equivalence-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Canonical-form diff, manifest, corpus, witnesses
+    # Hosted runner capacity is shared across the org: skip drafts.
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The pull_request event checks out the merge commit. Its first parent
+      # is the base branch tip, so HEAD^1 -> HEAD is exactly what merging the
+      # PR does to main; two commits of history are enough.
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Fixture and construct catalog tests
+        run: node --test tests/schema-equivalence.test.cjs tests/schema-equivalence-catalog.test.cjs
+
+      - name: Check the PR
+        run: |
+          set -o pipefail
+          node scripts/schema-equivalence/cli.cjs \
+            --base HEAD^1 --head HEAD \
+            --manifest auto --corpus --witness \
+            --json schema-equivalence.json | tee schema-equivalence.txt
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f schema-equivalence.txt ]; then
+            {
+              echo '### Schema equivalence'
+              echo
+              echo '```'
+              head -c 60000 schema-equivalence.txt
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      # Proves or refutes every oneOf the published roots reach, at the PR
+      # head: P (branches proved disjoint), W (a payload that matches two or
+      # more branches, confirmed by Ajv), or U (undecided). This step stays
+      # report-only until the 16 overlaps on main are fixed in a separate PR;
+      # then drop --report-only so any W or U fails the job. The PR head is
+      # the merge commit's second parent, one of the two fetched commits.
+      - name: oneOf check (report only)
+        if: always()
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node scripts/schema-equivalence/cli.cjs oneof \
+            --ref "${PR_HEAD}" --report-only \
+            --json schema-equivalence-oneof.json > schema-equivalence-oneof.md
+          cat schema-equivalence-oneof.md >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload the JSON report
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: schema-equivalence-${{ github.event.pull_request.head.sha }}
+          path: |
+            schema-equivalence.json
+            schema-equivalence.txt
+            schema-equivalence-oneof.json
+          if-no-files-found: ignore
+          retention-days: 14

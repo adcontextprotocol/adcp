@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a.json",
+  "type": "object",
+  "properties": {
+    "s": {
+      "not": {
+        "not": {
+          "type": "string"
+        }
+      }
+    },
+    "r": {
+      "not": {
+        "$ref": "#/definitions/neg"
+      }
+    },
+    "t": {
+      "$ref": "#/definitions/dn"
+    }
+  },
+  "definitions": {
+    "neg": {
+      "not": {
+        "$ref": "b.json"
+      }
+    },
+    "dn": {
+      "not": {
+        "not": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

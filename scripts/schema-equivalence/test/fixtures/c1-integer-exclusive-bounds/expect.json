@@ -1,0 +1,5 @@
+{
+  "why": "With type integer, exclusiveMinimum n equals minimum floor(n) + 1 and exclusiveMaximum n equals maximum ceil(n) - 1, for safe integers.",
+  "exit": 0,
+  "class": 1
+}

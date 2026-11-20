@@ -1,0 +1,7 @@
+{
+  "why": "Recursive schema with a change below the recursion: reported once, with a finite pointer.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "maxLength",
+  "entries": 1
+}

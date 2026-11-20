@@ -1,0 +1,6 @@
+{
+  "why": "Splitting by type keeps keywords that apply to every type: dropping enum is a change.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "enum"
+}

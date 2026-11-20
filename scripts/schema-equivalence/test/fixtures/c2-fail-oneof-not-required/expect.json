@@ -1,0 +1,5 @@
+{
+  "why": "oneOf -> anyOf, but the discriminator property is not required, so {} satisfies both.",
+  "exit": 1,
+  "class": 3
+}

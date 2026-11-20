@@ -1,0 +1,11 @@
+{
+  "why": "Deliberate loosening (enum gains a value) with a matching location-form manifest.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

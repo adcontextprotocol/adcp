@@ -1,0 +1,5 @@
+{
+  "why": "A regex bracket class is a set: [0-9a-fA-F] equals [A-Fa-f0-9].",
+  "exit": 0,
+  "class": 1
+}

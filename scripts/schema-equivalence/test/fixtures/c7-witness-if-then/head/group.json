@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/group.json",
+  "type": "object",
+  "required": [
+    "asset_type"
+  ],
+  "properties": {
+    "asset_type": {
+      "enum": [
+        "image",
+        "video"
+      ]
+    },
+    "asset_requirements": {
+      "$ref": "/schemas/req.json"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "asset_type": {
+            "const": "image"
+          }
+        },
+        "required": [
+          "asset_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "asset_requirements": {
+            "$ref": "/schemas/req-image.json"
+          }
+        }
+      }
+    }
+  ]
+}

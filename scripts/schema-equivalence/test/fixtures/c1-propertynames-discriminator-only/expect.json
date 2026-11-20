@@ -1,0 +1,5 @@
+{
+  "why": "propertyNames holding only a discriminator and its oneOf admits every property name, so it equals no propertyNames.",
+  "exit": 0,
+  "class": 1
+}

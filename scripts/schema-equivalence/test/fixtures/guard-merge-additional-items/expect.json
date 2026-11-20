@@ -1,0 +1,5 @@
+{
+  "why": "additionalItems in one member does not see another member's items tuple.",
+  "exit": 1,
+  "class": 3
+}

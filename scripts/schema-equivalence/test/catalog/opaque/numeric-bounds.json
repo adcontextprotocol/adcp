@@ -1,0 +1,212 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
+  "pairs": [
+    {
+      "id": "opaque/numeric-bounds/integer-minimum-vs-exclusive/top",
+      "rule": "numeric-bounds is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
+        },
+        "head_in_base": {
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
+        }
+      }
+    },
+    {
+      "id": "opaque/numeric-bounds/redundant-exclusive-maximum/top",
+      "rule": "numeric-bounds is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "maximum": 5,
+          "exclusiveMaximum": 10
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "maximum": 5
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "opaque/numeric-bounds/integer-as-multipleof-one/top",
+      "rule": "numeric-bounds is compared exactly; a real change must be reported",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "integer"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "multipleOf": 1
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "Ajv checks multipleOf on doubles as x / m !== parseInt(x / m). parseInt(1e21) is 1, so 1e21 passes type integer and fails multipleOf 1. A number that passes multipleOf 1 equals its parseInt, so it is an integer.",
+      "witnesses": [
+        {
+          "payload": 1e+21,
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "multipleOf, which Ajv checks on doubles with parseInt"
+        },
+        "head_in_base": {
+          "verdict": "unproven",
+          "reason": "multipleOf, which Ajv checks on doubles with parseInt"
+        }
+      }
+    },
+    {
+      "id": "opaque/numeric-bounds/minimum-to-exclusive/top",
+      "rule": "numeric-bounds is compared exactly; a real change must be reported",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": 0,
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": 0
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "opaque/numeric-bounds/multipleof-tightened/top",
+      "rule": "numeric-bounds is compared exactly; a real change must be reported",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "multipleOf": 2
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "multipleOf": 4
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "Ajv checks multipleOf on doubles as x / m !== parseInt(x / m). 2 is no multiple of 4. 2e21 / 4 is 5e20, which passes, but 2e21 / 2 is 1e21, whose parseInt is 1, so 2e21 fails multipleOf 2.",
+      "witnesses": [
+        {
+          "payload": 2,
+          "base": true,
+          "head": false
+        },
+        {
+          "payload": 2e+21,
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": 2
+        },
+        "head_in_base": {
+          "verdict": "unproven",
+          "reason": "multipleOf, which Ajv checks on doubles with parseInt"
+        }
+      }
+    }
+  ]
+}

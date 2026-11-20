@@ -1,0 +1,5 @@
+{
+  "why": "discriminator + oneOf -> anyOf, but the node admits non-objects, which the discriminator passes and anyOf rejects.",
+  "exit": 1,
+  "class": 3
+}

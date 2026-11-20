@@ -1,0 +1,5 @@
+{
+  "why": "Root keywords moved into a definition referenced next to the oneOf (additionalProperties travels with its properties) equal the same keywords written in the root.",
+  "exit": 0,
+  "class": 1
+}

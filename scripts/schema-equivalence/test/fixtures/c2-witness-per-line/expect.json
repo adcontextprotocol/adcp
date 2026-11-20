@@ -1,0 +1,11 @@
+{
+  "why": "A line whose change another line masks (maxLength removed beside a stricter pattern) has no witness of its own, so declaring it a tightening fails even though the node tightens.",
+  "exit": 1,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

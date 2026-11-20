@@ -1,0 +1,6 @@
+{
+  "why": "allOf [union, {not: branch}] -> the remaining branches, the other branches being disjoint from the removed one.",
+  "exit": 0,
+  "class": 2,
+  "rule": "not-branch-subtraction"
+}

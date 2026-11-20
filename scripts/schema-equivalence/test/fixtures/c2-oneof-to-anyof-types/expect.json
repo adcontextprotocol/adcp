@@ -1,0 +1,6 @@
+{
+  "why": "oneOf -> anyOf where the branches have disjoint types.",
+  "exit": 0,
+  "class": 2,
+  "rule": "oneOf-to-anyOf"
+}

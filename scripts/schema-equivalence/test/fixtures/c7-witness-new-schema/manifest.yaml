@@ -1,0 +1,16 @@
+changes:
+  - root: registry.json
+    pointer: ''
+    keyword: (schema)
+    old: true
+    new:
+      properties:
+        version:
+          type:
+            - string
+      required:
+        - version
+      type:
+        - object
+    direction: tighten
+    side: none

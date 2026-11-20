@@ -1,0 +1,5 @@
+{
+  "why": "if without then/else (and then without if) is ignored by Ajv.",
+  "exit": 0,
+  "class": 1
+}

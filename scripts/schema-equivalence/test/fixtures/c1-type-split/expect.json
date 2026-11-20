@@ -1,0 +1,5 @@
+{
+  "why": "A node allowing several types with type-specific keywords is anyOf over one branch per type.",
+  "exit": 0,
+  "class": 1
+}

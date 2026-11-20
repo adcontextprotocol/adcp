@@ -1,0 +1,5 @@
+{
+  "why": "The same property in two members means its value satisfies both schemas.",
+  "exit": 0,
+  "class": 1
+}

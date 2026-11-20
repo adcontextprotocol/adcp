@@ -1,0 +1,5 @@
+{
+  "why": "Keywords for a type the node does not allow never apply (minLength on a null-only node).",
+  "exit": 0,
+  "class": 1
+}

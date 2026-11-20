@@ -733,6 +733,7 @@ module.exports = {
   lintFile,
   validateStep,
   normalizeSubstitutions,
+  SUBSTITUTION_RE,
   normalizeStoryboardSampleRequests,
   loadSchema,
   formatViolation,

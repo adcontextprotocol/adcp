@@ -1,0 +1,5 @@
+{
+  "why": "Inside propertyNames a branch that admits no string never matches, so removing the only string branch is a change.",
+  "exit": 1,
+  "class": 3
+}

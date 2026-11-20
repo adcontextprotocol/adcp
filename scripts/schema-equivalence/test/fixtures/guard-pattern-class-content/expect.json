@@ -1,0 +1,6 @@
+{
+  "why": "Reordering a class is exact, but changing its content is not: [a-z] is not [a-z0-9].",
+  "exit": 1,
+  "class": 3,
+  "keyword": "pattern"
+}

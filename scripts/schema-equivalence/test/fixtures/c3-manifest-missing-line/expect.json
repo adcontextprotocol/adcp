@@ -1,0 +1,12 @@
+{
+  "why": "Two deliberate changes, the manifest declares one: the other is undeclared.",
+  "exit": 1,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml"
+  ],
+  "manifestOk": false,
+  "extra": 1,
+  "missing": 0
+}

@@ -1,0 +1,5 @@
+{
+  "why": "oneOf [A, A] rejects everything A accepts; oneOf [A] does not. Duplicates in oneOf are not dropped.",
+  "exit": 1,
+  "class": 3
+}

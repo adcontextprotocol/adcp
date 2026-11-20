@@ -1,0 +1,7 @@
+{
+  "why": "A default beside a $ref that changes is still reported.",
+  "exit": 0,
+  "class": 1,
+  "info": "default",
+  "infoEntries": 1
+}

@@ -1,0 +1,13 @@
+{
+  "why": "A corpus value under the same parent and property (selector.system) that the change rejects is an unbound probe hit.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--corpus",
+    "--corpus-dir",
+    "corpus"
+  ],
+  "probeHits": 1
+}

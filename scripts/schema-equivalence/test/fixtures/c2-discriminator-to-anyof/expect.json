@@ -1,0 +1,6 @@
+{
+  "why": "Ajv discriminator + oneOf -> anyOf on an object-only node with a valid discriminator.",
+  "exit": 0,
+  "class": 2,
+  "rule": "discriminator-to-anyOf"
+}

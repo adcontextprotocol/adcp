@@ -1,0 +1,5 @@
+{
+  "why": "An anyOf whose branches only list values is one enum of those values.",
+  "exit": 0,
+  "class": 1
+}

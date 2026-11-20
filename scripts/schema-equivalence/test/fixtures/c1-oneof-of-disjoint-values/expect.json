@@ -1,0 +1,5 @@
+{
+  "why": "A oneOf whose branches list disjoint values is one enum of those values.",
+  "exit": 0,
+  "class": 1
+}

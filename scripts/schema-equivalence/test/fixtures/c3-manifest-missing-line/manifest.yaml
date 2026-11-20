@@ -1,0 +1,8 @@
+changes:
+  - root: c-request.json
+    pointer: /properties/name
+    keyword: maxLength
+    old: 200
+    new: 100
+    direction: tighten
+    side: request

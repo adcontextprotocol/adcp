@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a.json",
+  "type": "object",
+  "properties": {
+    "s": {
+      "allOf": [
+        {
+          "type": "string",
+          "maxLength": 10
+        },
+        {
+          "maxLength": 5
+        }
+      ]
+    },
+    "n": {
+      "allOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "minimum": 3
+        }
+      ]
+    }
+  }
+}
