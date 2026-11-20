@@ -32,6 +32,8 @@ export interface PackageRecord {
   canceled: boolean;
   /** Creatives from the caller's library that this package serves. */
   creative_assignments?: AssignmentRecord[];
+  /** The buyer's opaque package correlation data, echoed unchanged. */
+  context?: Record<string, unknown>;
 }
 
 export interface MediaBuyRecord {

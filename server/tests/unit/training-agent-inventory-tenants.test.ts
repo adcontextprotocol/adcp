@@ -166,6 +166,36 @@ describe('inventory tenants', () => {
       expect(delivery.media_buy_deliveries[0].totals.impressions).toBe(0);
     });
 
+    it('echoes each package context unchanged on create, read-back and update', async () => {
+      const context = { buyer_ref: 'sf_pkg_0001', nested: { trace: ['a', 1, null], flag: false } };
+      const created = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-tenants-pkg-context-01',
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 40_000, context }],
+      });
+      expectCanonical('create_media_buy', created);
+      expect(created.packages[0].context).toEqual(context);
+
+      const listed = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [created.media_buy_id] });
+      expectCanonical('get_media_buys', listed);
+      expect(listed.media_buys[0].packages[0].context).toEqual(context);
+
+      const replaced = { buyer_ref: 'sf_pkg_0001_v2' };
+      const updated = await call(tenant, 'update_media_buy', {
+        idempotency_key: 'inventory-tenants-pkg-context-02',
+        account: ACCOUNT,
+        media_buy_id: created.media_buy_id,
+        packages: [{ package_id: created.packages[0].package_id, context: replaced }],
+      });
+      expectCanonical('update_media_buy', updated);
+      expect(updated.affected_packages[0].context).toEqual(replaced);
+      const reread = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [created.media_buy_id] });
+      expect(reread.media_buys[0].packages[0].context).toEqual(replaced);
+    });
+
     it('answers an account-less wholesale read with the public card', async () => {
       const filters = { start_date: day(start), end_date: day(new Date(end.getTime() - DAY_MS)), delivery_type: 'guaranteed' };
       const hero = (result: Structured) => result.products.find((product: Structured) => product.product_id === 'sports_hero_guaranteed')

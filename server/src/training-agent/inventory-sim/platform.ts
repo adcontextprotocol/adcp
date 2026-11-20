@@ -82,6 +82,10 @@ function invalid(message: string, field?: string): AdcpError {
   return new AdcpError('INVALID_REQUEST', { recovery: 'correctable', message, ...(field && { field }) });
 }
 
+function isContext(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function creativeFailure(error: CreativeError): AdcpError {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new AdcpError(error.code as any, { recovery: 'correctable', message: error.message, ...(error.field && { field: error.field }) });
@@ -347,6 +351,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       end_time: pkg.end_time,
       paused: pkg.paused,
       canceled: pkg.canceled,
+      // Opaque buyer correlation data: kept unchanged, never interpreted.
+      ...(pkg.context && { context: pkg.context }),
     };
   }
 
@@ -502,6 +508,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           end_time: new Date(endMs).toISOString(),
           paused: false,
           canceled: false,
+          ...(isContext(pkg.context) && { context: structuredClone(pkg.context) }),
         });
         this.applyPackageCreatives(market, accountIdOf(ctx), records[records.length - 1], pkg, field, false);
       });
@@ -585,6 +592,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           apply(pkg, { status: 'canceled' }, `${field}.canceled`);
         }
         if (this.applyPackageCreatives(market, accountIdOf(ctx), pkg, change, field, true)) affected.add(pkg.package_id);
+        if (isContext(change.context)) {
+          pkg.context = structuredClone(change.context);
+          affected.add(pkg.package_id);
+        }
       });
       if (typeof patch.paused === 'boolean') {
         buy.paused = patch.paused;
