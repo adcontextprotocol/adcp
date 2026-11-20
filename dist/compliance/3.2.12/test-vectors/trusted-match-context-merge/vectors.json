@@ -1,0 +1,263 @@
+{
+  "profile": "adcp/trusted-match/context-targeting-merge/v1",
+  "registrations": [
+    { "provider_id": "provider_a" },
+    { "provider_id": "provider_b" },
+    { "provider_id": "provider_spoof" },
+    { "provider_id": "provider_absent" },
+    { "provider_id": "provider_empty" },
+    { "provider_id": "Provider_Case" },
+    { "provider_id": "__proto__" },
+    { "provider_id": "constructor" }
+  ],
+  "provider_responses": [
+    {
+      "registration_provider_id": "provider_a",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [{ "package_id": "pkg-a" }],
+        "signals": {
+          "segments": ["outdoor"],
+          "targeting_kvs": [
+            { "key": "shared_key", "value": "alpha" },
+            { "key": "shared_key", "value": "alpha" },
+            { "key": "unmapped_key", "value": "drop-me" },
+            { "key": "Segment", "value": "key-case-sensitive-drop" },
+            { "key": "constructor", "value": "inner-constructor-value" }
+          ]
+        }
+      }
+    },
+    {
+      "registration_provider_id": "provider_b",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [{ "package_id": "pkg-b" }],
+        "signals": {
+          "segments": ["travel"],
+          "targeting_kvs": [
+            { "key": "shared_key", "value": "bravo" }
+          ]
+        }
+      }
+    },
+    {
+      "registration_provider_id": "provider_spoof",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [],
+        "signals_by_provider": {
+          "provider_a": {
+            "targeting_kvs": [
+              { "key": "shared_key", "value": "spoofed" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "registration_provider_id": "provider_absent",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": []
+      }
+    },
+    {
+      "registration_provider_id": "provider_empty",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [],
+        "signals": {
+          "targeting_kvs": []
+        }
+      }
+    },
+    {
+      "registration_provider_id": "Provider_Case",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [],
+        "signals": {
+          "targeting_kvs": [
+            { "key": "segment", "value": "provider-case-sensitive-drop" }
+          ]
+        }
+      }
+    },
+    {
+      "registration_provider_id": "__proto__",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [],
+        "signals": {
+          "targeting_kvs": [
+            { "key": "edge_key", "value": "proto-value" }
+          ]
+        }
+      }
+    },
+    {
+      "registration_provider_id": "constructor",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [],
+        "signals": {
+          "targeting_kvs": [
+            { "key": "name", "value": "constructor-value" }
+          ]
+        }
+      }
+    }
+  ],
+  "expected_router_response": {
+    "status": "completed",
+    "type": "context_match_response",
+    "request_id": "ctx-provider-attribution-1",
+    "offers": [
+      { "package_id": "pkg-a" },
+      { "package_id": "pkg-b" }
+    ],
+    "signals": {
+      "segments": ["outdoor", "travel"]
+    },
+    "signals_by_provider": {
+      "provider_a": {
+        "targeting_kvs": [
+          { "key": "shared_key", "value": "alpha" },
+          { "key": "shared_key", "value": "alpha" },
+          { "key": "unmapped_key", "value": "drop-me" },
+          { "key": "Segment", "value": "key-case-sensitive-drop" },
+          { "key": "constructor", "value": "inner-constructor-value" }
+        ]
+      },
+      "provider_b": {
+        "targeting_kvs": [
+          { "key": "shared_key", "value": "bravo" }
+        ]
+      },
+      "Provider_Case": {
+        "targeting_kvs": [
+          { "key": "segment", "value": "provider-case-sensitive-drop" }
+        ]
+      },
+      "__proto__": {
+        "targeting_kvs": [
+          { "key": "edge_key", "value": "proto-value" }
+        ]
+      },
+      "constructor": {
+        "targeting_kvs": [
+          { "key": "name", "value": "constructor-value" }
+        ]
+      }
+    }
+  },
+  "publisher_config": {
+    "targeting_kv_mapping": {
+      "provider_a": {
+        "shared_key": "gam_shared",
+        "segment": "gam_case_sensitive"
+      },
+      "provider_b": {
+        "shared_key": "gam_shared"
+      },
+      "provider_case": {
+        "segment": "gam_provider_case"
+      },
+      "__proto__": {
+        "edge_key": "gam_proto"
+      }
+    }
+  },
+  "expected_publisher_targeting": [
+    { "key": "gam_shared", "value": "alpha" },
+    { "key": "gam_shared", "value": "alpha" },
+    { "key": "gam_shared", "value": "bravo" },
+    { "key": "gam_proto", "value": "proto-value" }
+  ],
+  "invalid_router_responses": [
+    {
+      "id": "flattened-targeting-only",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-invalid-0",
+        "offers": [],
+        "signals": {
+          "targeting_kvs": [{ "key": "shared_key", "value": "alpha" }]
+        }
+      }
+    },
+    {
+      "id": "flattened-and-attributed-targeting",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-invalid-1",
+        "offers": [],
+        "signals": {
+          "targeting_kvs": [{ "key": "shared_key", "value": "alpha" }]
+        },
+        "signals_by_provider": {
+          "provider_a": {
+            "targeting_kvs": [{ "key": "shared_key", "value": "alpha" }]
+          }
+        }
+      }
+    },
+    {
+      "id": "invalid-provider-id-key",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-invalid-2",
+        "offers": [],
+        "signals_by_provider": {
+          "bad-provider-id": {
+            "targeting_kvs": [{ "key": "shared_key", "value": "alpha" }]
+          }
+        }
+      }
+    },
+    {
+      "id": "empty-provider-bucket",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-invalid-3",
+        "offers": [],
+        "signals_by_provider": {
+          "provider_a": {
+            "targeting_kvs": []
+          }
+        }
+      }
+    },
+    {
+      "id": "empty-provider-map",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-invalid-4",
+        "offers": [],
+        "signals_by_provider": {}
+      }
+    }
+  ]
+}
