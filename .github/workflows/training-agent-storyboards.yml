@@ -209,7 +209,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: node .github/scripts/npm-ci.mjs
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
@@ -598,7 +598,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: node .github/scripts/npm-ci.mjs
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
