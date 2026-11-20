@@ -36,6 +36,13 @@
         "field": "profile_id",
         "description": "A profile_id MUST occur at most once across both local and registry profile lists."
       }
+    ],
+    "unique_items": [
+      {
+        "arrays": ["profiles", "registry_profiles"],
+        "key": ["profile_id"],
+        "description": "A profile_id MUST occur at most once across both local and registry profile lists."
+      }
     ]
   },
   "additionalProperties": true

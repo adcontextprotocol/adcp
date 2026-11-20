@@ -49,6 +49,9 @@
   "x-adcp-validation": {
     "unique_by": [
       { "path": "subjects", "field": "subject_category" }
+    ],
+    "unique_items": [
+      { "arrays": ["subjects"], "key": ["subject_category"] }
     ]
   },
   "minProperties": 1,

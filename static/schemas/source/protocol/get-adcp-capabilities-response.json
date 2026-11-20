@@ -3555,7 +3555,8 @@
               },
               "minItems": 1,
               "x-adcp-validation": {
-                "unique_item_properties": ["capability_id"]
+                "unique_item_properties": ["capability_id"],
+                "unique_items": [{ "key": ["capability_id"] }]
               },
               "x-max-items-4.0": 128
             }
