@@ -240,13 +240,7 @@
         "issued_at": { "type": "string", "format": "date-time" },
         "seller_reference": { "type": "string" },
         "reporting_period": {
-          "type": "object",
-          "properties": {
-            "start": { "type": "string", "format": "date-time" },
-            "end": { "type": "string", "format": "date-time" }
-          },
-          "required": ["start", "end"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/datetime-range.json"
         },
         "cumulative_spend": { "type": "number", "minimum": 0 },
         "currency": { "$ref": "/schemas/core/currency-code.json" },

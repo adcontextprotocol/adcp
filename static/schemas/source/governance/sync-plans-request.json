@@ -199,8 +199,8 @@
             "additionalProperties": true
           },
           "flight": {
-            "type": "object",
-            "description": "Authorized flight dates. Governed actions with dates outside this window are rejected.",
+            "$ref": "/schemas/core/datetime-range.json",
+            "description": "Authorized flight dates. Governed actions with dates outside this window are rejected. `end` MUST be later than `start`.",
             "x-adcp-validation": {
               "verifier_constraints": {
                 "flight_order": {
@@ -209,24 +209,7 @@
                 }
               },
               "spec": "docs/governance/campaign/tasks/sync_plans.mdx#error-codes"
-            },
-            "properties": {
-              "start": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Flight start (ISO 8601)."
-              },
-              "end": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Flight end (ISO 8601). MUST be later than `start`."
-              }
-            },
-            "required": [
-              "start",
-              "end"
-            ],
-            "additionalProperties": true
+            }
           },
           "countries": {
             "type": "array",

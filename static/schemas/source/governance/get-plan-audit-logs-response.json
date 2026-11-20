@@ -365,13 +365,7 @@
                     "cumulative_spend": { "type": "number", "minimum": 0 },
                     "currency": { "$ref": "/schemas/core/currency-code.json" },
                     "reporting_period": {
-                      "type": "object",
-                      "properties": {
-                        "start": { "type": "string", "format": "date-time" },
-                        "end": { "type": "string", "format": "date-time" }
-                      },
-                      "required": ["start", "end"],
-                      "additionalProperties": true
+                      "$ref": "/schemas/core/datetime-range.json"
                     },
                     "canonical_payload": {
                       "type": "object",
@@ -480,23 +474,8 @@
                       "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
                     },
                     "reporting_period": {
-                      "type": "object",
-                      "description": "Start and end timestamps for the reporting window.",
-                      "properties": {
-                        "start": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "end": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      },
-                      "required": [
-                        "start",
-                        "end"
-                      ],
-                      "additionalProperties": true
+                      "$ref": "/schemas/core/datetime-range.json",
+                      "description": "Start and end timestamps for the reporting window."
                     },
                     "cumulative_spend": {
                       "type": "number",
@@ -644,13 +623,7 @@
                 "seller_reported_spend": { "type": "number", "minimum": 0 },
                 "buyer_observed_spend": { "type": "number", "minimum": 0 },
                 "delivery_reporting_period": {
-                  "type": "object",
-                  "properties": {
-                    "start": { "type": "string", "format": "date-time" },
-                    "end": { "type": "string", "format": "date-time" }
-                  },
-                  "required": ["start", "end"],
-                  "additionalProperties": true,
+                  "$ref": "/schemas/core/datetime-range.json",
                   "description": "Current seller statement period summarized for this governed action."
                 },
                 "conservative_exposure": {

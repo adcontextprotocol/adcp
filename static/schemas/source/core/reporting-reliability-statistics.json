@@ -15,15 +15,6 @@
       "required": ["p50", "p95"],
       "additionalProperties": true
     },
-    "ReportingReliabilityMeasurementPeriod": {
-      "type": "object",
-      "properties": {
-        "start": { "type": "string", "format": "date-time" },
-        "end": { "type": "string", "format": "date-time" }
-      },
-      "required": ["start", "end"],
-      "additionalProperties": true
-    },
     "decimal_string": {
       "title": "Decimal String",
       "description": "Non-negative decimal number written as a string, such as 0.25.",
@@ -34,7 +25,7 @@
   },
   "properties": {
     "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json" },
-    "measurement_period": { "$ref": "#/definitions/ReportingReliabilityMeasurementPeriod" },
+    "measurement_period": { "$ref": "/schemas/core/datetime-range.json" },
     "obligations_due": { "type": "integer", "minimum": 1, "description": "Denominator for on-time performance." },
     "obligations_on_time": { "type": "integer", "minimum": 0, "description": "Obligations whose required revision was published by expected_at. Divide by obligations_due for the on-time rate." },
     "official_revisions_published": { "type": "integer", "minimum": 0, "description": "Denominator for the official-adjustment rate." },

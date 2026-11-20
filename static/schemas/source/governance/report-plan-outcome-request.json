@@ -124,23 +124,8 @@
           "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
         },
         "reporting_period": {
-          "type": "object",
-          "description": "Start and end timestamps for the reporting window.",
-          "properties": {
-            "start": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "end": {
-              "type": "string",
-              "format": "date-time"
-            }
-          },
-          "required": [
-            "start",
-            "end"
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/datetime-range.json",
+          "description": "Start and end timestamps for the reporting window."
         },
         "cumulative_spend": {
           "type": "number",

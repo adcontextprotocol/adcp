@@ -7,3 +7,5 @@ Name repeated scalar subschemas (#8525). The currency code, country code, idempo
 The seller revision token that `account-change` `resource_revision` and `list_creatives` `seller_revision` share, a positive integer or a string, is `core/revision-token.json` (#8423). Both JSON types stay.
 
 The legacy webhook `authentication` object has one definition per contract (#8907): `core/webhook-authentication.json`, with `credentials` required, for `push_notification_config`, `reporting_webhook`, and the `create_media_buy` `artifact_webhook`; and `core/notification-authentication.json`, with `credentials` optional, for account and agent notification configs, which are echoed on reads where credentials are write-only. Each site keeps `deprecated`, `x-removed-in`, and its description.
+
+Ten inline `{start, end}` date-time objects, including the governance reporting periods and the `sync_plans` flight, reference the existing `core/datetime-range.json` (#8720).
