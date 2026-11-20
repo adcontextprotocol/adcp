@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/plan-breakdown-dimension.json",
+  "title": "Plan Breakdown Dimension",
+  "description": "A named axis along which a plan's budget and delivery are allocated. Values are channel-neutral: radio, linear TV and out-of-home sellers use the dimensions that apply and `custom` for the rest.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": ["market", "station", "programming_format", "daypart", "week", "spot_length", "custom"],
+  "enumDescriptions": {
+    "market": "A metro, DMA or radio market. A row may carry a typed `metro` reference.",
+    "station": "A broadcast station or network (radio station, TV station, network). A row carries `identifiers` where the seller has them.",
+    "programming_format": "The programming format of the inventory, such as a radio format (CHR, rock, news/talk, country) or a TV genre. Named programming_format, not format, because `format` already means a creative format in AdCP.",
+    "daypart": "A time-of-day window. A row may carry a typed `daypart` (daypart-target.json).",
+    "week": "A flight week. A row carries `week` with its index and dates.",
+    "spot_length": "A spot duration in seconds. A row carries `duration_seconds`.",
+    "custom": "A seller-defined dimension named by `custom_dimension`, for example a venue type or an out-of-home format."
+  }
+}

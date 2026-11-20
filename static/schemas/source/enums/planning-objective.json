@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/planning-objective.json",
+  "title": "Planning Objective",
+  "description": "What a plan optimizes for. Alone it steers the plan inside the budget (budget_mode set) or the sizing of it (suggest); beside a delivery_target it chooses among plans that meet the target. The seller reports the resulting figures in plan_breakdown.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": ["max_reach", "max_efficiency"],
+  "enumDescriptions": {
+    "max_reach": "Maximize unduplicated audience reached within the plan's constraints. Reach is counted in the plan's audience_basis.reach_unit.",
+    "max_efficiency": "Minimize cost per delivered unit: cost per point (CPP) when the plan carries grps, otherwise cost per thousand impressions (CPM)."
+  }
+}

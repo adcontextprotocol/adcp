@@ -92,6 +92,20 @@
       "$ref": "/schemas/core/delivery-forecast.json",
       "description": "Aggregate forecasted delivery metrics for the entire proposal. When both proposal-level and allocation-level forecasts are present, the proposal-level forecast is authoritative for total delivery estimation."
     },
+    "plan_breakdown": {
+      "$ref": "/schemas/core/plan-breakdown.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.plan_breakdown). The plan in the terms scheduled-media buyers plan in: headline totals and allocations by market, station, programming format, daypart, week and spot length. A view of the proposal: the forecast stays authoritative for any metric both state. Sellers that emit it MUST list media_buy.plan_breakdown in experimental_features."
+    },
+    "goal_results": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.planning_goals). One result per planning goal of the request this proposal answers, saying whether this version met or missed it. Goal values are unique.",
+      "items": { "$ref": "/schemas/core/goal-result.json" },
+      "minItems": 1
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

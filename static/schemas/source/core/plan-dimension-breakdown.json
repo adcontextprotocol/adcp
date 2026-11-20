@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-dimension-breakdown.json",
+  "title": "Plan Dimension Breakdown",
+  "description": "The plan's allocations along one dimension. A complete breakdown partitions the schedule: for each figure that every one of its allocations reports (budget, spots, impressions, grps), the sum equals the plan total within rounding. The partition holds for grps only when all rows are rated against one universe. A breakdown that lists only some slices sets truncated to true, its sums are then lower bounds, and it SHOULD list the largest slices by budget first. Reach and frequency are not additive and are never derived from a breakdown.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "dimension": {
+      "$ref": "/schemas/enums/plan-breakdown-dimension.json"
+    },
+    "custom_dimension": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Name of the seller-defined dimension. Required when dimension is custom."
+    },
+    "allocations": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/plan-allocation.json" },
+      "minItems": 1
+    },
+    "truncated": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when allocations omits slices that exist, for example the long tail of a station list. Absent or false means the list is complete."
+    },
+    "total_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of slices in the full breakdown. Only meaningful when truncated is true, and then at least the number of allocations listed."
+    }
+  },
+  "required": ["dimension", "allocations"],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "dimension": { "const": "custom" } },
+        "required": ["dimension"]
+      },
+      "then": { "required": ["custom_dimension"] }
+    }
+  ],
+  "additionalProperties": true
+}

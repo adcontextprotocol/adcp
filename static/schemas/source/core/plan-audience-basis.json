@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-audience-basis.json",
+  "title": "Plan Audience Basis",
+  "description": "The audience a plan's figures are measured against: whose data, which demographic, and what population ratings and indexes are computed on. As a request input (criteria.planning_goals.audience_basis) it states the basis the buyer wants; on a plan_breakdown it states the basis the seller used, which may differ from the request. Where the request also states the target audience in targeting_overlay (demographics, audience_include), targeting_overlay governs who is targeted and this object says how that audience was counted: its demographic and audience restate the audience in the provider's notation. The measurement_source, demographic_system, demographic and reach_unit fields have the same names and meaning as on delivery-forecast.json; when a proposal carries both, they MUST agree.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "measurement_source": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Provider whose data produced the audience figures, as a lowercase slug (for example nielsen, transunion, comscore). Distinct from demographic_system, which says how the demographic is written, not whose panel or graph measured it.",
+      "examples": ["nielsen", "transunion", "comscore"]
+    },
+    "demographic_system": {
+      "$ref": "/schemas/enums/demographic-system.json"
+    },
+    "demographic": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Target demographic in the notation of demographic_system, such as A25-54.",
+      "examples": ["A25-54", "P18-49", "W35+"]
+    },
+    "audience": {
+      "type": "array",
+      "description": "Signal or description selectors that define the audience when a plain demographic does not, such as behavioral segments. Same selectors as targeting_overlay.audience_include.",
+      "items": { "$ref": "/schemas/core/audience-selector.json" },
+      "minItems": 1
+    },
+    "reach_unit": {
+      "$ref": "/schemas/enums/reach-unit.json",
+      "description": "Unit in which reach, estimated_audience and market_audience are counted."
+    },
+    "universe": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Population, in reach_unit, that GRPs are rated against. When present, grps = impressions / universe * 100: one GRP is one impression per one percent of the universe, so 100 GRPs deliver one impression per member of the universe. A seller that omits it gives buyers no way to check a GRP figure and SHOULD NOT claim cross-seller comparability for it."
+    },
+    "index_baseline": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Population an `index` is computed against, where 100 means the audience's concentration equals that baseline's. Typical values are national and market; the label is seller-defined and buyers compare indexes only when it matches.",
+      "examples": ["national", "market"]
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "goal": "max_frequency",
+    "status": "met",
+    "window": {
+      "interval": 28,
+      "unit": "days"
+    },
+    "target": 3,
+    "achieved": 2.8,
+    "detail": "Average frequency over the first 28 days is 2.8; over the whole 5-week flight it is 3.3."
+  },
+  {
+    "goal": "spot_length_mix",
+    "status": "met",
+    "detail": "All spots are :30."
+  },
+  {
+    "goal": "pacing",
+    "status": "met",
+    "detail": "Even pace: about $39,695 a week."
+  },
+  {
+    "goal": "must_include",
+    "status": "missed",
+    "unmet_items": [
+      "Portland, ME",
+      "Burlington, VT"
+    ],
+    "detail": "Portland, ME and Burlington, VT are not in the seller's market catalog."
+  }
+]

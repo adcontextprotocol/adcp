@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-reach-frequency-point.json",
+  "title": "Plan Reach and Frequency Point",
+  "description": "Cumulative reach and average frequency of the plan over a window counted from the first airing. Reach does not add across windows or slices, so it is reported here and never summed from allocations. A plan reports the windows it can: the four-week window ({interval: 28, unit: days}), the whole flight ({interval: 1, unit: campaign}), and optionally one point per week of the flight ({interval: 7, 14, 21 ... unit: days}) for reach and frequency by week.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "window": {
+      "$ref": "/schemas/core/duration.json"
+    },
+    "reach": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated unduplicated audience reached within the window, in audience_basis.reach_unit."
+    },
+    "frequency": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated average exposures per person reached within the window."
+    }
+  },
+  "required": ["window"],
+  "anyOf": [{ "required": ["reach"] }, { "required": ["frequency"] }],
+  "additionalProperties": true
+}

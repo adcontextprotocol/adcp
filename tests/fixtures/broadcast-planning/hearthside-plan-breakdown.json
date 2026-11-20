@@ -1,0 +1,523 @@
+{
+  "currency": "USD",
+  "audience_basis": {
+    "demographic_system": "custom",
+    "demographic": "Adults 25-54",
+    "reach_unit": "individuals",
+    "index_baseline": "national"
+  },
+  "totals": {
+    "budget": 198476,
+    "market_count": 9,
+    "station_count": 33,
+    "market_audience": 3100000,
+    "estimated_audience": 2100000,
+    "average_index": 169,
+    "impressions": 6991653,
+    "grps": 3.25,
+    "cpp": 61070,
+    "cpm": 28.39,
+    "reach_frequency": [
+      {
+        "window": {
+          "interval": 28,
+          "unit": "days"
+        },
+        "frequency": 2.8
+      },
+      {
+        "window": {
+          "interval": 1,
+          "unit": "campaign"
+        },
+        "reach": 2100000,
+        "frequency": 3.33
+      }
+    ]
+  },
+  "breakdowns": [
+    {
+      "dimension": "market",
+      "allocations": [
+        {
+          "key": "boston-ma",
+          "label": "Boston, MA",
+          "budget": 90918,
+          "impressions": 3281054,
+          "cpm": 27.71
+        },
+        {
+          "key": "hartford-ct",
+          "label": "Hartford, CT",
+          "budget": 28442,
+          "impressions": 1084744,
+          "cpm": 26.22
+        },
+        {
+          "key": "providence-ri",
+          "label": "Providence, RI",
+          "budget": 24515,
+          "impressions": 903945,
+          "cpm": 27.12
+        },
+        {
+          "key": "portsmouth-nh",
+          "label": "Portsmouth, NH",
+          "budget": 15083,
+          "impressions": 332885,
+          "cpm": 45.31
+        },
+        {
+          "key": "manchester-nh",
+          "label": "Manchester, NH",
+          "budget": 9233,
+          "impressions": 281752,
+          "cpm": 32.77
+        },
+        {
+          "key": "worcester-ma",
+          "label": "Worcester, MA",
+          "budget": 8437,
+          "impressions": 220115,
+          "cpm": 38.33
+        },
+        {
+          "key": "cape-cod-ma",
+          "label": "Cape Cod, MA",
+          "budget": 7955,
+          "impressions": 156564,
+          "cpm": 50.81
+        },
+        {
+          "key": "springfield-ma",
+          "label": "Springfield, MA",
+          "budget": 7822,
+          "impressions": 234192,
+          "cpm": 33.4
+        },
+        {
+          "key": "new-haven-ct",
+          "label": "New Haven, CT",
+          "budget": 6071,
+          "impressions": 496402,
+          "cpm": 12.23
+        }
+      ]
+    },
+    {
+      "dimension": "station",
+      "allocations": [
+        {
+          "key": "wxks-fm",
+          "label": "WXKS-FM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WXKS-FM"
+            }
+          ],
+          "budget": 26393,
+          "impressions": 1160642,
+          "cpm": 22.74
+        },
+        {
+          "key": "wbz-am",
+          "label": "WBZ-AM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WBZ-AM"
+            }
+          ],
+          "budget": 17694,
+          "impressions": 399143,
+          "cpm": 44.33
+        },
+        {
+          "key": "wzlx-fm",
+          "label": "WZLX-FM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WZLX-FM"
+            }
+          ],
+          "budget": 13536,
+          "impressions": 648276,
+          "cpm": 20.88
+        },
+        {
+          "key": "wjmn-fm",
+          "label": "WJMN-FM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WJMN-FM"
+            }
+          ],
+          "budget": 12216,
+          "impressions": 593586,
+          "cpm": 20.58
+        },
+        {
+          "key": "whjy-fm",
+          "label": "WHJY-FM Providence",
+          "within": {
+            "dimension": "market",
+            "key": "providence-ri"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WHJY-FM"
+            }
+          ],
+          "budget": 10591,
+          "impressions": 363702,
+          "cpm": 29.12
+        },
+        {
+          "key": "wkss-fm",
+          "label": "WKSS-FM Hartford",
+          "within": {
+            "dimension": "market",
+            "key": "hartford-ct"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WKSS-FM"
+            }
+          ],
+          "budget": 10413,
+          "impressions": 440855,
+          "cpm": 23.62
+        },
+        {
+          "key": "wgir-fm",
+          "label": "WGIR-FM Manchester",
+          "within": {
+            "dimension": "market",
+            "key": "manchester-nh"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WGIR-FM"
+            }
+          ],
+          "budget": 7618,
+          "impressions": 273341,
+          "cpm": 27.87
+        },
+        {
+          "key": "wzrm-fm",
+          "label": "WZRM-FM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WZRM-FM"
+            }
+          ],
+          "budget": 7564,
+          "impressions": 193453,
+          "cpm": 39.1
+        },
+        {
+          "key": "wsne-fm",
+          "label": "WSNE-FM Providence",
+          "within": {
+            "dimension": "market",
+            "key": "providence-ri"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WSNE-FM"
+            }
+          ],
+          "budget": 7402,
+          "impressions": 298588,
+          "cpm": 24.79
+        },
+        {
+          "key": "wrko-am",
+          "label": "WRKO-AM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WRKO-AM"
+            }
+          ],
+          "budget": 7390,
+          "impressions": 54656,
+          "cpm": 135.21
+        }
+      ],
+      "truncated": true,
+      "total_count": 33
+    },
+    {
+      "dimension": "programming_format",
+      "allocations": [
+        {
+          "key": "chrpop",
+          "label": "CHRPOP",
+          "programming_format": "CHRPOP",
+          "budget": 44365,
+          "spots": 520,
+          "impressions": 2200000,
+          "cpm": 20.17
+        },
+        {
+          "key": "newstalk",
+          "label": "NEWSTALK",
+          "programming_format": "NEWSTALK",
+          "budget": 41510,
+          "spots": 1245,
+          "impressions": 595000,
+          "cpm": 69.76
+        },
+        {
+          "key": "rockactive",
+          "label": "ROCKACTIVE",
+          "programming_format": "ROCKACTIVE",
+          "budget": 24554,
+          "spots": 320,
+          "impressions": 820000,
+          "cpm": 29.94
+        },
+        {
+          "key": "country",
+          "label": "COUNTRY",
+          "programming_format": "COUNTRY",
+          "budget": 17230,
+          "spots": 438,
+          "impressions": 659000,
+          "cpm": 26.15
+        },
+        {
+          "key": "rockclassic",
+          "label": "ROCKCLASSIC",
+          "programming_format": "ROCKCLASSIC",
+          "budget": 16015,
+          "spots": 204,
+          "impressions": 695000,
+          "cpm": 23.04
+        },
+        {
+          "key": "achotmodern",
+          "label": "ACHOTMODERN",
+          "programming_format": "ACHOTMODERN",
+          "budget": 13159,
+          "spots": 414,
+          "impressions": 500000,
+          "cpm": 26.32
+        },
+        {
+          "key": "hiphoprnb",
+          "label": "HIPHOPRNB",
+          "programming_format": "HIPHOPRNB",
+          "budget": 12216,
+          "spots": 151,
+          "impressions": 594000,
+          "cpm": 20.57
+        },
+        {
+          "key": "classichits",
+          "label": "CLASSICHITS",
+          "programming_format": "CLASSICHITS",
+          "budget": 11846,
+          "spots": 231,
+          "impressions": 499000,
+          "cpm": 23.74
+        },
+        {
+          "key": "spanish",
+          "label": "SPANISH",
+          "programming_format": "SPANISH",
+          "budget": 7564,
+          "spots": 178,
+          "impressions": 193000,
+          "cpm": 39.19
+        }
+      ],
+      "truncated": true,
+      "total_count": 11
+    },
+    {
+      "dimension": "daypart",
+      "allocations": [
+        {
+          "key": "weekend-day",
+          "label": "Weekend Day",
+          "daypart": {
+            "days": [
+              "saturday",
+              "sunday"
+            ],
+            "start_hour": 6,
+            "end_hour": 19,
+            "label": "Weekend Day"
+          },
+          "budget": 49813,
+          "spots": 1572,
+          "impressions": 2500000,
+          "grps": 1.2
+        },
+        {
+          "key": "am-drive",
+          "label": "AM Drive",
+          "daypart": {
+            "days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "start_hour": 6,
+            "end_hour": 10,
+            "label": "AM Drive"
+          },
+          "budget": 49600,
+          "spots": 625,
+          "impressions": 1500000,
+          "grps": 0.7
+        },
+        {
+          "key": "pm-drive",
+          "label": "PM Drive",
+          "daypart": {
+            "days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "start_hour": 15,
+            "end_hour": 19,
+            "label": "PM Drive"
+          },
+          "budget": 47540,
+          "spots": 708,
+          "impressions": 1400000,
+          "grps": 0.7
+        },
+        {
+          "key": "midday",
+          "label": "Midday",
+          "daypart": {
+            "days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "start_hour": 10,
+            "end_hour": 15,
+            "label": "Midday"
+          },
+          "budget": 37730,
+          "spots": 509,
+          "impressions": 1300000,
+          "grps": 0.6
+        }
+      ],
+      "truncated": true,
+      "total_count": 6
+    },
+    {
+      "dimension": "week",
+      "allocations": [
+        {
+          "key": "week-1",
+          "label": "Week 1",
+          "week": {
+            "index": 1,
+            "start_date": "2026-11-16",
+            "end_date": "2026-11-22"
+          },
+          "budget": 39695
+        },
+        {
+          "key": "week-2",
+          "label": "Week 2",
+          "week": {
+            "index": 2,
+            "start_date": "2026-11-23",
+            "end_date": "2026-11-29"
+          },
+          "budget": 39695
+        },
+        {
+          "key": "week-3",
+          "label": "Week 3",
+          "week": {
+            "index": 3,
+            "start_date": "2026-11-30",
+            "end_date": "2026-12-06"
+          },
+          "budget": 39695
+        },
+        {
+          "key": "week-4",
+          "label": "Week 4",
+          "week": {
+            "index": 4,
+            "start_date": "2026-12-07",
+            "end_date": "2026-12-13"
+          },
+          "budget": 39695
+        },
+        {
+          "key": "week-5",
+          "label": "Week 5",
+          "week": {
+            "index": 5,
+            "start_date": "2026-12-14",
+            "end_date": "2026-12-20"
+          },
+          "budget": 39696
+        }
+      ]
+    },
+    {
+      "dimension": "spot_length",
+      "allocations": [
+        {
+          "key": "30",
+          "label": ":30",
+          "duration_seconds": 30,
+          "budget": 198476
+        }
+      ]
+    }
+  ]
+}
