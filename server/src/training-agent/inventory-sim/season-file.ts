@@ -2,7 +2,7 @@
  * Season files: load a `SeasonSeed` from YAML or JSON.
  *
  * Loading makes three passes, each reporting every problem it finds:
- * 1. A zod pass checks the shape, dates and the values tenants put on the wire
+ * 1. A zod pass checks the shape, dates, number ranges and the values tenants put on the wire
  *    (currency code, domains, formats present, floors), with the path of each problem.
  * 2. A reference pass checks what the engine leaves unchecked: product
  *    properties, product collections, the ids traffic events target and,
@@ -36,11 +36,27 @@ const publisherDomain = z
   .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/, 'must be a lower-case hostname such as news.example');
 const installmentChannel = z.enum(['podcast', 'newsletter', 'creator_video']);
 
+/** Range checks. Each stays a `number`, so the schema keeps matching `SeasonSeed`. */
+const atLeastZero = z.number().min(0, 'must be 0 or more');
+const wholeDays = (min: number) =>
+  z
+    .number()
+    .int(`must be a whole number, ${min} or more`)
+    .min(min, `must be a whole number, ${min} or more`);
+const rate = z.number().min(0, 'must be between 0 and 1').max(1, 'must be between 0 and 1');
+
 const cellRates = z.strictObject({
-  viewability: z.number(),
-  click_rate: z.number(),
-  completion_rate: z.number(),
-  conversion_rate: z.number(),
+  viewability: rate,
+  click_rate: rate,
+  completion_rate: rate,
+  conversion_rate: rate,
+});
+
+const rateMultipliers = z.strictObject({
+  viewability: atLeastZero,
+  click_rate: atLeastZero,
+  completion_rate: atLeastZero,
+  conversion_rate: atLeastZero,
 });
 
 const region = z.strictObject({
@@ -55,7 +71,7 @@ const audienceProfile = z.strictObject({
   profile_id: z.string(),
   name: z.string(),
   share: z.number(),
-  rate_multipliers: cellRates.partial().optional(),
+  rate_multipliers: rateMultipliers.partial().optional(),
 });
 
 const segment = z.strictObject({
@@ -68,7 +84,7 @@ const property = z.strictObject({
   property_id: z.string(),
   name: z.string(),
   domain: publisherDomain,
-  traffic_multiplier: z.number().optional(),
+  traffic_multiplier: atLeastZero.optional(),
 });
 
 const placement = z.strictObject({
@@ -80,7 +96,7 @@ const placement = z.strictObject({
   base_daily_impressions: z.number().optional(),
   floor_cpm: z.number().nonnegative(),
   rates: cellRates,
-  reporting_lag_days: z.number(),
+  reporting_lag_days: wholeDays(0),
 });
 
 const product = z.strictObject({
@@ -92,7 +108,11 @@ const product = z.strictObject({
   property_ids: z.array(z.string()).optional(),
   segment_id: z.string().optional(),
   rate_cpm: z.number().optional(),
-  share_of_voice: z.number().optional(),
+  share_of_voice: z
+    .number()
+    .gt(0, 'must be above 0 and at most 1')
+    .max(1, 'must be above 0 and at most 1')
+    .optional(),
   collection_ids: z.array(z.string()).optional(),
 });
 
@@ -103,10 +123,10 @@ const collection = z.strictObject({
   property_id: z.string(),
   placement_id: z.string(),
   first_date: isoDate,
-  cadence_days: z.number(),
-  count: z.number(),
-  expected_audience: z.number(),
-  audience_sigma: z.number(),
+  cadence_days: wholeDays(1),
+  count: wholeDays(1),
+  expected_audience: atLeastZero,
+  audience_sigma: atLeastZero,
 });
 
 const event = z.discriminatedUnion('type', [
@@ -150,13 +170,13 @@ export const seasonSeedSchema = z.strictObject({
   products: z.array(product),
   collections: z.array(collection).optional(),
   traffic: z.strictObject({
-    weekday_shape: z.array(z.number()),
+    weekday_shape: z.array(atLeastZero),
     trend_per_day: z.number().optional(),
   }),
   forecast_error: z.strictObject({
     bias: z.number().optional(),
-    day_sigma: z.number(),
-    cell_sigma: z.number(),
+    day_sigma: atLeastZero,
+    cell_sigma: atLeastZero,
   }),
   events: z.array(event).optional(),
 });

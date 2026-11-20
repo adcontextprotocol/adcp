@@ -293,6 +293,70 @@ describe('season values the tenants put on the wire', () => {
   });
 });
 
+describe('season number ranges', () => {
+  const starterPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../fixtures/inventory-sim/small-season.yaml');
+  const collection = {
+    collection_id: 'show',
+    name: 'Show',
+    channel: 'podcast',
+    property_id: 'harbor_daily',
+    placement_id: 'banner',
+    first_date: '2026-11-01',
+    cadence_days: 7,
+    count: 10,
+    expected_audience: 1000,
+    audience_sigma: 0.1,
+  };
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const cases: Array<[string, (seed: any) => void, string]> = [
+    ['a negative reporting lag', s => { s.placements[0].reporting_lag_days = -1; }, 'placements[0].reporting_lag_days:'],
+    ['a fractional reporting lag', s => { s.placements[0].reporting_lag_days = 1.5; }, 'placements[0].reporting_lag_days:'],
+    ['a zero cadence', s => { s.collections = [{ ...collection, cadence_days: 0 }]; }, 'collections[0].cadence_days:'],
+    ['a fractional cadence', s => { s.collections = [{ ...collection, cadence_days: 1.5 }]; }, 'collections[0].cadence_days:'],
+    ['a zero count', s => { s.collections = [{ ...collection, count: 0 }]; }, 'collections[0].count:'],
+    ['a fractional count', s => { s.collections = [{ ...collection, count: 2.5 }]; }, 'collections[0].count:'],
+    ['a negative expected audience', s => { s.collections = [{ ...collection, expected_audience: -1 }]; }, 'collections[0].expected_audience:'],
+    ['a negative audience sigma', s => { s.collections = [{ ...collection, audience_sigma: -0.1 }]; }, 'collections[0].audience_sigma:'],
+    ['a zero share of voice', s => { s.products[0].share_of_voice = 0; }, 'products[0].share_of_voice:'],
+    ['a share of voice above 1', s => { s.products[0].share_of_voice = 1.5; }, 'products[0].share_of_voice:'],
+    ['a placement rate below 0', s => { s.placements[0].rates.click_rate = -0.1; }, 'placements[0].rates.click_rate:'],
+    ['a placement rate above 1', s => { s.placements[0].rates.viewability = 1.1; }, 'placements[0].rates.viewability:'],
+    ['a negative rate multiplier', s => { s.audience_profiles[0].rate_multipliers.click_rate = -1; }, 'audience_profiles[0].rate_multipliers.click_rate:'],
+    ['a negative weekday shape', s => { s.traffic.weekday_shape[3] = -1; }, 'traffic.weekday_shape[3]:'],
+    ['a negative traffic multiplier', s => { s.properties[0].traffic_multiplier = -1; }, 'properties[0].traffic_multiplier:'],
+    ['a negative day sigma', s => { s.forecast_error.day_sigma = -0.1; }, 'forecast_error.day_sigma:'],
+    ['a negative cell sigma', s => { s.forecast_error.cell_sigma = -0.1; }, 'forecast_error.cell_sigma:'],
+  ];
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  it('refuses out-of-range numbers', () => {
+    for (const [name, mutate, where] of cases) {
+      const seed = parseYaml(fs.readFileSync(starterPath, 'utf8'));
+      mutate(seed);
+      const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'ranges'));
+      expect(message, name).toContain(where);
+    }
+  });
+
+  it('names what is wrong after the path', () => {
+    const seed = parseYaml(fs.readFileSync(starterPath, 'utf8'));
+    seed.placements[0].reporting_lag_days = -1;
+    expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'ranges'))).toContain(
+      'placements[0].reporting_lag_days: must be a whole number, 0 or more',
+    );
+  });
+
+  it('accepts the bounds themselves', () => {
+    const seed = parseYaml(fs.readFileSync(starterPath, 'utf8'));
+    seed.placements[0].reporting_lag_days = 0;
+    seed.placements[0].rates.click_rate = 1;
+    seed.products[0].share_of_voice = 1;
+    seed.forecast_error.bias = -5;
+    seed.traffic.trend_per_day = -0.01;
+    expect(() => parseSeasonSeed(seed, 'ranges')).not.toThrow();
+  });
+});
+
 describe('season file formats', () => {
   const CUSTOM = MINIMAL_YAML.replace('formats: [display_300x250]', 'formats: [custom_banner, display_300x250]');
   const FORMATS = new Set(['display_300x250', 'video_preroll']);
