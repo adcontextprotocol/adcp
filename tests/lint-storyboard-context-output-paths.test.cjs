@@ -365,3 +365,19 @@ test('loadAllowlist returns an array', () => {
     assert.ok(entry.file && entry.step && entry.path, `entry MUST identify file/step/path: ${JSON.stringify(entry)}`);
   }
 });
+
+test('findArmByDiscriminator and findErrorArm search a branch list composed through allOf', () => {
+  const schema = {
+    allOf: [{ $ref: '#/definitions/branches' }],
+    definitions: {
+      branches: {
+        oneOf: [
+          { properties: { status: { const: 'done' } } },
+          { properties: { errors: { type: 'array' } }, required: ['errors'] },
+        ],
+      },
+    },
+  };
+  assert.equal(findArmByDiscriminator(schema, 'done'), schema.definitions.branches.oneOf[0]);
+  assert.equal(findErrorArm(schema), schema.definitions.branches.oneOf[1]);
+});

@@ -238,13 +238,11 @@ function pathResolves(node, segments, seen = new Set(), root = node) {
     }
   }
 
-  // Union semantics across `oneOf` / `anyOf` / `allOf` — see
-  // lint-storyboard-context-output-paths.cjs for the rationale.
-  const variants = node.oneOf || node.anyOf || node.allOf;
-  if (Array.isArray(variants)) {
-    for (const variant of variants) {
-      if (pathResolves(variant, segments, seen, root)) return true;
-    }
+  // Union semantics across `oneOf` / `anyOf` / `allOf`, walking every
+  // combinator the node carries — see lint-storyboard-context-output-paths.cjs
+  // for the rationale.
+  for (const variant of [...(node.oneOf || []), ...(node.anyOf || []), ...(node.allOf || [])]) {
+    if (pathResolves(variant, segments, seen, root)) return true;
   }
 
   if (isPureExtensionPoint(node)) return true;
@@ -281,23 +279,26 @@ function* findStepsWithValidations(node, trail) {
 }
 
 /**
- * Walk a node's `oneOf` / `anyOf` (after $ref / allOf flattening) looking
- * for the variant whose discriminator matches `expectedArm`. The match rule:
+ * Walk a node's `oneOf` / `anyOf` (after $ref, and through `allOf` members)
+ * looking for the variant whose discriminator matches `expectedArm`. The match rule:
  * any property in that variant declares `const: "<expectedArm>"`. Returns
  * the matching variant, or null when no variant matches (an authoring bug
  * the lint surfaces as `unknown_expected_arm`).
  */
-function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
+function findArmByDiscriminator(node, expectedArm, seen = new Set(), root = node) {
   if (!node || typeof node !== 'object') return null;
   if (node.$ref) {
-    if (seen.has(node.$ref)) return null;
+    const refKey = `${root?.$id || '<inline>'}:${node.$ref}`;
+    if (seen.has(refKey)) return null;
     const next = new Set(seen);
-    next.add(node.$ref);
-    return findArmByDiscriminator(loadSchema(node.$ref), expectedArm, next);
+    next.add(refKey);
+    if (node.$ref.startsWith('#/')) {
+      return findArmByDiscriminator(resolveLocalRef(root, node.$ref), expectedArm, next, root);
+    }
+    const resolved = loadSchema(node.$ref);
+    return findArmByDiscriminator(resolved, expectedArm, next, resolved);
   }
-  const variants = node.oneOf || node.anyOf;
-  if (!Array.isArray(variants)) return null;
-  for (const variant of variants) {
+  for (const variant of [...(node.oneOf || []), ...(node.anyOf || [])]) {
     if (!variant || typeof variant !== 'object') continue;
     const props = variant.properties || {};
     for (const propName of Object.keys(props)) {
@@ -306,6 +307,12 @@ function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
         return variant;
       }
     }
+  }
+  // `allOf` members apply together with this node, so a branch list composed
+  // through `allOf` is this node's branch list too.
+  for (const member of node.allOf || []) {
+    const arm = findArmByDiscriminator(member, expectedArm, seen, root);
+    if (arm) return arm;
   }
   return null;
 }
@@ -316,17 +323,20 @@ function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
  * already const-tagged with a status value). Used as a fallback when a step
  * has `expect_error: true` but no explicit `expected_arm`.
  */
-function findErrorArm(node, seen = new Set()) {
+function findErrorArm(node, seen = new Set(), root = node) {
   if (!node || typeof node !== 'object') return null;
   if (node.$ref) {
-    if (seen.has(node.$ref)) return null;
+    const refKey = `${root?.$id || '<inline>'}:${node.$ref}`;
+    if (seen.has(refKey)) return null;
     const next = new Set(seen);
-    next.add(node.$ref);
-    return findErrorArm(loadSchema(node.$ref), next);
+    next.add(refKey);
+    if (node.$ref.startsWith('#/')) {
+      return findErrorArm(resolveLocalRef(root, node.$ref), next, root);
+    }
+    const resolved = loadSchema(node.$ref);
+    return findErrorArm(resolved, next, resolved);
   }
-  const variants = node.oneOf || node.anyOf;
-  if (!Array.isArray(variants)) return null;
-  for (const variant of variants) {
+  for (const variant of [...(node.oneOf || []), ...(node.anyOf || [])]) {
     if (!variant || typeof variant !== 'object') continue;
     const required = Array.isArray(variant.required) ? variant.required : [];
     if (!required.includes('errors')) continue;
@@ -339,6 +349,11 @@ function findErrorArm(node, seen = new Set()) {
       }
     }
     if (!hasConstDiscriminator) return variant;
+  }
+  // See findArmByDiscriminator: `allOf` members carry this node's branches too.
+  for (const member of node.allOf || []) {
+    const arm = findErrorArm(member, seen, root);
+    if (arm) return arm;
   }
   return null;
 }
@@ -398,11 +413,8 @@ function pathIsForbiddenByRequiredNot(node, segments, seen = new Set()) {
     if (required.includes(seg)) return true;
   }
 
-  const variants = node.oneOf || node.anyOf || node.allOf;
-  if (Array.isArray(variants)) {
-    for (const variant of variants) {
-      if (pathIsForbiddenByRequiredNot(variant, segments, seen)) return true;
-    }
+  for (const variant of [...(node.oneOf || []), ...(node.anyOf || []), ...(node.allOf || [])]) {
+    if (pathIsForbiddenByRequiredNot(variant, segments, seen)) return true;
   }
 
   return false;

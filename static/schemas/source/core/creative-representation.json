@@ -4,12 +4,12 @@
   "title": "Creative Representation",
   "description": "One equivalent trafficking representation retained within a CreativeRepresentationSet before seller binding. `representation_id` is stable within its parent revision and identifies a representation, not rotation, A/B content, build output, locale, or a seller's served execution variant.",
   "allOf": [
-    { "$ref": "/schemas/core/creative-manifest.json" },
+    { "$ref": "/schemas/core/creative-manifest.json#/definitions/creative-manifest-base" },
+    { "$ref": "/schemas/core/creative-manifest.json#/oneOf/1" },
     {
-      "required": ["format_kind"],
+      "$comment": "A representation is canonical-only: every representation in a set shares one canonical format_kind. So it references the manifest's shared fields and its canonical-format branch, not the whole manifest union. A representation precedes seller binding, so it also carries no format_option_ref or representation_selection.",
       "not": {
         "anyOf": [
-          { "required": ["format_id"] },
           { "required": ["format_option_ref"] },
           { "required": ["representation_selection"] }
         ]

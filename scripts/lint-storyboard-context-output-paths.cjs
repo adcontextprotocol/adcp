@@ -238,17 +238,20 @@ function* findContextOutputSteps(node, trail) {
  * Mirrors `findArmByDiscriminator` in lint-storyboard-validations-paths.cjs.
  * See that file for the full design rationale of `expected_arm` annotations.
  */
-function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
+function findArmByDiscriminator(node, expectedArm, seen = new Set(), root = node) {
   if (!node || typeof node !== 'object') return null;
   if (node.$ref) {
-    if (seen.has(node.$ref)) return null;
+    const refKey = `${root?.$id || '<inline>'}:${node.$ref}`;
+    if (seen.has(refKey)) return null;
     const next = new Set(seen);
-    next.add(node.$ref);
-    return findArmByDiscriminator(loadSchema(node.$ref), expectedArm, next);
+    next.add(refKey);
+    if (node.$ref.startsWith('#/')) {
+      return findArmByDiscriminator(resolveLocalRef(root, node.$ref), expectedArm, next, root);
+    }
+    const resolved = loadSchema(node.$ref);
+    return findArmByDiscriminator(resolved, expectedArm, next, resolved);
   }
-  const variants = node.oneOf || node.anyOf;
-  if (!Array.isArray(variants)) return null;
-  for (const variant of variants) {
+  for (const variant of [...(node.oneOf || []), ...(node.anyOf || [])]) {
     if (!variant || typeof variant !== 'object') continue;
     const props = variant.properties || {};
     for (const propName of Object.keys(props)) {
@@ -258,21 +261,30 @@ function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
       }
     }
   }
+  // `allOf` members apply together with this node, so a branch list composed
+  // through `allOf` is this node's branch list too.
+  for (const member of node.allOf || []) {
+    const arm = findArmByDiscriminator(member, expectedArm, seen, root);
+    if (arm) return arm;
+  }
   return null;
 }
 
 /** Mirrors `findErrorArm` in lint-storyboard-validations-paths.cjs. */
-function findErrorArm(node, seen = new Set()) {
+function findErrorArm(node, seen = new Set(), root = node) {
   if (!node || typeof node !== 'object') return null;
   if (node.$ref) {
-    if (seen.has(node.$ref)) return null;
+    const refKey = `${root?.$id || '<inline>'}:${node.$ref}`;
+    if (seen.has(refKey)) return null;
     const next = new Set(seen);
-    next.add(node.$ref);
-    return findErrorArm(loadSchema(node.$ref), next);
+    next.add(refKey);
+    if (node.$ref.startsWith('#/')) {
+      return findErrorArm(resolveLocalRef(root, node.$ref), next, root);
+    }
+    const resolved = loadSchema(node.$ref);
+    return findErrorArm(resolved, next, resolved);
   }
-  const variants = node.oneOf || node.anyOf;
-  if (!Array.isArray(variants)) return null;
-  for (const variant of variants) {
+  for (const variant of [...(node.oneOf || []), ...(node.anyOf || [])]) {
     if (!variant || typeof variant !== 'object') continue;
     const required = Array.isArray(variant.required) ? variant.required : [];
     if (!required.includes('errors')) continue;
@@ -285,6 +297,11 @@ function findErrorArm(node, seen = new Set()) {
       }
     }
     if (!hasConstDiscriminator) return variant;
+  }
+  // See findArmByDiscriminator: `allOf` members carry this node's branches too.
+  for (const member of node.allOf || []) {
+    const arm = findErrorArm(member, seen, root);
+    if (arm) return arm;
   }
   return null;
 }
