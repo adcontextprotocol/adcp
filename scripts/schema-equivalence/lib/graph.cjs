@@ -481,9 +481,14 @@ class Graph {
       normalizeValues(kw);
     }
     for (const k of Object.keys(kw)) if (KEYWORD_TYPE.has(k) && KEYWORD_TYPE.get(k) !== 'string') delete kw[k];
+    // Ajv's discriminator only checks objects, and with it Ajv skips the
+    // oneOf, so on a string both assert nothing.
+    const discriminated = kw.discriminator !== undefined;
+    delete kw.discriminator;
     const kids = {};
     for (const [k, v] of Object.entries(node.kids)) {
       if (KEYWORD_TYPE.has(k)) continue; // object and array keywords never apply to a string
+      if (k === 'oneOf' && discriminated) continue;
       if (k === 'anyOf' || k === 'oneOf') {
         const refs = v.map(r => ({ n: toCtx(this.kid(r).n), via: '' })).filter(r => !isFalse(r.n));
         if (refs.length === 0) return this.FALSE;
@@ -563,6 +568,7 @@ class Graph {
 
   _computeTrue(node) {
     if (node.kind === 'bool') return node.value === true;
+    if (node.kind === 'alias') return !!this.isTrue[node.target.n];
     if (node.kind === 'conj') return !hasInfo(node) && node.members.every(m => this.isTrue[m.n]);
     if (node.kind !== 'plain') return false;
     if (Object.keys(node.kw).length || Object.keys(node.info).length) return false;

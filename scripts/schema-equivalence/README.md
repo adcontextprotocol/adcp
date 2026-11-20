@@ -113,7 +113,9 @@ valid payloads the same, and each has a fixture under `test/fixtures/`:
   `anyOf`, `oneOf`, `not`, `if`, `then`, `else`, and `$ref`. In it, a
   `type` that includes `"string"` is dropped, a `type`, `const`, or `enum`
   that admits no string makes the node `false`, keywords for other types are
-  dropped, and `false` union branches are removed. The tool builds context
+  dropped, and `false` union branches are removed. A `discriminator` and the
+  `oneOf` it governs are dropped too: Ajv checks a discriminator only on
+  objects and then skips the `oneOf`. The tool builds context
   copies, so a shared target keeps its meaning in value positions.
 - Compares regex `pattern` values in a canonical spelling: `\d` is `[0-9]`,
   and a bracket class is a sorted set of code-point intervals, read as Ajv's
