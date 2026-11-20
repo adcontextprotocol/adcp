@@ -1504,6 +1504,10 @@
           "$ref": "/schemas/core/revision-token.json",
           "description": "Seller-maintained change token: a positive integer or a string of 1 to 255 characters."
         },
+        "money": {
+          "$ref": "/schemas/core/money.json",
+          "description": "A non-negative amount in an ISO 4217 currency."
+        },
         "auth-credential": {
           "$ref": "/schemas/core/auth-credential.json",
           "description": "Credential for Bearer or HMAC-SHA256 authentication: a token or shared secret of at least 32 characters."

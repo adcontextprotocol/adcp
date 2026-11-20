@@ -79,21 +79,8 @@
       "description": "Payment terms agreed for this account. Binding for all invoices when the account is active."
     },
     "credit_limit": {
-      "type": "object",
-      "description": "Maximum outstanding balance allowed",
-      "properties": {
-        "amount": {
-          "type": "number",
-          "minimum": 0
-        },
-        "currency": {
-          "$ref": "/schemas/core/currency-code.json"
-        }
-      },
-      "required": [
-        "amount",
-        "currency"
-      ]
+      "$ref": "/schemas/core/money.json",
+      "description": "Maximum outstanding balance allowed"
     },
     "setup": {
       "type": "object",

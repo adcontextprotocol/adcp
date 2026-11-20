@@ -254,24 +254,12 @@
       "description": "Exact agent URL of the downstream service that will receive the governed task. Required on intent checks and copied byte-for-byte into the signed governance_context aud claim. This routing and authorization field is not part of payload: payload remains exactly the downstream task arguments. A consultation re-check MUST use the same target_agent."
     },
     "proposed_commitment": {
-      "type": "object",
-      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy and control_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. For accept_proposal it is derived from the supplied proposal commercial_terms; for buy_products it is derived from the purchase payload. Amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state.",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "$ref": "/schemas/core/currency-code.json" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy and control_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. For accept_proposal it is derived from the supplied proposal commercial_terms; for buy_products it is derived from the purchase payload. Amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state."
     },
     "execution_commitment": {
-      "type": "object",
-      "description": "Seller-computed positive incremental commitment for a MediaBuy execution check. The seller MUST derive this atomically from its authoritative proposal or current revision and the requested operation, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency.",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "$ref": "/schemas/core/currency-code.json" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Seller-computed positive incremental commitment for a MediaBuy execution check. The seller MUST derive this atomically from its authoritative proposal or current revision and the requested operation, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency."
     },
     "tool": {
       "type": "string",

@@ -50,13 +50,7 @@
       "minItems": 1
     },
     "total_budget": {
-      "type": "object",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "$ref": "/schemas/core/currency-code.json" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json"
     },
     "daily_budget_cap": {
       "type": "number",

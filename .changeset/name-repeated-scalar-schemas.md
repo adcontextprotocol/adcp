@@ -9,3 +9,5 @@ The seller revision token that `account-change` `resource_revision` and `list_cr
 The legacy webhook `authentication` object has one definition per contract (#8907): `core/webhook-authentication.json`, with `credentials` required, for `push_notification_config`, `reporting_webhook`, and the `create_media_buy` `artifact_webhook`; and `core/notification-authentication.json`, with `credentials` optional, for account and agent notification configs, which are echoed on reads where credentials are write-only. Each site keeps `deprecated`, `x-removed-in`, and its description.
 
 Ten inline `{start, end}` date-time objects, including the governance reporting periods and the `sync_plans` flight, reference the existing `core/datetime-range.json` (#8720).
+
+Money has one definition, `core/money.json`: a non-negative amount and an ISO 4217 currency, both required (#8471). 14 inline copies reference it, including every media-buy `total_budget`, `build_creative` `max_spend`, the `check_governance` commitments, and account `credit_limit`. Commercial terms (closed) and plan adjustments (positive amounts) keep their own constraints.

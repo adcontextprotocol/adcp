@@ -324,22 +324,8 @@
                   "description": "Authority level granted to this agent."
                 },
                 "budget_limit": {
-                  "type": "object",
-                  "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget.",
-                  "properties": {
-                    "amount": {
-                      "type": "number",
-                      "minimum": 0
-                    },
-                    "currency": {
-                      "$ref": "/schemas/core/currency-code.json"
-                    }
-                  },
-                  "required": [
-                    "amount",
-                    "currency"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/money.json",
+                  "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget."
                 },
                 "markets": {
                   "type": "array",
@@ -374,22 +360,8 @@
                 "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
               },
               "total_budget_cap": {
-                "type": "object",
-                "description": "Maximum aggregate budget across all member plans.",
-                "properties": {
-                  "amount": {
-                    "type": "number",
-                    "minimum": 0
-                  },
-                  "currency": {
-                    "$ref": "/schemas/core/currency-code.json"
-                  }
-                },
-                "required": [
-                  "amount",
-                  "currency"
-                ],
-                "additionalProperties": true
+                "$ref": "/schemas/core/money.json",
+                "description": "Maximum aggregate budget across all member plans."
               },
               "shared_policy_ids": {
                 "type": "array",

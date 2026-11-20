@@ -161,20 +161,7 @@
                 "description": "Payment terms agreed for this account. When the account is active, these are the binding terms for all invoices on this account."
               },
               "credit_limit": {
-                "type": "object",
-                "properties": {
-                  "amount": {
-                    "type": "number",
-                    "minimum": 0
-                  },
-                  "currency": {
-                    "$ref": "/schemas/core/currency-code.json"
-                  }
-                },
-                "required": [
-                  "amount",
-                  "currency"
-                ]
+                "$ref": "/schemas/core/money.json"
               },
               "errors": {
                 "type": "array",

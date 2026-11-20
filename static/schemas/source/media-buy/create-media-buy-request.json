@@ -80,24 +80,8 @@
       "description": "Optional planning-cycle context. In AdCP 3.3 and later, explicit packages may carry opportunity_id for correlation only: status, close_reason, close_detail, and later_proposals MUST be omitted, and the buy MUST NOT change opportunity status or consent. The opaque ID is buyer-assigned; sellers MAY correlate messages with the same ID only within the same seller and buyer account and MUST NOT use it for authorization or cross-account linking. Buyers send this explicit-package context only to sellers advertising the negotiated release that supports it. In proposal mode, sellers infer successful execution as closed with close_reason accepted_with_seller when status is omitted; when status is present it MUST be closed with that reason. If the proposal was issued under an opportunity_id, a supplied ID MUST match it."
     },
     "total_budget": {
-      "type": "object",
-      "description": "Hard aggregate lifetime budget for the media buy. Required when executing a proposal and for seller-optimized explicit packages. Optional in fixed explicit-package mode; when present there, amount MUST equal the sum of package budgets. For a fixed proposal, the publisher applies allocation percentages to this amount. For a seller-optimized proposal or explicit buy, packages draw dynamically from this shared total.",
-      "properties": {
-        "amount": {
-          "type": "number",
-          "description": "Total budget amount",
-          "minimum": 0
-        },
-        "currency": {
-          "$ref": "/schemas/core/currency-code.json",
-          "description": "ISO 4217 currency code"
-        }
-      },
-      "required": [
-        "amount",
-        "currency"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Hard aggregate lifetime budget for the media buy. Required when executing a proposal and for seller-optimized explicit packages. Optional in fixed explicit-package mode; when present there, amount MUST equal the sum of package budgets. For a fixed proposal, the publisher applies allocation percentages to this amount. For a seller-optimized proposal or explicit buy, packages draw dynamically from this shared total."
     },
     "daily_budget_cap": {
       "type": "number",

@@ -41,14 +41,8 @@
       "description": "terms_digest from the committed proposal. The seller MUST atomically verify both ID and digest before acceptance."
     },
     "total_budget": {
-      "type": "object",
-      "description": "Execution amount when the committed proposal defines scalable percentages or constraints rather than a fixed total.",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "$ref": "/schemas/core/currency-code.json" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Execution amount when the committed proposal defines scalable percentages or constraints rather than a fixed total."
     },
     "daily_budget_cap": {
       "type": "number",
