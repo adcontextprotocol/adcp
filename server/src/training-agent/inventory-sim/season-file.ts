@@ -2,7 +2,8 @@
  * Season files: load a `SeasonSeed` from YAML or JSON.
  *
  * Loading makes three passes, each reporting every problem it finds:
- * 1. A zod pass checks the shape and dates, with the path of each problem.
+ * 1. A zod pass checks the shape, dates and the values tenants put on the wire
+ *    (currency code, domains, formats present, floors), with the path of each problem.
  * 2. A reference pass checks what the engine leaves unchecked: product
  *    properties, product collections, the ids traffic events target and,
  *    when the host lists the formats it supports, placement formats.
@@ -27,6 +28,12 @@ const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date')
   .refine(isCalendarDate, 'not a calendar date');
+/** The AdCP currency code and publisher domain patterns: tenants send both
+ * as they are in the season. */
+const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'must be a three-letter upper-case currency code such as USD');
+const publisherDomain = z
+  .string()
+  .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/, 'must be a lower-case hostname such as news.example');
 const installmentChannel = z.enum(['podcast', 'newsletter', 'creator_video']);
 
 const cellRates = z.strictObject({
@@ -60,7 +67,7 @@ const segment = z.strictObject({
 const property = z.strictObject({
   property_id: z.string(),
   name: z.string(),
-  domain: z.string(),
+  domain: publisherDomain,
   traffic_multiplier: z.number().optional(),
 });
 
@@ -69,9 +76,9 @@ const placement = z.strictObject({
   name: z.string(),
   channel,
   property_ids: z.array(z.string()),
-  formats: z.array(z.string()),
+  formats: z.array(z.string()).min(1),
   base_daily_impressions: z.number().optional(),
-  floor_cpm: z.number(),
+  floor_cpm: z.number().nonnegative(),
   rates: cellRates,
   reporting_lag_days: z.number(),
 });
@@ -134,7 +141,7 @@ export const seasonSeedSchema = z.strictObject({
   rng_seed: z.string(),
   start_date: isoDate,
   days: z.number(),
-  currency: z.string(),
+  currency: currencyCode,
   regions: z.array(region),
   audience_profiles: z.array(audienceProfile),
   segments: z.array(segment),
