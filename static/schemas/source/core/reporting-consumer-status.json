@@ -33,15 +33,8 @@
       "description": "The resolved offering, for a generation derived from a reporting subscription (media_buy.reporting_subscriptions). Part of the chain identity there, because one subscription version can resolve several offerings that share a report definition and period. Required when the period's obligation carries offering_id, or would carry one when the consumer reports obligation_missing; absent otherwise."
     },
     "period": {
-      "type": "object",
-      "description": "Expected half-open reporting period derived from the accepted configuration generation. This identity works even when the seller omitted the corresponding obligation.",
-      "properties": {
-        "start": { "type": "string", "format": "date-time" },
-        "end": { "type": "string", "format": "date-time" },
-        "source_timezone": { "$ref": "/schemas/core/iana-timezone.json" }
-      },
-      "required": ["start", "end", "source_timezone"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/reporting-period.json",
+      "description": "Expected half-open reporting period derived from the accepted configuration generation. This identity works even when the seller omitted the corresponding obligation."
     },
     "reporting_obligation_id": {
       "$ref": "/schemas/core/reporting-obligation-id.json",

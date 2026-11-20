@@ -128,7 +128,7 @@ describe("DOOH impression basis schemas", () => {
 
   it("keeps the multiplier out of the forecastable metrics", () => {
     const point = readSchema("/schemas/core/forecast-point.json");
-    assert.equal(point.properties.metrics.properties.audience_multiplier, undefined);
+    assert.equal(resolveSchema(point.properties.metrics).properties.audience_multiplier, undefined);
     assert.ok(!readSchema("/schemas/enums/forecastable-metric.json").enum.includes("audience_multiplier"));
   });
 

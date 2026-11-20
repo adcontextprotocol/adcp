@@ -61,26 +61,7 @@
       "description": "Immutable effective coverage of the exact selected offering at this period boundary. Delivery health is evaluated separately over the covered denominator."
     },
     "period": {
-      "type": "object",
-      "properties": {
-        "start": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "end": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "source_timezone": {
-          "$ref": "/schemas/core/iana-timezone.json"
-        }
-      },
-      "required": [
-        "start",
-        "end",
-        "source_timezone"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/reporting-period.json"
     },
     "expected_at": {
       "type": "string",

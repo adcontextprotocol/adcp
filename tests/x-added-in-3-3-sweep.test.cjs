@@ -201,7 +201,7 @@ test('3.3 properties carry x-added-in 3.3.0', () => {
 
 test('by_spot lifecycle fields carry x-added-in 3.3.0', () => {
   const resp = load('media-buy/get-media-buy-delivery-response.json');
-  const spot = resp.properties.media_buy_deliveries.items.properties.by_package.items.allOf[1].properties.by_spot.items.allOf[1].properties;
+  const spot = resolveSchema(resp.properties.media_buy_deliveries.items).properties.by_package.items.allOf[1].properties.by_spot.items.allOf[1].properties;
   for (const k of ['spot_status', 'scheduled_at', 'replaces_spot_id', 'break_position']) {
     assert.equal(spot[k]['x-added-in'], '3.3.0', k);
   }

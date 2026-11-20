@@ -25,29 +25,8 @@
       "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')"
     },
     "reporting_period": {
-      "type": "object",
-      "description": "Date range for the report.",
-      "properties": {
-        "start": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 start timestamp"
-        },
-        "end": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 end timestamp"
-        },
-        "timezone": {
-          "$ref": "/schemas/core/iana-timezone.json",
-          "description": "IANA timezone identifier for the reporting period (e.g., 'America/New_York', 'UTC'). Platforms report in their native timezone."
-        }
-      },
-      "required": [
-        "start",
-        "end"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/delivery-reporting-period.json",
+      "description": "Date range for the report."
     },
     "creatives": {
       "type": "array",

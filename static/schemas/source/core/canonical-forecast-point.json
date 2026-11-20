@@ -37,13 +37,7 @@
       "minItems": 2
     },
     "metrics": {
-      "type": "object",
-      "properties": {
-        "coverage_rate": {
-          "$ref": "/schemas/core/forecast-rate-range.json"
-        }
-      },
-      "additionalProperties": { "$ref": "/schemas/core/forecast-range.json" }
+      "$ref": "/schemas/core/forecast-metrics.json"
     },
     "viewability": {
       "type": "object",

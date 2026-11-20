@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
@@ -50,7 +51,7 @@ test('demographic reporting request accepts limits and sort metrics', async () =
 
 test('demographic delivery rows reuse the shared demographic system vocabulary', async () => {
   const response = readSchema('/schemas/media-buy/get-media-buy-delivery-response.json');
-  const byPackage = response.properties.media_buy_deliveries.items.properties.by_package.items;
+  const byPackage = resolveSchema(response.properties.media_buy_deliveries.items).properties.by_package.items;
   const extension = byPackage.allOf.find(part => part.properties?.by_demographic);
   assert.ok(extension, 'by_package exposes by_demographic');
 

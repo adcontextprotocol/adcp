@@ -2135,6 +2135,142 @@
         "quote": "\"value_field\": { \"type\": \"string\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on value_field in core/canonical-optimization-goal.json. An optimization event source, which core/optimization-event-source.json now defines."
+    },
+    {
+      "file": "compliance/comply-test-controller-request.json",
+      "pointer": "/properties/params/properties/not_yet_measurable_vendor_metrics/items/properties/vendor/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/signal-definition-enrichment.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on domain in core/signal-definition-enrichment.json. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "compliance/comply-test-controller-request.json",
+      "pointer": "/properties/params/properties/not_yet_measurable_vendor_metrics_by_package/additionalProperties/items/properties/vendor/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/signal-definition-enrichment.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on domain in core/signal-definition-enrichment.json. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-request.json",
+      "pointer": "/properties/reporting_dimensions/properties/audience/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-request.json",
+      "pointer": "/properties/reporting_dimensions/properties/placement/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items",
+      "required": "currency",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items",
+      "required": "package_id",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items",
+      "required": "pricing_model",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items",
+      "required": "rate",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1",
+      "required": "currency",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1",
+      "required": "package_id",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1",
+      "required": "pricing_model",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1",
+      "required": "rate",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
     }
   ]
 }

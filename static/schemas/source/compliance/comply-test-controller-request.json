@@ -1373,48 +1373,8 @@
           "description": "Unit for an injected reach or frequency value. Used by simulate_delivery. When supplied with reach or frequency, sellers MUST surface it on the corresponding delivery row."
         },
         "reach_window": {
-          "type": "object",
-          "description": "Measurement window semantics to attach to the simulated reach and frequency values. Used by simulate_delivery. When present, sellers MUST populate `reach_window` on the delivery row so buyers can determine the window semantics (cumulative vs. period vs. rolling). Omitting this param produces a row with no `reach_window` — valid per schema but sum-unsafe. Mirrors the `reach_window` shape in delivery-metrics.json.",
-          "properties": {
-            "kind": {
-              "$ref": "/schemas/enums/delivery-report-window-kind.json",
-              "description": "Window kind. `cumulative` — no period field required. `period` and `rolling` — period field REQUIRED."
-            },
-            "period": {
-              "allOf": [
-                {
-                  "$ref": "/schemas/core/duration.json"
-                }
-              ],
-              "description": "Duration of the measurement window. REQUIRED when kind is `period` or `rolling`. Matches the `period` field in delivery-metrics.json's reach_window block."
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "allOf": [
-            {
-              "if": {
-                "properties": {
-                  "kind": {
-                    "enum": [
-                      "period",
-                      "rolling"
-                    ]
-                  }
-                },
-                "required": [
-                  "kind"
-                ]
-              },
-              "then": {
-                "required": [
-                  "period"
-                ]
-              }
-            }
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/reach-window.json",
+          "description": "Measurement window semantics to attach to the simulated reach and frequency values. Used by simulate_delivery. When present, sellers MUST populate `reach_window` on the delivery row so buyers can determine the window semantics (cumulative vs. period vs. rolling). Omitting this param produces a row with no `reach_window` — valid per schema but sum-unsafe. Mirrors the `reach_window` shape in delivery-metrics.json."
         },
         "viewability": {
           "description": "Viewability metrics to inject into simulated delivery. Uses the canonical delivery viewability shape, including viewed-seconds distributions. This media-buy-scoped form is valid only for a single-package buy, where the reference seller surfaces the same values at package and media-buy totals grain.",
@@ -1445,21 +1405,7 @@
           "type": "array",
           "description": "Committed vendor metrics that are not yet measurable for the simulated measurement window. Used by simulate_delivery to prove that a future metric is omitted from missing_metrics until its measurement window matures.",
           "items": {
-            "type": "object",
-            "properties": {
-              "vendor": {
-                "$ref": "/schemas/core/brand-ref.json"
-              },
-              "metric_id": {
-                "$ref": "/schemas/core/vendor-metric-id.json"
-              },
-              "qualifier": {
-                "$ref": "/schemas/core/committed-metric.json#/oneOf/1/properties/qualifier",
-                "description": "Qualifier for the exact committed vendor-metric row whose measurement is deferred."
-              }
-            },
-            "required": ["vendor", "metric_id"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/vendor-metric-key.json"
           }
         },
         "not_yet_measurable_vendor_metrics_by_package": {
@@ -1468,21 +1414,7 @@
           "additionalProperties": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "vendor": {
-                  "$ref": "/schemas/core/brand-ref.json"
-                },
-                "metric_id": {
-                  "$ref": "/schemas/core/vendor-metric-id.json"
-                },
-                "qualifier": {
-                  "$ref": "/schemas/core/committed-metric.json#/oneOf/1/properties/qualifier",
-                  "description": "Qualifier for the exact committed vendor-metric row whose measurement is deferred."
-                }
-              },
-              "required": ["vendor", "metric_id"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/vendor-metric-key.json"
             }
           }
         },
@@ -1542,16 +1474,7 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {
-            "type": "object",
-            "required": [
-              "metric_id"
-            ],
-            "properties": {
-              "metric_id": {
-                "$ref": "/schemas/core/vendor-metric-id.json"
-              }
-            },
-            "additionalProperties": true
+            "$ref": "/schemas/core/vendor-metric-definition.json"
           }
         },
         "tool": {

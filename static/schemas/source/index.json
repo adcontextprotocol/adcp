@@ -2528,6 +2528,10 @@
           "$ref": "/schemas/core/creative-preview.json",
           "description": "Preview content for a creative: one or more previews, an optional interactive URL, and an expiry time."
         },
+        "daily-delivery-row": {
+          "$ref": "/schemas/core/daily-delivery-row.json",
+          "description": "Delivery for one day: spend, impressions, conversions, conversion value, and return on ad spend."
+        },
         "data-subject-contestation": {
           "$ref": "/schemas/core/data-subject-contestation.json",
           "description": "A contact point where a data subject can request human intervention, express their view, or contest an automated decision. It is a URL, an email address, or both, not a machine-callable API."
@@ -2539,6 +2543,10 @@
         "data-subject-rights-routing": {
           "$ref": "/schemas/core/data-subject-rights-routing.json",
           "description": "Where data subjects send rights requests: the upstream source domain, contact channels, response time commitment, and CCPA opt-out URL. It is a contact reference, not a machine-callable API."
+        },
+        "delivery-reporting-period": {
+          "$ref": "/schemas/core/delivery-reporting-period.json",
+          "description": "A half-open delivery reporting period: `start` is inclusive and `end` is exclusive. Both are instants on the reporting time zone's period boundaries."
         },
         "demographic-signals-execution": {
           "$ref": "/schemas/core/demographic-signals-execution.json",
@@ -2579,6 +2587,10 @@
         "font-file": {
           "$ref": "/schemas/core/font-file.json",
           "description": "A downloadable font file with its weight or variable weight range and its style."
+        },
+        "forecast-metrics": {
+          "$ref": "/schemas/core/forecast-metrics.json",
+          "description": "Forecast metric values keyed by metric, each a low, mid, and high range. Additional keys carry event-type metrics."
         },
         "format-card": {
           "$ref": "/schemas/core/format-card.json",
@@ -2656,6 +2668,18 @@
           "$ref": "/schemas/core/maximize-value-target.json",
           "description": "An optimization target that maximizes total conversion value within budget, with no specific return ratio."
         },
+        "media-buy-delivery": {
+          "$ref": "/schemas/core/media-buy-delivery.json",
+          "description": "Delivery data for one media buy: status, totals, per-package metrics, and finalization state."
+        },
+        "media-buy-delivery-totals": {
+          "$ref": "/schemas/core/media-buy-delivery-totals.json",
+          "description": "Delivery totals for a media buy, including the effective rate."
+        },
+        "metric-identity": {
+          "$ref": "/schemas/core/metric-identity.json",
+          "description": "The identity of one metric: a standard or vendor metric, discriminated by `scope`, with an optional qualifier. Rows join on `(scope, metric_id, qualifier)`."
+        },
         "metro-area": {
           "$ref": "/schemas/core/metro-area.json",
           "description": "A metro area, identified by a metro system and a code in that system."
@@ -2675,6 +2699,10 @@
         "optimization-event-source": {
           "$ref": "/schemas/core/optimization-event-source.json",
           "description": "An event source used for optimization: the source ID, the event type or custom event name, and an optional value field and value factor."
+        },
+        "paged-delivery-breakdown-controls": {
+          "$ref": "/schemas/core/paged-delivery-breakdown-controls.json",
+          "description": "Controls for a delivery breakdown that pages: row limit, sort, and a page cursor."
         },
         "pixel-size": {
           "$ref": "/schemas/core/pixel-size.json",
@@ -2704,6 +2732,10 @@
           "$ref": "/schemas/core/radius.json",
           "description": "A distance from a point, with its unit."
         },
+        "reach-window": {
+          "$ref": "/schemas/core/reach-window.json",
+          "description": "The measurement window for reach and frequency values: cumulative to date, one period, or a rolling window. Period and rolling windows require a `period` duration."
+        },
         "readiness-resource": {
           "$ref": "/schemas/core/readiness-resource.json",
           "description": "A resource that satisfies an execution requirement: its resource ID and an optional name."
@@ -2715,6 +2747,14 @@
         "render-dimensions": {
           "$ref": "/schemas/core/render-dimensions.json",
           "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels."
+        },
+        "reporting-period": {
+          "$ref": "/schemas/core/reporting-period.json",
+          "description": "A half-open reporting period with the time zone of its calendar boundaries."
+        },
+        "reporting-source-provider": {
+          "$ref": "/schemas/core/reporting-source-provider.json",
+          "description": "The provider of a report source, identified by domain."
         },
         "rights-availability-summary": {
           "$ref": "/schemas/core/rights-availability-summary.json",
@@ -2803,6 +2843,18 @@
         "universal-id": {
           "$ref": "/schemas/core/universal-id.json",
           "description": "A universal user ID: an ID type and its value."
+        },
+        "vendor-metric-definition": {
+          "$ref": "/schemas/core/vendor-metric-definition.json",
+          "description": "A vendor metric definition: metric ID, name, unit, standard reference, accreditations, and methodology."
+        },
+        "vendor-metric-filter": {
+          "$ref": "/schemas/core/vendor-metric-filter.json",
+          "description": "A filter on vendor metrics by vendor, metric ID, or both."
+        },
+        "vendor-metric-key": {
+          "$ref": "/schemas/core/vendor-metric-key.json",
+          "description": "The key of one vendor metric value: vendor, metric ID, and optional qualifier."
         },
         "voice-synthesis": {
           "$ref": "/schemas/core/voice-synthesis.json",

@@ -21,15 +21,8 @@
     "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator inherited from the obligation, including buys with zero rows. An empty array proves a zero-buy period rather than an unknown denominator." },
     "coverage": { "$ref": "/schemas/core/reporting-coverage.json", "description": "Frozen product/package denominator represented by this logical content. The same coverage follows the revision to every destination." },
     "period": {
-      "type": "object",
-      "description": "Half-open reporting interval with its source calendar boundary.",
-      "properties": {
-        "start": { "type": "string", "format": "date-time" },
-        "end": { "type": "string", "format": "date-time" },
-        "source_timezone": { "$ref": "/schemas/core/iana-timezone.json" }
-      },
-      "required": ["start", "end", "source_timezone"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/reporting-period.json",
+      "description": "Half-open reporting interval with its source calendar boundary."
     },
     "finality": { "$ref": "/schemas/enums/reporting-finality.json" },
     "finality_basis": { "type": "string", "enum": ["source_final", "contractual_cutoff", "stabilized"], "description": "Why an official revision is considered final: an authoritative source signal, a versioned contractual cutoff, or a versioned stabilization rule." },

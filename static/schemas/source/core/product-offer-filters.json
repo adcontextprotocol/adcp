@@ -178,13 +178,7 @@
     "required_vendor_metrics": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "vendor": { "$ref": "/schemas/core/brand-key.json" },
-          "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" }
-        },
-        "anyOf": [{ "required": ["vendor"] }, { "required": ["metric_id"] }],
-        "additionalProperties": true
+        "$ref": "/schemas/core/vendor-metric-filter.json"
       },
       "minItems": 1
     },

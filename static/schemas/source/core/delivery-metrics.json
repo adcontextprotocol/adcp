@@ -156,31 +156,8 @@
       "description": "Unit of measurement for the reach field. Aligns with the reach_unit declared on optimization goals and delivery forecasts. Required when reach is present to enable cross-platform comparison."
     },
     "reach_window": {
-      "type": "object",
-      "description": "Measurement window for the reported `reach` and `frequency` values in this row. Declares whether the values are a per-period snapshot, a trailing rolling window, or cumulative-to-date — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present.",
-      "properties": {
-        "kind": {
-          "$ref": "/schemas/enums/delivery-report-window-kind.json",
-          "description": "Window semantics. `cumulative` — uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within a single non-overlapping reporting period (e.g., a daily snapshot for a specific calendar day). Adjacent `period` rows do not share audiences by construction, but the same person MAY appear across multiple periods, so MUST NOT be summed across rows to compute campaign reach. `rolling` — uniques within a trailing window ending at the row's reporting timestamp (e.g., trailing-7-day reach). Adjacent rolling rows overlap and MUST NOT be summed; each row's value stands alone."
-        },
-        "period": {
-          "allOf": [{ "$ref": "/schemas/core/duration.json" }],
-          "description": "Duration of the measurement window. REQUIRED when `kind` is `period` or `rolling` — declares the snapshot length (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot) or the trailing-window length (e.g., `{\"interval\": 7, \"unit\": \"days\"}` for trailing-7-day rolling reach). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
-        }
-      },
-      "required": ["kind"],
-      "allOf": [
-        {
-          "if": {
-            "properties": { "kind": { "enum": ["period", "rolling"] } },
-            "required": ["kind"]
-          },
-          "then": {
-            "required": ["period"]
-          }
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/reach-window.json",
+      "description": "Measurement window for the reported `reach` and `frequency` values in this row. Declares whether the values are a per-period snapshot, a trailing rolling window, or cumulative-to-date — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present."
     },
     "frequency": {
       "type": "number",
@@ -283,26 +260,10 @@
           "description": "Experimental (media_buy.dooh_impression_basis). The row's `impressions / plays`, rounded, so a buyer can compare rows. `impressions` is authoritative: a receiver MUST NOT reject a multiplier that differs from `impressions / plays` only by rounding. On `sensor_measured` and `hybrid` rows sellers SHOULD include it, and it is the realised ratio for the period, which varies by row. On `currency_measured` rows it is optional. A row that reports `impression_basis_breakdown` SHOULD omit it and give each entry's multiplier instead: a multiplier blended across tiers mixes different units and misleads."
         },
         "basis_metric": {
-          "type": "object",
+          "$ref": "/schemas/core/vendor-metric-key.json",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). On rows whose impressions are, wholly or through an `impression_basis_breakdown` entry, `sensor_measured` or `hybrid`, the `vendor_metric_values[]` row the sensor audience derives from, joined on `(vendor, metric_id, qualifier)`. That row carries the coverage (`measurable_plays`) and the seller–vendor relationship, and the vendor catalog the methodology. When `basis_metric` is present, a matching row MUST be present in the `vendor_metric_values[]` of the delivery row that carries this `dooh_metrics`. Totals and package rows MAY omit it when the rows below them carry it.",
-          "properties": {
-            "vendor": {
-              "$ref": "/schemas/core/vendor-metric-value.json#/properties/vendor",
-              "description": "Vendor of the `vendor_metric_values[]` row. Matches the row's `vendor`."
-            },
-            "metric_id": {
-              "$ref": "/schemas/core/vendor-metric-value.json#/properties/metric_id",
-              "description": "Metric of the `vendor_metric_values[]` row. Matches the row's `metric_id`."
-            },
-            "qualifier": {
-              "$ref": "/schemas/core/vendor-metric-value.json#/properties/qualifier",
-              "description": "The row's `qualifier`, repeated verbatim when the row carries one. Omit when the row has none."
-            }
-          },
-          "required": ["vendor", "metric_id"],
-          "additionalProperties": true
+          "description": "Experimental (media_buy.dooh_impression_basis). On rows whose impressions are, wholly or through an `impression_basis_breakdown` entry, `sensor_measured` or `hybrid`, the `vendor_metric_values[]` row the sensor audience derives from, joined on `(vendor, metric_id, qualifier)`. That row carries the coverage (`measurable_plays`) and the seller–vendor relationship, and the vendor catalog the methodology. When `basis_metric` is present, a matching row MUST be present in the `vendor_metric_values[]` of the delivery row that carries this `dooh_metrics`. Totals and package rows MAY omit it when the rows below them carry it."
         },
         "impression_basis_breakdown": {
           "type": "array",

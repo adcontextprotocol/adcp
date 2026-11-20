@@ -24,7 +24,7 @@
       "title": "Reporting Report Definition Source",
       "type": "object",
       "properties": {
-        "provider": { "type": "object", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": true },
+        "provider": { "$ref": "/schemas/core/reporting-source-provider.json" },
         "system": { "type": "string", "minLength": 1, "maxLength": 128 },
         "api_version": { "type": "string", "minLength": 1, "maxLength": 128 },
         "query_semantics": { "title": "Report Query Semantics", "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." },

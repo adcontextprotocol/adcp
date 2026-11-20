@@ -23,3 +23,5 @@ Creative, preview, and format objects have one definition each, including `core/
 Signal and audience objects have one definition each under `core/`, including `signal-taxonomy`, `signal-modeling`, `signal-onboarder`, `reference-population`, `universal-id`, and `signal-catalog-entry`. A taxonomy value mapping's `taxonomy_value_id` is non-empty.
 
 Optimization targets and trusted match objects have one definition each under `core/`, including `threshold-rate-target`, `optimization-event-source`, `keyword-match-capabilities`, and the trusted match filters. Event sources keep `custom_event_name` and `value_field` non-empty, and keyword capabilities list unique match types.
+
+Delivery and reporting objects have one definition each under `core/`, including `media-buy-delivery`, `media-buy-delivery-totals`, `reporting-period`, `delivery-reporting-period`, `paged-delivery-breakdown-controls`, `metric-identity`, and `vendor-metric-key`. `media_buy_delivery` webhook `by_package` rows require `package_id`, `pricing_model`, `rate`, and `currency`, as `get_media_buy_delivery` rows do, and the audience and placement breakdown cursors are non-empty.
