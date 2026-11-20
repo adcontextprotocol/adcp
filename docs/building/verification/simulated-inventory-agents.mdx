@@ -138,14 +138,14 @@ products:
 
 The loader checks:
 
-- The shape and value ranges. Day counts, cadences and counts are whole numbers (cadences and counts from 1), `share_of_voice` is above 0 and at most 1, rates are between 0 and 1, and multipliers and noise are not negative. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, and every placement lists at least one format.
+- The shape and value ranges. Reporting lags are whole numbers, 0 or more. Collection cadences and counts are whole numbers, 1 or more. `share_of_voice` is above 0 and at most 1, and rates are between 0 and 1. Property `traffic_multiplier`, audience-profile rate multipliers, `weekday_shape` values and the noise settings are not negative. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, and every placement lists at least one format.
 - Dates are real calendar dates.
-- Every reference resolves: product properties and collections, and the placements, properties and regions that traffic events name.
+- References that the engine leaves unchecked: product properties and collections, and the ids traffic events name.
 - Placement `formats` are format labels the training agent knows, such as `display_300x250` or `video_preroll`; the error for any other lists them.
+- The engine's own rules. The season's `days` is a whole number from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Event multipliers are not negative. Ids are unique, and the other references resolve: product placements and segments, segment profiles, placement properties and collection placements. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`.
 - Every product covers some inventory.
-- The engine's own rules. The days are an integer from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Ids are unique. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`.
 
-The shape, reference and coverage checks each list every problem they find. The engine's own rules report the first.
+The shape, reference and coverage checks each list every problem they find. The engine's own rules report the first problem only.
 
 Set one environment variable per tenant:
 
