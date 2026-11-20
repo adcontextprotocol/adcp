@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-region-countries.json",
+  "title": "Geographic Region Countries",
+  "description": "ISO subdivision support keyed by ISO 3166-1 alpha-2 country code. Each country lists its subdivision values or selects all of them.",
+  "type": "object",
+  "propertyNames": {
+    "$ref": "/schemas/core/country-code.json"
+  },
+  "additionalProperties": {
+    "description": "`all_values` and `values` exclude each other.",
+    "anyOf": [
+      {
+        "$ref": "/schemas/core/geo-region-all-values-selector.json"
+      },
+      {
+        "$ref": "/schemas/core/country-subdivision-value-set.json"
+      }
+    ]
+  },
+  "minProperties": 1,
+  "x-max-properties-4.0": 256
+}

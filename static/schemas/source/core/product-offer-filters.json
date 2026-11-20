@@ -93,22 +93,7 @@
       "type": "array",
       "description": "Inventory coverage in the specified metro areas (system and code): OR within this field, AND across offer filters. Does not add delivery targeting, require targeting support, or rescope pricing or forecasts.",
       "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/metro-system.json",
-            "description": "Metro classification system"
-          },
-          "code": {
-            "type": "string",
-            "description": "Metro code within the system (e.g., '501' for NYC DMA)"
-          }
-        },
-        "required": [
-          "system",
-          "code"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/metro-area.json"
       },
       "minItems": 1
     },

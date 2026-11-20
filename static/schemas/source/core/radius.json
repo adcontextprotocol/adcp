@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/radius.json",
+  "title": "Radius",
+  "description": "A distance from a point, with its unit.",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Radius distance."
+    },
+    "unit": {
+      "$ref": "/schemas/enums/distance-unit.json",
+      "description": "Distance unit."
+    }
+  },
+  "required": [
+    "value",
+    "unit"
+  ],
+  "additionalProperties": true
+}

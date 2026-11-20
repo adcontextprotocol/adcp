@@ -2323,6 +2323,50 @@
         "tool-name": {
           "$ref": "/schemas/core/tool-name.json",
           "description": "Name of a tool in the protocol manifest, including tools that are not AdCP tasks."
+        },
+        "country-subdivision-value-set": {
+          "$ref": "/schemas/core/country-subdivision-value-set.json",
+          "description": "A non-empty set of ISO 3166-2 country subdivision codes."
+        },
+        "geo-coordinates": {
+          "$ref": "/schemas/core/geo-coordinates.json",
+          "description": "A geographic point as latitude and longitude."
+        },
+        "geo-country-place-types": {
+          "$ref": "/schemas/core/geo-country-place-types.json",
+          "description": "Supported place types keyed by ISO 3166-1 alpha-2 country code. Only the listed country and place type pairs are supported."
+        },
+        "geo-proximity": {
+          "$ref": "/schemas/core/geo-proximity.json",
+          "description": "A proximity target: a point with a travel time and transport mode, a point with a radius, or a GeoJSON geometry."
+        },
+        "geo-region-all-values-selector": {
+          "$ref": "/schemas/core/geo-region-all-values-selector.json",
+          "description": "A selector that covers every subdivision value of a country."
+        },
+        "geo-region-countries": {
+          "$ref": "/schemas/core/geo-region-countries.json",
+          "description": "ISO subdivision support keyed by ISO 3166-1 alpha-2 country code. Each country lists its subdivision values or selects all of them."
+        },
+        "geojson-geometry": {
+          "$ref": "/schemas/core/geojson-geometry.json",
+          "description": "A GeoJSON geometry: a geometry type and its coordinates."
+        },
+        "metro-area": {
+          "$ref": "/schemas/core/metro-area.json",
+          "description": "A metro area, identified by a metro system and a code in that system."
+        },
+        "postal-address": {
+          "$ref": "/schemas/core/postal-address.json",
+          "description": "A postal address: street, city, region, postal code, and country."
+        },
+        "radius": {
+          "$ref": "/schemas/core/radius.json",
+          "description": "A distance from a point, with its unit."
+        },
+        "travel-time": {
+          "$ref": "/schemas/core/travel-time.json",
+          "description": "A travel time limit used to compute an isochrone, with its unit."
         }
       },
       "requirements": {

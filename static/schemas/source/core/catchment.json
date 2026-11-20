@@ -14,57 +14,20 @@
       "description": "Human-readable label for this catchment (e.g., '15-min drive', '1km walking radius')."
     },
     "travel_time": {
-      "type": "object",
-      "description": "Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary based on actual transportation networks, accounting for road connectivity, transit schedules, and terrain.",
-      "properties": {
-        "value": {
-          "type": "number",
-          "minimum": 1,
-          "description": "Travel time limit."
-        },
-        "unit": {
-          "$ref": "/schemas/enums/travel-time-unit.json"
-        }
-      },
-      "required": ["value", "unit"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/travel-time.json",
+      "description": "Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary based on actual transportation networks, accounting for road connectivity, transit schedules, and terrain."
     },
     "transport_mode": {
       "$ref": "/schemas/enums/transport-mode.json",
       "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
     },
     "radius": {
-      "type": "object",
-      "description": "Simple radius from the store location. The platform draws a circle of this distance around the store's coordinates.",
-      "properties": {
-        "value": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "description": "Radius distance."
-        },
-        "unit": {
-          "$ref": "/schemas/enums/distance-unit.json",
-          "description": "Distance unit."
-        }
-      },
-      "required": ["value", "unit"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/radius.json",
+      "description": "Simple radius from the store location. The platform draws a circle of this distance around the store's coordinates."
     },
     "geometry": {
-      "type": "object",
-      "description": "Pre-computed GeoJSON geometry defining the catchment boundary. Use this when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom trade area boundaries. Supports Polygon and MultiPolygon types.",
-      "properties": {
-        "type": {
-          "$ref": "/schemas/enums/geojson-geometry-type.json",
-          "description": "GeoJSON geometry type."
-        },
-        "coordinates": {
-          "type": "array",
-          "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
-        }
-      },
-      "required": ["type", "coordinates"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/geojson-geometry.json",
+      "description": "Pre-computed GeoJSON geometry defining the catchment boundary. Use this when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom trade area boundaries. Supports Polygon and MultiPolygon types."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

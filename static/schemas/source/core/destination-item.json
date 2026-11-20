@@ -30,20 +30,8 @@
       "description": "ISO 3166-1 alpha-2 country code."
     },
     "location": {
-      "type": "object",
-      "description": "Geographic coordinates of the destination.",
-      "properties": {
-        "lat": {
-          "$ref": "/schemas/core/latitude.json",
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lng": {
-          "$ref": "/schemas/core/longitude.json",
-          "description": "Longitude in decimal degrees (WGS 84)."
-        }
-      },
-      "required": ["lat", "lng"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/geo-coordinates.json",
+      "description": "Geographic coordinates of the destination."
     },
     "destination_type": {
       "type": "string",

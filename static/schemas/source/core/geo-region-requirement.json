@@ -6,47 +6,8 @@
   "type": "object",
   "properties": {
     "countries": {
-      "type": "object",
-      "description": "Required ISO subdivision support keyed by ISO 3166-1 alpha-2 country.",
-      "propertyNames": {
-        "$ref": "/schemas/core/country-code.json"
-      },
-      "additionalProperties": {
-        "description": "`all_values` and `values` exclude each other.",
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "all_values": {
-                "type": "boolean",
-                "const": true,
-                "description": "Require every protocol-valid ISO 3166-2 subdivision active in the seller's returned support snapshot for this country to remain selectable."
-              }
-            },
-            "required": ["all_values"],
-            "not": { "required": ["values"] },
-            "additionalProperties": true
-          },
-          {
-            "type": "object",
-            "properties": {
-              "values": {
-                "type": "array",
-                "description": "Exact finite set of ISO 3166-2 identifiers the buyer may select later.",
-                "items": {
-                  "$ref": "/schemas/core/country-subdivision-code.json"
-                },
-                "minItems": 1,
-                "uniqueItems": true
-              }
-            },
-            "required": ["values"],
-            "not": { "required": ["all_values"] },
-            "additionalProperties": true
-          }
-        ]
-      },
-      "minProperties": 1
+      "$ref": "/schemas/core/geo-region-countries.json",
+      "description": "Required ISO subdivision support keyed by ISO 3166-1 alpha-2 country."
     }
   },
   "required": ["countries"],

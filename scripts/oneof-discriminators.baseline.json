@@ -211,7 +211,7 @@
       "variants": 2,
       "note": "0:[allowed_intervals] | 1:[minimum_interval,maximum_interval]"
     },
-    "core/product-filters.json##/properties/geo_proximity/items/oneOf": {
+    "core/geo-proximity.json##/oneOf": {
       "kind": "narrowable",
       "variants": 3,
       "note": "0:[travel_time,transport_mode] | 1:[radius] | 2:[geometry]"
@@ -220,11 +220,6 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[uniform] | 1:[top,right,bottom,left]"
-    },
-    "core/targeting.json##/properties/geo_proximity/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 3,
-      "note": "0:[travel_time,transport_mode] | 1:[radius] | 2:[geometry]"
     },
     "creative/get-creative-features-response.json##/oneOf": {
       "kind": "narrowable",

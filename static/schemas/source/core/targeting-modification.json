@@ -52,14 +52,8 @@
           "description": "Supported targeting field with string-set semantics. Postal-area paths identify their group with selector; direct top-level sets omit selector."
         },
         "selector": {
-          "type": "object",
-          "description": "Stable identity of exactly one postal-area group in the requested array. Required only for postal-area paths. Zero or multiple matches make the modification invalid.",
-          "properties": {
-            "country": { "$ref": "/schemas/core/country-code.json" },
-            "system": { "$ref": "/schemas/enums/postal-system.json" }
-          },
-          "required": ["country", "system"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/postal-country-system.json",
+          "description": "Stable identity of exactly one postal-area group in the requested array. Required only for postal-area paths. Zero or multiple matches make the modification invalid."
         },
         "values": {
           "type": "array",

@@ -6,49 +6,8 @@
   "type": "object",
   "properties": {
     "countries": {
-      "type": "object",
-      "description": "Selectable ISO subdivision values keyed by ISO 3166-1 alpha-2 country.",
-      "propertyNames": {
-        "$ref": "/schemas/core/country-code.json"
-      },
-      "additionalProperties": {
-        "description": "`all_values` and `values` exclude each other.",
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "all_values": {
-                "type": "boolean",
-                "const": true,
-                "description": "Every protocol-valid ISO 3166-2 subdivision active in this declaration's support snapshot is selectable. Values introduced by a later catalog revision are not included automatically."
-              }
-            },
-            "required": ["all_values"],
-            "not": { "required": ["values"] },
-            "additionalProperties": true
-          },
-          {
-            "type": "object",
-            "properties": {
-              "values": {
-                "type": "array",
-                "description": "Exact finite selectable subset of ISO 3166-2 identifiers for this country.",
-                "items": {
-                  "$ref": "/schemas/core/country-subdivision-code.json"
-                },
-                "minItems": 1,
-                "uniqueItems": true,
-                "x-max-items-4.0": 512
-              }
-            },
-            "required": ["values"],
-            "not": { "required": ["all_values"] },
-            "additionalProperties": true
-          }
-        ]
-      },
-      "minProperties": 1,
-      "x-max-properties-4.0": 256
+      "$ref": "/schemas/core/geo-region-countries.json",
+      "description": "Selectable ISO subdivision values keyed by ISO 3166-1 alpha-2 country."
     },
     "catalog_version": {
       "$ref": "/schemas/core/geo-region-catalog-version.json",

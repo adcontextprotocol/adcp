@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geojson-geometry.json",
+  "title": "GeoJSON Geometry",
+  "description": "A GeoJSON geometry: a geometry type and its coordinates.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "/schemas/enums/geojson-geometry-type.json",
+      "description": "GeoJSON geometry type."
+    },
+    "coordinates": {
+      "type": "array",
+      "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
+    }
+  },
+  "required": [
+    "type",
+    "coordinates"
+  ],
+  "additionalProperties": true
+}

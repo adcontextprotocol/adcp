@@ -74,23 +74,7 @@
           "type": "array",
           "description": "Metro areas where this offering is relevant. Each entry specifies the classification system and target values.",
           "items": {
-            "type": "object",
-            "properties": {
-              "system": {
-                "$ref": "/schemas/enums/metro-system.json",
-                "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
-              },
-              "values": {
-                "type": "array",
-                "description": "Metro codes within the system",
-                "items": {
-                  "type": "string"
-                },
-                "minItems": 1
-              }
-            },
-            "required": ["system", "values"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/geo-metro.json"
           },
           "minItems": 1
         },

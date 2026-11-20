@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/country-subdivision-value-set.json",
+  "title": "Country Subdivision Value Set",
+  "description": "A non-empty set of ISO 3166-2 country subdivision codes.",
+  "type": "object",
+  "properties": {
+    "values": {
+      "type": "array",
+      "description": "Exact finite selectable subset of ISO 3166-2 identifiers for this country.",
+      "items": {
+        "$ref": "/schemas/core/country-subdivision-code.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-max-items-4.0": 512
+    }
+  },
+  "required": [
+    "values"
+  ],
+  "not": {
+    "required": [
+      "all_values"
+    ]
+  },
+  "additionalProperties": true
+}

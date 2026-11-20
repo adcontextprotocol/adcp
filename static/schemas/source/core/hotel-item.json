@@ -18,47 +18,12 @@
       "description": "Property description highlighting features and location."
     },
     "location": {
-      "type": "object",
-      "description": "Geographic coordinates of the property.",
-      "properties": {
-        "lat": {
-          "$ref": "/schemas/core/latitude.json",
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lng": {
-          "$ref": "/schemas/core/longitude.json",
-          "description": "Longitude in decimal degrees (WGS 84)."
-        }
-      },
-      "required": ["lat", "lng"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/geo-coordinates.json",
+      "description": "Geographic coordinates of the property."
     },
     "address": {
-      "type": "object",
-      "description": "Structured address for display and geocoding.",
-      "properties": {
-        "street": {
-          "type": "string",
-          "description": "Street address."
-        },
-        "city": {
-          "type": "string",
-          "description": "City name."
-        },
-        "region": {
-          "type": "string",
-          "description": "State, province, or region."
-        },
-        "postal_code": {
-          "type": "string",
-          "description": "Postal or ZIP code."
-        },
-        "country": {
-          "$ref": "/schemas/core/country-code.json",
-          "description": "ISO 3166-1 alpha-2 country code."
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/postal-address.json",
+      "description": "Structured address for display and geocoding."
     },
     "star_rating": {
       "type": "integer",

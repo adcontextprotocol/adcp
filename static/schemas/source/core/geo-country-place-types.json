@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-country-place-types.json",
+  "title": "Geographic Country Place Types",
+  "description": "Supported place types keyed by ISO 3166-1 alpha-2 country code. Only the listed country and place type pairs are supported.",
+  "type": "object",
+  "propertyNames": {
+    "$ref": "/schemas/core/country-code.json"
+  },
+  "additionalProperties": {
+    "type": "array",
+    "items": {
+      "$ref": "/schemas/core/geo-place-type.json"
+    },
+    "minItems": 1,
+    "uniqueItems": true,
+    "x-max-items-4.0": 32
+  },
+  "minProperties": 1,
+  "x-max-properties-4.0": 8
+}

@@ -136,19 +136,7 @@
       "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.metros. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/metro-system.json",
-            "description": "Metro classification system"
-          },
-          "code": {
-            "type": "string",
-            "description": "Metro code within the system (e.g., '501' for NYC DMA)"
-          }
-        },
-        "required": ["system", "code"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/metro-area.json"
       },
       "minItems": 1
     },
@@ -483,104 +471,7 @@
       "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.geo_proximity. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
-        "type": "object",
-        "properties": {
-          "lat": {
-            "$ref": "/schemas/core/latitude.json",
-            "description": "Latitude in decimal degrees (WGS 84)"
-          },
-          "lng": {
-            "$ref": "/schemas/core/longitude.json",
-            "description": "Longitude in decimal degrees (WGS 84)"
-          },
-          "label": {
-            "type": "string",
-            "description": "Human-readable label (e.g., 'Düsseldorf', 'Heathrow Airport')"
-          },
-          "travel_time": {
-            "type": "object",
-            "description": "Travel time limit for isochrone calculation",
-            "properties": {
-              "value": {
-                "type": "number",
-                "minimum": 1,
-                "description": "Travel time limit"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/travel-time-unit.json"
-              }
-            },
-            "required": ["value", "unit"],
-            "additionalProperties": true
-          },
-          "transport_mode": {
-            "$ref": "/schemas/enums/transport-mode.json",
-            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
-          },
-          "radius": {
-            "type": "object",
-            "description": "Simple radius from the point",
-            "properties": {
-              "value": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Radius distance"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/distance-unit.json",
-                "description": "Distance unit"
-              }
-            },
-            "required": ["value", "unit"],
-            "additionalProperties": true
-          },
-          "geometry": {
-            "type": "object",
-            "description": "Pre-computed GeoJSON geometry defining the proximity boundary",
-            "properties": {
-              "type": {
-                "$ref": "/schemas/enums/geojson-geometry-type.json",
-                "description": "GeoJSON geometry type"
-              },
-              "coordinates": {
-                "type": "array",
-                "description": "GeoJSON coordinates array"
-              }
-            },
-            "required": ["type", "coordinates"],
-            "additionalProperties": true
-          }
-        },
-        "oneOf": [
-          {
-            "required": ["lat", "lng", "travel_time", "transport_mode"],
-            "not": {
-              "anyOf": [
-                { "required": ["radius"] },
-                { "required": ["geometry"] }
-              ]
-            }
-          },
-          {
-            "required": ["lat", "lng", "radius"],
-            "not": {
-              "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["geometry"] }
-              ]
-            }
-          },
-          {
-            "required": ["geometry"],
-            "not": {
-              "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["radius"] }
-              ]
-            }
-          }
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/geo-proximity.json"
       },
       "minItems": 1
     },

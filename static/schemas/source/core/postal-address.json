@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/postal-address.json",
+  "title": "Postal Address",
+  "description": "A postal address: street, city, region, postal code, and country.",
+  "type": "object",
+  "properties": {
+    "street": {
+      "type": "string",
+      "description": "Street address (e.g., '123 Main St')."
+    },
+    "city": {
+      "type": "string",
+      "description": "City name."
+    },
+    "region": {
+      "type": "string",
+      "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'NL-NH', 'US-CA')."
+    },
+    "postal_code": {
+      "type": "string",
+      "description": "Postal or ZIP code."
+    },
+    "country": {
+      "$ref": "/schemas/core/country-code.json",
+      "description": "ISO 3166-1 alpha-2 country code."
+    }
+  },
+  "additionalProperties": true
+}

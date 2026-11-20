@@ -72,15 +72,7 @@
       "description": "Selectable country/type pairs and catalog versions for one identifier system.",
       "properties": {
         "countries": {
-          "type": "object",
-          "propertyNames": { "$ref": "/schemas/core/country-code.json" },
-          "additionalProperties": {
-            "type": "array",
-            "items": { "$ref": "/schemas/core/geo-place-type.json" },
-            "minItems": 1,
-            "uniqueItems": true
-          },
-          "minProperties": 1
+          "$ref": "/schemas/core/geo-country-place-types.json"
         },
         "current_version": {
           "$ref": "/schemas/core/geo-place-system-version.json",
