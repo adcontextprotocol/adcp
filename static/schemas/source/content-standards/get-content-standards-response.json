@@ -28,25 +28,8 @@
       }
     },
     {
-      "type": "object",
-      "description": "Error response",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ]
+      "$ref": "/schemas/core/task-error-response.json",
+      "description": "Error response"
     }
   ],
   "properties": {}

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/applied-task-sort.json",
+  "title": "Applied Task Sort",
+  "description": "The sort applied to a task list: field and direction.",
+  "type": "object",
+  "properties": {
+    "field": {
+      "type": "string"
+    },
+    "direction": {
+      "$ref": "/schemas/enums/sort-direction.json"
+    }
+  },
+  "required": [
+    "field",
+    "direction"
+  ],
+  "additionalProperties": true
+}

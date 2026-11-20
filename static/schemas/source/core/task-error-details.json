@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-error-details.json",
+  "title": "Task Error Details",
+  "description": "Additional details for a task error: the protocol, the operation, and protocol-specific context.",
+  "type": "object",
+  "properties": {
+    "protocol": {
+      "$ref": "/schemas/enums/adcp-protocol.json",
+      "description": "AdCP protocol where error occurred"
+    },
+    "operation": {
+      "type": "string",
+      "description": "Specific operation that failed"
+    },
+    "specific_context": {
+      "title": "Error Specific Context",
+      "type": "object",
+      "description": "Domain-specific error context",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

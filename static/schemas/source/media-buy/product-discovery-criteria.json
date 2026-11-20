@@ -56,7 +56,7 @@
       "minItems": 1,
       "uniqueItems": true
     },
-    "ext": { "type": "object", "additionalProperties": true }
+    "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "minProperties": 1,
   "dependencies": { "product_ids_exclusive": ["product_ids"] },

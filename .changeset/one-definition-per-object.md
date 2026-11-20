@@ -33,3 +33,5 @@ Governance and attestation objects have one definition each under `core/`, inclu
 Content standards objects have one definition each under `core/`: `calibration-exemplars`, `calibration-url-reference`, `feature-check-result`, and `bulk-pagination`. Calibration URL languages are BCP 47 tags (`core/locale-tag.json`), and bulk pagination cursors are non-empty.
 
 Sponsored intelligence objects have one definition each: `core/si-brand-agent-response.json` and `core/si-transaction-product.json`.
+
+Task and error objects have one definition each under `core/`, including `task-error-response`, `task-response-body`, `error-details`, and the task list parts. The async working and submitted responses compose `core/compact-task-working.json` and `core/compact-task-submitted.json`, and the task status error code is a bounded open error code.

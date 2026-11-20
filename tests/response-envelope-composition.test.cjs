@@ -615,7 +615,7 @@ test('every status body composes its core/task-<status>.json', () => {
 });
 
 test('every submitted body and branch composes core/task-submitted.json', () => {
-  assert.ok(SUBMITTED_NODES.length >= 19, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
+  assert.ok(SUBMITTED_NODES.length >= 15, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
   assert.deepEqual(SUBMITTED_NODES.filter((entry) => !composesTaskSubmitted(entry.node)).map(({ rel, pointer }) => `${rel}#${pointer}`), [],
     'a submitted body or branch must compose core/task-submitted.json');
   // The rule lives in one place: no node restates it with a required task_id,
@@ -667,15 +667,20 @@ test('a submitted response without task_id fails through core/task-submitted.jso
   }
 });
 
-/** Instance paths at which a schema declares a task identifier through core/task-id.json. */
-function taskIdPaths(node, here = []) {
+/**
+ * Instance paths at which a schema declares a task identifier through
+ * core/task-id.json, read through the documents it names.
+ */
+function taskIdPaths(node, here = [], seen = new Set()) {
   if (!node || typeof node !== 'object' || Array.isArray(node)) return [];
   const refersToTaskId = node.$ref === '/schemas/core/task-id.json'
     || (node.allOf || []).some((member) => member && member.$ref === '/schemas/core/task-id.json');
   if (refersToTaskId) return [here];
   const out = [];
-  for (const [name, child] of Object.entries(node.properties || {})) out.push(...taskIdPaths(child, [...here, name]));
-  if (node.items) out.push(...taskIdPaths(node.items, [...here, 0]));
+  const target = documentOf(node.$ref);
+  if (target && !seen.has(target)) out.push(...taskIdPaths(readSource(target), here, new Set([...seen, target])));
+  for (const [name, child] of Object.entries(node.properties || {})) out.push(...taskIdPaths(child, [...here, name], seen));
+  if (node.items) out.push(...taskIdPaths(node.items, [...here, 0], seen));
   return out;
 }
 

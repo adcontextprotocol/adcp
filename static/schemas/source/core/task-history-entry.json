@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-history-entry.json",
+  "title": "Task History Entry",
+  "description": "One entry in a task's history: a timestamped request or response with its data.",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this exchange occurred (ISO 8601)"
+    },
+    "type": {
+      "$ref": "/schemas/enums/history-entry-type.json",
+      "description": "Whether this was a request from client or response from server"
+    },
+    "data": {
+      "title": "Task History Entry Data",
+      "type": "object",
+      "description": "The full request or response payload",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "timestamp",
+    "type",
+    "data"
+  ],
+  "additionalProperties": true
+}

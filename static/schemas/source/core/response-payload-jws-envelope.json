@@ -65,9 +65,8 @@
           "description": "Expiration time as Unix epoch seconds. Online verifiers reject envelopes after this time, allowing only implementation-defined clock skew."
         },
         "response": {
-          "type": "object",
-          "description": "Canonical task-body success response payload being attested. Any unsigned task-body fields on the outer response, excluding signed_response and protocol/version envelope fields, MUST match this object.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/task-response-body.json",
+          "description": "Canonical task-body success response payload being attested. Any unsigned task-body fields on the outer response, excluding signed_response and protocol/version envelope fields, MUST match this object."
         }
       },
       "required": [

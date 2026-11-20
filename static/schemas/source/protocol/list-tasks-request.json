@@ -16,101 +16,12 @@
       "description": "Account scope for task reconciliation. Sellers MUST only return tasks created for the caller's authenticated account + principal pair. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account."
     },
     "filters": {
-      "type": "object",
-      "description": "Filter criteria for querying tasks",
-      "properties": {
-        "protocol": {
-          "$ref": "/schemas/enums/adcp-protocol.json",
-          "description": "Filter by single AdCP protocol"
-        },
-        "protocols": {
-          "type": "array",
-          "description": "Filter by multiple AdCP protocols",
-          "items": {
-            "$ref": "/schemas/enums/adcp-protocol.json"
-          },
-          "minItems": 1
-        },
-        "status": {
-          "$ref": "/schemas/enums/task-status.json",
-          "description": "Filter by single task status"
-        },
-        "statuses": {
-          "type": "array",
-          "description": "Filter by multiple task statuses",
-          "items": {
-            "$ref": "/schemas/enums/task-status.json"
-          },
-          "minItems": 1
-        },
-        "task_type": {
-          "$ref": "/schemas/enums/task-type.json",
-          "description": "Filter by single task type"
-        },
-        "task_types": {
-          "type": "array",
-          "description": "Filter by multiple task types",
-          "items": {
-            "$ref": "/schemas/enums/task-type.json"
-          },
-          "minItems": 1
-        },
-        "created_after": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Filter tasks created after this date (ISO 8601)"
-        },
-        "created_before": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Filter tasks created before this date (ISO 8601)"
-        },
-        "updated_after": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Filter tasks last updated after this date (ISO 8601)"
-        },
-        "updated_before": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Filter tasks last updated before this date (ISO 8601)"
-        },
-        "task_ids": {
-          "type": "array",
-          "description": "Filter by specific task IDs",
-          "items": {
-            "$ref": "/schemas/core/task-id.json"
-          },
-          "minItems": 1,
-          "maxItems": 100
-        },
-        "context_contains": {
-          "type": "string",
-          "description": "Filter tasks where context contains this text (searches media_buy_id, signal_id, etc.)"
-        },
-        "has_webhook": {
-          "type": "boolean",
-          "description": "Filter tasks that have webhook configuration when true"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/task-filters.json",
+      "description": "Filter criteria for querying tasks"
     },
     "sort": {
-      "type": "object",
-      "description": "Sorting parameters",
-      "properties": {
-        "field": {
-          "$ref": "/schemas/enums/task-sort-field.json",
-          "default": "created_at",
-          "description": "Field to sort by"
-        },
-        "direction": {
-          "$ref": "/schemas/enums/sort-direction.json",
-          "default": "desc",
-          "description": "Sort direction"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/task-sort.json",
+      "description": "Sorting parameters"
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"

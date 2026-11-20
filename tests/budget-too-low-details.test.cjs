@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
-const { addNamedScalarSchemas } = require('./helpers/named-scalar-schemas.cjs');
+const { addNamedScalarSchemas, addReferencedSchemas } = require('./helpers/named-scalar-schemas.cjs');
 
 const file = 'error-details/budget-too-low.json';
 const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source', file), 'utf8'));
@@ -65,7 +65,7 @@ test('typed recovery fields reject malformed values', () => {
 
 test('documented budget errors validate their details separately from the open error wrapper', () => {
   const errorSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/error.json'), 'utf8'));
-  const validateError = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(errorSchema);
+  const validateError = addReferencedSchemas(addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })), errorSchema).compile(errorSchema);
   const errors = documentationExamples().filter(example => example.code === 'BUDGET_TOO_LOW');
   assert.ok(errors.some(error => error.details.basis === 'lifetime'));
   assert.ok(errors.some(error => error.details.constraint === 'effective_bid_floor'));

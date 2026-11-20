@@ -2348,6 +2348,10 @@
           "$ref": "/schemas/core/account-setup.json",
           "description": "Next steps a human must complete before an account can activate."
         },
+        "applied-task-sort": {
+          "$ref": "/schemas/core/applied-task-sort.json",
+          "description": "The sort applied to a task list: field and direction."
+        },
         "attestation-agent-identity": {
           "$ref": "/schemas/core/attestation-agent-identity.json",
           "description": "An attestation issuer identified by an agent URL."
@@ -2628,6 +2632,10 @@
           "$ref": "/schemas/core/dooh-screen-resolution.json",
           "description": "The physical resolution of a screen in pixels. Canonical format dimensions remain authoritative for creative acceptance."
         },
+        "error-details": {
+          "$ref": "/schemas/core/error-details.json",
+          "description": "Additional error details as an open object. To report a value rejected against a closed set, use the `rejected_value` and `accepted_values` keys."
+        },
         "evidence-max-age": {
           "$ref": "/schemas/core/evidence-max-age.json",
           "description": "The maximum age of evidence, as a duration in seconds, minutes, hours, or days. Campaign-relative durations are not allowed."
@@ -2860,6 +2868,10 @@
           "$ref": "/schemas/core/preview-variant.json",
           "description": "One preview of a creative: a preview ID, one or more renders, and the input that produced them."
         },
+        "principal-operation-failure": {
+          "$ref": "/schemas/core/principal-operation-failure.json",
+          "description": "A failed principal operation result: kind `failed` with one to 16 errors."
+        },
         "purchase-opportunity-context": {
           "$ref": "/schemas/core/purchase-opportunity-context.json",
           "description": "The opportunity context sent with a purchase. A `closed` status requires close reason `accepted_with_seller`, and `later_proposals` is allowed only when status is `open`."
@@ -2959,6 +2971,54 @@
         "target-frequency": {
           "$ref": "/schemas/core/target-frequency.json",
           "description": "A target frequency band, with a minimum, a maximum, or both, measured over a time window."
+        },
+        "task-domain-breakdown": {
+          "$ref": "/schemas/core/task-domain-breakdown.json",
+          "description": "Task counts by protocol domain."
+        },
+        "task-error-details": {
+          "$ref": "/schemas/core/task-error-details.json",
+          "description": "Additional details for a task error: the protocol, the operation, and protocol-specific context."
+        },
+        "task-error-response": {
+          "$ref": "/schemas/core/task-error-response.json",
+          "description": "Error response"
+        },
+        "task-error-summary": {
+          "$ref": "/schemas/core/task-error-summary.json",
+          "description": "Convenience error summary for a failed task."
+        },
+        "task-filters": {
+          "$ref": "/schemas/core/task-filters.json",
+          "description": "Criteria that filter a list of tasks, by protocol, status, task type, time, task ID, context, and webhook."
+        },
+        "task-history-entry": {
+          "$ref": "/schemas/core/task-history-entry.json",
+          "description": "One entry in a task's history: a timestamped request or response with its data."
+        },
+        "task-list-query-summary": {
+          "$ref": "/schemas/core/task-list-query-summary.json",
+          "description": "A summary of a task list query: matching and returned counts, breakdowns by domain and status, and the filters and sort applied."
+        },
+        "task-progress": {
+          "$ref": "/schemas/core/task-progress.json",
+          "description": "The progress of a long-running task: percentage complete and current step."
+        },
+        "task-response-body": {
+          "$ref": "/schemas/core/task-response-body.json",
+          "description": "A task-specific response body. Each task's response schema defines its fields."
+        },
+        "task-sort": {
+          "$ref": "/schemas/core/task-sort.json",
+          "description": "How to sort a list of tasks: a sort field and a direction."
+        },
+        "task-status-breakdown": {
+          "$ref": "/schemas/core/task-status-breakdown.json",
+          "description": "Task counts keyed by task status."
+        },
+        "task-summary": {
+          "$ref": "/schemas/core/task-summary.json",
+          "description": "A summary of one task: ID, type, domain, status, timestamps, and whether it has a webhook."
         },
         "threshold-rate-target": {
           "$ref": "/schemas/core/threshold-rate-target.json",

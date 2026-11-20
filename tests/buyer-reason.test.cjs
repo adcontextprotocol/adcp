@@ -3,12 +3,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
-const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
+const { addReferencedSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_DIR = path.join(__dirname, '../static/schemas/source');
 
 function schema(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_DIR, relativePath), 'utf8'));
+}
+
+// core/error.json references named documents, including the error-details object.
+function compileError() {
+  const error = schema('core/error.json');
+  return addReferencedSchemas(new Ajv({ allErrors: true, strict: false }), error).compile(error);
 }
 
 test('buyer reason uses the comprehensive standard error-code vocabulary', () => {
@@ -30,7 +36,7 @@ test('buyer reason uses the comprehensive standard error-code vocabulary', () =>
 });
 
 test('core error accepts standard and forward-compatible buyer reason codes', () => {
-  const validate = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(schema('core/error.json'));
+  const validate = compileError();
   const base = {
     code: 'CREATIVE_REJECTED',
     message: 'The creative could not be accepted.',
@@ -55,7 +61,7 @@ test('core error accepts standard and forward-compatible buyer reason codes', ()
 });
 
 test('core error requires a complete buyer reason', () => {
-  const validate = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(schema('core/error.json'));
+  const validate = compileError();
   assert.equal(validate({
     code: 'CREATIVE_REJECTED',
     message: 'The creative could not be accepted.',
@@ -65,7 +71,7 @@ test('core error requires a complete buyer reason', () => {
 });
 
 test('core error requires recovery only when buyer reason is present', () => {
-  const validate = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(schema('core/error.json'));
+  const validate = compileError();
 
   assert.equal(validate({
     code: 'CREATIVE_REJECTED',

@@ -20,7 +20,7 @@
       ]
     },
     "message": { "$ref": "/schemas/core/representation-rejection-message.json" },
-    "details": { "type": "object", "additionalProperties": true }
+    "details": { "$ref": "/schemas/core/error-details.json" }
   },
   "required": ["representation_id", "code", "message"],
   "additionalProperties": true

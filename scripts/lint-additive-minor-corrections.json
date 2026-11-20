@@ -2510,6 +2510,54 @@
         "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "core/tasks-get-response.json",
+      "pointer": "/properties/error/properties/code",
+      "bound": "maxLength",
+      "value": 64,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/error.json",
+        "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 64"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on code in core/error.json. An error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "core/tasks-get-response.json",
+      "pointer": "/properties/error/properties/code",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/error.json",
+        "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on code in core/error.json. An error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "protocol/get-task-status-response.json",
+      "pointer": "/properties/error/properties/code",
+      "bound": "maxLength",
+      "value": 64,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/error.json",
+        "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 64"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on code in core/error.json. An error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "protocol/get-task-status-response.json",
+      "pointer": "/properties/error/properties/code",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/error.json",
+        "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on code in core/error.json. An error code, which core/open-error-code.json bounds."
     }
   ]
 }

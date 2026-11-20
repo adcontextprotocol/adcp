@@ -92,25 +92,7 @@
           "additionalProperties": true
         },
         {
-          "title": "Failed principal sync",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "failed",
-              "default": "failed"
-            },
-            "errors": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/core/error.json"
-              },
-              "minItems": 1,
-              "maxItems": 16
-            }
-          },
-          "required": ["kind", "errors"],
-          "additionalProperties": false
+          "$ref": "/schemas/core/principal-operation-failure.json"
         }
       ]
     },
