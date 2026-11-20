@@ -314,7 +314,7 @@ const fs=require('node:fs');const args=process.argv.slice(2);
 const r=JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, "responses.json"))},'utf8'));
 fs.appendFileSync(${JSON.stringify(path.join(dir, "calls.jsonl"))},JSON.stringify(args)+'\\n');
 const field=k=>{const i=args.findIndex((a,n)=>args[n-1]==='-f'&&a.startsWith(k+'='));return i<0?undefined:args[i].slice(k.length+1);};
-if(r.error){console.error('HTTP 502: Bad Gateway');process.exit(1);}
+if(r.error){console.error(r.errorMessage||'HTTP 502: Bad Gateway');process.exit(1);}
 if(args[1]==='graphql'){
   const q=field('query');
   if(q.includes('pullRequests')){const page=r.pulls[field('base')]?.[field('cursor')||'first']||{nodes:[],pageInfo:{hasNextPage:false}};console.log(JSON.stringify({data:{repository:{pullRequests:page}}}));}
@@ -471,6 +471,15 @@ test("the CLI exits non-zero when the API is unavailable", (t) => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /::error::/);
   assert.deepEqual(f.statusWrites(), []);
+});
+
+test("the job summary escapes table cells", (t) => {
+  const f = cliFixture(t, { error: true, errorMessage: "bad \\| cell" });
+  assert.notEqual(f.run().status, 0);
+  const summary = fs.readFileSync(path.join(f.dir, "summary.md"), "utf8");
+  assert.ok(summary.includes("bad \\\\\\| cell"), summary);
+  for (const line of summary.split("\n").filter((l) => l.startsWith("| main")))
+    assert.equal(line.split(/(?<!\\)\|/).length, 5, line);
 });
 
 test("the CLI requires a repository and the sweep mode", (t) => {
