@@ -21,8 +21,10 @@
  */
 
 import type { TenantConfig } from '@adcp/sdk/server';
-import { ADSERVER_SEASON, CONTENT_SEASON } from '../inventory-sim/engine/index.js';
+import { ADSERVER_SEASON, CONTENT_SEASON, type SeasonSeed } from '../inventory-sim/engine/index.js';
 import { InventoryPlatform, type InventoryTenantProfile } from '../inventory-sim/platform.js';
+import { readSeasonFile } from '../inventory-sim/season-file.js';
+import { createLogger } from '../../logger.js';
 import { resetMarket, withCallerMarkets } from '../inventory-sim/market-store.js';
 import { SANDBOX_CLOCK_SCENARIO, handleSandboxClock } from '../inventory-sim/sandbox-clock.js';
 import { resetReportingSubscriptionProbe } from '../subscription-probe.js';
@@ -35,10 +37,47 @@ import { SALES_COMPLY_INPUT_SCHEMA, createPrincipalScopedSeedCache, seedAccountA
 export const INVENTORY_ADSERVER_TENANT_ID = 'inventory-adserver';
 export const INVENTORY_CONTENT_TENANT_ID = 'inventory-content';
 
-export const INVENTORY_TENANT_PROFILES: Readonly<Record<string, InventoryTenantProfile>> = {
-  [INVENTORY_ADSERVER_TENANT_ID]: { tenantId: INVENTORY_ADSERVER_TENANT_ID, seed: ADSERVER_SEASON },
-  [INVENTORY_CONTENT_TENANT_ID]: { tenantId: INVENTORY_CONTENT_TENANT_ID, seed: CONTENT_SEASON },
+const logger = createLogger('training-agent-inventory-tenants');
+
+/** Env var naming the season file that replaces a tenant's shipped season. */
+export const INVENTORY_SEASON_FILE_ENV: Readonly<Record<string, string>> = {
+  [INVENTORY_ADSERVER_TENANT_ID]: 'TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE',
+  [INVENTORY_CONTENT_TENANT_ID]: 'TRAINING_AGENT_INVENTORY_CONTENT_SEASON_FILE',
 };
+
+const SHIPPED_SEASONS: Readonly<Record<string, SeasonSeed>> = {
+  [INVENTORY_ADSERVER_TENANT_ID]: ADSERVER_SEASON,
+  [INVENTORY_CONTENT_TENANT_ID]: CONTENT_SEASON,
+};
+
+function seasonFor(tenantId: string, env: NodeJS.ProcessEnv): SeasonSeed {
+  const envVar = INVENTORY_SEASON_FILE_ENV[tenantId];
+  const file = env[envVar]?.trim();
+  if (!file) return SHIPPED_SEASONS[tenantId];
+  let seed: SeasonSeed;
+  try {
+    seed = readSeasonFile(file);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`${envVar}=${file}: ${reason}`, { cause: error });
+  }
+  logger.info(`${tenantId}: season ${seed.seed_id} from ${file}`);
+  return seed;
+}
+
+/** Each inventory tenant's profile: the season file its env var names, else
+ * the shipped season (the same object, so hosted output is unchanged). A bad
+ * file throws, naming the env var and the path. */
+export function resolveInventoryTenantProfiles(env: NodeJS.ProcessEnv): Record<string, InventoryTenantProfile> {
+  const profiles: Record<string, InventoryTenantProfile> = {};
+  for (const tenantId of Object.keys(SHIPPED_SEASONS)) {
+    profiles[tenantId] = { tenantId, seed: seasonFor(tenantId, env) };
+  }
+  return profiles;
+}
+
+export const INVENTORY_TENANT_PROFILES: Readonly<Record<string, InventoryTenantProfile>> =
+  resolveInventoryTenantProfiles(process.env);
 
 export const INVENTORY_TENANT_IDS: readonly string[] = Object.keys(INVENTORY_TENANT_PROFILES);
 

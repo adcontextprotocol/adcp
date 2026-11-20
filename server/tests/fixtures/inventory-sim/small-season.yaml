@@ -1,0 +1,63 @@
+# A small ad server season: one site, one display placement, two products.
+# Point TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE at a copy of this file to run the tenant on it.
+
+# Name of the season and the seed mixed into every random draw. Change rng_seed for a different season of the same shape.
+seed_id: small-season
+rng_seed: small-season-v1
+
+# The simulated calendar: first day (UTC) and how many days it runs. Flights must fall inside it.
+start_date: 2026-11-01
+days: 365
+currency: USD
+
+# Where traffic comes from. Shares must sum to 1.
+regions:
+  - { region_id: us, country: US, name: United States, share: 1 }
+
+# Audience groups the traffic splits into. Shares must sum to 1; multipliers adjust the placement's rates.
+audience_profiles:
+  - { profile_id: commuters, name: Commuters, share: 0.6, rate_multipliers: { click_rate: 1.2 } }
+  - { profile_id: homebodies, name: Homebodies, share: 0.4 }
+
+# Named audiences a product can target, as groups of profiles. None here.
+segments: []
+
+# The publisher's sites.
+properties:
+  - { property_id: harbor_daily, name: Harbor Daily, domain: harbor-daily.example }
+
+# Ad slots: daily traffic, the lowest accepted CPM, and the rates impressions convert at.
+placements:
+  - placement_id: banner
+    name: Banner
+    channel: display
+    property_ids: [harbor_daily]
+    formats: [display_300x250]
+    base_daily_impressions: 100000
+    floor_cpm: 2
+    rates: { viewability: 0.65, click_rate: 0.002, completion_rate: 0, conversion_rate: 0.02 }
+    reporting_lag_days: 0
+
+# What buyers can purchase: one guaranteed at a fixed CPM, one sold in an auction above the floor.
+products:
+  - product_id: banner_guaranteed
+    name: Banner, guaranteed
+    description: Guaranteed banner impressions at a fixed CPM
+    delivery_type: guaranteed
+    placement_ids: [banner]
+    rate_cpm: 8
+  - product_id: banner_auction
+    name: Banner, auction
+    description: Banner impressions won in a first-price auction
+    delivery_type: non_guaranteed
+    placement_ids: [banner]
+
+# Traffic multipliers by weekday, Sunday first.
+traffic:
+  weekday_shape: [0.9, 1, 1, 1, 1, 1.05, 0.95]
+
+# How wrong forecasts are versus delivery: bias, plus day-to-day and per-cell noise.
+forecast_error:
+  bias: 0
+  day_sigma: 0.04
+  cell_sigma: 0.08
