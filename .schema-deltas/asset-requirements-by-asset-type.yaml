@@ -1,58 +1,106 @@
 title: Enforce each asset_requirements schema for its own asset_type (#8476)
 changes:
-  - location: core/requirements/catalog-requirements.json#/properties/offering_asset_constraints/items
-    keyword: allOf
+  - location: core/requirements/offering-asset-constraint.json#/allOf/0
+    keyword: if
     new:
-      if:
-        required:
-          - asset_type
-        properties:
-          asset_type:
-            const: image
-      then:
-        properties:
-          asset_requirements:
-            type:
-              - object
-            if:
-              $at: core/requirements/image-asset-requirements.json#/if
-            properties:
-              animation_allowed:
-                $at: core/requirements/image-asset-requirements.json#/properties/animation_allowed
-              aspect_ratio:
-                $at: core/requirements/image-asset-requirements.json#/properties/aspect_ratio
-              bleed:
-                $at: core/requirements/image-asset-requirements.json#/properties/bleed
-              color_space:
-                $at: core/requirements/image-asset-requirements.json#/properties/color_space
-              formats:
-                $at: core/requirements/image-asset-requirements.json#/properties/formats
-              max_animation_duration_ms:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_animation_duration_ms
-              max_file_size_kb:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_file_size_kb
-              max_height:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_height
-              max_weight_grams:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_weight_grams
-              max_width:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_width
-              min_dpi:
-                $at: core/requirements/image-asset-requirements.json#/properties/min_dpi
-              min_height:
-                $at: core/requirements/image-asset-requirements.json#/properties/min_height
-              min_width:
-                $at: core/requirements/image-asset-requirements.json#/properties/min_width
-              parameters_from_format_id:
-                $at: core/requirements/image-asset-requirements.json#/properties/parameters_from_format_id
-              pixel_ratios:
-                $at: core/requirements/image-asset-requirements.json#/properties/pixel_ratios
-              transparency_required:
-                $at: core/requirements/image-asset-requirements.json#/properties/transparency_required
-              unit:
-                $at: enums/dimension-unit.json#
-            then:
-              $at: core/requirements/image-asset-requirements.json#/then
+      required:
+        - asset_type
+      properties:
+        asset_type:
+          const: image
+    direction: tighten
+    side: response
+    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
+  - location: core/requirements/offering-asset-constraint.json#/allOf/0
+    keyword: then
+    new:
+      properties:
+        asset_requirements:
+          type:
+            - object
+          if:
+            required:
+              - min_dpi
+          properties:
+            animation_allowed:
+              type:
+                - boolean
+            aspect_ratio:
+              pattern: ^\d+(\.\d+)?:\d+(\.\d+)?$
+              type:
+                - string
+            bleed:
+              type:
+                - object
+              oneOf:
+                - $at: core/requirements/image-asset-requirements.json#/properties/bleed/oneOf/0
+                - $at: core/requirements/image-asset-requirements.json#/properties/bleed/oneOf/1
+            color_space:
+              enum:
+                - cmyk
+                - grayscale
+                - rgb
+            formats:
+              type:
+                - array
+              items:
+                $at: core/requirements/image-asset-requirements.json#/properties/formats/items
+            max_animation_duration_ms:
+              minimum: 0
+              type:
+                - integer
+            max_file_size_kb:
+              minimum: 1
+              type:
+                - integer
+            max_height:
+              exclusiveMinimum: 0
+              type:
+                - number
+            max_weight_grams:
+              exclusiveMinimum: 0
+              type:
+                - integer
+            max_width:
+              exclusiveMinimum: 0
+              type:
+                - number
+            min_dpi:
+              minimum: 1
+              type:
+                - integer
+            min_height:
+              exclusiveMinimum: 0
+              type:
+                - number
+            min_width:
+              exclusiveMinimum: 0
+              type:
+                - number
+            parameters_from_format_id:
+              type:
+                - boolean
+            pixel_ratios:
+              minItems: 1
+              type:
+                - array
+              uniqueItems: true
+              items:
+                $at: core/requirements/image-asset-requirements.json#/properties/pixel_ratios/items
+            transparency_required:
+              type:
+                - boolean
+            unit:
+              enum:
+                - cm
+                - dp
+                - inches
+                - mm
+                - pt
+                - px
+          then:
+            required:
+              - unit
     direction: tighten
     side: response
     note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
@@ -389,62 +437,6 @@ changes:
                 $at: core/requirements/webhook-asset-requirements.json#/properties/methods
     direction: tighten
     side: response
-    note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
-  - location: core/requirements/offering-asset-constraint.json#
-    keyword: allOf
-    new:
-      if:
-        required:
-          - asset_type
-        properties:
-          asset_type:
-            const: image
-      then:
-        properties:
-          asset_requirements:
-            type:
-              - object
-            if:
-              $at: core/requirements/image-asset-requirements.json#/if
-            properties:
-              animation_allowed:
-                $at: core/requirements/image-asset-requirements.json#/properties/animation_allowed
-              aspect_ratio:
-                $at: core/requirements/image-asset-requirements.json#/properties/aspect_ratio
-              bleed:
-                $at: core/requirements/image-asset-requirements.json#/properties/bleed
-              color_space:
-                $at: core/requirements/image-asset-requirements.json#/properties/color_space
-              formats:
-                $at: core/requirements/image-asset-requirements.json#/properties/formats
-              max_animation_duration_ms:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_animation_duration_ms
-              max_file_size_kb:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_file_size_kb
-              max_height:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_height
-              max_weight_grams:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_weight_grams
-              max_width:
-                $at: core/requirements/image-asset-requirements.json#/properties/max_width
-              min_dpi:
-                $at: core/requirements/image-asset-requirements.json#/properties/min_dpi
-              min_height:
-                $at: core/requirements/image-asset-requirements.json#/properties/min_height
-              min_width:
-                $at: core/requirements/image-asset-requirements.json#/properties/min_width
-              parameters_from_format_id:
-                $at: core/requirements/image-asset-requirements.json#/properties/parameters_from_format_id
-              pixel_ratios:
-                $at: core/requirements/image-asset-requirements.json#/properties/pixel_ratios
-              transparency_required:
-                $at: core/requirements/image-asset-requirements.json#/properties/transparency_required
-              unit:
-                $at: enums/dimension-unit.json#
-            then:
-              $at: core/requirements/image-asset-requirements.json#/then
-    direction: tighten
-    side: none
     note: 'Witness verified with the repo Ajv: an asset_requirements object that violates the schema for its own asset_type, accepted at the base by another union branch.'
   - location: core/requirements/offering-asset-constraint.json#
     keyword: allOf
