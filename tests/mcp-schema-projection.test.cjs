@@ -147,11 +147,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // brings it to 561,291 bytes / 548.14 KiB; bound it at 549 KiB.
 // Named rejections (DR-0036) are validation, so the model-context view omits
 // them with the bounds; the budget is unchanged.
-// Replacing repeated inline object copies with shared core definitions adds 14
+// Replacing repeated inline object copies with shared core definitions adds 15
 // definitions to the media-buy inputs, each with its own title and description:
-// 558,798 → 564,093 bytes (545.70 → 550.87 KiB measured); bound it at 551 KiB.
+// 558,798 → 564,889 bytes (545.70 → 551.65 KiB measured); bound it at 552 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 551,
+  'media-buy': 552,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
@@ -262,9 +262,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // (#8899, #8900) bring it to 1_426_550 bytes; bound at 1_427_000.
 // Defaulting every tagged-union tag to its const brings it to 1_430_635 bytes.
 // Replacing repeated inline object copies with shared definitions puts their
-// titles and descriptions in the controller closure: 1_443_131 bytes measured;
-// bound at 1_444_000.
-const PARITY_COMPILE_LIMIT = 1_444_000;
+// titles and descriptions in the controller closure: 1_445_228 bytes measured;
+// bound at 1_446_000.
+const PARITY_COMPILE_LIMIT = 1_446_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

@@ -34,12 +34,8 @@
       "uniqueItems": true
     },
     "value_labels": {
-      "type": "object",
-      "description": "Optional human-readable diagnostic labels keyed by identifiers present in values. Extra keys are a conformance error. Labels are non-authoritative and MUST NOT be used to resolve or apply targeting.",
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "/schemas/core/diagnostic-value-labels.json",
+      "description": "Optional human-readable diagnostic labels keyed by identifiers present in values. Extra keys are a conformance error. Labels are non-authoritative and MUST NOT be used to resolve or apply targeting."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

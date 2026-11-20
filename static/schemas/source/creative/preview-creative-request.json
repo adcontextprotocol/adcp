@@ -118,28 +118,7 @@
       "type": "array",
       "description": "Array of input sets for generating multiple preview variants. Each input set defines macros and context values for one preview rendering. Used in single mode.",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad', 'Desktop dark mode')"
-          },
-          "macros": {
-            "type": "object",
-            "description": "Macro values to use for this preview. Supports all universal macros from the format's supported_macros list.",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "context_description": {
-            "type": "string",
-            "description": "Natural language description of the context for AI-generated content (e.g., 'User just searched for running shoes', 'Podcast discussing weather patterns')"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/preview-input.json"
       },
       "minItems": 1
     },
@@ -189,28 +168,7 @@
             "type": "array",
             "description": "Array of input sets for generating multiple preview variants",
             "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "Human-readable name for this input set"
-                },
-                "macros": {
-                  "type": "object",
-                  "description": "Macro values to use for this preview",
-                  "additionalProperties": {
-                    "type": "string"
-                  }
-                },
-                "context_description": {
-                  "type": "string",
-                  "description": "Natural language description of the context for AI-generated content"
-                }
-              },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": true
+              "$ref": "/schemas/core/preview-input.json"
             },
             "minItems": 1
           },

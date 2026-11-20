@@ -279,8 +279,7 @@
       "properties": {
         "format_kind": { "type": "string", "const": "custom", "default": "custom" },
         "params": {
-          "type": "object",
-          "additionalProperties": true,
+          "$ref": "/schemas/core/format-params.json",
           "description": "Custom shape's params. Validated against the schema fetched from `format_schema.uri` at the cached `format_schema.digest`."
         }
       },

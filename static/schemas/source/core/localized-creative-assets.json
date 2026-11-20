@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/localized-creative-assets.json",
+  "title": "Localized Creative Assets",
+  "description": "Locale-specific creative assets keyed by creative slot ID. Each slot holds one asset or a non-empty list of assets.",
+  "type": "object",
+  "minProperties": 1,
+  "patternProperties": {
+    "^[a-z0-9_]+$": {
+      "anyOf": [
+        {
+          "$ref": "/schemas/core/localized-creative-asset.json"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/core/localized-creative-asset.json"
+          },
+          "minItems": 1
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

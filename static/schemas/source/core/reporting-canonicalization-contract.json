@@ -54,7 +54,7 @@
           "properties": {
             "name": { "$ref": "/schemas/core/golden-vector-name.json" },
             "purpose": { "type": "string", "const": "ordering_encoding" },
-            "input_rows": { "type": "array", "items": { "type": "object" }, "minItems": 2 },
+            "input_rows": { "type": "array", "items": { "$ref": "/schemas/core/golden-vector-input-row.json" }, "minItems": 2 },
             "canonical_utf8_base64": { "$ref": "#/definitions/canonical_utf8_base64", "description": "Base64 of the exact expected canonical UTF-8 bytes." },
             "sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
           },
@@ -69,7 +69,7 @@
             "properties": {
               "name": { "$ref": "/schemas/core/golden-vector-name.json" },
               "purpose": { "type": "string", "const": "additional" },
-              "input_rows": { "type": "array", "items": { "type": "object" } },
+              "input_rows": { "type": "array", "items": { "$ref": "/schemas/core/golden-vector-input-row.json" } },
               "canonical_utf8_base64": { "$ref": "#/definitions/canonical_utf8_base64", "description": "Base64 of the exact expected canonical UTF-8 bytes." },
               "sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
             },

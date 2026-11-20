@@ -77,11 +77,6 @@
       "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
     },
     {
-      "path": "core/creative-localization-readback.json#/properties/locale_fallbacks/items/properties/locale_variant_id",
-      "disposition": "not-a-language-tag",
-      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
-    },
-    {
       "path": "core/creative-localization-readback.json#/properties/locale_matching",
       "disposition": "not-a-language-tag",
       "rationale": "Matching algorithm enum, not a concrete language identity or range."
@@ -103,11 +98,6 @@
     },
     {
       "path": "core/creative-localization.json#/properties/default_locale_variant_id",
-      "disposition": "not-a-language-tag",
-      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
-    },
-    {
-      "path": "core/creative-localization.json#/properties/locale_fallbacks/items/properties/locale_variant_id",
       "disposition": "not-a-language-tag",
       "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
     },
@@ -145,6 +135,11 @@
       "path": "core/education-item.json#/properties/language",
       "disposition": "legacy-language-boundary",
       "rationale": "Published education item language values predate the canonical primitive."
+    },
+    {
+      "path": "core/locale-fallback-rule.json#/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
     },
     {
       "path": "protocol/get-adcp-capabilities-response.json#/properties/creative/properties/localization/properties/locale_matching",

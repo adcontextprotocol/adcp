@@ -52,8 +52,7 @@
       "$ref": "/schemas/core/canonical-format-kind.json"
     },
     "params": {
-      "type": "object",
-      "additionalProperties": true,
+      "$ref": "/schemas/core/format-params.json",
       "description": "Canonical creative-shape parameters. Validate against the schema selected by format_kind; custom params validate against the fetched format_schema."
     }
   },

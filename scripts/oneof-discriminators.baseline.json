@@ -166,11 +166,6 @@
       "variants": 2,
       "note": "0:[format_id] | 1:[format_kind]"
     },
-    "core/creative-asset.json##/properties/assets/patternProperties/^/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
-    },
     "core/creative-manifest.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
@@ -225,11 +220,6 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[format_id] | 1:[format_kind]"
-    },
-    "creative/list-creatives-response.json##/properties/creatives/items/properties/assets/patternProperties/^/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
     },
     "creative/preview-creative-response.json##/oneOf/1/properties/results/items/oneOf": {
       "kind": "narrowable",

@@ -49,27 +49,8 @@
           ]
         },
         "embedding": {
-          "type": "object",
-          "description": "Optional security and embedding metadata for safe iframe integration",
-          "properties": {
-            "recommended_sandbox": {
-              "type": "string",
-              "const": "",
-              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
-            },
-            "requires_https": {
-              "type": "boolean",
-              "description": "Whether this output requires HTTPS for secure embedding"
-            },
-            "supports_fullscreen": {
-              "type": "boolean",
-              "description": "Whether this output supports fullscreen mode"
-            },
-            "csp_policy": {
-              "type": "string",
-              "description": "Content Security Policy requirements for embedding"
-            }
-          }
+          "$ref": "/schemas/core/preview-embedding-metadata.json",
+          "description": "Optional security and embedding metadata for safe iframe integration"
         },
         "renderer": {
           "$ref": "/schemas/core/preview-renderer-metadata.json",
@@ -125,27 +106,8 @@
           ]
         },
         "embedding": {
-          "type": "object",
-          "description": "Optional security and embedding metadata",
-          "properties": {
-            "recommended_sandbox": {
-              "type": "string",
-              "const": "",
-              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
-            },
-            "requires_https": {
-              "type": "boolean",
-              "description": "Whether this output requires HTTPS for secure embedding"
-            },
-            "supports_fullscreen": {
-              "type": "boolean",
-              "description": "Whether this output supports fullscreen mode"
-            },
-            "csp_policy": {
-              "type": "string",
-              "description": "Content Security Policy requirements for embedding"
-            }
-          }
+          "$ref": "/schemas/core/preview-embedding-metadata.json",
+          "description": "Optional security and embedding metadata"
         },
         "renderer": {
           "$ref": "/schemas/core/preview-renderer-metadata.json",
@@ -206,27 +168,8 @@
           ]
         },
         "embedding": {
-          "type": "object",
-          "description": "Optional security and embedding metadata for safe iframe integration",
-          "properties": {
-            "recommended_sandbox": {
-              "type": "string",
-              "const": "",
-              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
-            },
-            "requires_https": {
-              "type": "boolean",
-              "description": "Whether this output requires HTTPS for secure embedding"
-            },
-            "supports_fullscreen": {
-              "type": "boolean",
-              "description": "Whether this output supports fullscreen mode"
-            },
-            "csp_policy": {
-              "type": "string",
-              "description": "Content Security Policy requirements for embedding"
-            }
-          }
+          "$ref": "/schemas/core/preview-embedding-metadata.json",
+          "description": "Optional security and embedding metadata for safe iframe integration"
         },
         "renderer": {
           "$ref": "/schemas/core/preview-renderer-metadata.json",

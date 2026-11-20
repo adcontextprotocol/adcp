@@ -32,56 +32,18 @@
       "description": "Readback lineage to the complete CreativeRepresentationSet revision and representation selected before this seller-bound creative was synced."
     },
     "assets": {
-      "type": "object",
-      "description": "Assets required by the format, keyed by asset_id or canonical asset_group_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema, including reference assets such as `published_post` when a product accepts already-published post references.",
-      "patternProperties": {
-        "^": {
-          "oneOf": [
-            { "$ref": "/schemas/core/assets/asset-union.json" },
-            {
-              "type": "array",
-              "items": { "$ref": "/schemas/core/assets/asset-union.json" },
-              "minItems": 1
-            }
-          ]
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/creative-assets.json",
+      "description": "Assets required by the format, keyed by asset_id or canonical asset_group_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema, including reference assets such as `published_post` when a product accepts already-published post references."
     },
     "component_assets": {
-      "type": "object",
-      "description": "Component-addressed canonical asset maps for `coordinated_placements`. Keys match coordinated component IDs. This field is preserved by creative-library sync and list readback; it MUST be absent for every other format kind.",
-      "patternProperties": {
-        "^[a-z][a-z0-9_]*$": { "$ref": "/schemas/core/creative-assets.json" }
-      },
-      "additionalProperties": false
+      "$ref": "/schemas/core/component-assets.json",
+      "description": "Component-addressed canonical asset maps for `coordinated_placements`. Keys match coordinated component IDs. This field is preserved by creative-library sync and list readback; it MUST be absent for every other format kind."
     },
     "inputs": {
       "type": "array",
       "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Human-readable name for this preview variant"
-          },
-          "macros": {
-            "type": "object",
-            "description": "Macro values to apply for this preview",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "context_description": {
-            "type": "string",
-            "description": "Natural language description of the context for AI-generated content"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/preview-input.json"
       }
     },
     "tags": {

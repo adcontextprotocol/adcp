@@ -29,22 +29,8 @@
           "description": "Button label text"
         },
         "action": {
-          "type": "object",
-          "description": "Action to trigger on click",
-          "properties": {
-            "name": {
-              "type": "string",
-              "description": "Action identifier"
-            },
-            "context": {
-              "type": "object",
-              "description": "Context data to include with action",
-              "additionalProperties": {
-                "$ref": "/schemas/a2ui/bound-value.json"
-              }
-            }
-          },
-          "required": ["name"]
+          "$ref": "/schemas/a2ui/component-action.json",
+          "description": "Action to trigger on click"
         },
         "variant": {
           "type": "string",
@@ -121,18 +107,8 @@
           "description": "Badge text (e.g., 'New', 'Sale')"
         },
         "action": {
-          "type": "object",
-          "description": "Action to trigger on card click",
-          "properties": {
-            "name": { "type": "string" },
-            "context": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "/schemas/a2ui/bound-value.json"
-              }
-            }
-          },
-          "required": ["name"]
+          "$ref": "/schemas/a2ui/component-action.json",
+          "description": "Action to trigger on card click"
         },
         "children": {
           "type": "array",
@@ -171,17 +147,7 @@
           "description": "CTA button label"
         },
         "action": {
-          "type": "object",
-          "properties": {
-            "name": { "type": "string" },
-            "context": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "/schemas/a2ui/bound-value.json"
-              }
-            }
-          },
-          "required": ["name"]
+          "$ref": "/schemas/a2ui/component-action.json"
         }
       },
       "required": ["title", "price"]

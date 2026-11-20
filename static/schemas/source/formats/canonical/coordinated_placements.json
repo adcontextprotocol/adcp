@@ -57,7 +57,7 @@
           "format_kind": {
             "type": "string"
           },
-          "params": { "type": "object" }
+          "params": { "$ref": "/schemas/core/canonical-format-params.json" }
         },
         "required": ["component_id", "placement_ref", "required"],
         "anyOf": [

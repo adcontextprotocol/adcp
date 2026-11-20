@@ -2344,6 +2344,10 @@
           "$ref": "/schemas/core/account-setup.json",
           "description": "Next steps a human must complete before an account can activate."
         },
+        "authority-free-product-format-declaration": {
+          "$ref": "/schemas/core/authority-free-product-format-declaration.json",
+          "description": "A product format declaration that carries no seller execution authority: `tracker_execution_contract` and `tracker_execution_contract_digest` are not allowed."
+        },
         "brand-claim-parent": {
           "$ref": "/schemas/core/brand-claim-parent.json",
           "description": "A brand claim that a domain belongs to a parent organization, with the parent domain, the claimant's statement, and the time the claim was observed."
@@ -2488,9 +2492,21 @@
           "$ref": "/schemas/core/buyer-agent-ref.json",
           "description": "A reference to a buyer agent by its agent URL."
         },
+        "canonical-format-params": {
+          "$ref": "/schemas/core/canonical-format-params.json",
+          "description": "Parameters for a canonical format selector. They validate against the schema that `format_kind` selects."
+        },
+        "canonical-format-slot": {
+          "$ref": "/schemas/core/canonical-format-slot.json",
+          "description": "One asset slot in a canonical format: its asset group and asset type, whether it is required, item counts, and size, character, pixel-ratio, and logo constraints."
+        },
         "closed-money": {
           "$ref": "/schemas/core/closed-money.json",
           "description": "A monetary amount and its currency."
+        },
+        "component-assets": {
+          "$ref": "/schemas/core/component-assets.json",
+          "description": "Creative asset maps for coordinated placements, keyed by coordinated component ID."
         },
         "contact": {
           "$ref": "/schemas/core/contact.json",
@@ -2499,6 +2515,18 @@
         "country-subdivision-value-set": {
           "$ref": "/schemas/core/country-subdivision-value-set.json",
           "description": "A non-empty set of ISO 3166-2 country subdivision codes."
+        },
+        "creative-agent-entry": {
+          "$ref": "/schemas/core/creative-agent-entry.json",
+          "description": "A creative agent: its URL, name, and capabilities."
+        },
+        "creative-multiplicity": {
+          "$ref": "/schemas/core/creative-multiplicity.json",
+          "description": "Creative fan-out limits: whether catalog fan-out, signal fan-out, and variants are supported, their ceilings, and the variant dimensions and selection strategies."
+        },
+        "creative-preview": {
+          "$ref": "/schemas/core/creative-preview.json",
+          "description": "Preview content for a creative: one or more previews, an optional interactive URL, and an expiry time."
         },
         "data-subject-contestation": {
           "$ref": "/schemas/core/data-subject-contestation.json",
@@ -2511,6 +2539,10 @@
         "data-subject-rights-routing": {
           "$ref": "/schemas/core/data-subject-rights-routing.json",
           "description": "Where data subjects send rights requests: the upstream source domain, contact channels, response time commitment, and CCPA opt-out URL. It is a contact reference, not a machine-callable API."
+        },
+        "diagnostic-value-labels": {
+          "$ref": "/schemas/core/diagnostic-value-labels.json",
+          "description": "Human-readable diagnostic labels keyed by values present in the value list; extra keys are a conformance error. Labels are non-authoritative and must not be used to resolve or apply targeting."
         },
         "distribution-identifier": {
           "$ref": "/schemas/core/distribution-identifier.json",
@@ -2544,6 +2576,18 @@
           "$ref": "/schemas/core/font-file.json",
           "description": "A downloadable font file with its weight or variable weight range and its style."
         },
+        "format-card": {
+          "$ref": "/schemas/core/format-card.json",
+          "description": "A visual card that displays a format in user interfaces: the format ID and the card's creative manifest."
+        },
+        "format-card-manifest": {
+          "$ref": "/schemas/core/format-card-manifest.json",
+          "description": "The creative manifest that renders a format card."
+        },
+        "format-params": {
+          "$ref": "/schemas/core/format-params.json",
+          "description": "Parameters for a canonical or custom format. They validate against the schema that the selected format defines."
+        },
         "geo-coordinates": {
           "$ref": "/schemas/core/geo-coordinates.json",
           "description": "A geographic point as latitude and longitude."
@@ -2568,6 +2612,10 @@
           "$ref": "/schemas/core/geojson-geometry.json",
           "description": "A GeoJSON geometry: a geometry type and its coordinates."
         },
+        "golden-vector-input-row": {
+          "$ref": "/schemas/core/golden-vector-input-row.json",
+          "description": "One input row in a reporting canonicalization golden vector."
+        },
         "half-open-datetime-range": {
           "$ref": "/schemas/core/half-open-datetime-range.json",
           "description": "A half-open date-time range: `start` is inclusive and `end` is exclusive."
@@ -2575,6 +2623,22 @@
         "house-summary": {
           "$ref": "/schemas/core/house-summary.json",
           "description": "The house (corporate entity) a brand belongs to."
+        },
+        "inline-creative-asset": {
+          "$ref": "/schemas/core/inline-creative-asset.json",
+          "description": "A creative asset supplied inline, without localization."
+        },
+        "locale-fallback-rule": {
+          "$ref": "/schemas/core/locale-fallback-rule.json",
+          "description": "A locale fallback rule: requests matching a language range use the given locale variant."
+        },
+        "localized-creative-assets": {
+          "$ref": "/schemas/core/localized-creative-assets.json",
+          "description": "Locale-specific creative assets keyed by creative slot ID. Each slot holds one asset or a non-empty list of assets."
+        },
+        "macro-values": {
+          "$ref": "/schemas/core/macro-values.json",
+          "description": "Raw macro values keyed by AdCP universal macro name, for example `CLICK_URL` or `CACHEBUSTER`."
         },
         "metro-area": {
           "$ref": "/schemas/core/metro-area.json",
@@ -2588,6 +2652,10 @@
           "$ref": "/schemas/core/numeric-value-range.json",
           "description": "A range of numeric values with a minimum, a maximum, and an optional unit."
         },
+        "opaque-creative-accessibility": {
+          "$ref": "/schemas/core/opaque-creative-accessibility.json",
+          "description": "Self-declared accessibility properties for this opaque creative"
+        },
         "pixel-size": {
           "$ref": "/schemas/core/pixel-size.json",
           "description": "A width and height in pixels."
@@ -2599,6 +2667,18 @@
         "postal-address": {
           "$ref": "/schemas/core/postal-address.json",
           "description": "A postal address: street, city, region, postal code, and country."
+        },
+        "preview-embedding-metadata": {
+          "$ref": "/schemas/core/preview-embedding-metadata.json",
+          "description": "Security and embedding metadata for showing a preview in an iframe: sandbox, HTTPS, fullscreen, and content security policy."
+        },
+        "preview-input": {
+          "$ref": "/schemas/core/preview-input.json",
+          "description": "A named set of inputs for rendering a preview: macro values and an optional context description."
+        },
+        "preview-variant": {
+          "$ref": "/schemas/core/preview-variant.json",
+          "description": "One preview of a creative: a preview ID, one or more renders, and the input that produced them."
         },
         "radius": {
           "$ref": "/schemas/core/radius.json",

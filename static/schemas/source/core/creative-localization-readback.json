@@ -42,17 +42,7 @@
       "type": "array",
       "description": "Exact buyer-declared language-family substitutions preserved from sync. For each requested preference, rules are checked from the most specific progressively truncated range to the least specific only after strict Lookup finds no equal available tag for that preference.",
       "items": {
-        "type": "object",
-        "properties": {
-          "language_range": {
-            "$ref": "/schemas/core/locale-tag.json"
-          },
-          "locale_variant_id": {
-            "$ref": "/schemas/core/creative-locale-variant-id.json"
-          }
-        },
-        "required": ["language_range", "locale_variant_id"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/locale-fallback-rule.json"
       },
       "minItems": 1,
       "maxItems": 50,
@@ -152,22 +142,8 @@
   "additionalProperties": true,
   "definitions": {
     "resolvedAssets": {
-      "type": "object",
-      "description": "Complete resolved assets for this locale, keyed by creative slot.",
-      "minProperties": 1,
-      "patternProperties": {
-        "^[a-z0-9_]+$": {
-          "anyOf": [
-            { "$ref": "/schemas/core/localized-creative-asset.json" },
-            {
-              "type": "array",
-              "items": { "$ref": "/schemas/core/localized-creative-asset.json" },
-              "minItems": 1
-            }
-          ]
-        }
-      },
-      "additionalProperties": false
+      "$ref": "/schemas/core/localized-creative-assets.json",
+      "description": "Complete resolved assets for this locale, keyed by creative slot."
     }
   }
 }
