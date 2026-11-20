@@ -29,6 +29,7 @@ import { resetReportingSubscriptionProbe } from '../subscription-probe.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { listAccountsTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
+import { creativeProjectionAdapters } from '../task-handlers.js';
 
 export const INVENTORY_ADSERVER_TENANT_ID = 'inventory-adserver';
 export const INVENTORY_CONTENT_TENANT_ID = 'inventory-content';
@@ -76,6 +77,10 @@ export function buildInventoryTenantConfig(
   const profile = INVENTORY_TENANT_PROFILES[tenantId];
   if (!profile) throw new Error(`Unknown inventory tenant ${tenantId}`);
   const material = getTenantSigningMaterial(tenantId);
+  const platform = new InventoryPlatform(profile);
+  // Project the seed's own formats too, so canonical creatives in them
+  // (inline on create_media_buy) map to the formats this tenant serves.
+  const projection = creativeProjectionAdapters(platform.formatDeclarations());
   return {
     tenantId,
     config: {
@@ -83,8 +88,14 @@ export function buildInventoryTenantConfig(
       signingKey: material.signingKey,
       label: LABELS[tenantId] ?? tenantId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new InventoryPlatform(profile) as any,
+      platform: platform as any,
       serverOptions: {
+        legacyCreativeFormatConverter: projection.legacyFormatConverter,
+        canonicalFormatLegacyResolver: projection.canonicalFormatLegacyResolver,
+        legacyHandlers: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          mediaBuy: platform.creativeHandlers(options.storyboardCompat) as any,
+        },
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
         },

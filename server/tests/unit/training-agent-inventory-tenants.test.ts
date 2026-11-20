@@ -13,6 +13,7 @@ process.env.PUBLIC_TEST_AGENT_TOKEN = 'inventory-tenants-test-public-token';
 import { flushDirtySessions, runWithSessionContext, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { setSandboxWallClockForTesting } from '../../src/training-agent/account-sandbox.js';
 import { resetReportingSubscriptionProbe } from '../../src/training-agent/subscription-probe.js';
+import { getAgentUrl } from '../../src/training-agent/config.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Where an unpinned sandbox clock starts, so the seeds' scripted 2027
@@ -124,7 +125,8 @@ describe('inventory tenants', () => {
         packages: [{ product_id: 'sports_hero_guaranteed', pricing_option_id: 'sports_hero_guaranteed_cpm', budget: 2000, impressions: 100_000 }],
       });
       expectCanonical('create_media_buy', guaranteed);
-      expect(guaranteed.media_buy_status).toBe('pending_start');
+      // No package has a creative yet, so none can begin delivery.
+      expect(guaranteed.media_buy_status).toBe('pending_creatives');
       expect(guaranteed.packages[0].impressions).toBe(100_000);
 
       const after = await call(tenant, 'get_products', {
@@ -304,6 +306,228 @@ describe('inventory tenants', () => {
     });
   });
 
+  describe('creatives on /inventory-adserver', () => {
+    const tenant = 'inventory-adserver';
+    const CREATIVE_TOKEN = 'demo-inventory-creatives-v1';
+    // The format ids a buyer copies from this tenant's products.
+    const formatId = (id: string) => ({ agent_url: getAgentUrl(), id });
+    const banner = (id: string, format = 'display_300x250') => ({
+      creative_id: id, name: `Banner ${id}`, format_id: formatId(format),
+      assets: {
+        image: { asset_type: 'image', url: `https://cdn.inventory-buyer.example/${id}.png`, width: 300, height: 250 },
+        click_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+      },
+    });
+    let key = 0;
+    const sync = (args: Record<string, unknown>) =>
+      call(tenant, 'sync_creatives', { idempotency_key: `inventory-creatives-sync-${String(++key).padStart(6, '0')}`, account: ACCOUNT, ...args }, CREATIVE_TOKEN);
+    let mediaBuyId: string;
+    let displayPackage: string;
+
+    beforeAll(async () => {
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-creatives-buy-000001', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-04-01T00:00:00Z', end_time: '2027-05-01T00:00:00Z',
+        packages: [
+          { product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 50_000 },
+          { product_id: 'preroll_guaranteed', pricing_option_id: 'preroll_guaranteed_cpm', budget: 1000, impressions: 20_000 },
+        ],
+      }, CREATIVE_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      mediaBuyId = buy.media_buy_id;
+      displayPackage = buy.packages[0].package_id;
+    });
+
+    it('lists the creative tools and declares a creative library', async () => {
+      rpcId += 1;
+      const response = await fetch(`${baseUrl}/${tenant}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${CREATIVE_TOKEN}` },
+        body: JSON.stringify({ jsonrpc: '2.0', id: rpcId, method: 'tools/list' }),
+      });
+      const tools = ((await response.json()) as Structured).result.tools.map((tool: Structured) => tool.name);
+      expect(tools).toEqual(expect.arrayContaining(['sync_creatives', 'list_creatives', 'list_creative_formats']));
+      const capabilities = await call(tenant, 'get_adcp_capabilities', {}, CREATIVE_TOKEN);
+      expect(capabilities.creative?.has_creative_library).toBe(true);
+    });
+
+    it('lists only the formats its placements serve', async () => {
+      const formats = await call(tenant, 'list_creative_formats', {}, CREATIVE_TOKEN);
+      expectCanonical('list_creative_formats', formats);
+      expect(formats.formats.map((format: Structured) => format.format_id.id).sort())
+        .toEqual(['display_300x250', 'display_728x90', 'display_image', 'video_30s', 'video_preroll']);
+      const none = await call(tenant, 'list_creative_formats', { format_ids: [formatId('audio_spot')] }, CREATIVE_TOKEN);
+      expect(none.formats).toEqual([]);
+    });
+
+    it('syncs a creative and assigns it to a booked package', async () => {
+      const status = async () => (await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, CREATIVE_TOKEN)).media_buys[0].status;
+      expect(await status()).toBe('pending_creatives');
+      const result = await sync({
+        creatives: [banner('banner_a')],
+        assignment_operations: [{ operation: 'assign', creative_id: 'banner_a', package_id: displayPackage, weight: 60 }],
+      });
+      expectCanonical('sync_creatives', result);
+      expect(result.creatives).toEqual([expect.objectContaining({ creative_id: 'banner_a', action: 'created', status: 'approved', assigned_to: [displayPackage] })]);
+
+      const listed = await call(tenant, 'list_creatives', { account: ACCOUNT }, CREATIVE_TOKEN);
+      expectCanonical('list_creatives', listed);
+      expect(listed.creatives[0].assignments).toEqual({
+        assignment_count: 1,
+        assigned_packages: [expect.objectContaining({ package_id: displayPackage, media_buy_id: mediaBuyId, approval_status: 'approved' })],
+      });
+      const buys = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, CREATIVE_TOKEN);
+      expectCanonical('get_media_buys', buys);
+      expect(buys.media_buys[0].packages[0].creative_approvals).toEqual([{ creative_id: 'banner_a', approval_status: 'approved' }]);
+      expect(buys.media_buys[0].packages[1].creative_approvals).toBeUndefined();
+      // One package can now begin delivery, so the buy waits only on its start.
+      expect(await status()).toBe('pending_start');
+
+      const again = await sync({ creatives: [banner('banner_a')] });
+      expect(again.creatives[0].action).toBe('unchanged');
+    });
+
+    it('applies assignment operations all or nothing, and checks the package serves the format', async () => {
+      const rejected = await sync({
+        creatives: [banner('banner_b')],
+        assignment_operations: [
+          { operation: 'assign', creative_id: 'banner_b', package_id: displayPackage },
+          { operation: 'assign', creative_id: 'banner_b', package_id: 'pkg_missing' },
+        ],
+      });
+      expect(rejected.errors[0]).toMatchObject({ code: 'PACKAGE_NOT_FOUND', field: 'assignment_operations[1]' });
+      const listed = await call(tenant, 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['banner_b'] } }, CREATIVE_TOKEN);
+      expect(listed.creatives).toEqual([]);
+
+      const video = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, CREATIVE_TOKEN);
+      const prerollPackage = video.media_buys[0].packages[1].package_id;
+      const mismatch = await sync({ assignment_operations: [{ operation: 'assign', creative_id: 'banner_a', package_id: prerollPackage }] });
+      expect(mismatch.errors[0]).toMatchObject({ code: 'FORMAT_NOT_SUPPORTED' });
+
+      const merge = await sync({ assignment_operations: [{ operation: 'merge', creative_id: 'banner_a', package_id: displayPackage, merged_creative_id: 'x' }] });
+      expect(merge.errors[0].code).toBe('UNSUPPORTED_FEATURE');
+    });
+
+    it('replaces and unassigns, reports deprecated assignment errors per package, and honors dry_run', async () => {
+      await sync({ creatives: [banner('banner_c', 'display_728x90')] });
+      const replaced = await sync({
+        assignment_operations: [{ operation: 'replace', creative_id: 'banner_c', replaces_creative_id: 'banner_a', package_id: displayPackage }],
+      });
+      expectCanonical('sync_creatives', replaced);
+      const rows = Object.fromEntries(replaced.creatives.map((row: Structured) => [row.creative_id, row]));
+      expect(rows.banner_c.assigned_to).toEqual([displayPackage]);
+      expect(rows.banner_a.assigned_to).toEqual([]);
+
+      const legacy = await sync({ assignments: [{ creative_id: 'banner_a', package_id: 'pkg_missing' }] });
+      expectCanonical('sync_creatives', legacy);
+      expect(legacy.creatives[0].assignment_errors).toEqual({ pkg_missing: 'Unknown package pkg_missing' });
+
+      const dry = await sync({ dry_run: true, assignment_operations: [{ operation: 'unassign', creative_id: 'banner_c', package_id: displayPackage }] });
+      expect(dry.dry_run).toBe(true);
+      expect(dry.creatives[0].assigned_to).toEqual([]);
+      const still = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, CREATIVE_TOKEN);
+      expect(still.media_buys[0].packages[0].creative_approvals).toEqual([{ creative_id: 'banner_c', approval_status: 'approved' }]);
+    });
+
+    it('resolves canonical image creatives by format_kind and params alone, without a format_id', async () => {
+      const canonical = (id: string, width: number, height: number, params?: Record<string, unknown>) => ({
+        creative_id: id, name: `Canonical ${id}`, format_kind: 'image', ...(params && { params }),
+        assets: {
+          image: { asset_type: 'image', url: `https://cdn.inventory-buyer.example/${id}.png`, width, height },
+          click_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+        },
+      });
+      const leaderboard = await sync({
+        creatives: [canonical('leaderboard', 728, 90, { width: 728, height: 90 })],
+        assignment_operations: [{ operation: 'assign', creative_id: 'leaderboard', package_id: displayPackage }],
+      });
+      expectCanonical('sync_creatives', leaderboard);
+      expect(leaderboard.creatives[0]).toMatchObject({ creative_id: 'leaderboard', action: 'created', assigned_to: [displayPackage] });
+      // Without params, the image asset's size picks the format.
+      const rectangle = await sync({ creatives: [canonical('rectangle', 300, 250)] });
+      expect(rectangle.creatives[0].action).toBe('created');
+      const listed = await call(tenant, 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['leaderboard', 'rectangle'] } }, CREATIVE_TOKEN);
+      expect(Object.fromEntries(listed.creatives.map((creative: Structured) => [creative.creative_id, creative.format_id.id])))
+        .toEqual({ leaderboard: 'display_728x90', rectangle: 'display_300x250' });
+
+      // Still ambiguous: refused, naming the candidates.
+      const ambiguous = await sync({ creatives: [canonical('unsized', 300, 250, {})] });
+      expect(ambiguous.errors[0].code).toBe('INVALID_REQUEST');
+      expect(ambiguous.errors[0].message).toContain('display_728x90');
+      expect(ambiguous.errors[0].message).toContain('display_300x250');
+      // The takeover image is unsized, so it takes a size no sized format has.
+      const skyscraper = await sync({ creatives: [canonical('skyscraper', 160, 600, { width: 160, height: 600 })] });
+      expect(skyscraper.creatives[0].action).toBe('created');
+      const onRos = await sync({ assignment_operations: [{ operation: 'assign', creative_id: 'skyscraper', package_id: displayPackage }] });
+      expect(onRos.errors[0].code).toBe('FORMAT_NOT_SUPPORTED');
+      const unserved = await sync({ creatives: [{ ...canonical('html_ad', 300, 250), format_kind: 'html' }] });
+      expect(unserved.errors[0].code).toBe('FORMAT_NOT_SUPPORTED');
+
+      // Inline on create_media_buy, the same params pick the 728x90 of a ROS
+      // display product that also serves 300x250.
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-creatives-canonical-01', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-04-01T00:00:00Z', end_time: '2027-05-01T00:00:00Z',
+        packages: [{
+          product_id: 'ros_display_auction', pricing_option_id: 'ros_display_auction_cpm', budget: 500, bid_price: 3,
+          creatives: [canonical('inline_leaderboard', 728, 90, { width: 728, height: 90 })],
+        }],
+      }, CREATIVE_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      const inline = await call(tenant, 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['inline_leaderboard'] } }, CREATIVE_TOKEN);
+      expect(inline.creatives[0].format_id.id).toBe('display_728x90');
+    });
+
+    it('validates leniently on request and rejects formats the seller does not serve', async () => {
+      const strict = await sync({ creatives: [banner('banner_d'), banner('podcast_ad', 'audio_spot')] });
+      expect(strict.errors[0]).toMatchObject({ code: 'FORMAT_NOT_SUPPORTED', field: 'creatives[1].format_id' });
+      const lenient = await sync({ validation_mode: 'lenient', creatives: [banner('banner_d'), banner('podcast_ad', 'audio_spot')] });
+      expectCanonical('sync_creatives', lenient);
+      expect(lenient.creatives.map((row: Structured) => [row.creative_id, row.action])).toEqual([['banner_d', 'created'], ['podcast_ad', 'failed']]);
+
+      // delete_missing keeps a resent creative that fails lenient validation.
+      await sync({ creatives: [banner('banner_keep')] });
+      const resent = await sync({
+        validation_mode: 'lenient', delete_missing: true, dry_run: true,
+        creatives: [banner('banner_d'), { ...banner('banner_keep'), format_id: formatId('audio_spot') }],
+      });
+      const actions = Object.fromEntries(resent.creatives.map((row: Structured) => [row.creative_id, row.action]));
+      expect(actions.banner_keep).toBe('failed');
+      expect(actions.banner_a).toBe('deleted');
+    });
+
+    it('takes inline creatives and replacement assignments on create_media_buy and update_media_buy', async () => {
+      const created = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-creatives-inline-0001', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-04-01T00:00:00Z', end_time: '2027-05-01T00:00:00Z',
+        packages: [{
+          product_id: 'ros_display_auction', pricing_option_id: 'ros_display_auction_cpm', budget: 500, bid_price: 3,
+          creatives: [banner('banner_inline')],
+          creative_assignments: [{ creative_id: 'banner_d', weight: 40 }],
+        }],
+      }, CREATIVE_TOKEN);
+      expectCanonical('create_media_buy', created);
+      const packageId = created.packages[0].package_id;
+      const read = async () => (await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [created.media_buy_id] }, CREATIVE_TOKEN))
+        .media_buys[0].packages[0].creative_approvals.map((approval: Structured) => approval.creative_id);
+      expect(await read()).toEqual(['banner_inline', 'banner_d']);
+
+      const updated = await call(tenant, 'update_media_buy', {
+        idempotency_key: 'inventory-creatives-update-0001', account: ACCOUNT, media_buy_id: created.media_buy_id,
+        packages: [{ package_id: packageId, creative_assignments: [{ creative_id: 'banner_c' }] }],
+      }, CREATIVE_TOKEN);
+      expectCanonical('update_media_buy', updated);
+      expect(await read()).toEqual(['banner_c']);
+
+      const wrongFormat = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-creatives-inline-0002', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-04-01T00:00:00Z', end_time: '2027-05-01T00:00:00Z',
+        packages: [{ product_id: 'preroll_auction', pricing_option_id: 'preroll_auction_cpm', budget: 500, bid_price: 8, creatives: [banner('banner_on_video')] }],
+      }, CREATIVE_TOKEN);
+      expect(JSON.stringify(wrongFormat)).toContain('FORMAT_NOT_SUPPORTED');
+    });
+  });
+
   describe('/inventory-content', () => {
     const tenant = 'inventory-content';
     const CONTENT_TOKEN = 'demo-inventory-content-v1';
@@ -373,6 +597,20 @@ describe('inventory tenants', () => {
       expect(reset.success, JSON.stringify(reset).slice(0, 500)).toBe(true);
       expect((await call('inventory-adserver', 'get_media_buys', { account: ACCOUNT }, CONTENT_TOKEN)).media_buys).toHaveLength(0);
       expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CONTENT_TOKEN)).media_buys).toHaveLength(0);
+    });
+
+    it('takes a sponsorship creative inline on create_media_buy, in the format the product serves', async () => {
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-content-inline-crv01', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-02-01T00:00:00Z', end_time: '2027-03-01T00:00:00Z',
+        packages: [{
+          product_id: 'weekly_dispatch_sponsor', pricing_option_id: 'weekly_dispatch_sponsor_cpm', budget: 3000,
+          creatives: [{ creative_id: 'dispatch_read', name: 'Dispatch sponsor read', format_id: { agent_url: getAgentUrl(), id: 'email_sponsored' }, assets: { headline: { asset_type: 'text', content: 'Brought to you by an example brand' } } }],
+        }],
+      }, CONTENT_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      const listed = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [buy.media_buy_id] }, CONTENT_TOKEN);
+      expect(listed.media_buys[0].packages[0].creative_approvals).toEqual([{ creative_id: 'dispatch_read', approval_status: 'approved' }]);
     });
 
     it('reports a postponed installment at its new date', async () => {
