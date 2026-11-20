@@ -1,0 +1,6 @@
+{
+  "why": "Above 2^53 Ajv reads 9007199254740995 as 9007199254740996, so exclusiveMaximum 9007199254740996 is not maximum 9007199254740995: Ajv accepts 9007199254740996 only under the maximum.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "maximum"
+}

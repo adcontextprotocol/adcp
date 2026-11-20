@@ -142,6 +142,14 @@ valid payloads the same, and each has a fixture under `test/fixtures/`:
   `required` as sorted sets. A one-value `enum` equals `const`.
 - Treats `required: []`, `minLength: 0`, `minItems: 0`, `minProperties: 0`,
   and `uniqueItems: false` as absent.
+- With `type: integer`, reads `exclusiveMinimum: n` as `minimum: ⌊n⌋ + 1`
+  and `exclusiveMaximum: n` as `maximum: ⌈n⌉ − 1`. Ajv compares numbers as
+  doubles, so the rule fires only when n and the result are safe integers
+  (|x| ≤ 2^53 − 1).
+- Keeps only the tighter of `maximum` and `exclusiveMaximum`, and of
+  `minimum` and `exclusiveMinimum`, when a schema object has both.
+- Treats `not: {not: X}` as X, also when either `not` operand is reached
+  through a `$ref`.
 - Drops `type` next to `const` or `enum` when every allowed value has one of
   the listed types.
 - Treats `additionalProperties`, `additionalItems`, `items`, `propertyNames`,

@@ -35,6 +35,12 @@
  *     `then`, `else` equal absence when their subschema is `true`;
  *   - `then`/`else` without `if` and `if` without `then`/`else` are dropped
  *     (Ajv ignores them);
+ *   - with `type: integer`, `exclusiveMinimum: n` is `minimum: floor(n) + 1`
+ *     and `exclusiveMaximum: n` is `maximum: ceil(n) - 1`, when both numbers
+ *     are safe integers (Ajv compares numbers as doubles);
+ *   - of `maximum` and `exclusiveMaximum` only the tighter one is kept, and
+ *     the same for `minimum` and `exclusiveMinimum`;
+ *   - `not: {not: X}` is X, also through `$ref`;
  *   - an object with no remaining keywords is `true`.
  */
 
@@ -231,6 +237,7 @@ class Graph {
       if (node.kind === 'conj') node.members = node.members.map(m => ({ n: refN(m), via: m.via }));
       if (node.kind === 'plain') forEachKid(node, (ref) => { ref.n = refN(ref); delete ref.loc; });
     }
+    this._doubleNegation();
     // 2. Flatten conjunctions (detects conjunction cycles).
     const flat = new Map();
     const expand = (id, stack) => {
@@ -267,6 +274,50 @@ class Graph {
     this._propagateTrue();
     this._propertyNamesAreStrings();
     this._propagateTrue();
+  }
+
+  /**
+   * `not: {not: X}` is X. A schema object whose only assertion is a `not`
+   * over another such object (directly or through `$ref`) becomes a
+   * one-member conjunction of X, so conjunction flattening and the rest of
+   * the canonical form see X. Runs on node ids, before flattening.
+   */
+  _doubleNegation() {
+    const peel = (ref) => {
+      let n = ref.n;
+      let via = ref.via || '';
+      for (let i = 0; i < 1000; i++) {
+        const x = this.nodes[n];
+        if (x.kind === 'conj' && x.members.length === 1 && !hasInfo(x)) {
+          via += x.members[0].via;
+          n = x.members[0].n;
+        } else if (x.kind === 'alias') {
+          via += x.target.via;
+          n = x.target.n;
+        } else break;
+      }
+      return { n, via };
+    };
+    const onlyNot = (x) => x.kind === 'plain' && !Object.keys(x.kw).length && Object.keys(x.kids).length === 1 && x.kids.not !== undefined;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const node of this.nodes) {
+        if (!onlyNot(node)) continue;
+        const inner = peel(node.kids.not);
+        const m = this.nodes[inner.n];
+        if (m === node || !onlyNot(m) || Object.keys(m.info).length) continue;
+        const target = { n: m.kids.not.n, via: `/not${inner.via}/not${m.kids.not.via || ''}` };
+        if (peel(target).n === node.id) continue; // `not: {not: <itself>}`
+        const info = node.info;
+        delete node.kw;
+        delete node.ckw;
+        delete node.kids;
+        delete node.info;
+        Object.assign(node, { kind: 'conj', members: [target], info });
+        changed = true;
+      }
+    }
   }
 
   /**
@@ -795,12 +846,50 @@ function splitByType(kw, kids) {
     const bkids = {};
     for (const k of Object.keys(kw)) if (typed(k) && applies(k, [t])) bkw[k] = kw[k];
     for (const k of Object.keys(kids)) if (typed(k) && applies(k, [t])) bkids[k] = kids[k];
+    normalizeBounds(bkw);
     return { kw: bkw, kids: bkids };
   });
   delete kw.type;
   for (const k of Object.keys(kw)) if (typed(k)) delete kw[k];
   for (const k of Object.keys(kids)) if (typed(k)) delete kids[k];
   return { branches };
+}
+
+/**
+ * Numeric bounds in one schema object. Ajv compares numbers as doubles, and
+ * comparison is exact, so these rewrites hold for every double:
+ *   - with `type: integer` (and no other type), `exclusiveMinimum: n` is
+ *     `minimum: floor(n) + 1` and `exclusiveMaximum: n` is
+ *     `maximum: ceil(n) - 1`: an integer above n is at least floor(n) + 1.
+ *     Only when n and the result are safe integers, so the result is the
+ *     double that the source would write;
+ *   - with both `maximum` and `exclusiveMaximum`, only the tighter one
+ *     counts (exclusiveMaximum when it is at most maximum), and the same for
+ *     `minimum` and `exclusiveMinimum`.
+ */
+function normalizeBounds(kw) {
+  const num = (v) => typeof v === 'number' && Number.isFinite(v);
+  const safe = (v) => Math.abs(v) <= Number.MAX_SAFE_INTEGER;
+  if (Array.isArray(kw.type) && kw.type.length === 1 && kw.type[0] === 'integer') {
+    if (num(kw.exclusiveMinimum) && (kw.minimum === undefined || num(kw.minimum)) && safe(kw.exclusiveMinimum) && Number.isSafeInteger(Math.floor(kw.exclusiveMinimum) + 1)) {
+      const m = Math.floor(kw.exclusiveMinimum) + 1;
+      kw.minimum = kw.minimum === undefined ? m : Math.max(kw.minimum, m);
+      delete kw.exclusiveMinimum;
+    }
+    if (num(kw.exclusiveMaximum) && (kw.maximum === undefined || num(kw.maximum)) && safe(kw.exclusiveMaximum) && Number.isSafeInteger(Math.ceil(kw.exclusiveMaximum) - 1)) {
+      const m = Math.ceil(kw.exclusiveMaximum) - 1;
+      kw.maximum = kw.maximum === undefined ? m : Math.min(kw.maximum, m);
+      delete kw.exclusiveMaximum;
+    }
+  }
+  if (num(kw.maximum) && num(kw.exclusiveMaximum)) {
+    if (kw.exclusiveMaximum <= kw.maximum) delete kw.maximum;
+    else delete kw.exclusiveMaximum;
+  }
+  if (num(kw.minimum) && num(kw.exclusiveMinimum)) {
+    if (kw.exclusiveMinimum >= kw.minimum) delete kw.minimum;
+    else delete kw.exclusiveMinimum;
+  }
 }
 
 const UPPER = new Set(['maxLength', 'maxItems', 'maxProperties', 'maximum', 'exclusiveMaximum']);
@@ -850,6 +939,7 @@ function normalizeValues(kw) {
   }
   for (const k of ['minLength', 'minItems', 'minProperties']) if (kw[k] === 0) delete kw[k];
   if (kw.uniqueItems === false) delete kw.uniqueItems;
+  normalizeBounds(kw);
   // Not next to Ajv's `nullable`, which reads `type`.
   if (Array.isArray(kw.type) && kw.type.every(t => TYPE_NAMES.has(t)) && kw.nullable === undefined) {
     const values = Object.prototype.hasOwnProperty.call(kw, 'const') ? [kw.const] : Array.isArray(kw.enum) ? kw.enum : null;
