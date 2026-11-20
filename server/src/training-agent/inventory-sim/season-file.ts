@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { EngineError, trafficFor, type SeasonSeed } from './engine/index.js';
 
 const channel = z.enum(['display', 'olv', 'podcast', 'newsletter', 'creator_video']);
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date');
 const installmentChannel = z.enum(['podcast', 'newsletter', 'creator_video']);
 
 const cellRates = z.strictObject({
@@ -80,7 +81,7 @@ const collection = z.strictObject({
   channel: installmentChannel,
   property_id: z.string(),
   placement_id: z.string(),
-  first_date: z.string(),
+  first_date: isoDate,
   cadence_days: z.number(),
   count: z.number(),
   expected_audience: z.number(),
@@ -92,8 +93,8 @@ const event = z.discriminatedUnion('type', [
     type: z.literal('traffic_multiplier'),
     event_id: z.string(),
     description: z.string(),
-    start_date: z.string(),
-    end_date: z.string(),
+    start_date: isoDate,
+    end_date: isoDate,
     multiplier: z.number(),
     placement_ids: z.array(z.string()).optional(),
     property_ids: z.array(z.string()).optional(),
@@ -104,7 +105,7 @@ const event = z.discriminatedUnion('type', [
     event_id: z.string(),
     description: z.string(),
     installment_id: z.string(),
-    to_date: z.string(),
+    to_date: isoDate,
   }),
   z.strictObject({
     type: z.literal('installment_cancelled'),
@@ -117,7 +118,7 @@ const event = z.discriminatedUnion('type', [
 export const seasonSeedSchema = z.strictObject({
   seed_id: z.string(),
   rng_seed: z.string(),
-  start_date: z.string(),
+  start_date: isoDate,
   days: z.number(),
   currency: z.string(),
   regions: z.array(region),
@@ -139,10 +140,11 @@ export const seasonSeedSchema = z.strictObject({
   events: z.array(event).optional(),
 });
 
-/** Compile-time check that the schema and `SeasonSeed` accept the same
- * shapes: a field added to one and not the other fails `npm run typecheck`. */
-type SchemaSeed = z.infer<typeof seasonSeedSchema>;
-const schemaMatchesType: [SchemaSeed] extends [SeasonSeed] ? ([SeasonSeed] extends [SchemaSeed] ? true : never) : never = true;
+/** Compile-time check that the schema and `SeasonSeed` are the same type,
+ * optional fields included: a field added to one and not the other fails
+ * `npm run typecheck`. */
+type Equals<A, B> = (<X>() => X extends A ? 1 : 2) extends (<X>() => X extends B ? 1 : 2) ? true : false;
+const schemaMatchesType: Equals<z.infer<typeof seasonSeedSchema>, SeasonSeed> = true;
 void schemaMatchesType;
 
 function invalid(source: string, lines: string[]): never {
