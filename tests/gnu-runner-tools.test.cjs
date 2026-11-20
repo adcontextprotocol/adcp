@@ -15,6 +15,9 @@ const implementations = (name) => [
 ];
 const run = (command, args) =>
   spawnSync(command, args, { encoding: "utf8", timeout: 20000 });
+// The status a shell reports: the exit code, or 128 plus the signal number.
+const shellStatus = ({ status, signal }) =>
+  status ?? 128 + os.constants.signals[signal];
 const node = (code) => [process.execPath, "-e", code];
 
 for (const [label, timeout] of implementations("timeout")) {
@@ -32,10 +35,12 @@ for (const [label, timeout] of implementations("timeout")) {
   });
 
   test(`${label} timeout --kill-after sends SIGKILL to a command that ignores SIGTERM`, () => {
-    const ignoreTerm = ["sh", "-c", "trap '' TERM; sleep 30"];
+    // exec leaves no child of sh to outlive the KILL and hold stdout open.
+    const ignoreTerm = ["sh", "-c", "trap '' TERM; exec sleep 30"];
+    const started = Date.now();
     const result = run(timeout, ["--kill-after=0.3s", "1s", ...ignoreTerm]);
-    assert.equal(result.status, null);
-    assert.equal(result.signal, "SIGKILL");
+    assert.equal(shellStatus(result), 137);
+    assert.ok(Date.now() - started < 5000);
   });
 
   test(`${label} timeout exits 127 when the command is missing`, () => {

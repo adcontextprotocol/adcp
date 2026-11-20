@@ -52,12 +52,7 @@ const timer =
     timedOut = true;
     signal("SIGTERM");
     signal("SIGCONT");
-    if (killAfter > 0)
-      killTimer = setTimeout(() => {
-        // GNU signals its own process group, so timeout dies by SIGKILL too.
-        signal("SIGKILL");
-        process.kill(process.pid, "SIGKILL");
-      }, killAfter);
+    if (killAfter > 0) killTimer = setTimeout(() => signal("SIGKILL"), killAfter);
   }, limit);
 
 for (const name of ["SIGTERM", "SIGINT", "SIGHUP"])
@@ -71,7 +66,10 @@ child.on("error", (error) => {
 child.on("exit", (code, childSignal) => {
   clearTimeout(timer);
   clearTimeout(killTimer);
-  if (timedOut) process.exit(124);
+  // A command killed after the timeout yields 137 (128+9), else 124. GNU
+  // without --foreground also kills itself, which a shell reports as 137 too;
+  // uutils, the runner's coreutils since Ubuntu 26.04, exits 137.
+  if (timedOut) process.exit(childSignal === "SIGKILL" ? 137 : 124);
   if (childSignal) {
     // GNU re-raises the signal that ended the command.
     process.removeAllListeners(childSignal);
