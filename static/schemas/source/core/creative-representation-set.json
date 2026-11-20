@@ -42,7 +42,8 @@
       "minItems": 1,
       "items": { "$ref": "/schemas/core/creative-representation.json" },
       "x-adcp-validation": {
-        "unique_item_properties": ["representation_id"]
+        "unique_item_properties": ["representation_id"],
+        "unique_items": [{ "key": ["representation_id"] }]
       },
       "description": "Complete ordered set of equivalent representations. `representation_id` values MUST be unique within this array. Unsupported entries remain byte-for-byte unchanged; neither filtering nor selection changes this revision's canonical content."
     },

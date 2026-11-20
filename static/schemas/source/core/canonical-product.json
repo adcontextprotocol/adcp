@@ -54,6 +54,7 @@
       "maxItems": 500,
       "x-adcp-validation": {
         "unique_by": ["collection_ref", "installment_id"],
+        "unique_items": [{ "key": ["collection_ref", "installment_id"] }],
         "verifier_constraints": {
           "installment_collection_scope": "every_top_level_installment_collection_ref_is_named_by_product_collections",
           "scope": "top_level_only"

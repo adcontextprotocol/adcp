@@ -15,7 +15,8 @@
       "type": "array",
       "minItems": 1,
       "x-adcp-validation": {
-        "unique_item_properties": ["representation_id"]
+        "unique_item_properties": ["representation_id"],
+        "unique_items": [{ "key": ["representation_id"] }]
       },
       "items": {
         "$ref": "/schemas/core/representation-rejection.json"

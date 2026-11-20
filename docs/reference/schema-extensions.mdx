@@ -59,7 +59,15 @@ The keyword is most useful for fields whose description currently carries a "MUS
 | `subset_of` | string (dotted path) | Item-level subset constraint: every value in this field's array MUST also appear in the named array. Example: `request_signing.required_for` carries `subset_of: "request_signing.supported_for"` — an operation can't be required without being supported. |
 | `verifier_constraints` | object | Free-form key-value map of verifier-side rules that don't fit the structured sub-keys above. Keys are normative (e.g., `agent_url_match: "canonical"`); the storyboard runner enforces these against test vectors. Prefer the structured sub-keys (`required_when`, `forbidden_when`, `disjoint_with`, `subset_of`) when they fit; reach for `verifier_constraints` only for one-off rules that don't generalize. |
 | `distinct_from` | string (dotted path) | Names another field that has a similar shape but different semantics, to defuse name confusion (e.g., `identity.brand_json_url` distinct from `sponsored_intelligence.brand_url`). Verifiers MUST NOT substitute one for the other. |
+| `unique_items` | array of `{ "arrays"?, "key", "description"? }` | Uniqueness by item properties, which JSON Schema's `uniqueItems` (whole-item equality) can't express. In each rule, no two items share the values of every property in `key`. `arrays` lists dotted paths from the annotated schema to the arrays the rule covers; when it's omitted, the annotated schema is the array. With more than one path, the rule holds across all of them together. Example: `"unique_items": [{ "key": ["agent_url", "list_id"] }]` on an array of collection list references. |
 | `spec` | string (relative path with anchor) | Pointer to the normative section in the docs that defines the field's full semantics. Always required when other sub-keys are present. |
+| `description` | string | Prose that explains the rules beside it. It states no rule of its own. |
+
+A key that isn't in this table is an extension term, written `{domain}:{key}`: `domain` is a domain name with at least two labels that the term's definer controls, and `key` is lower_snake_case, for example `example.com:max_per_buyer`. The definer says what the term means. A one-off AdCP rule goes in `verifier_constraints`; a rule that generalizes becomes a new row in this table.
+
+`unique_by`, `unique_item_properties` and `unique_across` are earlier spellings of `unique_items`. Each schema that uses one of them also carries the same rule as `unique_items`, and new schemas use `unique_items` only.
+
+`scripts/x-adcp-validation.schema.json` states this vocabulary as a meta-schema, and `scripts/lint-x-adcp-validation.cjs` checks every `x-adcp-validation` annotation against it. Keys that predate the vocabulary are recorded in the lint's baseline; a new key outside it fails the build.
 
 ### Conformance
 

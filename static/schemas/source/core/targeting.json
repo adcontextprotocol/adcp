@@ -227,6 +227,7 @@
       "x-added-in": "3.3.0",
       "x-adcp-validation": {
         "unique_by": ["agent_url", "list_id"],
+        "unique_items": [{ "key": ["agent_url", "list_id"] }],
         "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
       },
       "description": "Experimental. Several collection_list refs: intersection. Not with collection_list. Over max_references is rejected, never truncated. On an undisclosed roster a seller MAY accept them.",
@@ -240,6 +241,7 @@
       "x-added-in": "3.3.0",
       "x-adcp-validation": {
         "unique_by": ["agent_url", "list_id"],
+        "unique_items": [{ "key": ["agent_url", "list_id"] }],
         "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
       },
       "description": "Experimental. Several collection_list_exclude refs: union. Not with collection_list_exclude. Over max_references is rejected, never truncated. On an undisclosed roster the same rule as collection_list_exclude applies.",

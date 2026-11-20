@@ -104,6 +104,10 @@
       { "path": "policy_refs", "field": "policy_id" },
       { "path": "rules", "field": "rule_id" }
     ],
+    "unique_items": [
+      { "arrays": ["policy_refs"], "key": ["policy_id"] },
+      { "arrays": ["rules"], "key": ["rule_id"] }
+    ],
     "referential_integrity": [
       "Every rules[].policy_ids value MUST identify exactly one policy_refs[] entry.",
       "Every rules[].subject_category and subject_facets value MUST resolve through the policy-category registry."

@@ -12,6 +12,7 @@
   "uniqueItems": true,
   "x-adcp-validation": {
     "unique_by": ["product_id", "installment_ref"],
+    "unique_items": [{ "key": ["product_id", "installment_ref"] }],
     "ordered_by": "jcs_bytes_of_entry",
     "verifier_constraints": {
       "duplicate_entries": "reject_at_task_level_with_invalid_request"

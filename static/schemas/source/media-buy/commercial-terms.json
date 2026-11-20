@@ -120,7 +120,8 @@
       "minItems": 1,
       "description": "Binding buyer change rights included in the commercial envelope and therefore covered by terms_digest. Entries are uniquely keyed by action. When this field is present, an omitted action is not a negotiated change right. Omission of the entire field means legacy-unspecified rights, not a prohibition.",
       "x-adcp-validation": {
-        "unique_by": "action"
+        "unique_by": "action",
+        "unique_items": [{ "key": ["action"] }]
       }
     }
   },

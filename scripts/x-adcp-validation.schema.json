@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "x-adcp-validation",
+  "description": "The vocabulary of the x-adcp-validation schema annotation, as docs/reference/schema-extensions.mdx documents it. A key is a core sub-key listed here, or an extension term {domain}:{key} on a domain its definer controls. verifier_constraints stays a free-form map for one-off rules. Validators of payloads ignore this annotation; scripts/lint-x-adcp-validation.cjs checks schema authors against it.",
+  "type": "object",
+  "required": ["spec"],
+  "properties": {
+    "spec": {
+      "description": "Pointer to the normative section in the docs, a relative path with an anchor. Required when other sub-keys are present.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "Prose that explains the rules beside it. It states no rule of its own.",
+      "type": "string"
+    },
+    "trust_root": {
+      "description": "The field is load-bearing for signature verification.",
+      "type": "boolean"
+    },
+    "required_when": { "$ref": "#/definitions/condition_group" },
+    "forbidden_when": { "$ref": "#/definitions/condition_group" },
+    "schema_required_when": {
+      "description": "When the rule promotes from storyboard-enforced to schema-required.",
+      "type": "object"
+    },
+    "disjoint_with": {
+      "oneOf": [
+        { "$ref": "#/definitions/path" },
+        { "type": "array", "items": { "$ref": "#/definitions/path" }, "minItems": 1 }
+      ]
+    },
+    "subset_of": { "$ref": "#/definitions/path" },
+    "distinct_from": { "$ref": "#/definitions/path" },
+    "verifier_constraints": {
+      "description": "Free-form map of verifier-side rules that don't fit a structured sub-key.",
+      "type": "object"
+    },
+    "unique_items": {
+      "description": "Uniqueness by item properties, which JSON Schema's uniqueItems (whole-item equality) can't express. Each rule names the arrays it applies to and the key: no two items share the values of every key property.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/unique_items_rule" }
+    }
+  },
+  "patternProperties": {
+    "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+:[a-z][a-z0-9_]*$": {
+      "description": "An extension term: {domain}:{key}, where domain is a domain name with at least two labels that the term's definer controls. The definer says what the rule means; a reader that doesn't know the term skips it."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "path": {
+      "description": "A dotted path to another field, from the annotated schema.",
+      "type": "string",
+      "minLength": 1
+    },
+    "condition_group": {
+      "description": "Exactly one of any_of (OR-joined) or all_of (AND-joined), each an array of leaf conditions.",
+      "type": "object",
+      "properties": {
+        "any_of": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/condition_leaf" } },
+        "all_of": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/condition_leaf" } }
+      },
+      "oneOf": [{ "required": ["any_of"] }, { "required": ["all_of"] }],
+      "additionalProperties": false
+    },
+    "condition_leaf": {
+      "type": "object",
+      "required": ["field"],
+      "properties": {
+        "field": { "$ref": "#/definitions/path" },
+        "non_empty": { "const": true },
+        "equals": {},
+        "any_subfield_present": { "const": true }
+      },
+      "oneOf": [{ "required": ["non_empty"] }, { "required": ["equals"] }, { "required": ["any_subfield_present"] }],
+      "additionalProperties": false
+    },
+    "unique_items_rule": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "arrays": {
+          "description": "Dotted paths from the annotated schema to the arrays the rule covers. Omitted: the annotated schema is the array. With more than one path, no two items across all of them share the key.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/path" }
+        },
+        "key": {
+          "description": "The item properties whose values, taken together, identify an item.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -98,6 +98,9 @@
   "x-adcp-validation": {
     "unique_by": [
       { "path": "facets", "field": "facet_id" }
+    ],
+    "unique_items": [
+      { "arrays": ["facets"], "key": ["facet_id"] }
     ]
   },
   "additionalProperties": true
