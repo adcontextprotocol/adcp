@@ -17,8 +17,12 @@ import { parseAllDocuments, stringify } from 'yaml';
 import { z } from 'zod';
 import { EngineError, trafficFor, type SeasonSeed } from './engine/index.js';
 
-/** True when a `YYYY-MM-DD` string names a real day (2027-02-30 does not). */
+const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True when a `YYYY-MM-DD` string names a real day (2027-02-30 does not).
+ * A string of any other shape passes, so the shape message speaks alone. */
 function isCalendarDate(date: string): boolean {
+  if (!DATE_SHAPE.test(date)) return true;
   const [year, month, day] = date.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === date;
 }
@@ -26,7 +30,7 @@ function isCalendarDate(date: string): boolean {
 const channel = z.enum(['display', 'olv', 'podcast', 'newsletter', 'creator_video']);
 const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date')
+  .regex(DATE_SHAPE, 'must be a YYYY-MM-DD date')
   .refine(isCalendarDate, 'not a calendar date');
 /** The AdCP currency code and publisher domain patterns: tenants send both
  * as they are in the season. */
@@ -92,9 +96,9 @@ const placement = z.strictObject({
   name: z.string(),
   channel,
   property_ids: z.array(z.string()),
-  formats: z.array(z.string()).min(1),
+  formats: z.array(z.string()).min(1, 'needs at least one format'),
   base_daily_impressions: z.number().optional(),
-  floor_cpm: z.number().nonnegative(),
+  floor_cpm: atLeastZero,
   rates: cellRates,
   reporting_lag_days: wholeDays(0),
 });
@@ -214,8 +218,8 @@ export interface SeasonFileOptions {
  * not know. */
 function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): string[] {
   const problems: string[] = [];
+  let unsupported = false;
   if (formats) {
-    let unsupported = false;
     seed.placements.forEach((placement, i) => {
       placement.formats.forEach((format, j) => {
         if (formats.has(format)) return;
@@ -223,7 +227,6 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
         problems.push(`placements[${i}].formats[${j}]: unsupported format ${format}`);
       });
     });
-    if (unsupported) problems.push(`supported formats: ${[...formats].sort().join(', ')}`);
   }
   const propertyIds = new Set(seed.properties.map(p => p.property_id));
   const placementIds = new Set(seed.placements.map(p => p.placement_id));
@@ -235,15 +238,17 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
     });
   };
   seed.products.forEach((product, i) => {
+    const placementsKnown = product.placement_ids.every(id => placements.has(id));
     const served = new Set(product.placement_ids.flatMap(id => placements.get(id)?.property_ids ?? []));
     product.property_ids?.forEach((id, j) => {
       const path = `products[${i}].property_ids[${j}]`;
       if (!propertyIds.has(id)) problems.push(`${path}: unknown property ${id}`);
-      else if (!served.has(id)) problems.push(`${path}: property ${id} is not on any of the product's placements`);
+      else if (placementsKnown && !served.has(id)) problems.push(`${path}: property ${id} is not on any of the product's placements`);
     });
   });
   const collections = new Map((seed.collections ?? []).map(c => [c.collection_id, c]));
   seed.products.forEach((product, i) => {
+    if (!product.placement_ids.every(id => placements.has(id))) return;
     product.collection_ids?.forEach((id, j) => {
       const collection = collections.get(id);
       if (collection && !product.placement_ids.includes(collection.placement_id)) {
@@ -257,6 +262,7 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
     check(`events[${i}].property_ids`, event.property_ids, propertyIds, 'property');
     check(`events[${i}].region_ids`, event.region_ids, regionIds, 'region');
   });
+  if (unsupported && formats) problems.push(`supported formats: ${[...formats].sort().join(', ')}`);
   return problems;
 }
 
