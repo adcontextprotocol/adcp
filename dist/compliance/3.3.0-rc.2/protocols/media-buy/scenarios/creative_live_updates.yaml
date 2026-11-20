@@ -1,0 +1,645 @@
+id: media_buy_seller/creative_live_updates
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Seller applies declared changes to a live creative under the same creative_id"
+category: media_buy_seller
+summary: "Verifies that a seller declaring creative.live_updates always accepts name changes, applies uninterrupted changes immediately, and keeps the approved prior version serving while a staged update is reviewed, promoting it on approval and keeping the prior version on rejection."
+track: creative
+requires:
+  - controller
+
+required_tools:
+  - get_adcp_capabilities
+  - sync_creatives
+  - list_creatives
+  - comply_test_controller
+
+requires_capability:
+  path: creative.live_updates
+  present: true
+
+narrative: |
+  A buyer changes a creative that is serving by syncing it again under the
+  same creative_id (docs/creative/task-reference/sync_creatives#live-creative-updates).
+  The seller's creative.live_updates declaration says which kinds of change it
+  applies in place and how the creative serves meanwhile.
+
+  The controller seeds an active media buy whose package already carries three
+  creative IDs. The buyer then syncs those creatives with an image, a
+  click-through URL, and an impression tracker, and the controller approves
+  them, so each is a live, approved creative. Each later phase changes a
+  different creative, so a phase the seller's declaration skips does not
+  disturb the others:
+
+  - a name change is always accepted (name is not a change kind);
+  - when trackers are declared uninterrupted, a tracker change serves at once;
+  - when asset_content is declared staged with on_rejection keeps_prior, an
+    image change leaves the prior image serving with a staged_update, approval
+    promotes it, a rejected second change leaves the promoted version
+    serving, and syncing the serving content withdraws a staged update.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - has_creative_library
+  examples:
+    - "Ad-server-backed sellers that edit or swap trafficked creatives without pausing the buy"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds one active media buy with a package assigned to the
+    three scenario creative IDs. The seller must accept an image creative with
+    a clickthrough url asset and a tracker_pixel url asset.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_0940b15f6c1b"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_creative_live_updat-1d654575"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  media_buys:
+    - media_buy_id: "live_updates_buy"
+      account:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_creative_live_updat-1d654575"
+        sandbox: true
+      status: "active"
+      currency: "USD"
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T00:00:00Z"
+      packages:
+        - package_id: "live_updates_package"
+          product_id: "live_updates_product"
+          pricing_option_id: "live_updates_pricing"
+          budget: 1000
+          creative_assignments:
+            - "live_meta_banner"
+            - "live_tracker_banner"
+            - "live_staged_banner"
+
+phases:
+  - id: discover
+    title: "Discover the live update declaration"
+    steps:
+      - id: get_live_update_capability
+        title: "Read creative.live_updates"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "creative_live_updates--capability"
+        expected: |
+          Return creative.live_updates with an in_place list, backed by a
+          creative library, and list creative.live_updates in
+          experimental_features.
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_present
+            path: "creative.live_updates.in_place"
+            description: "The seller declares which changes it applies in place"
+          - check: field_value
+            path: "creative.has_creative_library"
+            value: true
+            description: "creative.live_updates requires has_creative_library: true"
+          - check: field_contains
+            path: "experimental_features[*]"
+            value: "creative.live_updates"
+            description: "An experimental surface MUST be listed in experimental_features"
+
+  - id: make_creatives_live
+    title: "Sync and approve the three assigned creatives"
+    steps:
+      - id: sync_live_creatives
+        title: "Sync the creatives the seeded package carries"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: &live_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_live_updat-1d654575"
+            sandbox: true
+          creatives:
+            - creative_id: "live_meta_banner"
+              name: "Live metadata banner"
+              format_kind: "image"
+              assets: &meta_assets
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-meta-v1.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/live"
+                impression_tracker:
+                  asset_type: "url"
+                  url_type: "tracker_pixel"
+                  url: "https://measure.pinnacle-agency.example/live/i1"
+            - creative_id: "live_tracker_banner"
+              name: "Live tracker banner"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-tracker-v1.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/live"
+                impression_tracker:
+                  asset_type: "url"
+                  url_type: "tracker_pixel"
+                  url: "https://measure.pinnacle-agency.example/live/i1"
+            - creative_id: "live_staged_banner"
+              name: "Live staged banner"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-staged-v1.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/live"
+                impression_tracker:
+                  asset_type: "url"
+                  url_type: "tracker_pixel"
+                  url: "https://measure.pinnacle-agency.example/live/i1"
+          idempotency_key: "$generate:uuid_v4#creative_live_updates_initial_sync"
+          context:
+            correlation_id: "creative_live_updates--initial_sync"
+        expected: |
+          Accept all three creatives. They become live because the seeded
+          active package already carries their IDs.
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_absent
+            path: "creatives[0].errors"
+            description: "The metadata creative is accepted"
+          - check: field_absent
+            path: "creatives[1].errors"
+            description: "The tracker creative is accepted"
+          - check: field_absent
+            path: "creatives[2].errors"
+            description: "The staged creative is accepted"
+
+      - id: approve_meta_banner
+        title: "Approve the metadata creative"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account: *live_account
+          scenario: "force_creative_status"
+          params: { creative_id: "live_meta_banner", status: "approved" }
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "The controller approves the creative (or it already is)"
+
+      - id: approve_tracker_banner
+        title: "Approve the tracker creative"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account: *live_account
+          scenario: "force_creative_status"
+          params: { creative_id: "live_tracker_banner", status: "approved" }
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "The controller approves the creative (or it already is)"
+
+      - id: approve_staged_banner
+        title: "Approve the staged creative"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account: *live_account
+          scenario: "force_creative_status"
+          params: { creative_id: "live_staged_banner", status: "approved" }
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "The controller approves the creative (or it already is)"
+
+  - id: name_change
+    title: "A name change is always accepted"
+    steps:
+      - id: rename_live_creative
+        title: "Rename a live creative without changing content"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#live-creative-updates"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *live_account
+          creatives:
+            - creative_id: "live_meta_banner"
+              name: "Live metadata banner (renamed)"
+              format_kind: "image"
+              assets: *meta_assets
+          idempotency_key: "$generate:uuid_v4#creative_live_updates_rename"
+          context:
+            correlation_id: "creative_live_updates--rename"
+        expected: |
+          Accept the rename in place; name is not a change kind.
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].action"
+            allowed_values: ["updated", "unchanged"]
+            description: "A declaring seller MUST always accept name changes on a live creative"
+          - check: field_absent
+            path: "creatives[0].errors"
+            description: "The rename is not refused"
+          - check: field_absent
+            path: "creatives[0].staged_update"
+            description: "A name change is not staged"
+
+  - id: uninterrupted_tracker_change
+    title: "An uninterrupted tracker change serves at once"
+    requires_capability:
+      path: creative.live_updates.in_place
+      contains: { change: "trackers", serving: "uninterrupted" }
+    steps:
+      - id: change_tracker
+        title: "Replace the impression tracker"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#live-creative-updates"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *live_account
+          creatives:
+            - creative_id: "live_tracker_banner"
+              name: "Live tracker banner"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-tracker-v1.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/live"
+                impression_tracker:
+                  asset_type: "url"
+                  url_type: "tracker_pixel"
+                  url: "https://measure.pinnacle-agency.example/live/i2"
+          idempotency_key: "$generate:uuid_v4#creative_live_updates_tracker"
+          context:
+            correlation_id: "creative_live_updates--tracker"
+        expected: |
+          Decide the change inside the call: updated and approved, not staged.
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "updated"
+            description: "The tracker change is applied in place"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "An accepted uninterrupted change returns status approved"
+          - check: field_absent
+            path: "creatives[0].staged_update"
+            description: "An uninterrupted change is not staged"
+
+      - id: read_changed_tracker
+        title: "The new tracker is the serving version"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        sample_request:
+          account: *live_account
+          filters:
+            creative_ids: ["live_tracker_banner"]
+          context:
+            correlation_id: "creative_live_updates--tracker_readback"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].assets.impression_tracker.url"
+            value: "https://measure.pinnacle-agency.example/live/i2"
+            description: "The changed tracker serves immediately"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "The creative stays approved"
+
+  - id: staged_asset_change
+    title: "A staged image change keeps the prior version serving until approval"
+    requires_capability:
+      path: creative.live_updates.in_place
+      contains: { change: "asset_content", serving: "staged", on_rejection: "keeps_prior" }
+    steps:
+      - id: stage_image_v2
+        title: "Replace the image"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#live-creative-updates"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *live_account
+          creatives:
+            - creative_id: "live_staged_banner"
+              name: "Live staged banner"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-staged-v2.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/live"
+                impression_tracker:
+                  asset_type: "url"
+                  url_type: "tracker_pixel"
+                  url: "https://measure.pinnacle-agency.example/live/i1"
+          idempotency_key: "$generate:uuid_v4#creative_live_updates_stage_v2"
+          context:
+            correlation_id: "creative_live_updates--stage_v2"
+        expected: |
+          Accept the change as a staged update; the serving version stays approved.
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "updated"
+            description: "The staged change is acknowledged as an update"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "status describes the version that keeps serving"
+          - check: field_value
+            path: "creatives[0].staged_update.status"
+            allowed_values: ["processing", "pending_review"]
+            description: "The staged update is under review"
+          - check: field_contains
+            path: "creatives[0].staged_update.change_kinds[*]"
+            value: "asset_content"
+            description: "The staged update names its change kind"
+
+      - id: read_prior_version_serving
+        title: "The prior image still serves"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#staged-update-readback"
+        comply_scenario: creative_library
+        stateful: true
+        sample_request:
+          account: *live_account
+          filters:
+            creative_ids: ["live_staged_banner"]
+          context:
+            correlation_id: "creative_live_updates--staged_readback"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "The serving version stays approved"
+          - check: field_value
+            path: "creatives[0].assets.image.url"
+            value: "https://cdn.pinnacle-agency.example/live-staged-v1.png"
+            description: "The approved prior version is the only one that serves"
+          - check: field_value
+            path: "creatives[0].staged_update.status"
+            allowed_values: ["processing", "pending_review"]
+            description: "The staged update is visible on readback"
+
+      - id: approve_staged_update
+        title: "Review approves the staged update"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account: *live_account
+          scenario: "force_creative_status"
+          params: { creative_id: "live_staged_banner", status: "approved" }
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Forcing approved on a creative with a staged update promotes it"
+
+      - id: read_promoted_version
+        title: "The promoted image now serves"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#staged-update-readback"
+        comply_scenario: creative_library
+        stateful: true
+        sample_request:
+          account: *live_account
+          filters:
+            creative_ids: ["live_staged_banner"]
+          context:
+            correlation_id: "creative_live_updates--promoted_readback"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].assets.image.url"
+            value: "https://cdn.pinnacle-agency.example/live-staged-v2.png"
+            description: "Promotion makes the staged content the serving version"
+          - check: field_absent
+            path: "creatives[0].staged_update"
+            description: "staged_update is removed on promotion"
+
+      - id: stage_image_v3
+        title: "Stage a second image change"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#live-creative-updates"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *live_account
+          creatives:
+            - creative_id: "live_staged_banner"
+              name: "Live staged banner"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-staged-v3.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/live"
+                impression_tracker:
+                  asset_type: "url"
+                  url_type: "tracker_pixel"
+                  url: "https://measure.pinnacle-agency.example/live/i1"
+          idempotency_key: "$generate:uuid_v4#creative_live_updates_stage_v3"
+          context:
+            correlation_id: "creative_live_updates--stage_v3"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].staged_update.status"
+            allowed_values: ["processing", "pending_review"]
+            description: "The second change is staged"
+
+      - id: reject_staged_update
+        title: "Review rejects the staged update"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account: *live_account
+          scenario: "force_creative_status"
+          params:
+            creative_id: "live_staged_banner"
+            status: "rejected"
+            rejection_reason: "Unsubstantiated claim in the new artwork"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Forcing rejected on a creative with a staged update rejects the update"
+
+      - id: read_after_rejection
+        title: "The promoted version keeps serving after rejection"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#staged-update-readback"
+        comply_scenario: creative_library
+        stateful: true
+        sample_request:
+          account: *live_account
+          filters:
+            creative_ids: ["live_staged_banner"]
+          context:
+            correlation_id: "creative_live_updates--rejected_readback"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "Under keeps_prior the creative stays approved"
+          - check: field_value
+            path: "creatives[0].assets.image.url"
+            value: "https://cdn.pinnacle-agency.example/live-staged-v2.png"
+            description: "The prior version keeps serving"
+          - check: field_value
+            path: "creatives[0].staged_update.status"
+            value: "rejected"
+            description: "The rejected staged update stays visible"
+          - check: field_present
+            path: "creatives[0].staged_update.rejection_reason"
+            description: "A rejected staged update carries its reason"
+
+      - id: withdraw_staged_update
+        title: "Syncing the serving content withdraws the rejected update"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#live-creative-updates"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *live_account
+          creatives:
+            - creative_id: "live_staged_banner"
+              name: "Live staged banner"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-staged-v2.png"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url_type: "clickthrough"
+                  url: "https://acmeoutdoor.example/live"
+                impression_tracker:
+                  asset_type: "url"
+                  url_type: "tracker_pixel"
+                  url: "https://measure.pinnacle-agency.example/live/i1"
+          idempotency_key: "$generate:uuid_v4#creative_live_updates_withdraw"
+          context:
+            correlation_id: "creative_live_updates--withdraw"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_absent
+            path: "creatives[0].errors"
+            description: "Syncing the serving content is accepted"
+          - check: field_absent
+            path: "creatives[0].staged_update"
+            description: "Content identical to the serving version withdraws the staged update"

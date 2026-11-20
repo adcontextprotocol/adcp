@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/enums/delegation-authority.json",
+  "title": "Delegation Authority",
+  "description": "Authority level granted to a delegated agent operating against a campaign plan.",
+  "type": "string",
+  "enum": [
+    "full",
+    "execute_only",
+    "propose_only"
+  ],
+  "enumDescriptions": {
+    "full": "Can execute any action within the delegation's budget and market constraints.",
+    "execute_only": "Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget. A pre-approved action is one whose opaque action binding already holds an approved intent check in the plan's lifecycle: the delegate may act only on such an action, which includes accept_proposal for it. The governance agent MUST deny an intent check from an execute_only delegate that would create a new binding or increase committed spend.",
+    "propose_only": "Can propose actions for governance review but cannot execute without explicit approval."
+  }
+}
