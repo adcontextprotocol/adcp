@@ -140,17 +140,57 @@ Each rule fires only when a mechanical precondition proves that the rewritten
 node accepts the same payloads. When a precondition fails, the node stays as
 written and the difference stays in the report.
 
-The tool proves two branches disjoint when one of the following holds, using
-the branch's top-level keywords and the keywords of the node that holds the
-union:
+The tool proves two branches disjoint (`lib/disjoint.cjs`) when one of the
+following holds. Each rule reads facts that hold for every instance: the
+branch's own keywords, its conjunction members' keywords, and the context of
+the node that holds the union.
 
-- Their possible JSON types do not overlap. `integer` is inside `number`, and
-  `const` or `enum` narrows the type.
-- Their `const` or `enum` value sets do not overlap.
-- Both branches only admit objects, a property is required in both (or by the
-  enclosing node), and that property's `const` or `enum` value sets do not
-  overlap. The object-only condition matters: `required` says nothing about a
-  string, so a string satisfies two object branches that lack `type: object`.
+- **Types.** Their possible JSON types do not overlap. `integer` is inside
+  `number`, `const` or `enum` narrows the type, and a `not` over a schema that
+  accepts every value of a type removes that type: `not: {required: [k]}`
+  accepts only objects, because `required` holds for every non-object.
+- **Values.** Their `const` or `enum` value sets do not overlap.
+- **Tag values.** Both branches only admit objects, a property is required in
+  both (or by the context), and that property's `const` or `enum` value sets
+  do not overlap. The object-only condition matters: `required` says nothing
+  about a string, so a string satisfies two object branches that lack
+  `type: object`.
+- **Property schemas.** Both only admit objects, a property is required in
+  both, and the tool proves the property's two schemas disjoint.
+- **Closed object.** Both only admit objects, one branch requires a key, and
+  the other forbids it: a schema object with `additionalProperties: false`
+  whose own `properties` and `patternProperties` (compiled with Ajv's `u`
+  flag) do not allow the key, or a `false` property schema. Only the same
+  schema object's `properties` count, because `additionalProperties` sees no
+  other; the canonical form never merges another member's `properties` into
+  such an object.
+- **Not over an implied schema.** Every instance of one branch satisfies a
+  schema that the other branch negates with `not`: its required keys, a
+  property value that the `not` operand pins (`not: {required: [k],
+  properties: {k: {const: v}}}` against a branch that requires `k` with
+  `const: v`), or the same referenced schema. Implication is structural: each
+  keyword of the operand needs the same or a tighter keyword in the branch, or
+  must be vacuous for the branch's types, and a `$ref` with siblings needs
+  every part. A pinned value counts only for a key the branch requires.
+- **Not over each alternative.** One branch needs one of several alternatives
+  (`anyOf`, or `oneOf` without `discriminator`), and every alternative implies
+  the other branch's `not` operand.
+- **Finite values.** One branch allows finitely many values, and an evaluator
+  shows that the other branch rejects each of them. The evaluator follows
+  Ajv: a keyword for another JSON type passes, `pattern` uses the `u` flag,
+  lengths count code points, and `format` uses ajv-formats' full definitions.
+  Anything it cannot decide counts as a pass.
+- **Array items.** Both only admit arrays, one needs at least one item, and
+  the tool proves the two `items` schemas disjoint.
+
+The context of a node is what every instance that reaches it satisfies
+(`lib/context.cjs`). It flows from a conjunction to its members, from a schema
+object to its union branches, `not`, `if`, `then`, and `else`, and to
+`properties/<name>` as the facts every schema of the parent instance gives
+that property (a sibling `allOf` member's `properties/p: {type: object}`
+reaches `then/properties/p` of another member). A node reached along several
+paths gets the join of their contexts, so a rewrite made under it holds at
+every use.
 
 The rules are the following:
 
@@ -179,6 +219,13 @@ A difference entry has the following fields:
   absent on that side. Subschemas render two levels deep.
 - `base_location` and `head_location`: the source location of the node on
   each side.
+
+A `oneOf` that a rule rewrites to `anyOf` on one side only is still compared
+as the source's `oneOf`, so a change inside its branches (a `not` guard that
+made them disjoint) is reported where it was written. When the branches match,
+the union keyword itself is the difference. A union that a rule rewrote is
+always reported and rendered under the keyword its source wrote, so a
+manifest line does not change when a rule starts to fire inside it.
 
 The text report groups entries by site: one source location, keyword, and
 change, with the roots it reaches. The JSON report (`--json`) has every entry.

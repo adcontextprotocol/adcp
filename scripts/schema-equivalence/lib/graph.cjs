@@ -858,4 +858,4 @@ function normalizeValues(kw) {
   }
 }
 
-module.exports = { Graph, hasInfo, forEachKid, originLabel, locKey, unescapePointer, canonicalKw, normalizeValues, refTarget, readDoc };
+module.exports = { Graph, hasInfo, forEachKid, originLabel, locKey, unescapePointer, canonicalKw, normalizeValues, refTarget, readDoc, KEYWORD_TYPE };

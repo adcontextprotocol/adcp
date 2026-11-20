@@ -6,17 +6,11 @@
  * proves that. When the precondition fails the node is left alone, so the
  * difference stays in the report.
  *
- * Disjointness. Two branches are proven disjoint when one of these holds,
- * using only the branch's top-level keywords (its own and its `allOf`
- * members') and the keywords of the node that holds the union:
- *   (a) their possible JSON types do not overlap (`integer` is inside
- *       `number`; `const`/`enum` narrow the type);
- *   (b) their `const`/`enum` value sets do not overlap;
- *   (c) both can only be objects, a property is required in both (or by the
- *       enclosing node), and its `const`/`enum` value sets do not overlap.
- * `required` and `properties` say nothing about non-objects, so (c) needs the
- * object-only condition: a string would satisfy two object branches that lack
- * `type: "object"`.
+ * Disjointness comes from the prover in disjoint.cjs, under the context of
+ * the node that holds the union: its own keywords, its conjunction members'
+ * keywords, and the same-instance context inherited from the roots
+ * (context.cjs), joined over every path that reaches the node so that a
+ * rewrite holds at every use.
  *
  * Rules:
  *   oneOf-to-anyOf: `oneOf` over pairwise-disjoint branches is `anyOf`.
@@ -31,116 +25,16 @@
  *     disjoint from `B`, is `U` without that branch.
  */
 
-const { stableStringify, jsonType } = require('./json.cjs');
 const { originLabel } = require('./graph.cjs');
 const { ruleKeywords } = require('./ajv.cjs');
+const { disjoint, facts, contextOf: plainsContext, intersect } = require('./disjoint.cjs');
+const { computeContexts, graphRootIds } = require('./context.cjs');
 
-const ALL = ['null', 'boolean', 'object', 'array', 'string', 'int', 'frac'];
-
-function typeSet(types) {
-  const out = new Set();
-  for (const t of types) {
-    if (t === 'number') { out.add('int'); out.add('frac'); }
-    else if (t === 'integer') out.add('int');
-    else out.add(t);
-  }
-  return out;
-}
-
-function valueKinds(values) {
-  const out = new Set();
-  for (const v of values) {
-    const t = jsonType(v);
-    out.add(t === 'integer' ? 'int' : t === 'number' ? 'frac' : t);
-  }
-  return out;
-}
-
-function intersect(a, b) {
-  if (a === null) return b;
-  if (b === null) return a;
-  return new Set([...a].filter(x => b.has(x)));
-}
-
-function valueSetOf(graph, id) {
-  const node = graph.nodes[id];
-  const plains = node.kind === 'plain' ? [node] : node.kind === 'conj' ? graph.conjMembers(node).map(m => graph.nodes[m.n]).filter(n => n.kind === 'plain') : [];
-  let values = null;
-  for (const p of plains) {
-    let vs = null;
-    if (Object.prototype.hasOwnProperty.call(p.kw, 'const')) vs = new Set([stableStringify(p.kw.const)]);
-    else if (Array.isArray(p.kw.enum)) vs = new Set(p.kw.enum.map(stableStringify));
-    values = intersect(values, vs);
-  }
-  return values;
-}
-
-/** Top-level facts about a node: possible types, values, required, property value sets. */
-function facts(graph, id) {
-  const node = graph.nodes[id];
-  if (node.kind === 'bool') return { types: node.value ? null : new Set(), values: null, required: new Set(), props: new Map() };
-  const plains = node.kind === 'plain' ? [node] : graph.conjMembers(node).map(m => graph.nodes[m.n]);
-  let types = null;
-  let values = null;
-  const required = new Set();
-  const props = new Map();
-  for (const p of plains) {
-    if (p.kind === 'bool') {
-      if (!p.value) types = new Set();
-      continue;
-    }
-    if (p.kind !== 'plain') continue;
-    if (Array.isArray(p.kw.type)) types = intersect(types, typeSet(p.kw.type));
-    if (Object.prototype.hasOwnProperty.call(p.kw, 'const')) values = intersect(values, new Set([stableStringify(p.kw.const)]));
-    else if (Array.isArray(p.kw.enum)) values = intersect(values, new Set(p.kw.enum.map(stableStringify)));
-    if (Array.isArray(p.kw.required)) for (const r of p.kw.required) required.add(r);
-    if (p.kids.properties) {
-      for (const [name, ref] of Object.entries(p.kids.properties)) {
-        const vs = valueSetOf(graph, graph.kid(ref).n);
-        props.set(name, intersect(props.has(name) ? props.get(name) : null, vs));
-      }
-    }
-  }
-  if (values !== null) types = intersect(types, valueKinds([...values].map(v => JSON.parse(v))));
-  return { types, values, required, props };
-}
-
-function disjointSets(a, b) {
-  if (a === null || b === null) return false;
-  for (const x of a) if (b.has(x)) return false;
-  return true;
-}
-
-/** Returns a proof string when branches a and b are disjoint under ctx, else null. */
-function disjoint(graph, a, b, ctx) {
-  const fa = facts(graph, a);
-  const fb = facts(graph, b);
-  const t = intersect(intersect(fa.types, fb.types), ctx.types) || new Set(ALL);
-  if (t.size === 0) return 'disjoint types';
-  if (disjointSets(fa.values, fb.values)) return 'disjoint const/enum values';
-  if ([...t].every(x => x === 'object')) {
-    const reqA = new Set([...fa.required, ...ctx.required]);
-    const reqB = new Set([...fb.required, ...ctx.required]);
-    for (const [p, va] of fa.props) {
-      if (!reqA.has(p) || !reqB.has(p) || !fb.props.has(p)) continue;
-      if (disjointSets(va, fb.props.get(p))) return `required property "${p}" with disjoint const/enum values`;
-    }
-  }
-  return null;
-}
-
-function contextOf(graph, plains) {
-  let types = null;
-  const required = new Set();
-  for (const p of plains) {
-    if (p.kind === 'bool' && !p.value) types = new Set();
-    if (p.kind !== 'plain') continue;
-    if (Array.isArray(p.kw.type)) types = intersect(types, typeSet(p.kw.type));
-    if (Object.prototype.hasOwnProperty.call(p.kw, 'const')) types = intersect(types, valueKinds([p.kw.const]));
-    else if (Array.isArray(p.kw.enum)) types = intersect(types, valueKinds(p.kw.enum));
-    if (Array.isArray(p.kw.required)) for (const r of p.kw.required) required.add(r);
-  }
-  return { types, required };
+/** The context of a set of schema objects, met with the same-instance context inherited from the roots. */
+function contextOf(graph, plains, inherited) {
+  const own = plainsContext(graph, plains);
+  if (!inherited) return own;
+  return { types: intersect(own.types, inherited.types), required: new Set([...own.required, ...inherited.required]) };
 }
 
 function pairwiseDisjoint(graph, ids, ctx) {
@@ -236,11 +130,11 @@ class Rewriter {
   }
 
   /** oneOf-to-anyOf and discriminator-to-anyOf on one plain node under ctx. Returns new id or null. */
-  oneOfRule(id, ctxPlains) {
+  oneOfRule(id, ctxPlains, inherited) {
     const g = this.graph;
     const node = g.nodes[id];
     if (node.kind !== 'plain' || !node.kids.oneOf || node.kids.oneOf.length < 2) return null;
-    const ctx = contextOf(g, ctxPlains);
+    const ctx = contextOf(g, ctxPlains, inherited);
     const branches = node.kids.oneOf.map(r => g.kid(r).n);
     if (node.kw.discriminator !== undefined) {
       const mapping = ajvDiscriminatorMapping(g, node);
@@ -301,11 +195,15 @@ class Rewriter {
   run() {
     const g = this.graph;
     const count = g.nodes.length;
+    // What every instance reaching a node satisfies, joined over all paths
+    // from the roots, so a rewrite made under it holds at every use.
+    const contexts = computeContexts(g, graphRootIds(g));
+    const inherited = (id) => contexts.get(id);
     // Plain nodes, under their own keywords.
     for (let id = 0; id < count; id++) {
       const node = g.nodes[id];
       if (node.kind !== 'plain' || !node.kids.oneOf) continue;
-      const out = this.oneOfRule(id, [node]);
+      const out = this.oneOfRule(id, [node], inherited(id));
       if (out !== null) node.replacedBy = out;
     }
     g._resolved = null;
@@ -320,7 +218,7 @@ class Rewriter {
       const rest = g.addPlain(node.origin, node.kw, restKids, node.info);
       const notPart = g.addPlain(node.origin, {}, { not: node.kids.not }, {});
       let members = [{ n: rest, via: '' }, { n: notPart, via: '' }];
-      const afterNot = this.notRule(members, contextOf(g, [g.nodes[rest]]), node);
+      const afterNot = this.notRule(members, contextOf(g, [g.nodes[rest]], inherited(id)), node);
       if (!afterNot) continue;
       members = flatten(g, afterNot);
       node.replacedBy = members.length === 1 ? members[0].n : g.add({ kind: 'conj', origin: node.origin, members });
@@ -333,13 +231,14 @@ class Rewriter {
       let members = g.conjMembers(node);
       const plains = () => members.map(m => g.nodes[m.n]);
       let changed = false;
-      const afterNot = this.notRule(members, contextOf(g, plains()), node);
+      const ctxIn = inherited(id);
+      const afterNot = this.notRule(members, contextOf(g, plains(), ctxIn), node);
       if (afterNot) {
         members = flatten(g, afterNot);
         changed = true;
       }
       members = members.map(m => {
-        const out = this.oneOfRule(m.n, plains());
+        const out = this.oneOfRule(m.n, plains(), ctxIn);
         if (out === null) return m;
         changed = true;
         return { n: out, via: m.via };

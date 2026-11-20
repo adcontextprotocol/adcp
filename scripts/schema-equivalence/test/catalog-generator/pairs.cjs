@@ -306,6 +306,58 @@ const SNIPPETS = [
     ],
   },
   {
+    group: 'branches', construct: 'disjointness-rules', rule: 'oneOf-to-anyOf through each disjointness rule of the prover (closed object, not over an implied schema, not over each alternative, objects only through not or the enclosing schema, finite values, array items, required property schemas), with a near miss per rule',
+    items: (() => {
+      // [name, schema with oneOf, intent]; the head is the same schema with anyOf at `path`.
+      const swap = (s, path = []) => {
+        if (!path.length) {
+          const { oneOf, ...rest } = s;
+          return { ...rest, anyOf: oneOf };
+        }
+        const [k, ...more] = path;
+        return Array.isArray(s) ? s.map((x, i) => (i === k ? swap(x, more) : x)) : { ...s, [k]: swap(s[k], more) };
+      };
+      const item = (name, base, intent, path = []) => [name, base, swap(base, path), intent];
+      const closedA = obj({ properties: { a: str() }, required: ['a'], additionalProperties: false });
+      const closedB = obj({ properties: { b: str() }, required: ['b'], additionalProperties: false });
+      const tagged = (v, extra = {}) => ({ properties: { kind: { const: v } }, required: ['kind'], ...extra });
+      const T = obj({ properties: { kind: { const: 'x' } }, required: ['kind'] });
+      return [
+        // closed-object
+        item('closed-object', { oneOf: [closedA, closedB] }, 'eq'),
+        item('closed-object-sibling-properties', { oneOf: [obj({ properties: { a: str() }, required: ['a'] }), obj({ allOf: [{ properties: { a: str() } }, { properties: { b: str() }, required: ['b'], additionalProperties: false }] })] }, 'eq'),
+        item('closed-object-pattern-allows-key', { oneOf: [obj({ properties: { a: str() }, required: ['a'] }), obj({ properties: { b: str() }, patternProperties: { '^a': str() }, required: ['b'], additionalProperties: false })] }, 'diff'),
+        item('closed-object-untyped', { oneOf: [{ required: ['a'] }, { properties: { b: str() }, additionalProperties: false }] }, 'diff'),
+        // not-implied: required keys, a pinned value, the same referenced schema
+        item('not-over-pinned-value', obj({ oneOf: [tagged('submitted'), { not: tagged('submitted') }] }), 'eq'),
+        item('not-over-pinned-value-not-required', obj({ oneOf: [{ properties: { kind: { const: 'submitted' } } }, { not: tagged('submitted') }] }), 'diff'),
+        item('not-over-referenced-schema', { definitions: { t: T }, oneOf: [{ allOf: [{ $ref: '#/definitions/t' }], properties: { extra: str() } }, obj({ not: { anyOf: [{ required: ['errors'] }, { $ref: '#/definitions/t' }] } })] }, 'eq'),
+        item('not-over-other-referenced-schema', { definitions: { t: T, u: { required: ['kind', 'other'] } }, oneOf: [{ allOf: [{ $ref: '#/definitions/t' }], properties: { extra: str() } }, obj({ not: { anyOf: [{ required: ['errors'] }, { $ref: '#/definitions/u' }] } })] }, 'diff'),
+        item('not-over-ref-with-siblings', { definitions: { d: { required: ['b'] } }, oneOf: [obj({ required: ['a', 'b'] }), obj({ not: { $ref: '#/definitions/d', required: ['a'] } })] }, 'eq'),
+        item('not-over-ref-with-siblings-partly-required', { definitions: { d: { required: ['b'] } }, oneOf: [obj({ required: ['a'] }), obj({ not: { $ref: '#/definitions/d', required: ['a'] } })] }, 'diff'),
+        // not-alternatives
+        item('not-over-each-alternative', obj({ oneOf: [{ anyOf: [{ required: ['a'] }, { required: ['b'] }], not: { required: ['c'] } }, { not: { anyOf: [{ required: ['a'] }, { required: ['b'] }] } }] }), 'eq'),
+        item('not-over-some-alternatives', obj({ oneOf: [{ anyOf: [{ required: ['a'] }, { required: ['b'] }], not: { required: ['c'] } }, { not: { required: ['a'] } }] }), 'diff'),
+        // tag-values with objects only from a `not` or from the enclosing schema
+        item('objects-only-through-not', { oneOf: [tagged('a', { not: { required: ['x'] } }), tagged('b')] }, 'eq'),
+        item('objects-only-through-typed-not', { oneOf: [tagged('a', { not: { type: 'object', required: ['x'] } }), tagged('b')] }, 'diff'),
+        item('objects-only-through-typed-parent-branch', obj({ anyOf: [{ oneOf: [tagged('a'), tagged('b')] }, { required: ['z'] }] }), 'eq', ['anyOf', 0]),
+        item('objects-only-through-sibling-property', { allOf: [{ properties: { p: obj() } }, { if: { required: ['q'] }, then: { properties: { p: { oneOf: [tagged('a'), tagged('b')] } } } }] }, 'eq', ['allOf', 1, 'then', 'properties', 'p']),
+        item('objects-only-through-untyped-sibling-property', { allOf: [{ properties: { p: { minProperties: 1 } } }, { if: { required: ['q'] }, then: { properties: { p: { oneOf: [tagged('a'), tagged('b')] } } } }] }, 'diff', ['allOf', 1, 'then', 'properties', 'p']),
+        // finite-values
+        item('finite-values', { oneOf: [{ enum: ['asap', 'now'] }, pat('^[0-9]')] }, 'eq'),
+        item('finite-values-one-matches', { oneOf: [{ enum: ['asap', '1st'] }, pat('^[0-9]')] }, 'diff'),
+        item('finite-values-keyword-for-another-type', { oneOf: [{ enum: [5, 'x'] }, { minLength: 2 }] }, 'diff'),
+        // array-items
+        item('array-items', { oneOf: [arr({ items: str() }), arr({ items: { type: 'integer' }, minItems: 1 })] }, 'eq'),
+        item('array-items-empty-array', { oneOf: [arr({ items: str() }), arr({ items: { type: 'integer' } })] }, 'diff'),
+        // property-schemas
+        item('required-property-schemas', obj({ oneOf: [{ properties: { v: str() }, required: ['v'] }, { properties: { v: { type: 'integer' } }, required: ['v'] }] }), 'eq'),
+        item('property-schemas-not-required', obj({ oneOf: [{ properties: { v: str() } }, { properties: { v: { type: 'integer' } } }] }), 'diff'),
+      ];
+    })(),
+  },
+  {
     group: 'branches', construct: 'discriminator-to-anyof', rule: 'discriminator-to-anyOf: discriminator with oneOf is an anyOf when the node only admits objects and Ajv accepts the mapping',
     items: [
       ['object-parent', obj({ discriminator: DISC, oneOf: [VIDEO, IMAGE] }), obj({ anyOf: [VIDEO, IMAGE] }), 'eq'],

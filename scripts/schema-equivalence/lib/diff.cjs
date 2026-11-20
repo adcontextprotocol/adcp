@@ -38,7 +38,8 @@ function render(graph, id, depth = RENDER_DEPTH, stack = new Set()) {
       const val = node.kids[key];
       if (SINGLE.has(key)) out[key] = r(val);
       else if (key === 'items') out.items = val.tuple ? val.tuple.map(r) : r(val);
-      else if (key === 'anyOf' || key === 'oneOf') out[key] = sortRendered(val.map(r));
+      // A union a rewrite rule changed renders as the keyword its source wrote.
+      else if (key === 'anyOf' || key === 'oneOf') out[(node.srcUnion && node.srcUnion[key]) || key] = sortRendered(val.map(r));
       else if (MAP.has(key) || key === 'dependencies') {
         out[key] = {};
         for (const name of Object.keys(val).sort()) out[key][name] = val[name].arr ? val[name].arr : r(val[name]);
@@ -136,6 +137,29 @@ class Differ {
 
   _plain(root, a, b, A, B, path, out, visited) {
     const g = this.graph;
+    // A `oneOf` that a rewrite rule turned into `anyOf` on one side only is
+    // still the source's `oneOf`: compare its branches with the other side's
+    // `oneOf` branches, so a change inside the branches (a `not` guard that
+    // made them disjoint) is reported where it was written. When the branches
+    // match, the union keyword itself is the difference.
+    const rewritten = (N) => N.kids.anyOf && !N.kids.oneOf && N.srcUnion && N.srcUnion.anyOf === 'oneOf';
+    const plainOneOf = (N) => N.kids.oneOf && !N.kids.anyOf;
+    const pairUnions = (plainOneOf(A) && rewritten(B)) || (rewritten(A) && plainOneOf(B));
+    if (pairUnions) {
+      const ka = A.kids.oneOf || A.kids.anyOf;
+      const kb = B.kids.oneOf || B.kids.anyOf;
+      const before = out.length;
+      const ma = ka.map((r, i) => ({ ...g.kid(r), idx: i, src: 'oneOf' }));
+      const mb = kb.map((r, i) => ({ ...g.kid(r), idx: i, src: 'oneOf' }));
+      this._matchSets(root, path, 'oneOf', ma, mb, a, b, out, visited, (m) => `/${m.src}/${m.idx}${m.via}`);
+      if (out.length === before) {
+        for (const key of ['anyOf', 'oneOf']) {
+          if (!A.kids[key] && !B.kids[key]) continue;
+          out.push(this._entry(root, path, key, a, b,
+            A.kids[key] ? this._renderKid(key, A.kids[key]) : undefined, B.kids[key] ? this._renderKid(key, B.kids[key]) : undefined, a, b));
+        }
+      }
+    }
     for (const k of union(Object.keys(A.kw), Object.keys(B.kw))) {
       const va = A.kw[k];
       const vb = B.kw[k];
@@ -143,10 +167,13 @@ class Differ {
       out.push(this._entry(root, path, k, a, b, va, vb, a, b));
     }
     for (const key of union(Object.keys(A.kids), Object.keys(B.kids))) {
+      if (pairUnions && (key === 'anyOf' || key === 'oneOf')) continue;
       const ka = A.kids[key];
       const kb = B.kids[key];
       if (!ka || !kb) {
-        out.push(this._entry(root, path, key, a, b,
+        // A union a rewrite rule changed is reported under the keyword its source wrote.
+        const named = (N) => (N.srcUnion && N.srcUnion[key]) || key;
+        out.push(this._entry(root, path, ka ? named(A) : named(B), a, b,
           ka ? this._renderKid(key, ka) : undefined, kb ? this._renderKid(key, kb) : undefined, a, b));
         continue;
       }

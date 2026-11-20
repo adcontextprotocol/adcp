@@ -27,7 +27,11 @@ combinations, instead of sampling them:
   misses where it must not fire, at the top level and under `not`.
 - `branches/`: the class 2 rewrite rules and branch separation by `const`, by
   `discriminator`, by `type`, by `required` plus `not` `required`, and by
-  nothing, with near misses.
+  nothing, with near misses. `disjointness-rules.json` has, for each rule of
+  the disjointness prover, a `oneOf` that the rule makes equivalent to `anyOf`
+  and a near miss that must stay different (a pattern that allows the key, a
+  pinned value that may be absent, a `$ref` with siblings under `not`, a
+  keyword for another type, an empty array).
 - `references/`: `$ref` with sibling keywords, to another file, recursive,
   extracted, inlined, through an alias file, and spelled the same on both
   sides for different files.
