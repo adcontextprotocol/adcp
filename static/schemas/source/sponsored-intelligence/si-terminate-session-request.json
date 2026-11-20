@@ -48,7 +48,7 @@
               ]
             },
             "product": {
-              "type": "object",
+              "$ref": "/schemas/core/si-transaction-product.json",
               "description": "Product/service details"
             }
           },

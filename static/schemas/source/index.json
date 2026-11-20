@@ -2908,6 +2908,14 @@
           "$ref": "/schemas/core/rights-grant-attestation-reference.json",
           "description": "An attestation reference for a rights grant: a brand-issued claim whose subject is a rights-grant resource."
         },
+        "si-brand-agent-response": {
+          "$ref": "/schemas/core/si-brand-agent-response.json",
+          "description": "A brand agent's response in a sponsored intelligence conversation: a message, an optional UI surface, and UI elements."
+        },
+        "si-transaction-product": {
+          "$ref": "/schemas/core/si-transaction-product.json",
+          "description": "Details of the product or service in a transaction, as an open object."
+        },
         "signal-catalog-entry": {
           "$ref": "/schemas/core/signal-catalog-entry.json",
           "description": "A signal in a signal catalog: identity, name and description, type, provider, coverage, deployments, and pricing options."

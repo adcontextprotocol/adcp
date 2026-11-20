@@ -31,3 +31,5 @@ Media buy lifecycle objects have one definition each under `core/`, including `c
 Governance and attestation objects have one definition each under `core/`, including `governance-finding`, `governance-delivery-statement`, `governance-delivery-metrics`, `governance-delivery-observation`, `plan-budget-summary`, and the attestation identity definitions. Retained delivery statements require `reporting_period`, and regulatory jurisdictions are ISO 3166-1 alpha-2 codes.
 
 Content standards objects have one definition each under `core/`: `calibration-exemplars`, `calibration-url-reference`, `feature-check-result`, and `bulk-pagination`. Calibration URL languages are BCP 47 tags (`core/locale-tag.json`), and bulk pagination cursors are non-empty.
+
+Sponsored intelligence objects have one definition each: `core/si-brand-agent-response.json` and `core/si-transaction-product.json`.

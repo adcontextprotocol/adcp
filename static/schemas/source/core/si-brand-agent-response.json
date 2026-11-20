@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/si-brand-agent-response.json",
+  "title": "SI Brand Agent Response",
+  "description": "A brand agent's response in a sponsored intelligence conversation: a message, an optional UI surface, and UI elements.",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Conversational message from brand agent"
+    },
+    "surface": {
+      "$ref": "/schemas/a2ui/surface.json",
+      "description": "A2UI surface with interactive components"
+    },
+    "ui_elements": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/sponsored-intelligence/si-ui-element.json"
+      },
+      "description": "Visual components to render (DEPRECATED: use surface instead)",
+      "deprecated": true
+    }
+  },
+  "additionalProperties": true
+}
