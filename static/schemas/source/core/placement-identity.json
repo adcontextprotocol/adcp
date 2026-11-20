@@ -10,7 +10,8 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "publisher_ref"
+          "const": "publisher_ref",
+          "default": "publisher_ref"
         },
         "publisher_domain": {
           "$ref": "/schemas/core/domain-name.json",
@@ -29,7 +30,8 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "seller_inline"
+          "const": "seller_inline",
+          "default": "seller_inline"
         },
         "seller_agent": {
           "$ref": "/schemas/core/seller-agent-ref.json",

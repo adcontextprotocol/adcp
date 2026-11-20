@@ -47,6 +47,7 @@
             "scope": {
               "type": "string",
               "const": "standard",
+              "default": "standard",
               "description": "Standard metric from the closed `available-metric.json` enum."
             },
             "metric_id": {
@@ -84,6 +85,7 @@
             "scope": {
               "type": "string",
               "const": "vendor",
+              "default": "vendor",
               "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
             },
             "vendor": {

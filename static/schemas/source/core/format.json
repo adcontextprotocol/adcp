@@ -211,7 +211,7 @@
             "type": "object",
             "description": "Individual asset slot",
             "properties": {
-              "item_type": { "type": "string", "const": "individual" }
+              "item_type": { "type": "string", "const": "individual", "default": "individual" }
             },
             "required": ["item_type"],
             "discriminator": { "propertyName": "asset_type" },
@@ -222,7 +222,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "image" },
+                  "asset_type": { "const": "image", "default": "image" },
                   "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -233,7 +233,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "video" },
+                  "asset_type": { "const": "video", "default": "video" },
                   "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -244,7 +244,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "audio" },
+                  "asset_type": { "const": "audio", "default": "audio" },
                   "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -255,7 +255,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "text" },
+                  "asset_type": { "const": "text", "default": "text" },
                   "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -266,7 +266,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "markdown" },
+                  "asset_type": { "const": "markdown", "default": "markdown" },
                   "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -277,7 +277,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "html" },
+                  "asset_type": { "const": "html", "default": "html" },
                   "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -288,7 +288,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "css" },
+                  "asset_type": { "const": "css", "default": "css" },
                   "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -299,7 +299,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "javascript" },
+                  "asset_type": { "const": "javascript", "default": "javascript" },
                   "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -310,7 +310,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "zip" }
+                  "asset_type": { "const": "zip", "default": "zip" }
                 },
                 "required": ["asset_type"]
               },
@@ -320,7 +320,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "vast" },
+                  "asset_type": { "const": "vast", "default": "vast" },
                   "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -331,7 +331,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "daast" },
+                  "asset_type": { "const": "daast", "default": "daast" },
                   "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -342,7 +342,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "url" },
+                  "asset_type": { "const": "url", "default": "url" },
                   "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -353,7 +353,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "webhook" },
+                  "asset_type": { "const": "webhook", "default": "webhook" },
                   "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -364,7 +364,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "brief" }
+                  "asset_type": { "const": "brief", "default": "brief" }
                 },
                 "required": ["asset_type"]
               },
@@ -374,7 +374,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "video_brief" }
+                  "asset_type": { "const": "video_brief", "default": "video_brief" }
                 },
                 "required": ["asset_type"]
               },
@@ -384,7 +384,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "catalog" },
+                  "asset_type": { "const": "catalog", "default": "catalog" },
                   "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -395,7 +395,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "display_tag" }
+                  "asset_type": { "const": "display_tag", "default": "display_tag" }
                 },
                 "required": ["asset_type"]
               },
@@ -405,7 +405,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "published_post" }
+                  "asset_type": { "const": "published_post", "default": "published_post" }
                 },
                 "required": ["asset_type"]
               },
@@ -415,7 +415,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "card" }
+                  "asset_type": { "const": "card", "default": "card" }
                 },
                 "required": ["asset_type"]
               },
@@ -425,7 +425,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "pixel_tracker" }
+                  "asset_type": { "const": "pixel_tracker", "default": "pixel_tracker" }
                 },
                 "required": ["asset_type"]
               },
@@ -435,7 +435,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "vast_tracker" }
+                  "asset_type": { "const": "vast_tracker", "default": "vast_tracker" }
                 },
                 "required": ["asset_type"]
               },
@@ -445,7 +445,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "daast_tracker" }
+                  "asset_type": { "const": "daast_tracker", "default": "daast_tracker" }
                 },
                 "required": ["asset_type"]
               }
@@ -459,6 +459,7 @@
               "item_type": {
                 "type": "string",
                 "const": "repeatable_group",
+                "default": "repeatable_group",
                 "description": "Discriminator indicating this is a repeatable asset group"
               },
               "asset_group_id": {
@@ -501,7 +502,7 @@
                       "description": "Image asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "image" },
+                        "asset_type": { "const": "image", "default": "image" },
                         "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -511,7 +512,7 @@
                       "description": "Video asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "video" },
+                        "asset_type": { "const": "video", "default": "video" },
                         "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -521,7 +522,7 @@
                       "description": "Audio asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "audio" },
+                        "asset_type": { "const": "audio", "default": "audio" },
                         "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -531,7 +532,7 @@
                       "description": "Text asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "text" },
+                        "asset_type": { "const": "text", "default": "text" },
                         "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -541,7 +542,7 @@
                       "description": "Markdown asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "markdown" },
+                        "asset_type": { "const": "markdown", "default": "markdown" },
                         "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -551,7 +552,7 @@
                       "description": "HTML asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "html" },
+                        "asset_type": { "const": "html", "default": "html" },
                         "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -561,7 +562,7 @@
                       "description": "CSS asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "css" },
+                        "asset_type": { "const": "css", "default": "css" },
                         "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -571,7 +572,7 @@
                       "description": "JavaScript asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "javascript" },
+                        "asset_type": { "const": "javascript", "default": "javascript" },
                         "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -581,7 +582,7 @@
                       "description": "Zip-bundled asset in group (HTML5 banner bundles, etc.)",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "zip" }
+                        "asset_type": { "const": "zip", "default": "zip" }
                       },
                       "required": ["asset_type"]
                     },
@@ -590,7 +591,7 @@
                       "description": "VAST asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "vast" },
+                        "asset_type": { "const": "vast", "default": "vast" },
                         "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -600,7 +601,7 @@
                       "description": "DAAST asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "daast" },
+                        "asset_type": { "const": "daast", "default": "daast" },
                         "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -610,7 +611,7 @@
                       "description": "URL asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "url" },
+                        "asset_type": { "const": "url", "default": "url" },
                         "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -620,7 +621,7 @@
                       "description": "Webhook asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "webhook" },
+                        "asset_type": { "const": "webhook", "default": "webhook" },
                         "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -630,7 +631,7 @@
                       "description": "Brief asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "brief" }
+                        "asset_type": { "const": "brief", "default": "brief" }
                       },
                       "required": ["asset_type"]
                     },
@@ -639,7 +640,7 @@
                       "description": "Structured video brief asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "video_brief" }
+                        "asset_type": { "const": "video_brief", "default": "video_brief" }
                       },
                       "required": ["asset_type"]
                     },
@@ -648,7 +649,7 @@
                       "description": "Catalog asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "catalog" },
+                        "asset_type": { "const": "catalog", "default": "catalog" },
                         "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -658,7 +659,7 @@
                       "description": "Third-party display tag asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "display_tag" }
+                        "asset_type": { "const": "display_tag", "default": "display_tag" }
                       },
                       "required": ["asset_type"]
                     },
@@ -667,7 +668,7 @@
                       "description": "Published post asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "published_post" }
+                        "asset_type": { "const": "published_post", "default": "published_post" }
                       },
                       "required": ["asset_type"]
                     },
@@ -676,7 +677,7 @@
                       "description": "Card asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "card" }
+                        "asset_type": { "const": "card", "default": "card" }
                       },
                       "required": ["asset_type"]
                     },
@@ -685,7 +686,7 @@
                       "description": "Pixel tracker asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "pixel_tracker" }
+                        "asset_type": { "const": "pixel_tracker", "default": "pixel_tracker" }
                       },
                       "required": ["asset_type"]
                     },
@@ -694,7 +695,7 @@
                       "description": "VAST tracker asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "vast_tracker" }
+                        "asset_type": { "const": "vast_tracker", "default": "vast_tracker" }
                       },
                       "required": ["asset_type"]
                     },
@@ -703,7 +704,7 @@
                       "description": "DAAST tracker asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "daast_tracker" }
+                        "asset_type": { "const": "daast_tracker", "default": "daast_tracker" }
                       },
                       "required": ["asset_type"]
                     }

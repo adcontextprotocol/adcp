@@ -64,6 +64,7 @@
               "scope": {
                 "type": "string",
                 "const": "request",
+                "default": "request",
                 "description": "Change scoped to the overall request — direction for the selection as a whole."
               },
               "ask": {
@@ -80,6 +81,7 @@
               "scope": {
                 "type": "string",
                 "const": "product",
+                "default": "product",
                 "description": "Change scoped to a specific product."
               },
               "product_id": {
@@ -105,6 +107,7 @@
               "scope": {
                 "type": "string",
                 "const": "proposal",
+                "default": "proposal",
                 "description": "Change scoped to a specific proposal."
               },
               "proposal_id": {

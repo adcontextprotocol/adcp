@@ -139,12 +139,12 @@
   "required": ["kind", "placement_id", "mode"],
   "oneOf": [
     {
-      "properties": { "kind": { "const": "publisher_ref" } },
+      "properties": { "kind": { "const": "publisher_ref", "default": "publisher_ref" } },
       "required": ["kind", "publisher_domain"],
       "not": { "required": ["seller_agent"] }
     },
     {
-      "properties": { "kind": { "const": "seller_inline" } },
+      "properties": { "kind": { "const": "seller_inline", "default": "seller_inline" } },
       "required": ["kind", "name"]
     }
   ],

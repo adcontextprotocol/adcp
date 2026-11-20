@@ -14,6 +14,7 @@
         "type": {
           "type": "string",
           "const": "brand",
+          "default": "brand",
           "description": "The issuer is identified by an AdCP BrandRef."
         },
         "brand": {
@@ -33,6 +34,7 @@
         "type": {
           "type": "string",
           "const": "agent",
+          "default": "agent",
           "description": "The issuer is an AdCP agent identified by its canonical HTTPS endpoint."
         },
         "agent_url": {
@@ -53,6 +55,7 @@
         "type": {
           "type": "string",
           "const": "origin",
+          "default": "origin",
           "description": "The issuer is identified by a canonical HTTPS origin because no AdCP brand or agent identity applies."
         },
         "origin": {

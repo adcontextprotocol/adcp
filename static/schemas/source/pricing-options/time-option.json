@@ -12,6 +12,7 @@
     "pricing_model": {
       "type": "string",
       "const": "time",
+      "default": "time",
       "description": "Cost per time unit - rate scales with campaign duration"
     },
     "currency": {

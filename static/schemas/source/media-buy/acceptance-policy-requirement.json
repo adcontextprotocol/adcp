@@ -8,7 +8,7 @@
   "oneOf": [
     {
       "properties": {
-        "kind": { "type": "string", "const": "category_declaration" },
+        "kind": { "type": "string", "const": "category_declaration", "default": "category_declaration" },
         "declaration": { "type": "string", "minLength": 1 },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
@@ -17,7 +17,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "advertiser_verification" },
+        "kind": { "type": "string", "const": "advertiser_verification", "default": "advertiser_verification" },
         "verification_scheme": { "type": "string", "minLength": 1 },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
@@ -26,7 +26,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "advertiser_eligibility" },
+        "kind": { "type": "string", "const": "advertiser_eligibility", "default": "advertiser_eligibility" },
         "criteria": {
           "type": "array",
           "items": { "$ref": "/schemas/core/acceptance-criterion-id.json" },
@@ -41,7 +41,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "funding_restriction" },
+        "kind": { "type": "string", "const": "funding_restriction", "default": "funding_restriction" },
         "criteria": {
           "type": "array",
           "items": { "$ref": "/schemas/core/acceptance-criterion-id.json" },
@@ -56,7 +56,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "certification" },
+        "kind": { "type": "string", "const": "certification", "default": "certification" },
         "credential": { "$ref": "#/definitions/required_credential" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
@@ -65,7 +65,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "license" },
+        "kind": { "type": "string", "const": "license", "default": "license" },
         "credential": { "$ref": "#/definitions/required_credential" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
@@ -74,7 +74,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "prior_authorization" },
+        "kind": { "type": "string", "const": "prior_authorization", "default": "prior_authorization" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
@@ -82,7 +82,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "account_setup" },
+        "kind": { "type": "string", "const": "account_setup", "default": "account_setup" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
@@ -90,7 +90,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "sales_assisted" },
+        "kind": { "type": "string", "const": "sales_assisted", "default": "sales_assisted" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
@@ -98,7 +98,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "disclosure" },
+        "kind": { "type": "string", "const": "disclosure", "default": "disclosure" },
         "format": { "type": "string", "minLength": 1 },
         "placement": { "type": "string", "minLength": 1 },
         "description": { "$ref": "#/definitions/requirement_description" }
@@ -108,7 +108,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "targeting_restriction" },
+        "kind": { "type": "string", "const": "targeting_restriction", "default": "targeting_restriction" },
         "restricted_attributes": {
           "type": "array",
           "items": { "$ref": "/schemas/enums/restricted-attribute.json" },
@@ -122,7 +122,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "creative_restriction" },
+        "kind": { "type": "string", "const": "creative_restriction", "default": "creative_restriction" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind", "description"],
@@ -130,7 +130,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "destination_restriction" },
+        "kind": { "type": "string", "const": "destination_restriction", "default": "destination_restriction" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind", "description"],
@@ -138,7 +138,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "format_restriction" },
+        "kind": { "type": "string", "const": "format_restriction", "default": "format_restriction" },
         "format_ids": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
@@ -156,7 +156,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "time_restriction" },
+        "kind": { "type": "string", "const": "time_restriction", "default": "time_restriction" },
         "starts_at": { "type": "string", "format": "date-time" },
         "ends_at": { "type": "string", "format": "date-time" },
         "description": { "$ref": "#/definitions/requirement_description" }
@@ -166,7 +166,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "transparency_reporting" },
+        "kind": { "type": "string", "const": "transparency_reporting", "default": "transparency_reporting" },
         "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
@@ -174,7 +174,7 @@
     },
     {
       "properties": {
-        "kind": { "type": "string", "const": "custom" },
+        "kind": { "type": "string", "const": "custom", "default": "custom" },
         "id": { "$ref": "/schemas/core/custom-acceptance-requirement-id.json" },
         "description": { "$ref": "#/definitions/requirement_description" },
         "ext": { "$ref": "/schemas/core/ext.json" }

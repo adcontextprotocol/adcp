@@ -69,19 +69,19 @@
             "required": ["format_kind", "params"],
             "not": { "required": ["format_option_ref"] },
             "oneOf": [
-              { "properties": { "format_kind": { "type": "string", "const": "image" }, "params": { "$ref": "/schemas/formats/canonical/image.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "html5" }, "params": { "$ref": "/schemas/formats/canonical/html5.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "display_tag" }, "params": { "$ref": "/schemas/formats/canonical/display_tag.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "image_carousel" }, "params": { "$ref": "/schemas/formats/canonical/image_carousel.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "video_hosted" }, "params": { "$ref": "/schemas/formats/canonical/video_hosted.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "video_vast" }, "params": { "$ref": "/schemas/formats/canonical/video_vast.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "audio_hosted" }, "params": { "$ref": "/schemas/formats/canonical/audio_hosted.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "audio_daast" }, "params": { "$ref": "/schemas/formats/canonical/audio_daast.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "sponsored_placement" }, "params": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "native_in_feed" }, "params": { "$ref": "/schemas/formats/canonical/native_in_feed.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "responsive_creative" }, "params": { "$ref": "/schemas/formats/canonical/responsive_creative.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "agent_placement" }, "params": { "$ref": "/schemas/formats/canonical/agent_placement.json" } }, "required": ["format_kind"] },
-              { "properties": { "format_kind": { "type": "string", "const": "seller_rendered_stateful_display" }, "params": { "$ref": "/schemas/formats/canonical/seller_rendered_stateful_display.json" } }, "required": ["format_kind"] }
+              { "properties": { "format_kind": { "type": "string", "const": "image", "default": "image" }, "params": { "$ref": "/schemas/formats/canonical/image.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "html5", "default": "html5" }, "params": { "$ref": "/schemas/formats/canonical/html5.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "display_tag", "default": "display_tag" }, "params": { "$ref": "/schemas/formats/canonical/display_tag.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "image_carousel", "default": "image_carousel" }, "params": { "$ref": "/schemas/formats/canonical/image_carousel.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "video_hosted", "default": "video_hosted" }, "params": { "$ref": "/schemas/formats/canonical/video_hosted.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "video_vast", "default": "video_vast" }, "params": { "$ref": "/schemas/formats/canonical/video_vast.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "audio_hosted", "default": "audio_hosted" }, "params": { "$ref": "/schemas/formats/canonical/audio_hosted.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "audio_daast", "default": "audio_daast" }, "params": { "$ref": "/schemas/formats/canonical/audio_daast.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "sponsored_placement", "default": "sponsored_placement" }, "params": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "native_in_feed", "default": "native_in_feed" }, "params": { "$ref": "/schemas/formats/canonical/native_in_feed.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "responsive_creative", "default": "responsive_creative" }, "params": { "$ref": "/schemas/formats/canonical/responsive_creative.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "agent_placement", "default": "agent_placement" }, "params": { "$ref": "/schemas/formats/canonical/agent_placement.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "seller_rendered_stateful_display", "default": "seller_rendered_stateful_display" }, "params": { "$ref": "/schemas/formats/canonical/seller_rendered_stateful_display.json" } }, "required": ["format_kind"] }
             ]
           }
         ],

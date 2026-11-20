@@ -19,7 +19,7 @@
             "title": "Recorded reporting receipt",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "recorded" },
+              "result": { "type": "string", "const": "recorded", "default": "recorded" },
               "receipt": {
                 "allOf": [
                   { "$ref": "/schemas/core/reporting-receipt.json" },
@@ -35,7 +35,7 @@
             "title": "Unchanged reporting receipt",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "unchanged" },
+              "result": { "type": "string", "const": "unchanged", "default": "unchanged" },
               "receipt": {
                 "allOf": [
                   { "$ref": "/schemas/core/reporting-receipt.json" },
@@ -51,7 +51,7 @@
             "title": "Recorded reporting adjustment receipt",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "recorded" },
+              "result": { "type": "string", "const": "recorded", "default": "recorded" },
               "adjustment_receipt": {
                 "allOf": [
                   { "$ref": "/schemas/core/reporting-adjustment-receipt.json" },
@@ -67,7 +67,7 @@
             "title": "Unchanged reporting adjustment receipt",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "unchanged" },
+              "result": { "type": "string", "const": "unchanged", "default": "unchanged" },
               "adjustment_receipt": {
                 "allOf": [
                   { "$ref": "/schemas/core/reporting-adjustment-receipt.json" },
@@ -83,7 +83,7 @@
             "title": "Failed reporting receipt",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "failed" },
+              "result": { "type": "string", "const": "failed", "default": "failed" },
               "reporting_receipt_id": { "$ref": "/schemas/core/reporting-receipt-id.json" },
               "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1, "maxItems": 16 }
             },

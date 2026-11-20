@@ -64,7 +64,7 @@
           {
             "type": "object",
             "properties": {
-              "type": { "type": "string", "const": "brand" },
+              "type": { "type": "string", "const": "brand", "default": "brand" },
               "brand": { "$ref": "/schemas/core/brand-key.json" },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },
@@ -74,7 +74,7 @@
           {
             "type": "object",
             "properties": {
-              "type": { "type": "string", "const": "agent" },
+              "type": { "type": "string", "const": "agent", "default": "agent" },
               "agent_url": {
                 "$ref": "/schemas/core/https-url.json"
               },
@@ -86,7 +86,7 @@
           {
             "type": "object",
             "properties": {
-              "type": { "type": "string", "const": "origin" },
+              "type": { "type": "string", "const": "origin", "default": "origin" },
               "origin": {
                 "$ref": "/schemas/core/https-origin.json",
                 "description": "HTTPS origin of an accepted attestation issuer. Receivers compare these values by canonical origin (docs/reference/url-canonicalization.mdx#canonical-origin), so `https://host` and `https://host/` name the same origin."

@@ -994,6 +994,7 @@
               "properties": {
                 "supported": {
                   "const": true,
+                  "default": true,
                   "description": "Discriminator. True means the seller deduplicates replays — a repeat of the same idempotency_key within replay_ttl_seconds returns the cached response without re-executing side effects."
                 },
                 "replay_ttl_seconds": {
@@ -1022,6 +1023,7 @@
               "properties": {
                 "supported": {
                   "const": false,
+                  "default": false,
                   "description": "Discriminator. False means the seller does not deduplicate retries."
                 }
               },
@@ -1211,6 +1213,7 @@
                     "supported": {
                       "type": "boolean",
                       "const": true,
+                      "default": true,
                       "description": "Discriminator. True means the seller accepts the declared registration_task for capabilities.changed subscriptions."
                     },
                     "registration_task": {
@@ -1241,6 +1244,7 @@
                     "supported": {
                       "type": "boolean",
                       "const": false,
+                      "default": false,
                       "description": "Discriminator. False means consumers must rely on TTL refresh, manual refresh, or registry polling for capability changes."
                     }
                   },
@@ -1296,7 +1300,7 @@
                 "oneOf": [
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "create_media_buy" },
+                      "task": { "type": "string", "const": "create_media_buy", "default": "create_media_buy" },
                       "modes": {
                         "type": "array",
                         "items": { "$ref": "#/definitions/governance_enforcement_mode" },
@@ -1310,7 +1314,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "update_media_buy" },
+                      "task": { "type": "string", "const": "update_media_buy", "default": "update_media_buy" },
                       "modes": {
                         "type": "array",
                         "items": { "$ref": "#/definitions/governance_enforcement_mode" },
@@ -1324,7 +1328,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "buy_products" },
+                      "task": { "type": "string", "const": "buy_products", "default": "buy_products" },
                       "modes": {
                         "type": "array",
                         "items": { "$ref": "#/definitions/governance_enforcement_mode" },
@@ -1338,7 +1342,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "accept_proposal" },
+                      "task": { "type": "string", "const": "accept_proposal", "default": "accept_proposal" },
                       "modes": {
                         "type": "array",
                         "items": { "$ref": "#/definitions/governance_enforcement_mode" },
@@ -1352,7 +1356,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "control_media_buy" },
+                      "task": { "type": "string", "const": "control_media_buy", "default": "control_media_buy" },
                       "modes": {
                         "type": "array",
                         "items": { "$ref": "#/definitions/governance_enforcement_mode" },
@@ -1366,7 +1370,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "build_creative" },
+                      "task": { "type": "string", "const": "build_creative", "default": "build_creative" },
                       "modes": {
                         "type": "array",
                         "items": { "type": "string", "const": "signed_context" },
@@ -1380,7 +1384,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "activate_signal" },
+                      "task": { "type": "string", "const": "activate_signal", "default": "activate_signal" },
                       "modes": {
                         "type": "array",
                         "items": { "type": "string", "const": "signed_context" },
@@ -1394,7 +1398,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "acquire_rights" },
+                      "task": { "type": "string", "const": "acquire_rights", "default": "acquire_rights" },
                       "modes": {
                         "type": "array",
                         "items": { "type": "string", "const": "signed_context" },
@@ -1408,7 +1412,7 @@
                   },
                   {
                     "properties": {
-                      "task": { "type": "string", "const": "update_rights" },
+                      "task": { "type": "string", "const": "update_rights", "default": "update_rights" },
                       "modes": {
                         "type": "array",
                         "items": { "type": "string", "const": "signed_context" },
@@ -1490,7 +1494,7 @@
             {
               "title": "AccountRequestsSupported",
               "properties": {
-                "supported": { "type": "boolean", "const": true },
+                "supported": { "type": "boolean", "const": true, "default": true },
                 "request_task": { "type": "string", "const": "request_account" },
                 "read_task": { "type": "string", "const": "list_accounts" },
                 "changeable_attributes": {
@@ -1518,7 +1522,7 @@
             {
               "title": "AccountRequestsUnsupported",
               "properties": {
-                "supported": { "type": "boolean", "const": false }
+                "supported": { "type": "boolean", "const": false, "default": false }
               },
               "required": ["supported"],
               "not": {
@@ -1576,6 +1580,7 @@
                 "supported": {
                   "type": "boolean",
                   "const": true,
+                  "default": true,
                   "description": "Discriminator. True means the seller accepts account-level `notification_configs[]` registrations for account lifecycle events."
                 },
                 "registration_task": {
@@ -1618,6 +1623,7 @@
                 "supported": {
                   "type": "boolean",
                   "const": false,
+                  "default": false,
                   "description": "Discriminator. False means buyers must rely on `sync_accounts` results, `push_notification_config` for one-shot provisioning callbacks, and polling `list_accounts` for later status changes."
                 }
               },
@@ -1647,7 +1653,7 @@
             {
               "title": "AccountChangeFeedSupported",
               "properties": {
-                "supported": {"type": "boolean", "const": true},
+                "supported": {"type": "boolean", "const": true, "default": true},
                 "read_task": {"type": "string", "const": "list_account_changes"},
                 "registration_task": {"type": "string", "const": "sync_accounts"},
                 "event_type": {"type": "string", "const": "account.change_recorded"},
@@ -1673,7 +1679,7 @@
             {
               "title": "AccountChangeFeedUnsupported",
               "properties": {
-                "supported": {"type": "boolean", "const": false}
+                "supported": {"type": "boolean", "const": false, "default": false}
               },
               "required": ["supported"],
               "not": {
@@ -1701,6 +1707,7 @@
                 "supported": {
                   "type": "boolean",
                   "const": true,
+                  "default": true,
                   "description": "Discriminator. True means the seller accepts operator_identity in sync_accounts settings-update mode."
                 },
                 "supported_changes": {
@@ -1730,6 +1737,7 @@
                 "supported": {
                   "type": "boolean",
                   "const": false,
+                  "default": false,
                   "description": "Discriminator. False means buyers must not submit operator_identity settings updates."
                 }
               },

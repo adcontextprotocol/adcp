@@ -11,7 +11,7 @@
       "description": "The seller accepts inline audience member pushes via the AdCP sync_audiences task. Any AdCP-speaking buyer can use this path with no additional integration. This pattern declares inline push only; grant- and distribution-based paths carry their own declarations.",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "sync_audiences" }
+        "pattern": { "type": "string", "const": "sync_audiences", "default": "sync_audiences" }
       },
       "required": ["pattern"],
       "additionalProperties": true
@@ -21,7 +21,7 @@
       "description": "The seller has configured Trusted Match Protocol identity-match calls to a specific buyer agent. Declarations are per buyer agent because the integration is not generic. Entries MUST be consistent with trusted_match.providers[] where both are present on the product.",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "tmp_identity_match" },
+        "pattern": { "type": "string", "const": "tmp_identity_match", "default": "tmp_identity_match" },
         "buyer_agent": {
           "type": "object",
           "properties": {
@@ -43,7 +43,7 @@
       "description": "Bucket-addressed file exchange over a cloud storage protocol. The buyer moves the bytes; direction declares who hosts the bucket.",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "file_transfer" },
+        "pattern": { "type": "string", "const": "file_transfer", "default": "file_transfer" },
         "transport": {
           "$ref": "/schemas/enums/cloud-storage-protocol.json",
           "description": "Storage protocol for the exchange."
@@ -70,7 +70,7 @@
       "description": "Vendor-mediated query access: the seller reads a dataset the buyer shares through the vendor's grantee-identified sharing mechanism (e.g., Snowflake Secure Data Sharing, Databricks Delta Sharing, BigQuery authorized views). Admissible only when the grant names a principal and no secret is conveyed; token-bearer flows remain out-of-band.",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "dataset_query" },
+        "pattern": { "type": "string", "const": "dataset_query", "default": "dataset_query" },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Data-sharing platform the seller can consume from."
@@ -116,7 +116,7 @@
       "description": "Privacy-preserving match in the named vendor's clean room; neither party sees the other's raw rows. A seller MUST declare this audience-activation pattern only when the collaboration can produce an audience targetable on this product; analytics-only or measurement-only room access does not qualify. The declaration does not imply that output is portable. Room setup is bilateral onboarding. Platform-native or partner-distributed output pairs with platform_distribution; queryable output pairs with dataset_query. The resulting audience binds through a dataset or platform_segment source reference on sync_audiences (core/audience-source.json).",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "clean_room" },
+        "pattern": { "type": "string", "const": "clean_room", "default": "clean_room" },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Clean-room product's operating domain."
@@ -130,7 +130,7 @@
       "description": "The vendor's rails deliver segments to the seller's destination; the buyer initiates distribution in the vendor's system and binds the arriving segment with a platform_segment source reference on sync_audiences (core/audience-source.json). destination_ref is optional because many vendors create or reveal the account-scoped destination only during bilateral account setup.",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "platform_distribution" },
+        "pattern": { "type": "string", "const": "platform_distribution", "default": "platform_distribution" },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Distribution platform's operating domain."

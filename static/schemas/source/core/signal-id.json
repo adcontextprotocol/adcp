@@ -16,6 +16,7 @@
         "source": {
           "type": "string",
           "const": "catalog",
+          "default": "catalog",
           "description": "Discriminator indicating this signal is from a data provider's published adagents.json signals[]"
         },
         "data_provider_domain": {
@@ -37,6 +38,7 @@
         "source": {
           "type": "string",
           "const": "agent",
+          "default": "agent",
           "description": "Discriminator indicating this signal is native to the signal source identified by agent_url, not from a data provider's published signal definitions."
         },
         "agent_url": {

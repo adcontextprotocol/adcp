@@ -19,7 +19,7 @@
       "title": "File transfer",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "file_transfer", "description": "Immutable file/object publication with a manifest-last commit boundary." },
+        "pattern": { "type": "string", "const": "file_transfer", "default": "file_transfer", "description": "Immutable file/object publication with a manifest-last commit boundary." },
         "transport": { "$ref": "/schemas/core/reporting-transport.json", "description": "Storage transport such as s3, gcs, azure_blob, sftp, or https_put (experimental in 3.3). A transport names how immutable objects are written. Delivering rows inline in a request body, without objects and a manifest, is not file_transfer; that is reporting_webhook." },
         "orchestration": { "$ref": "#/definitions/ReportingOrchestration" },
         "destination": { "$ref": "/schemas/core/reporting-write-destination.json" },
@@ -32,7 +32,7 @@
       "title": "Dataset share",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "dataset_share", "description": "Producer-hosted relation or share read through the intended recipient's access path." },
+        "pattern": { "type": "string", "const": "dataset_share", "default": "dataset_share", "description": "Producer-hosted relation or share read through the intended recipient's access path." },
         "transport": { "$ref": "/schemas/core/reporting-transport.json", "description": "Sharing transport such as delta_sharing, snowflake_secure_sharing, or bigquery_authorized_view." },
         "orchestration": { "$ref": "#/definitions/ReportingOrchestration" },
         "destination": { "$ref": "/schemas/core/reporting-dataset-share-destination.json" }
@@ -44,7 +44,7 @@
       "title": "Warehouse materialization",
       "type": "object",
       "properties": {
-        "pattern": { "type": "string", "const": "warehouse_materialization", "description": "Exact-revision publication into a warehouse relation or partition." },
+        "pattern": { "type": "string", "const": "warehouse_materialization", "default": "warehouse_materialization", "description": "Exact-revision publication into a warehouse relation or partition." },
         "transport": { "$ref": "/schemas/core/reporting-transport.json", "description": "Warehouse or transfer transport such as bigquery, snowflake, databricks_sql, or gam_bigquery_transfer." },
         "orchestration": { "$ref": "#/definitions/ReportingOrchestration" },
         "destination": { "$ref": "/schemas/core/reporting-write-destination.json" }

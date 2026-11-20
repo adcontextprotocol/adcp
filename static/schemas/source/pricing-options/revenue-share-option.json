@@ -12,6 +12,7 @@
     "pricing_model": {
       "type": "string",
       "const": "revenue_share",
+      "default": "revenue_share",
       "description": "Percentage commission on settled attributed conversion value"
     },
     "event_type": {

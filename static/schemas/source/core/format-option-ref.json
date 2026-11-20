@@ -16,6 +16,7 @@
         "scope": {
           "type": "string",
           "const": "publisher",
+          "default": "publisher",
           "description": "Reference resolves against the named publisher's adagents.json top-level `formats[]` catalog."
         },
         "publisher_domain": {
@@ -42,6 +43,7 @@
         "scope": {
           "type": "string",
           "const": "product",
+          "default": "product",
           "description": "Reference resolves only against the target product's inline `format_options[]`."
         },
         "format_option_id": {

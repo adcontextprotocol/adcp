@@ -12,6 +12,7 @@
       "properties": {
         "type": {
           "const": "platform",
+          "default": "platform",
           "description": "Discriminator indicating this is a platform-based deployment"
         },
         "platform": {
@@ -34,6 +35,7 @@
       "properties": {
         "type": {
           "const": "agent",
+          "default": "agent",
           "description": "Discriminator indicating this is an agent URL-based deployment"
         },
         "agent_url": {

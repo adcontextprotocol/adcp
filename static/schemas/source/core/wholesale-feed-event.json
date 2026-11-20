@@ -54,7 +54,8 @@
       "description": "product.created — a new product was added to the agent's wholesale product feed.",
       "properties": {
         "event_type": {
-          "const": "product.created"
+          "const": "product.created",
+          "default": "product.created"
         },
         "entity_type": {
           "const": "product"
@@ -95,7 +96,8 @@
       "description": "product.updated — product metadata changed (name, description, formats, properties, targeting capabilities, measurement terms). Use changed_fields for fine-grained re-render, but be prepared to handle a full replacement.",
       "properties": {
         "event_type": {
-          "const": "product.updated"
+          "const": "product.updated",
+          "default": "product.updated"
         },
         "entity_type": {
           "const": "product"
@@ -142,7 +144,8 @@
       "description": "product.priced — the pricing-option set changed (new option or retirement/replacement of an option). A binding price, floor, currency, model, or priced applicability change MUST use a new pricing_option_id; the event never reinterprets an issued option ID at new terms. Existing media buys are unaffected; composition replaces its cached option set.",
       "properties": {
         "event_type": {
-          "const": "product.priced"
+          "const": "product.priced",
+          "default": "product.priced"
         },
         "entity_type": {
           "const": "product"
@@ -205,7 +208,8 @@
       "description": "product.removed — product no longer available. In-flight buys honor existing cancellation policy regardless of removal_reason; storefront UX differs by reason.",
       "properties": {
         "event_type": {
-          "const": "product.removed"
+          "const": "product.removed",
+          "default": "product.removed"
         },
         "entity_type": {
           "const": "product"
@@ -238,7 +242,8 @@
       "description": "signal.created — a new signal was added to the agent's wholesale signals feed.",
       "properties": {
         "event_type": {
-          "const": "signal.created"
+          "const": "signal.created",
+          "default": "signal.created"
         },
         "entity_type": {
           "const": "signal"
@@ -277,7 +282,8 @@
       "description": "signal.updated — signal metadata changed (description, coverage, deployments).",
       "properties": {
         "event_type": {
-          "const": "signal.updated"
+          "const": "signal.updated",
+          "default": "signal.updated"
         },
         "entity_type": {
           "const": "signal"
@@ -322,7 +328,8 @@
       "description": "signal.priced — signal pricing options changed.",
       "properties": {
         "event_type": {
-          "const": "signal.priced"
+          "const": "signal.priced",
+          "default": "signal.priced"
         },
         "entity_type": {
           "const": "signal"
@@ -380,7 +387,8 @@
       "description": "signal.removed — signal no longer available.",
       "properties": {
         "event_type": {
-          "const": "signal.removed"
+          "const": "signal.removed",
+          "default": "signal.removed"
         },
         "entity_type": {
           "const": "signal"
@@ -416,7 +424,8 @@
       "description": "wholesale_feed.bulk_change — fast-forward event emitted when a single operation affects many entities in one feed. Consumers SHOULD repair products through list_products and signals through get_signals.",
       "properties": {
         "event_type": {
-          "const": "wholesale_feed.bulk_change"
+          "const": "wholesale_feed.bulk_change",
+          "default": "wholesale_feed.bulk_change"
         },
         "entity_type": {
           "const": "feed"
@@ -468,7 +477,8 @@
       "x-added-in": "3.3.0",
       "properties": {
         "event_type": {
-          "const": "collection_card.updated"
+          "const": "collection_card.updated",
+          "default": "collection_card.updated"
         },
         "entity_type": {
           "const": "collection"
@@ -506,7 +516,8 @@
       "x-added-in": "3.3.0",
       "properties": {
         "event_type": {
-          "const": "collection_card.removed"
+          "const": "collection_card.removed",
+          "default": "collection_card.removed"
         },
         "entity_type": {
           "const": "collection"
@@ -543,7 +554,8 @@
       "x-added-in": "3.3.0",
       "properties": {
         "event_type": {
-          "const": "collection_catalog.bulk_change"
+          "const": "collection_catalog.bulk_change",
+          "default": "collection_catalog.bulk_change"
         },
         "entity_type": {
           "const": "feed"
@@ -601,7 +613,8 @@
           "description": "Public layer — invalidate the public-layer cache for the entity; all account overlays referencing that public version are also stale.",
           "properties": {
             "scope": {
-              "const": "public"
+              "const": "public",
+              "default": "public"
             }
           },
           "required": [
@@ -613,7 +626,8 @@
           "description": "Account overlay — invalidate the named account overlays only; public layer unaffected. The seller MAY omit account_ids when the affected set is competitively sensitive, but MUST ensure account-scoped webhook fan-out only delivers changes to subscribers authorized for the affected account overlays.",
           "properties": {
             "scope": {
-              "const": "account"
+              "const": "account",
+              "default": "account"
             },
             "account_ids": {
               "type": "array",

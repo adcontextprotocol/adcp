@@ -233,7 +233,7 @@
         "oneOf": [
           {
             "properties": {
-              "trigger": { "type": "string", "const": "timer" },
+              "trigger": { "type": "string", "const": "timer", "default": "timer" },
               "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "delay_ms"],
@@ -241,7 +241,7 @@
           },
           {
             "properties": {
-              "trigger": { "type": "string", "const": "in_view_timer" },
+              "trigger": { "type": "string", "const": "in_view_timer", "default": "in_view_timer" },
               "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "delay_ms"],
@@ -249,8 +249,8 @@
           },
           {
             "properties": {
-              "trigger": { "type": "string", "const": "scroll_threshold" },
-              "input": { "type": "string", "const": "scroll" },
+              "trigger": { "type": "string", "const": "scroll_threshold", "default": "scroll_threshold" },
+              "input": { "type": "string", "const": "scroll", "default": "scroll" },
               "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "input", "scroll_reference", "scroll_threshold_percent"],
@@ -258,8 +258,8 @@
           },
           {
             "properties": {
-              "trigger": { "type": "string", "const": "scroll_progress" },
-              "input": { "type": "string", "const": "scroll" },
+              "trigger": { "type": "string", "const": "scroll_progress", "default": "scroll_progress" },
+              "input": { "type": "string", "const": "scroll", "default": "scroll" },
               "transition_mode": { "type": "string", "const": "scroll_linked" }
             },
             "required": ["trigger", "input", "scroll_reference", "scroll_start_percent", "scroll_end_percent"],
@@ -267,7 +267,7 @@
           },
           {
             "properties": {
-              "trigger": { "type": "string", "const": "user_action" },
+              "trigger": { "type": "string", "const": "user_action", "default": "user_action" },
               "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "input"],
@@ -275,7 +275,7 @@
           },
           {
             "properties": {
-              "trigger": { "type": "string", "const": "media_event" },
+              "trigger": { "type": "string", "const": "media_event", "default": "media_event" },
               "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "media_event"],

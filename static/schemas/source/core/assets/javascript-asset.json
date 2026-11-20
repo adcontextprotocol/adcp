@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "javascript",
+      "default": "javascript",
       "description": "Discriminator identifying this as a JavaScript asset. See /schemas/creative/asset-types for the registry."
     },
     "content": {

@@ -18,6 +18,7 @@
         "status": {
           "type": "string",
           "const": "completed",
+          "default": "completed",
           "description": "Availability and synchronous catalog results are terminal and complete."
         },
         "dry_run": {

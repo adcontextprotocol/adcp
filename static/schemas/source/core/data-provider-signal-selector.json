@@ -19,6 +19,7 @@
         "selection_type": {
           "type": "string",
           "const": "all",
+          "default": "all",
           "description": "Discriminator indicating all signals from this data provider are included"
         }
       },
@@ -39,6 +40,7 @@
         "selection_type": {
           "type": "string",
           "const": "by_id",
+          "default": "by_id",
           "description": "Discriminator indicating selection by specific signal IDs"
         },
         "signal_ids": {
@@ -68,6 +70,7 @@
         "selection_type": {
           "type": "string",
           "const": "by_tag",
+          "default": "by_tag",
           "description": "Discriminator indicating selection by signal tags"
         },
         "signal_tags": {

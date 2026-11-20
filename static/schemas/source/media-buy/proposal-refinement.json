@@ -102,7 +102,7 @@
   "required": ["proposal_id"],
   "oneOf": [
     {
-      "properties": { "action": { "type": "string", "const": "finalize" } },
+      "properties": { "action": { "type": "string", "const": "finalize", "default": "finalize" } },
       "required": ["action"],
       "not": {
         "anyOf": [
@@ -120,7 +120,7 @@
     {
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "properties": { "action": { "type": "string", "const": "extend_hold" } },
+      "properties": { "action": { "type": "string", "const": "extend_hold", "default": "extend_hold" } },
       "required": ["action"],
       "not": {
         "anyOf": [
@@ -136,7 +136,7 @@
       }
     },
     {
-      "properties": { "action": { "type": "string", "const": "revise" } },
+      "properties": { "action": { "type": "string", "const": "revise", "default": "revise" } },
       "required": ["action"],
       "anyOf": [
         { "required": ["constraints"] },

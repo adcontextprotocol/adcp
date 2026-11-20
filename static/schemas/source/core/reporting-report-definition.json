@@ -78,7 +78,7 @@
             "type": "object",
             "properties": {
               "finality_policy_id": { "$ref": "/schemas/core/finality-policy-id.json" },
-              "basis": { "type": "string", "const": "source_final" },
+              "basis": { "type": "string", "const": "source_final", "default": "source_final" },
               "source_signal": { "type": "string", "minLength": 1, "maxLength": 512 }
             },
             "required": ["finality_policy_id", "basis", "source_signal"],
@@ -88,7 +88,7 @@
             "type": "object",
             "properties": {
               "finality_policy_id": { "$ref": "/schemas/core/finality-policy-id.json" },
-              "basis": { "type": "string", "const": "contractual_cutoff" },
+              "basis": { "type": "string", "const": "contractual_cutoff", "default": "contractual_cutoff" },
               "duration_after_period_end": { "$ref": "/schemas/core/iso8601-duration.json" }
             },
             "required": ["finality_policy_id", "basis", "duration_after_period_end"],
@@ -98,7 +98,7 @@
             "type": "object",
             "properties": {
               "finality_policy_id": { "$ref": "/schemas/core/finality-policy-id.json" },
-              "basis": { "type": "string", "const": "stabilized" },
+              "basis": { "type": "string", "const": "stabilized", "default": "stabilized" },
               "minimum_age": { "$ref": "/schemas/core/iso8601-duration.json" },
               "unchanged_for": { "$ref": "/schemas/core/iso8601-duration.json" }
             },

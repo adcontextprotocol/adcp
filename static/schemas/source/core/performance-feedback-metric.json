@@ -12,7 +12,8 @@
       "properties": {
         "scope": {
           "type": "string",
-          "const": "standard"
+          "const": "standard",
+          "default": "standard"
         },
         "metric_id": {
           "$ref": "/schemas/enums/available-metric.json"
@@ -47,7 +48,8 @@
       "properties": {
         "scope": {
           "type": "string",
-          "const": "vendor"
+          "const": "vendor",
+          "default": "vendor"
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

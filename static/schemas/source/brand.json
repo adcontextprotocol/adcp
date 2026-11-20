@@ -228,15 +228,15 @@
       },
       "oneOf": [
         {
-          "properties": { "kind": { "const": "name" } },
+          "properties": { "kind": { "const": "name", "default": "name" } },
           "required": ["kind", "name"]
         },
         {
-          "properties": { "kind": { "const": "value" } },
+          "properties": { "kind": { "const": "value", "default": "value" } },
           "required": ["kind", "value"]
         },
         {
-          "properties": { "kind": { "const": "surface" } },
+          "properties": { "kind": { "const": "surface", "default": "surface" } },
           "required": ["kind", "surface"]
         }
       ],

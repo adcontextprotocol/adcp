@@ -79,7 +79,8 @@
               },
               "role": {
                 "type": "string",
-                "const": "source"
+                "const": "source",
+                "default": "source"
               },
               "assets": {
                 "$ref": "#/definitions/resolvedAssets"
@@ -113,7 +114,8 @@
               },
               "role": {
                 "type": "string",
-                "const": "target"
+                "const": "target",
+                "default": "target"
               },
               "assets": {
                 "$ref": "#/definitions/resolvedAssets"

@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "published_post",
+      "default": "published_post",
       "description": "Discriminator identifying this as a published-post reference asset. See /schemas/creative/asset-types for the registry."
     },
     "post_url": {

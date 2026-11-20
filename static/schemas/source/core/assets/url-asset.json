@@ -9,6 +9,7 @@
     "asset_type": {
       "type": "string",
       "const": "url",
+      "default": "url",
       "description": "Discriminator identifying this as a URL asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {

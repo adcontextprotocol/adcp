@@ -10,7 +10,7 @@
       "title": "Replace targeting value",
       "type": "object",
       "properties": {
-        "operation": { "type": "string", "const": "replace" },
+        "operation": { "type": "string", "const": "replace", "default": "replace" },
         "path": {
           "type": "string",
           "pattern": "^(?:/(?:[^~/]|~[01])*)+$",
@@ -29,7 +29,7 @@
       "title": "Remove targeting set values",
       "type": "object",
       "properties": {
-        "operation": { "type": "string", "const": "remove_values" },
+        "operation": { "type": "string", "const": "remove_values", "default": "remove_values" },
         "path": {
           "type": "string",
           "enum": [

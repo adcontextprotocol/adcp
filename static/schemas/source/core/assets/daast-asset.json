@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "daast",
+      "default": "daast",
       "description": "Discriminator identifying this as a DAAST asset. See /schemas/creative/asset-types for the registry."
     },
     "daast_version": {
@@ -56,6 +57,7 @@
         "delivery_type": {
           "type": "string",
           "const": "url",
+          "default": "url",
           "description": "Discriminator indicating DAAST is delivered via URL endpoint"
         },
         "url": {
@@ -76,6 +78,7 @@
         "delivery_type": {
           "type": "string",
           "const": "inline",
+          "default": "inline",
           "description": "Discriminator indicating DAAST is delivered as inline XML content"
         },
         "content": {

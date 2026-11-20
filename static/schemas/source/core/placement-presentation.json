@@ -72,7 +72,7 @@
       "type": "object",
       "required": ["kind", "layer", "bounds", "fill_color"],
       "properties": {
-        "kind": { "const": "box" },
+        "kind": { "const": "box", "default": "box" },
         "layer": { "$ref": "#/definitions/layer" },
         "bounds": { "$ref": "#/definitions/rectangle" },
         "fill_color": { "$ref": "#/definitions/color" }
@@ -83,7 +83,7 @@
       "type": "object",
       "required": ["kind", "layer", "bounds", "text", "text_color", "font_size"],
       "properties": {
-        "kind": { "const": "text" },
+        "kind": { "const": "text", "default": "text" },
         "layer": { "$ref": "#/definitions/layer" },
         "bounds": { "$ref": "#/definitions/rectangle" },
         "text": { "type": "string", "maxLength": 4096 },
@@ -96,7 +96,7 @@
       "type": "object",
       "required": ["kind", "layer", "bounds", "image_ref", "fit"],
       "properties": {
-        "kind": { "const": "image" },
+        "kind": { "const": "image", "default": "image" },
         "layer": { "$ref": "#/definitions/layer" },
         "bounds": { "$ref": "#/definitions/rectangle" },
         "image_ref": {

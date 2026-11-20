@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "zip",
+      "default": "zip",
       "description": "Discriminator identifying this as a zip-bundled asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {

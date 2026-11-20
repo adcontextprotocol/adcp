@@ -8,7 +8,7 @@
   "oneOf": [
     {
       "properties": {
-        "disclosure": { "type": "string", "const": "disclosed" },
+        "disclosure": { "type": "string", "const": "disclosed", "default": "disclosed" },
         "attempted_agent_origin": {
           "type": "string",
           "format": "uri",
@@ -23,7 +23,7 @@
     },
     {
       "properties": {
-        "disclosure": { "type": "string", "const": "opaque" },
+        "disclosure": { "type": "string", "const": "opaque", "default": "opaque" },
         "rejection_ref": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_.:-]+$",

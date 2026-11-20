@@ -9,7 +9,7 @@
     {
       "title": "Existing binding",
       "properties": {
-        "mode": { "type": "string", "const": "existing" },
+        "mode": { "type": "string", "const": "existing", "default": "existing" },
         "destination_ref": { "$ref": "/schemas/core/reporting-destination-ref.json", "x-entity": "reporting_destination", "description": "Seller-issued immutable destination-generation reference returned by sync_agent_configuration, an earlier sync, or bilateral setup." }
       },
       "required": ["mode", "destination_ref"],
@@ -18,7 +18,7 @@
     {
       "title": "Provision binding",
       "properties": {
-        "mode": { "type": "string", "const": "provision" },
+        "mode": { "type": "string", "const": "provision", "default": "provision" },
         "provider": { "type": "object", "description": "Platform hosting the destination.", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": false },
         "location": { "$ref": "/schemas/core/provider-storage-locator.json", "description": "Provider-native bucket, prefix, project/dataset, catalog/schema, or equivalent locator. It MUST NOT contain an embedded credential or signed URL." },
         "access_mode": { "$ref": "/schemas/core/reporting-access-mode.json", "description": "Optional provider access family used for capability matching." }

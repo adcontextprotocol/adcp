@@ -13,7 +13,8 @@
         },
         "asset_type": {
           "type": "string",
-          "const": "pixel_tracker"
+          "const": "pixel_tracker",
+          "default": "pixel_tracker"
         },
         "event": { "$ref": "/schemas/enums/pixel-tracking-event.json" },
         "method": {
@@ -65,7 +66,8 @@
         },
         "asset_type": {
           "type": "string",
-          "const": "vast_tracker"
+          "const": "vast_tracker",
+          "default": "vast_tracker"
         },
         "vast_versions": {
           "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_versions"
@@ -113,7 +115,8 @@
         },
         "asset_type": {
           "type": "string",
-          "const": "daast_tracker"
+          "const": "daast_tracker",
+          "default": "daast_tracker"
         },
         "daast_versions": {
           "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_versions"

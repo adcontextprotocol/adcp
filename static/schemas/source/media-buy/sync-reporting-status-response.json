@@ -18,7 +18,7 @@
             "title": "Recorded reporting consumer status",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "recorded" },
+              "result": { "type": "string", "const": "recorded", "default": "recorded" },
               "consumer_status": {
                 "allOf": [
                   { "$ref": "/schemas/core/reporting-consumer-status.json" },
@@ -33,7 +33,7 @@
             "title": "Unchanged reporting consumer status",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "unchanged" },
+              "result": { "type": "string", "const": "unchanged", "default": "unchanged" },
               "consumer_status": {
                 "allOf": [
                   { "$ref": "/schemas/core/reporting-consumer-status.json" },
@@ -48,7 +48,7 @@
             "title": "Failed reporting consumer status",
             "type": "object",
             "properties": {
-              "result": { "type": "string", "const": "failed" },
+              "result": { "type": "string", "const": "failed", "default": "failed" },
               "reporting_status_id": {
                 "$ref": "/schemas/core/reporting-consumer-status-id.json"
               },

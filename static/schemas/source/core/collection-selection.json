@@ -14,7 +14,8 @@
       "properties": {
         "mode": {
           "type": "string",
-          "const": "selected"
+          "const": "selected",
+          "default": "selected"
         },
         "collections": {
           "type": "array",
@@ -50,7 +51,8 @@
       "properties": {
         "mode": {
           "type": "string",
-          "const": "default"
+          "const": "default",
+          "default": "default"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"

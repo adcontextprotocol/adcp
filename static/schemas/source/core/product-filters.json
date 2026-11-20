@@ -260,7 +260,7 @@
             "type": "object",
             "description": "Filter by AdCP audience sync path.",
             "properties": {
-              "pattern": { "type": "string", "const": "sync_audiences" }
+              "pattern": { "type": "string", "const": "sync_audiences", "default": "sync_audiences" }
             },
             "required": ["pattern"],
             "additionalProperties": true
@@ -269,7 +269,7 @@
             "type": "object",
             "description": "Filter by TMP identity-match path, optionally pinned to a specific buyer agent.",
             "properties": {
-              "pattern": { "type": "string", "const": "tmp_identity_match" },
+              "pattern": { "type": "string", "const": "tmp_identity_match", "default": "tmp_identity_match" },
               "buyer_agent": {
                 "type": "object",
                 "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url.",
@@ -287,7 +287,7 @@
             "type": "object",
             "description": "Filter by bucket-addressed file exchange, optionally pinning transport, directions, or vendor.",
             "properties": {
-              "pattern": { "type": "string", "const": "file_transfer" },
+              "pattern": { "type": "string", "const": "file_transfer", "default": "file_transfer" },
               "transport": {
                 "$ref": "/schemas/enums/cloud-storage-protocol.json",
                 "description": "Require this storage protocol (file_transfer only)."
@@ -313,7 +313,7 @@
             "type": "object",
             "description": "Filter by vendor-mediated dataset query path.",
             "properties": {
-              "pattern": { "type": "string", "const": "dataset_query" },
+              "pattern": { "type": "string", "const": "dataset_query", "default": "dataset_query" },
               "vendor": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Require the method's vendor to match this reference."
@@ -326,7 +326,7 @@
             "type": "object",
             "description": "Filter by clean-room path.",
             "properties": {
-              "pattern": { "type": "string", "const": "clean_room" },
+              "pattern": { "type": "string", "const": "clean_room", "default": "clean_room" },
               "vendor": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Require the method's vendor to match this reference."
@@ -339,7 +339,7 @@
             "type": "object",
             "description": "Filter by platform distribution path.",
             "properties": {
-              "pattern": { "type": "string", "const": "platform_distribution" },
+              "pattern": { "type": "string", "const": "platform_distribution", "default": "platform_distribution" },
               "vendor": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Require the method's vendor to match this reference."

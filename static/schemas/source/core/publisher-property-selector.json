@@ -27,6 +27,7 @@
         "selection_type": {
           "type": "string",
           "const": "all",
+          "default": "all",
           "description": "Discriminator indicating all properties from each addressed publisher are included"
         }
       },
@@ -53,6 +54,7 @@
         "selection_type": {
           "type": "string",
           "const": "by_id",
+          "default": "by_id",
           "description": "Discriminator indicating selection by specific property IDs"
         },
         "property_ids": {
@@ -91,6 +93,7 @@
         "selection_type": {
           "type": "string",
           "const": "by_tag",
+          "default": "by_tag",
           "description": "Discriminator indicating selection by property tags"
         },
         "property_tags": {

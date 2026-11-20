@@ -19,7 +19,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "current"
+              "const": "current",
+              "default": "current"
             },
             "relationship": {
               "$ref": "/schemas/core/principal-relationship.json",
@@ -75,7 +76,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "recognized"
+              "const": "recognized",
+              "default": "recognized"
             },
             "relationship": {
               "$ref": "/schemas/core/principal-relationship.json",
@@ -103,7 +105,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "unconfigured"
+              "const": "unconfigured",
+              "default": "unconfigured"
             },
             "relationship": {
               "$ref": "/schemas/core/principal-relationship.json",
@@ -121,7 +124,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "failed"
+              "const": "failed",
+              "default": "failed"
             },
             "errors": {
               "type": "array",

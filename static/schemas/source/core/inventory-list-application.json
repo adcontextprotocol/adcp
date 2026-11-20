@@ -25,6 +25,7 @@
         "list_type": {
           "type": "string",
           "const": "property",
+          "default": "property",
           "description": "The receipt describes a property list."
         },
         "effect": {
@@ -88,6 +89,7 @@
         "list_type": {
           "type": "string",
           "const": "collection",
+          "default": "collection",
           "description": "The receipt describes a collection list."
         },
         "effect": {

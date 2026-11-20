@@ -13,6 +13,7 @@
     "status": {
       "type": "string",
       "const": "rejected",
+      "default": "rejected",
       "description": "Task-level business-outcome discriminator. The request was understood and processed, but the seller declined to offer products."
     },
     "reason": {

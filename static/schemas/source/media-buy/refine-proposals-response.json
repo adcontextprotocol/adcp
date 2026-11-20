@@ -9,7 +9,7 @@
   ],
   "anyOf": [
     {
-      "properties": { "status": { "type": "string", "const": "completed" } },
+      "properties": { "status": { "type": "string", "const": "completed", "default": "completed" } },
       "required": ["results", "products"],
       "not": {
         "anyOf": [
@@ -95,7 +95,7 @@
         "oneOf": [
           {
             "properties": {
-              "outcome": { "type": "string", "const": "revised" },
+              "outcome": { "type": "string", "const": "revised", "default": "revised" },
               "proposals": {
                 "items": {
                   "properties": { "proposal_status": { "type": "string", "const": "draft" } },
@@ -117,7 +117,7 @@
           },
           {
             "properties": {
-              "outcome": { "type": "string", "const": "partial" },
+              "outcome": { "type": "string", "const": "partial", "default": "partial" },
               "proposals": {
                 "items": {
                   "properties": { "proposal_status": { "type": "string", "const": "draft" } },
@@ -130,7 +130,7 @@
           },
           {
             "properties": {
-              "outcome": { "type": "string", "const": "finalized" },
+              "outcome": { "type": "string", "const": "finalized", "default": "finalized" },
               "proposal": {
                 "properties": {
                   "proposal_status": { "type": "string", "const": "committed" },
@@ -152,7 +152,7 @@
             }
           },
           {
-            "properties": { "outcome": { "type": "string", "const": "unable" } },
+            "properties": { "outcome": { "type": "string", "const": "unable", "default": "unable" } },
             "required": ["outcome", "reason_code", "reason"],
             "not": {
               "anyOf": [

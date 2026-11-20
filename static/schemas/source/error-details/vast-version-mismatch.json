@@ -57,12 +57,12 @@
   "anyOf": [
     {
       "title": "Asset outside accepted version intersection",
-      "properties": { "mismatch_reason": { "const": "asset_outside_acceptance" } },
+      "properties": { "mismatch_reason": { "const": "asset_outside_acceptance", "default": "asset_outside_acceptance" } },
       "required": ["mismatch_reason", "asset_vast_version", "product_vast_versions", "seller_vast_versions"]
     },
     {
       "title": "Inspected document version mismatch",
-      "properties": { "mismatch_reason": { "const": "document_version_mismatch" } },
+      "properties": { "mismatch_reason": { "const": "document_version_mismatch", "default": "document_version_mismatch" } },
       "required": ["mismatch_reason", "asset_vast_version", "observed_document_vast_version", "document_role"],
       "allOf": [
         {

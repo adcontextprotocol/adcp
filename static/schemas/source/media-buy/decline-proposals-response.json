@@ -9,7 +9,7 @@
   ],
   "anyOf": [
     {
-      "properties": { "status": { "type": "string", "const": "completed" } },
+      "properties": { "status": { "type": "string", "const": "completed", "default": "completed" } },
       "required": ["results"],
       "not": { "required": ["task_id"] }
     },
@@ -41,12 +41,12 @@
         "required": ["proposal_id", "outcome"],
         "oneOf": [
           {
-            "properties": { "outcome": { "const": "declined" } },
+            "properties": { "outcome": { "const": "declined", "default": "declined" } },
             "required": ["outcome"],
             "not": { "required": ["reason"] }
           },
           {
-            "properties": { "outcome": { "const": "unable" } },
+            "properties": { "outcome": { "const": "unable", "default": "unable" } },
             "required": ["outcome", "reason"]
           }
         ],

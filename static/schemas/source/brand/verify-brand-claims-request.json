@@ -36,7 +36,8 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "subsidiary"
+              "const": "subsidiary",
+              "default": "subsidiary"
             },
             "claim": {
               "type": "object",
@@ -69,7 +70,8 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "parent"
+              "const": "parent",
+              "default": "parent"
             },
             "claim": {
               "type": "object",
@@ -101,7 +103,8 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "property"
+              "const": "property",
+              "default": "property"
             },
             "claim": {
               "type": "object",
@@ -140,7 +143,8 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "trademark"
+              "const": "trademark",
+              "default": "trademark"
             },
             "claim": {
               "type": "object",

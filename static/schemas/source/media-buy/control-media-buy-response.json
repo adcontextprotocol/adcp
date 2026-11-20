@@ -15,7 +15,7 @@
       "title": "Control Applied",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "completed" },
+        "status": { "type": "string", "const": "completed", "default": "completed" },
         "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json" },
         "revision": { "type": "integer", "minimum": 1 },
         "media_buy_status": { "$ref": "/schemas/enums/media-buy-status.json" },
@@ -56,7 +56,7 @@
       "title": "Control Error",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "failed" },
+        "status": { "type": "string", "const": "failed", "default": "failed" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 },
         "context": { "$ref": "/schemas/core/context.json" },
         "ext": { "$ref": "/schemas/core/ext.json" }
@@ -75,7 +75,7 @@
       "title": "Control Submitted",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "submitted" },
+        "status": { "type": "string", "const": "submitted", "default": "submitted" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
         "context": { "$ref": "/schemas/core/context.json" },
         "ext": { "$ref": "/schemas/core/ext.json" }

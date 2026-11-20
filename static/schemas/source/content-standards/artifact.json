@@ -54,7 +54,7 @@
             "type": "object",
             "description": "Text block (paragraph, heading, etc.)",
             "properties": {
-              "type": { "type": "string", "const": "text" },
+              "type": { "type": "string", "const": "text", "default": "text" },
               "role": {
                 "type": "string",
                 "enum": ["title", "paragraph", "heading", "caption", "quote", "list_item", "description"],
@@ -92,7 +92,7 @@
             "type": "object",
             "description": "Image asset",
             "properties": {
-              "type": { "type": "string", "const": "image" },
+              "type": { "type": "string", "const": "image", "default": "image" },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -129,7 +129,7 @@
             "type": "object",
             "description": "Video asset",
             "properties": {
-              "type": { "type": "string", "const": "video" },
+              "type": { "type": "string", "const": "video", "default": "video" },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -173,7 +173,7 @@
             "type": "object",
             "description": "Audio asset",
             "properties": {
-              "type": { "type": "string", "const": "audio" },
+              "type": { "type": "string", "const": "audio", "default": "audio" },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -293,7 +293,7 @@
           "type": "object",
           "description": "Short-lived bearer-token access for origins that cannot use signed URLs or pre-configured workload identity. The token is a live secret and must be scoped to the asset. Consumers MUST send it only to the HTTPS origin authorized for that asset and MUST NOT forward the Authorization header across redirects.",
           "properties": {
-            "method": { "type": "string", "const": "bearer_token" },
+            "method": { "type": "string", "const": "bearer_token", "default": "bearer_token" },
             "token": {
               "type": "string",
               "description": "Short-lived, asset-scoped bearer token for the Authorization header. Producers MUST NOT issue a standing or broadly scoped credential here. Consumers MUST redact the token from logs, traces, errors, metrics, analytics, model context, and durable storage. Any temporary encrypted cache MUST be bounded by the credential expiry and the consumer's configured maximum lifetime."
@@ -305,7 +305,7 @@
           "type": "object",
           "description": "Credential-free workload-identity access. The asset origin authorizes an identity already controlled by the component that performs the asset fetch, such as a GCP service account or AWS IAM role, through authenticated out-of-band onboarding. The consumer MUST use workload credentials only for the pre-authorized HTTPS origin and resource prefix; the payload's method, provider, and URL are not authorization. No provider key or access secret crosses the AdCP payload.",
           "properties": {
-            "method": { "type": "string", "const": "service_account" },
+            "method": { "type": "string", "const": "service_account", "default": "service_account" },
             "provider": {
               "type": "string",
               "enum": ["gcp", "aws"],
@@ -324,7 +324,7 @@
           "type": "object",
           "description": "Recommended default for one-off access. The asset `url` is a time-limited bearer capability and requires no additional authentication. Producers SHOULD scope it to one asset and the shortest practical access window under their documented maximum TTL. Consumers MUST redact the complete URL from logs, traces, errors, metrics, analytics, model context, and durable storage, and MUST NOT forward it outside the intended recipient trust boundary.",
           "properties": {
-            "method": { "type": "string", "const": "signed_url" }
+            "method": { "type": "string", "const": "signed_url", "default": "signed_url" }
           },
           "required": ["method"]
         }

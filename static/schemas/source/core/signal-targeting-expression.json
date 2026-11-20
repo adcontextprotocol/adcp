@@ -18,6 +18,7 @@
         "value_type": {
           "type": "string",
           "const": "binary",
+          "default": "binary",
           "description": "Discriminator for binary signals."
         },
         "value": {
@@ -40,6 +41,7 @@
         "value_type": {
           "type": "string",
           "const": "categorical",
+          "default": "categorical",
           "description": "Discriminator for categorical signals."
         },
         "values": {
@@ -65,6 +67,7 @@
         "value_type": {
           "type": "string",
           "const": "numeric",
+          "default": "numeric",
           "description": "Discriminator for numeric signals."
         },
         "min_value": {

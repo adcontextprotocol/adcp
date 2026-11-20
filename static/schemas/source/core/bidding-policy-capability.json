@@ -113,7 +113,7 @@
     "max_bid_with_cost_per": {
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "max_bid_with_cost_per" },
+        "kind": { "type": "string", "const": "max_bid_with_cost_per", "default": "max_bid_with_cost_per" },
         "cost_per_strengths": {
           "type": "array",
           "description": "cost_per strengths supported when combined with max_bid.",
@@ -128,7 +128,7 @@
     "max_bid_with_roas": {
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "max_bid_with_roas" },
+        "kind": { "type": "string", "const": "max_bid_with_roas", "default": "max_bid_with_roas" },
         "roas_strengths": {
           "type": "array",
           "description": "roas strengths supported when combined with max_bid.",

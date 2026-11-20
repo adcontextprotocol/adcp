@@ -12,6 +12,7 @@
     "pricing_model": {
       "type": "string",
       "const": "cpc",
+      "default": "cpc",
       "description": "Cost per click"
     },
     "currency": {

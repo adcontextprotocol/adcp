@@ -25,7 +25,8 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "continuous_bounds"
+              "const": "continuous_bounds",
+              "default": "continuous_bounds"
             },
             "ext": {
               "$ref": "/schemas/core/ext.json"
@@ -39,7 +40,8 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "enumerated_intervals"
+              "const": "enumerated_intervals",
+              "default": "enumerated_intervals"
             },
             "interval_ids": {
               "type": "array",
@@ -62,7 +64,8 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "signals"
+              "const": "signals",
+              "default": "signals"
             },
             "signal_refs": {
               "type": "array",
@@ -86,6 +89,7 @@
             "type": {
               "type": "string",
               "const": "gender_values",
+              "default": "gender_values",
               "x-status": "experimental",
               "x-added-in": "3.3.0"
             },
@@ -108,6 +112,7 @@
             "type": {
               "type": "string",
               "const": "per_dimension",
+              "default": "per_dimension",
               "x-status": "experimental",
               "x-added-in": "3.3.0"
             },
@@ -119,6 +124,7 @@
                     "type": {
                       "type": "string",
                       "const": "continuous_bounds",
+                      "default": "continuous_bounds",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0"
                     },
@@ -139,6 +145,7 @@
                     "type": {
                       "type": "string",
                       "const": "enumerated_intervals",
+                      "default": "enumerated_intervals",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0"
                     },
@@ -171,6 +178,7 @@
                     "type": {
                       "type": "string",
                       "const": "signals",
+                      "default": "signals",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0"
                     },
@@ -210,6 +218,7 @@
                     "type": {
                       "type": "string",
                       "const": "gender_values",
+                      "default": "gender_values",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0"
                     },
@@ -230,6 +239,7 @@
                     "type": {
                       "type": "string",
                       "const": "signals",
+                      "default": "signals",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0"
                     },

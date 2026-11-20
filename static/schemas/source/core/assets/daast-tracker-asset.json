@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "daast_tracker",
+      "default": "daast_tracker",
       "description": "Discriminator identifying this as a DAAST tracker asset. See /schemas/creative/asset-types for the registry."
     },
     "daast_event": {

@@ -19,7 +19,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "applied"
+              "const": "applied",
+              "default": "applied"
             },
             "action": {
               "type": "string",
@@ -28,7 +29,8 @@
             },
             "dry_run": {
               "type": "boolean",
-              "const": false
+              "const": false,
+              "default": false
             },
             "principal_id": {
               "$ref": "/schemas/core/principal-id.json",
@@ -65,7 +67,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "validated"
+              "const": "validated",
+              "default": "validated"
             },
             "action": {
               "type": "string",
@@ -73,7 +76,8 @@
             },
             "dry_run": {
               "type": "boolean",
-              "const": true
+              "const": true,
+              "default": true
             },
             "warnings": {
               "type": "array",
@@ -93,7 +97,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "failed"
+              "const": "failed",
+              "default": "failed"
             },
             "errors": {
               "type": "array",

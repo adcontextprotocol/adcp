@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "display_tag",
+      "default": "display_tag",
       "description": "Discriminator identifying an atomic third-party display-tag representation."
     },
     "macro_declarations": {
@@ -61,7 +62,7 @@
         "macro_declarations": {
           "items": { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
         },
-        "delivery_type": { "type": "string", "const": "tag_url" },
+        "delivery_type": { "type": "string", "const": "tag_url", "default": "tag_url" },
         "url": {
           "$ref": "/schemas/core/macro-bearing-url.json",
           "description": "Ad-request URL invoked at impression time. It is equivalent to the backward-compatible `url` asset with `url_type: \"ad_request\"`."
@@ -84,7 +85,7 @@
         "macro_declarations": {
           "items": { "properties": { "location": { "properties": { "field": { "const": "markup" } } } } }
         },
-        "delivery_type": { "type": "string", "const": "inline_markup" },
+        "delivery_type": { "type": "string", "const": "inline_markup", "default": "inline_markup" },
         "markup_type": {
           "type": "string",
           "enum": ["iframe_javascript", "javascript", "standard"],
@@ -114,7 +115,7 @@
         "macro_declarations": {
           "items": { "properties": { "location": { "properties": { "field": { "enum": ["ad_request_url", "clickthrough_url"] } } } } }
         },
-        "delivery_type": { "type": "string", "const": "paired_redirect" },
+        "delivery_type": { "type": "string", "const": "paired_redirect", "default": "paired_redirect" },
         "ad_request_url": {
           "$ref": "/schemas/core/macro-bearing-url.json",
           "description": "Image or ad-request URL entered into the destination ad server. This field deliberately accepts byte-preserved vendor tokens that are not RFC 6570 URI templates."

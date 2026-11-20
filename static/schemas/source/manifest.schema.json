@@ -99,15 +99,15 @@
             "discriminator": { "propertyName": "mode" },
             "oneOf": [
               {
-                "properties": { "mode": { "const": "direct" } },
+                "properties": { "mode": { "const": "direct", "default": "direct" } },
                 "required": ["mode", "tool"]
               },
               {
-                "properties": { "mode": { "const": "orchestrated" } },
+                "properties": { "mode": { "const": "orchestrated", "default": "orchestrated" } },
                 "required": ["mode", "tool"]
               },
               {
-                "properties": { "mode": { "const": "none" } },
+                "properties": { "mode": { "const": "none", "default": "none" } },
                 "required": ["mode"],
                 "not": { "required": ["tool"] }
               }

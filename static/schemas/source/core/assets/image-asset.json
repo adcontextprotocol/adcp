@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "image",
+      "default": "image",
       "description": "Discriminator identifying this as an image asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {

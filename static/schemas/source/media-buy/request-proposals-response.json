@@ -75,7 +75,7 @@
       "oneOf": [
         {
           "properties": {
-            "kind": { "type": "string", "const": "listed_purchase" },
+            "kind": { "type": "string", "const": "listed_purchase", "default": "listed_purchase" },
             "product_ids": {
               "type": "array",
               "description": "Exact products the coordinator promoted and re-read through account-scoped list_products before returning this result. The set MUST match products[].product_id.",
@@ -98,7 +98,7 @@
         },
         {
           "properties": {
-            "kind": { "type": "string", "const": "legacy_create" },
+            "kind": { "type": "string", "const": "legacy_create", "default": "legacy_create" },
             "continuation_token": {
               "$ref": "/schemas/core/purchase-continuation-token.json",
               "description": "Opaque, short-lived coordinator token bound to the caller principal, account, and complete observed product/pricing payload. It is not a seller-issued feed fence."
@@ -172,8 +172,8 @@
   "anyOf": [
     {
       "properties": {
-        "outcome": { "type": "string", "const": "proposed" },
-        "status": { "type": "string", "const": "completed" }
+        "outcome": { "type": "string", "const": "proposed", "default": "proposed" },
+        "status": { "type": "string", "const": "completed", "default": "completed" }
       },
       "required": ["outcome", "proposals", "products"],
       "not": {
@@ -187,8 +187,8 @@
     },
     {
       "properties": {
-        "outcome": { "type": "string", "const": "products_available" },
-        "status": { "type": "string", "const": "completed" }
+        "outcome": { "type": "string", "const": "products_available", "default": "products_available" },
+        "status": { "type": "string", "const": "completed", "default": "completed" }
       },
       "required": ["outcome", "products", "purchase_continuation"],
       "allOf": [
@@ -231,8 +231,8 @@
     },
     {
       "properties": {
-        "outcome": { "type": "string", "const": "rejected" },
-        "status": { "type": "string", "const": "completed" }
+        "outcome": { "type": "string", "const": "rejected", "default": "rejected" },
+        "status": { "type": "string", "const": "completed", "default": "completed" }
       },
       "required": ["outcome", "reason"],
       "not": {

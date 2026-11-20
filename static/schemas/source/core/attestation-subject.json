@@ -13,7 +13,8 @@
       "properties": {
         "type": {
           "type": "string",
-          "const": "brand"
+          "const": "brand",
+          "default": "brand"
         },
         "brand": {
           "$ref": "/schemas/core/brand-ref.json"
@@ -31,7 +32,8 @@
       "properties": {
         "type": {
           "type": "string",
-          "const": "agent"
+          "const": "agent",
+          "default": "agent"
         },
         "agent_url": {
           "$ref": "/schemas/core/https-url.json",
@@ -50,7 +52,8 @@
       "properties": {
         "type": {
           "type": "string",
-          "const": "resource"
+          "const": "resource",
+          "default": "resource"
         },
         "resource_type": {
           "type": "string",

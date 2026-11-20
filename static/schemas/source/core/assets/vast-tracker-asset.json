@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "vast_tracker",
+      "default": "vast_tracker",
       "description": "Discriminator identifying this as a VAST tracker asset. See /schemas/creative/asset-types for the registry."
     },
     "vast_event": {

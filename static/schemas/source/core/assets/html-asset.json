@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "html",
+      "default": "html",
       "description": "Discriminator identifying this as an HTML asset. See /schemas/creative/asset-types for the registry."
     },
     "content": {

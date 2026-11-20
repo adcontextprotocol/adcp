@@ -94,13 +94,13 @@
   "oneOf": [
     {
       "properties": {
-        "outcome": { "type": "string", "const": "listed" }
+        "outcome": { "type": "string", "const": "listed", "default": "listed" }
       },
       "required": ["outcome", "products", "feed_version", "cache_scope"]
     },
     {
       "properties": {
-        "outcome": { "type": "string", "const": "unchanged" }
+        "outcome": { "type": "string", "const": "unchanged", "default": "unchanged" }
       },
       "required": ["outcome", "feed_version", "cache_scope"],
       "not": { "required": ["products"] }

@@ -120,18 +120,18 @@
   "oneOf": [
     {
       "title": "Successful lookup",
-      "properties": { "status": { "type": "string", "const": "completed" } },
+      "properties": { "status": { "type": "string", "const": "completed", "default": "completed" } },
       "required": ["status"],
       "oneOf": [
         {
       "title": "Summary view",
-      "properties": { "view": { "type": "string", "const": "summary" } },
+      "properties": { "view": { "type": "string", "const": "summary", "default": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "coverage", "data_through", "obligation_counts", "issues"],
       "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["adjustments"], "properties": { "adjustments": {} } }, { "required": ["consumer_statuses"], "properties": { "consumer_statuses": {} } }, { "required": ["adjustment_receipts"], "properties": { "adjustment_receipts": {} } }, { "required": ["pagination"], "properties": { "pagination": {} } }, { "required": ["revision"], "properties": { "revision": {} } }, { "required": ["materializations"], "properties": { "materializations": {} } }, { "required": ["receipts"], "properties": { "receipts": {} } }] }
     },
     {
       "title": "Periods view",
-      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "periods", "default": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "receipts", "pagination"],
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
       "then": { "not": { "required": ["next_expected_at"], "properties": { "next_expected_at": {} } } },
@@ -139,7 +139,7 @@
     },
     {
       "title": "Revision view",
-      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "revision", "default": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "receipts", "pagination"],
       "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["scope"], "properties": { "scope": {} } }, { "required": ["health"], "properties": { "health": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["subscription_coverage"], "properties": { "subscription_coverage": {} } }] }
         }
@@ -147,7 +147,7 @@
     },
     {
       "title": "Failed lookup",
-      "properties": { "status": { "type": "string", "const": "failed" } },
+      "properties": { "status": { "type": "string", "const": "failed", "default": "failed" } },
       "required": ["status"],
       "oneOf": [
         {
@@ -155,9 +155,9 @@
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "failed" },
+        "status": { "type": "string", "const": "failed", "default": "failed" },
         "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
-        "failure_kind": { "type": "string", "const": "lookup_unavailable" },
+        "failure_kind": { "type": "string", "const": "lookup_unavailable", "default": "lookup_unavailable" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
         "adcp_error": {
@@ -192,9 +192,9 @@
       "title": "Operational failure",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "failed" },
+        "status": { "type": "string", "const": "failed", "default": "failed" },
         "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
-        "failure_kind": { "type": "string", "const": "operational" },
+        "failure_kind": { "type": "string", "const": "operational", "default": "operational" },
         "context": { "$ref": "/schemas/core/context.json" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
       },

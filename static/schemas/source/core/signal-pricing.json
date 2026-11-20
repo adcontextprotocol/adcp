@@ -15,7 +15,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "cpm"
+          "const": "cpm",
+          "default": "cpm"
         },
         "cpm": {
           "type": "number",
@@ -40,7 +41,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "percent_of_media"
+          "const": "percent_of_media",
+          "default": "percent_of_media"
         },
         "percent": {
           "$ref": "/schemas/core/percentage.json",
@@ -69,7 +71,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "flat_fee"
+          "const": "flat_fee",
+          "default": "flat_fee"
         },
         "amount": {
           "type": "number",
@@ -99,7 +102,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "per_unit"
+          "const": "per_unit",
+          "default": "per_unit"
         },
         "unit": {
           "type": "string",
@@ -128,7 +132,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "custom"
+          "const": "custom",
+          "default": "custom"
         },
         "description": {
           "$ref": "/schemas/core/custom-pricing-description.json",

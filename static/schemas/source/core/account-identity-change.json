@@ -14,6 +14,7 @@
         "status": {
           "type": "string",
           "const": "pending_approval",
+          "default": "pending_approval",
           "description": "The seller is reviewing the requested transition."
         },
         "requested_operator_identity": {
@@ -40,6 +41,7 @@
         "status": {
           "type": "string",
           "const": "rejected",
+          "default": "rejected",
           "description": "The seller rejected the transition and retained the current canonical identity."
         },
         "requested_operator_identity": {

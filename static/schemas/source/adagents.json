@@ -245,6 +245,7 @@
                   "authorization_type": {
                     "type": "string",
                     "const": "property_ids",
+                    "default": "property_ids",
                     "description": "Discriminator indicating authorization by specific property IDs"
                   },
                   "property_ids": {
@@ -325,6 +326,7 @@
                   "authorization_type": {
                     "type": "string",
                     "const": "property_tags",
+                    "default": "property_tags",
                     "description": "Discriminator indicating authorization by property tags"
                   },
                   "property_tags": {
@@ -405,6 +407,7 @@
                   "authorization_type": {
                     "type": "string",
                     "const": "inline_properties",
+                    "default": "inline_properties",
                     "description": "Discriminator indicating authorization by inline property definitions. Companion field is `properties` (not `inline_properties`) — the only authorization_type whose companion field name does not mirror the discriminator value."
                   },
                   "properties": {
@@ -485,6 +488,7 @@
                   "authorization_type": {
                     "type": "string",
                     "const": "publisher_properties",
+                    "default": "publisher_properties",
                     "description": "Discriminator indicating authorization for properties from other publisher domains"
                   },
                   "publisher_properties": {
@@ -566,6 +570,7 @@
                   "authorization_type": {
                     "type": "string",
                     "const": "signal_ids",
+                    "default": "signal_ids",
                     "description": "Discriminator indicating authorization by specific signal IDs"
                   },
                   "signal_ids": {
@@ -595,6 +600,7 @@
                   "authorization_type": {
                     "type": "string",
                     "const": "signal_tags",
+                    "default": "signal_tags",
                     "description": "Discriminator indicating authorization by signal tags"
                   },
                   "signal_tags": {

@@ -11,6 +11,7 @@
         "type": {
           "type": "string",
           "const": "signal",
+          "default": "signal",
           "description": "Discriminator for signal-based selectors"
         },
         "signal_ref": {
@@ -25,6 +26,7 @@
         "value_type": {
           "type": "string",
           "const": "binary",
+          "default": "binary",
           "description": "Discriminator for binary signals"
         },
         "value": {
@@ -46,6 +48,7 @@
         "type": {
           "type": "string",
           "const": "signal",
+          "default": "signal",
           "description": "Discriminator for signal-based selectors"
         },
         "signal_ref": {
@@ -60,6 +63,7 @@
         "value_type": {
           "type": "string",
           "const": "categorical",
+          "default": "categorical",
           "description": "Discriminator for categorical signals"
         },
         "values": {
@@ -85,6 +89,7 @@
         "type": {
           "type": "string",
           "const": "signal",
+          "default": "signal",
           "description": "Discriminator for signal-based selectors"
         },
         "signal_ref": {
@@ -99,6 +104,7 @@
         "value_type": {
           "type": "string",
           "const": "numeric",
+          "default": "numeric",
           "description": "Discriminator for numeric signals"
         },
         "min_value": {
@@ -124,6 +130,7 @@
         "type": {
           "type": "string",
           "const": "description",
+          "default": "description",
           "description": "Discriminator for description-based selectors"
         },
         "description": {

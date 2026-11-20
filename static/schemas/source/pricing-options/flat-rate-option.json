@@ -12,6 +12,7 @@
     "pricing_model": {
       "type": "string",
       "const": "flat_rate",
+      "default": "flat_rate",
       "description": "Fixed cost regardless of delivery volume"
     },
     "currency": {

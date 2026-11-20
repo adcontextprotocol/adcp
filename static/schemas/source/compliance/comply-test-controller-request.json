@@ -364,7 +364,8 @@
               {
                 "properties": {
                   "arm": {
-                    "const": "submitted"
+                    "const": "submitted",
+                    "default": "submitted"
                   }
                 },
                 "required": [
@@ -376,7 +377,8 @@
               {
                 "properties": {
                   "arm": {
-                    "const": "completed"
+                    "const": "completed",
+                    "default": "completed"
                   },
                   "result": {
                     "type": "object",

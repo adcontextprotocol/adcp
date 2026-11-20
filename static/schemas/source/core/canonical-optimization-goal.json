@@ -8,7 +8,7 @@
     {
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "metric" },
+        "kind": { "type": "string", "const": "metric", "default": "metric" },
         "metric": {
           "$ref": "/schemas/enums/canonical-optimization-metric.json"
         },
@@ -57,7 +57,7 @@
     {
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "event" },
+        "kind": { "type": "string", "const": "event", "default": "event" },
         "event_sources": {
           "type": "array",
           "items": {
@@ -91,7 +91,7 @@
     {
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "vendor_metric" },
+        "kind": { "type": "string", "const": "vendor_metric", "default": "vendor_metric" },
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
         "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" },
         "target": {

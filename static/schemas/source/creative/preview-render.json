@@ -18,6 +18,7 @@
         "output_format": {
           "type": "string",
           "const": "url",
+          "default": "url",
           "description": "Discriminator indicating preview_url is provided"
         },
         "preview_url": {
@@ -94,6 +95,7 @@
         "output_format": {
           "type": "string",
           "const": "html",
+          "default": "html",
           "description": "Discriminator indicating preview_html is provided"
         },
         "preview_html": {
@@ -169,6 +171,7 @@
         "output_format": {
           "type": "string",
           "const": "both",
+          "default": "both",
           "description": "Discriminator indicating both preview_url and preview_html are provided"
         },
         "preview_url": {

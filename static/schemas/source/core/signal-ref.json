@@ -15,6 +15,7 @@
         "scope": {
           "type": "string",
           "const": "product",
+          "default": "product",
           "description": "Discriminator indicating the signal resolves through the selected product's included_signals or signal_targeting_options."
         },
         "signal_id": {
@@ -41,6 +42,7 @@
         "scope": {
           "type": "string",
           "const": "data_provider",
+          "default": "data_provider",
           "description": "Discriminator indicating the signal resolves through a data provider's published adagents.json signals[]."
         },
         "data_provider_domain": {
@@ -70,6 +72,7 @@
         "scope": {
           "type": "string",
           "const": "signal_source",
+          "default": "signal_source",
           "description": "Discriminator indicating the signal resolves through the issuing signal source."
         },
         "signal_source_url": {

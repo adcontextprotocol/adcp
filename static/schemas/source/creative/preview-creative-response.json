@@ -20,6 +20,7 @@
         "response_type": {
           "type": "string",
           "const": "single",
+          "default": "single",
           "description": "Discriminator indicating this is a single preview response"
         },
         "previews": {
@@ -118,6 +119,7 @@
         "response_type": {
           "type": "string",
           "const": "batch",
+          "default": "batch",
           "description": "Discriminator indicating this is a batch preview response"
         },
         "results": {
@@ -222,6 +224,7 @@
                   "success": {
                     "type": "boolean",
                     "const": true,
+                    "default": true,
                     "description": "Indicates this preview request succeeded"
                   }
                 },
@@ -235,6 +238,7 @@
                   "success": {
                     "type": "boolean",
                     "const": false,
+                    "default": false,
                     "description": "Indicates this preview request failed"
                   }
                 },
@@ -277,6 +281,7 @@
         "response_type": {
           "type": "string",
           "const": "variant",
+          "default": "variant",
           "description": "Discriminator indicating this is a variant preview response"
         },
         "variant_id": {
@@ -357,6 +362,7 @@
         "response_type": {
           "type": "string",
           "const": "submitted",
+          "default": "submitted",
           "description": "Preview-response discriminator for the asynchronous arm."
         },
         "context": {

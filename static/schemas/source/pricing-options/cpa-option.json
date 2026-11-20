@@ -12,6 +12,7 @@
     "pricing_model": {
       "type": "string",
       "const": "cpa",
+      "default": "cpa",
       "description": "Cost per acquisition (conversion event)"
     },
     "event_type": {

@@ -8,6 +8,7 @@
     "kind": {
       "type": "string",
       "const": "signal",
+      "default": "signal",
       "description": "Dimension family discriminator."
     },
     "signal_ref": {

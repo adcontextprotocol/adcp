@@ -15,6 +15,7 @@
         "selection_type": {
           "type": "string",
           "const": "distribution_ids",
+          "default": "distribution_ids",
           "description": "Discriminator indicating selection by platform-independent distribution identifiers"
         },
         "identifiers": {
@@ -53,6 +54,7 @@
         "selection_type": {
           "type": "string",
           "const": "publisher_collections",
+          "default": "publisher_collections",
           "description": "Discriminator indicating selection by specific collection IDs within a publisher"
         },
         "publisher_domain": {
@@ -79,6 +81,7 @@
         "selection_type": {
           "type": "string",
           "const": "publisher_genres",
+          "default": "publisher_genres",
           "description": "Discriminator indicating selection by genre within a publisher"
         },
         "publisher_domain": {

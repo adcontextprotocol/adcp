@@ -9,6 +9,7 @@
     "asset_type": {
       "type": "string",
       "const": "video",
+      "default": "video",
       "description": "Discriminator identifying this as a video asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {

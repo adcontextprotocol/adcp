@@ -14,7 +14,8 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "event_source"
+          "const": "event_source",
+          "default": "event_source"
         },
         "event_types": {
           "type": "array",
@@ -39,7 +40,8 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "catalog"
+          "const": "catalog",
+          "default": "catalog"
         },
         "catalog_types": {
           "type": "array",
@@ -64,7 +66,8 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "downstream_connection"
+          "const": "downstream_connection",
+          "default": "downstream_connection"
         },
         "connection": {
           "description": "The required connection. Account-independent: `status` is omitted or `unknown`; `resource_ref`, `connection_id`, and `expires_at` MUST be omitted; `required_for`, when present, includes `create_media_buy`.",
