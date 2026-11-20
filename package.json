@@ -218,7 +218,7 @@
     "@adcp/sdk": "17.0.0-beta.29",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
-    "@contentauth/c2pa-node": "^0.11.0",
+    "@contentauth/c2pa-node": "^0.10.0",
     "@google-cloud/kms": "^6.3.0",
     "@google-cloud/storage": "8.4.0",
     "@google/genai": "^2.32.0",
