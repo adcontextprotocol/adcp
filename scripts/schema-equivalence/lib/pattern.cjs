@@ -43,7 +43,13 @@ function readEscape(s, i, inClass) {
     }
     const hex = s.slice(i + 2, i + 6);
     if (!/^[0-9A-Fa-f]{4}$/.test(hex)) throw new Bail();
-    return { cp: parseInt(hex, 16), next: i + 6 };
+    const cp = parseInt(hex, 16);
+    // With the u flag, \uLEAD\uTRAIL is one code point, not two surrogates.
+    const trail = s.slice(i + 6, i + 12);
+    if (cp >= 0xd800 && cp <= 0xdbff && /^\\u[Dd][C-Fc-f][0-9A-Fa-f]{2}$/.test(trail)) {
+      return { cp: 0x10000 + ((cp - 0xd800) << 10) + (parseInt(trail.slice(2), 16) - 0xdc00), next: i + 12 };
+    }
+    return { cp, next: i + 6 };
   }
   if (Object.prototype.hasOwnProperty.call(SINGLE_ESCAPES, c) && !(c === '0' && /[0-9]/.test(s[i + 2] || ''))) {
     return { cp: SINGLE_ESCAPES[c], next: i + 2 };
@@ -96,7 +102,8 @@ function readClass(s, i) {
       intervals.push(a.range);
     } else if (b && b.dash && c && (a.range || c.range)) {
       throw new Bail();
-    } else if (b && b.dash && c && a.cls === undefined && c.cls === undefined && !a.dash && !c.dash) {
+    } else if (b && b.dash && c && a.cls === undefined && c.cls === undefined) {
+      // A literal "-" can be a range endpoint: [--/] is U+002D..U+002F, [!--] is U+0021..U+002D.
       if (a.cp > c.cp) throw new Bail();
       intervals.push([a.cp, c.cp]);
       k += 2;

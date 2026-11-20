@@ -116,7 +116,9 @@ valid payloads the same, and each has a fixture under `test/fixtures/`:
   dropped, and `false` union branches are removed. The tool builds context
   copies, so a shared target keeps its meaning in value positions.
 - Compares regex `pattern` values in a canonical spelling: `\d` is `[0-9]`,
-  and a bracket class is a sorted set of code-point intervals. A pattern that
+  and a bracket class is a sorted set of code-point intervals, read as Ajv's
+  `u` flag reads it (a literal `-` can be a range endpoint, as in `[--/]`,
+  and `\uD83D\uDE00` is one code point). A pattern that
   the tokenizer does not fully understand stays as written.
 
 The canonical form keeps `format` and Ajv's `discriminator`, which changes how

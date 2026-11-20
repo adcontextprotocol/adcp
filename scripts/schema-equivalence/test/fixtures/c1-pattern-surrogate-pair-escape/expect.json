@@ -1,0 +1,5 @@
+{
+  "why": "With the u flag, the escape pair \\uD83D\\uDE00 in a class is the code point \\u{1F600}.",
+  "exit": 0,
+  "class": 1
+}

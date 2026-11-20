@@ -1,0 +1,6 @@
+{
+  "why": "In a u-mode class a literal \"-\" can end a range: [!--] is U+0021..U+002D, so it admits \"#\" and [!\\-] does not.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "pattern"
+}
