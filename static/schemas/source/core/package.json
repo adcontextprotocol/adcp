@@ -255,33 +255,8 @@
       "default": false
     },
     "cancellation": {
-      "type": "object",
-      "description": "Cancellation metadata. Present only when canceled is true.",
-      "required": [
-        "canceled_at",
-        "canceled_by"
-      ],
-      "properties": {
-        "canceled_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp when this package was canceled."
-        },
-        "canceled_by": {
-          "$ref": "/schemas/enums/canceled-by.json",
-          "description": "Which party initiated the package cancellation."
-        },
-        "reason": {
-          "$ref": "/schemas/core/cancellation-reason.json",
-          "description": "Reason the package was canceled."
-        },
-        "acknowledged_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inventory has been released and billing stopped. Absent until the seller processes the cancellation."
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/cancellation.json",
+      "description": "Cancellation metadata. Present only when canceled is true."
     },
     "agency_estimate_number": {
       "$ref": "/schemas/core/agency-estimate-number.json",

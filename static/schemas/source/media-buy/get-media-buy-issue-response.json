@@ -36,33 +36,7 @@
       "not": { "required": ["errors"] }
     },
     {
-      "type": "object",
-      "properties": {
-        "outcome": {
-          "type": "string",
-          "const": "failed",
-          "default": "failed"
-        },
-        "errors": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "outcome",
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": { "required": ["issue"] }
+      "$ref": "/schemas/core/media-buy-issue-task-failure.json"
     }
   ],
   "discriminator": {

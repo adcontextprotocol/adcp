@@ -2332,6 +2332,10 @@
           "$ref": "/schemas/core/tool-name.json",
           "description": "Name of a tool in the protocol manifest, including tools that are not AdCP tasks."
         },
+        "accepted-proposal": {
+          "$ref": "/schemas/core/accepted-proposal.json",
+          "description": "An accepted proposal: a canonical proposal with its media buy ID, acceptance time, commercial terms, and terms digest."
+        },
         "account-change-parent-ids": {
           "$ref": "/schemas/core/account-change-parent-ids.json",
           "description": "IDs of the parent resources that disambiguate a nested resource, keyed by resource type."
@@ -2488,9 +2492,17 @@
           "$ref": "/schemas/core/brand-visual-guidelines.json",
           "description": "Structured visual rules for generative creative systems. Defines how brand photography, graphics, typography, and composition should be produced to maintain brand consistency at scale."
         },
+        "build-catalog-item-ref": {
+          "$ref": "/schemas/core/build-catalog-item-ref.json",
+          "description": "Identifies the catalog item a build_creative fan-out produced a creative for."
+        },
         "buyer-agent-ref": {
           "$ref": "/schemas/core/buyer-agent-ref.json",
           "description": "A reference to a buyer agent by its agent URL."
+        },
+        "cancellation": {
+          "$ref": "/schemas/core/cancellation.json",
+          "description": "Cancellation metadata: when and by whom something was canceled, an optional reason, and when the cancellation was acknowledged."
         },
         "canonical-format-params": {
           "$ref": "/schemas/core/canonical-format-params.json",
@@ -2499,6 +2511,10 @@
         "canonical-format-slot": {
           "$ref": "/schemas/core/canonical-format-slot.json",
           "description": "One asset slot in a canonical format: its asset group and asset type, whether it is required, item counts, and size, character, pixel-ratio, and logo constraints."
+        },
+        "catalog-match": {
+          "$ref": "/schemas/core/catalog-match.json",
+          "description": "Which submitted catalog items match a product: matched GTINs and item IDs, with matched and submitted counts."
         },
         "closed-money": {
           "$ref": "/schemas/core/closed-money.json",
@@ -2584,6 +2600,10 @@
           "$ref": "/schemas/core/flight-endpoint.json",
           "description": "One end of a flight: an airport code and an optional city."
         },
+        "flight-history-entry": {
+          "$ref": "/schemas/core/flight-history-entry.json",
+          "description": "A recorded change to a flight: the start and stop times in effect and when they were recorded."
+        },
         "font-file": {
           "$ref": "/schemas/core/font-file.json",
           "description": "A downloadable font file with its weight or variable weight range and its style."
@@ -2640,9 +2660,21 @@
           "$ref": "/schemas/core/house-summary.json",
           "description": "The house (corporate entity) a brand belongs to."
         },
+        "incomplete-scope-entry": {
+          "$ref": "/schemas/core/incomplete-scope-entry.json",
+          "description": "A part of a response that is not yet complete: its scope, a description, and an optional estimated wait."
+        },
         "inline-creative-asset": {
           "$ref": "/schemas/core/inline-creative-asset.json",
           "description": "A creative asset supplied inline, without localization."
+        },
+        "inventory-list-application-summary": {
+          "$ref": "/schemas/core/inventory-list-application-summary.json",
+          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline."
+        },
+        "io-acceptance": {
+          "$ref": "/schemas/core/io-acceptance.json",
+          "description": "Acceptance of an insertion order from a committed proposal."
         },
         "keyword-match-capabilities": {
           "$ref": "/schemas/core/keyword-match-capabilities.json",
@@ -2664,6 +2696,10 @@
           "$ref": "/schemas/core/macro-values.json",
           "description": "Raw macro values keyed by AdCP universal macro name, for example `CLICK_URL` or `CACHEBUSTER`."
         },
+        "makegood-policy": {
+          "$ref": "/schemas/core/makegood-policy.json",
+          "description": "The remedies a seller offers when a performance standard or billing measurement is breached. At least one remedy is required."
+        },
         "maximize-value-target": {
           "$ref": "/schemas/core/maximize-value-target.json",
           "description": "An optimization target that maximizes total conversion value within budget, with no specific return ratio."
@@ -2675,6 +2711,18 @@
         "media-buy-delivery-totals": {
           "$ref": "/schemas/core/media-buy-delivery-totals.json",
           "description": "Delivery totals for a media buy, including the effective rate."
+        },
+        "media-buy-failed-result": {
+          "$ref": "/schemas/core/media-buy-failed-result.json",
+          "description": "A failed media buy result: status `failed` with one or more errors, and no media buy ID or warnings."
+        },
+        "media-buy-issue-task-failure": {
+          "$ref": "/schemas/core/media-buy-issue-task-failure.json",
+          "description": "A failed media buy issue result: outcome `failed` with one or more errors, and no issue."
+        },
+        "media-buy-submitted": {
+          "$ref": "/schemas/core/media-buy-submitted.json",
+          "description": "An async task envelope for a media buy that is not yet confirmed. The media buy ID and packages arrive in the terminal result."
         },
         "metric-identity": {
           "$ref": "/schemas/core/metric-identity.json",
@@ -2727,6 +2775,10 @@
         "preview-variant": {
           "$ref": "/schemas/core/preview-variant.json",
           "description": "One preview of a creative: a preview ID, one or more renders, and the input that produced them."
+        },
+        "purchase-opportunity-context": {
+          "$ref": "/schemas/core/purchase-opportunity-context.json",
+          "description": "The opportunity context sent with a purchase. A `closed` status requires close reason `accepted_with_seller`, and `later_proposals` is allowed only when status is `open`."
         },
         "radius": {
           "$ref": "/schemas/core/radius.json",

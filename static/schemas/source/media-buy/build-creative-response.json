@@ -241,20 +241,8 @@
                 "description": "Build-time handle for this produced creative within this response. Distinct from a library creative_id — a build_creative_id is not yet persisted/servable; it acquires a creative_id when a chosen variant is trafficked or added to the library (lazy promotion)."
               },
               "catalog_item_ref": {
-                "type": "object",
-                "description": "When this creative was produced by fanning out over a catalog, identifies the source item.",
-                "properties": {
-                  "catalog_type": {
-                    "type": "string",
-                    "description": "The catalog type the item came from."
-                  },
-                  "item_id": {
-                    "type": "string",
-                    "description": "Identifier of the catalog item this creative was built for."
-                  }
-                },
-                "required": ["item_id"],
-                "additionalProperties": true
+                "$ref": "/schemas/core/build-catalog-item-ref.json",
+                "description": "When this creative was produced by fanning out over a catalog, identifies the source item."
               },
               "signal_condition": {
                 "$ref": "/schemas/core/signal-targeting.json",
@@ -498,7 +486,7 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "catalog_item_ref": { "type": "object", "additionalProperties": true },
+                  "catalog_item_ref": { "$ref": "/schemas/core/build-catalog-item-ref.json" },
                   "variant_axis_value": {},
                   "pricing_option_id": { "type": "string", "x-entity": "vendor_pricing_option" },
                   "cost_low": { "type": "number", "minimum": 0 },

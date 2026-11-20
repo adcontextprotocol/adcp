@@ -2271,6 +2271,113 @@
         "quote": "\"required\": [ \"package_id\", \"spend\", \"pricing_model\", \"rate\", \"currency\" ]"
       },
       "reason": "Applies the required name the published text sets. 3.2.11 published the get_media_buy_delivery by_package row with package_id, spend, pricing_model, rate and currency required; the webhook result carries the same report and now references the same row definition."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/catalog_match/properties/matched_ids/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/compliance/comply-test-controller-request.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on items in compliance/comply-test-controller-request.json. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/catalog_match/properties/matched_ids/items",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/compliance/comply-test-controller-request.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on items in compliance/comply-test-controller-request.json. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/catalog_match/properties/matched_ids/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/compliance/comply-test-controller-request.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on items in compliance/comply-test-controller-request.json. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/catalog_match/properties/matched_ids/items",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/compliance/comply-test-controller-request.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on items in compliance/comply-test-controller-request.json. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "/properties/io_acceptance/properties/io_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/insertion-order.json",
+        "quote": "\"io_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this insertion order. Referenced by io_acceptance on create_media_buy.\", \"maxLength\": 255"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on io_id in core/insertion-order.json. An insertion order ID, which core/io-acceptance.json now bounds."
+    },
+    {
+      "file": "media-buy/build-creative-response.json",
+      "pointer": "/oneOf/3/properties/estimate/properties/per_leaf/items/properties/catalog_item_ref",
+      "required": "item_id",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/build-creative-response.json",
+        "quote": "\"required\": [ \"item_id\" ]"
+      },
+      "reason": "Applies the required name the published text sets. 3.2.11 published the build_creative creatives[].catalog_item_ref with item_id required; the per-leaf estimate copy now references the same definition."
+    },
+    {
+      "file": "media-buy/create-media-buy-request.json",
+      "pointer": "/properties/io_acceptance/properties/io_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/core/insertion-order.json",
+        "quote": "\"io_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this insertion order. Referenced by io_acceptance on create_media_buy.\", \"maxLength\": 255"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on io_id in core/insertion-order.json. An insertion order ID, which core/io-acceptance.json now bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-request.json",
+      "pointer": "/properties/io_acceptance/properties/io_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/accept-proposal-request.json",
+        "quote": "\"io_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on io_id in media-buy/accept-proposal-request.json. An insertion order ID, which core/io-acceptance.json now bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-request.json",
+      "pointer": "/properties/io_acceptance/properties/signature_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/media-buy/accept-proposal-request.json",
+        "quote": "\"signature_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on signature_id in media-buy/accept-proposal-request.json. An electronic signature reference, which core/io-acceptance.json keeps non-empty."
     }
   ]
 }

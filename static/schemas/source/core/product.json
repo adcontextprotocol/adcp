@@ -384,35 +384,8 @@
       "additionalProperties": true
     },
     "catalog_match": {
-      "type": "object",
-      "description": "When the buyer provides a catalog on get_products, indicates which catalog items are eligible for this product. Only present for products where catalog matching is relevant (e.g., sponsored product listings, job boards, hotel ads).",
-      "properties": {
-        "matched_gtins": {
-          "type": "array",
-          "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Standard GTIN formats (GTIN-8 through GTIN-14). Only present for product-type catalogs with GTIN matching.",
-          "items": {
-            "$ref": "/schemas/core/gtin.json"
-          }
-        },
-        "matched_ids": {
-          "type": "array",
-          "description": "Item IDs from the buyer's catalog that matched this product's inventory. The ID type depends on the catalog type and content_id_type (e.g., SKUs for product catalogs, job_ids for job catalogs, offering_ids for offering catalogs).",
-          "items": {
-            "type": "string"
-          }
-        },
-        "matched_count": {
-          "type": "integer",
-          "description": "Number of catalog items that matched this product's inventory.",
-          "minimum": 0
-        },
-        "submitted_count": {
-          "type": "integer",
-          "description": "Total catalog items evaluated from the buyer's catalog.",
-          "minimum": 0
-        }
-      },
-      "required": ["submitted_count"]
+      "$ref": "/schemas/core/catalog-match.json",
+      "description": "When the buyer provides a catalog on get_products, indicates which catalog items are eligible for this product. Only present for products where catalog matching is relevant (e.g., sponsored product listings, job boards, hotel ads)."
     },
     "brief_relevance": {
       "type": "string",

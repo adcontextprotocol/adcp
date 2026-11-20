@@ -53,22 +53,7 @@
       "not": { "required": ["errors"] }
     },
     {
-      "title": "Control Error",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "failed", "default": "failed" },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status", "errors"],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["media_buy_id"] },
-          { "required": ["warnings"] }
-        ]
-      }
+      "$ref": "/schemas/core/media-buy-failed-result.json"
     },
     {
       "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],

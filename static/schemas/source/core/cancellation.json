@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/cancellation.json",
+  "title": "Cancellation",
+  "description": "Cancellation metadata: when and by whom something was canceled, an optional reason, and when the cancellation was acknowledged.",
+  "type": "object",
+  "required": [
+    "canceled_at",
+    "canceled_by"
+  ],
+  "properties": {
+    "canceled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when this package was canceled."
+    },
+    "canceled_by": {
+      "$ref": "/schemas/enums/canceled-by.json",
+      "description": "Which party initiated the package cancellation."
+    },
+    "reason": {
+      "$ref": "/schemas/core/cancellation-reason.json",
+      "description": "Reason the package was canceled."
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inventory has been released and billing stopped. Absent until the seller processes the cancellation."
+    }
+  },
+  "additionalProperties": true
+}

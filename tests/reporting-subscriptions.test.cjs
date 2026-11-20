@@ -13,6 +13,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
@@ -736,8 +737,9 @@ test('the stop time is the cancellation delivery stop, not when the cancellation
     assert.match(field.description, /MUST populate it/, file);
     assert.match(field.description, /Buyers use cancellation\.canceled_at when it is absent/, file);
   }
-  assert.deepEqual(read('core/media-buy.json').properties.cancellation.required, ['canceled_at', 'canceled_by'], 'cancellation stays unchanged');
-  assert.equal(read('core/media-buy.json').properties.cancellation.properties.effective_at, undefined, 'the closed cancellation object gains nothing');
+  const cancellation = resolveSchema(read('core/media-buy.json').properties.cancellation);
+  assert.deepEqual(cancellation.required, ['canceled_at', 'canceled_by'], 'cancellation stays unchanged');
+  assert.equal(cancellation.properties.effective_at, undefined, 'the closed cancellation object gains nothing');
 
   // Canceled on Nov 3 at 15:00Z with a notice period: delivery stops Nov 5 at 12:00Z.
   const base = { acceptedAt: '2026-11-01T00:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', startTime: '2026-11-02T14:20:00Z', endTime: '2026-11-10T05:00:00Z', offsetHours: -5 };
@@ -905,7 +907,7 @@ test('flight_history lets a buyer recompute past periods after a retroactive edi
     assert.equal(field['x-status'], 'experimental', file);
     assert.equal(field['x-added-in'], '3.3.0', file);
     assert.equal(field.maxItems, 64, file);
-    assert.deepEqual(field.items.required, ['recorded_at', 'start_time', 'stop_time'], file);
+    assert.deepEqual(resolveSchema(field.items).required, ['recorded_at', 'start_time', 'stop_time'], file);
     assert.match(field.description, /MUST list every retroactive edit recorded within the last status_retention_days/, file);
     assert.match(field.description, /a seller MUST refuse a retroactive edit that would exceed that with INVALID_STATE/, file);
     assert.match(field.description, /The flight in force at an instant X is the one in the earliest entry recorded after X/, file);

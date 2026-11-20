@@ -49,14 +49,7 @@
       "description": "Usable partial discovery result retained from the established get_products response. Absence means the source response did not declare an incomplete scope; it does not authorize an adapter to infer missing proposal terms.",
       "minItems": 1,
       "items": {
-        "type": "object",
-        "properties": {
-          "scope": { "$ref": "/schemas/enums/incomplete-scope.json" },
-          "description": { "$ref": "/schemas/core/incomplete-scope-description.json" },
-          "estimated_wait": { "$ref": "/schemas/core/duration.json" }
-        },
-        "required": ["scope", "description"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/incomplete-scope-entry.json"
       }
     },
     "purchase_continuation": {

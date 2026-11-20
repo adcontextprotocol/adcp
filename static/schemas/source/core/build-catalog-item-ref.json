@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/build-catalog-item-ref.json",
+  "title": "Build Creative Catalog Item Ref",
+  "description": "Identifies the catalog item a build_creative fan-out produced a creative for.",
+  "type": "object",
+  "properties": {
+    "catalog_type": {
+      "type": "string",
+      "description": "The catalog type the item came from."
+    },
+    "item_id": {
+      "type": "string",
+      "description": "Identifier of the catalog item this creative was built for."
+    }
+  },
+  "required": [
+    "item_id"
+  ],
+  "additionalProperties": true
+}

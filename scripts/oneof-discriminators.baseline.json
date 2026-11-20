@@ -259,7 +259,7 @@
     "media-buy/create-media-buy-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 3,
-      "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status,task_id]"
+      "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status]"
     },
     "media-buy/get-products-response.json##/properties/filter_diagnostics/properties/excluded_by/additionalProperties/properties/values/items/oneOf": {
       "kind": "dangerous",

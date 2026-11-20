@@ -44,16 +44,7 @@
           "format": "date-time"
         },
         "accepted_proposal": {
-          "allOf": [
-            { "$ref": "/schemas/core/canonical-proposal.json" },
-            {
-              "properties": {
-                "proposal_status": { "type": "string", "const": "accepted" },
-                "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json" }
-              },
-              "required": ["proposal_status", "media_buy_id", "accepted_at", "commercial_terms", "terms_digest"]
-            }
-          ]
+          "$ref": "/schemas/core/accepted-proposal.json"
         },
         "purchase_bindings": {
           "type": "array",
@@ -117,45 +108,10 @@
       "not": { "required": ["errors"] }
     },
     {
-      "title": "Commitment Error",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "failed", "default": "failed" },
-        "errors": {
-          "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
-          "minItems": 1
-        },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status", "errors"],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["media_buy_id"] },
-          { "required": ["warnings"] }
-        ]
-      }
+      "$ref": "/schemas/core/media-buy-failed-result.json"
     },
     {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "Commitment Submitted",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "submitted", "default": "submitted" },
-        "expected_confirmation_at": {
-          "type": "string",
-          "format": "date-time",
-          "x-added-in": "3.3.0",
-          "description": "Optional estimate of when the seller expects to confirm this request, used when confirmation depends on a scheduled event such as a booking round or a manual review window. A seller SHOULD set it when it knows that event; omit it when it does not. Buyers SHOULD schedule a status check (get_task_status, or reconciling against the webhook) for this time rather than polling tightly before it. This is an estimate, not a commitment: the seller MAY confirm earlier or later, the task status remains authoritative, and buyers MUST NOT treat a passed timestamp as a failure or auto-cancel on it. Sellers SHOULD NOT send a timestamp in the past. Not an expiry or SLA."
-        },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/media-buy-submitted.json"
     }
   ]
 }

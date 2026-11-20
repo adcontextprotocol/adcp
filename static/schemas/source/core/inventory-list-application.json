@@ -52,22 +52,8 @@
           "description": "When the seller intersected that snapshot with this product's then-current inventory."
         },
         "summary": {
-          "type": "object",
-          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline.",
-          "properties": {
-            "matched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that matched at least one property in this product."
-            },
-            "unmatched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that did not match a property in this product."
-            }
-          },
-          "required": ["matched", "unmatched"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/inventory-list-application-summary.json",
+          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline."
         }
       },
       "required": [
@@ -116,22 +102,8 @@
           "description": "When the seller intersected that snapshot with this product's then-current inventory."
         },
         "summary": {
-          "type": "object",
-          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline.",
-          "properties": {
-            "matched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that matched at least one collection in this product."
-            },
-            "unmatched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that did not match a collection in this product."
-            }
-          },
-          "required": ["matched", "unmatched"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/inventory-list-application-summary.json",
+          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline."
         }
       },
       "required": [
