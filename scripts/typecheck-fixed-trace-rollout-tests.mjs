@@ -1,5 +1,17 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Run the compiler through the current Node binary rather than `npx`: on
+// Windows `npx` is a `.cmd` shim, which spawnSync cannot start without a shell.
+// This is the package that provides the `tsc` bin used by `npm run typecheck`.
+const tscPackageJson = createRequire(import.meta.url).resolve("@typescript/native/package.json");
+export const tscPath = join(
+  dirname(tscPackageJson),
+  JSON.parse(readFileSync(tscPackageJson, "utf8")).bin.tsc,
+);
 
 // These SDK-version diagnostics are pre-existing in production-only billing
 // files reached transitively by the legacy rollout module. Keep the exception
@@ -57,10 +69,16 @@ function main() {
   }
 
   const result = spawnSync(
-    process.platform === "win32" ? "npx.cmd" : "npx",
-    ["tsc", "--project", "server/tsconfig.fixed-trace-rollout-tests.json", "--noEmit", "--pretty", "false"],
+    process.execPath,
+    [tscPath, "--project", "server/tsconfig.fixed-trace-rollout-tests.json", "--noEmit", "--pretty", "false"],
     { cwd: process.cwd(), encoding: "utf8" },
   );
+  if (result.error || result.status === null) {
+    // A compiler that never started emits no diagnostics; never report that as a pass.
+    const reason = result.error?.message ?? `terminated by ${result.signal}`;
+    process.stderr.write(`fixed-trace rollout test-aware typecheck could not run tsc: ${reason}\n`);
+    process.exit(1);
+  }
   const output = `${result.stdout}${result.stderr}`;
   try {
     assertNoUnexpectedDiagnostics(output);
@@ -73,4 +91,5 @@ function main() {
   process.stdout.write("fixed-trace rollout test-aware typecheck passed (no rollout fixture diagnostics)\n");
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) main();
+// Compare filesystem paths: a URL pathname ("/C:/...") never equals a Windows argv path.
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();
