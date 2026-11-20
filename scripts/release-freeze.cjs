@@ -286,7 +286,9 @@ function writeSummary(result) {
       : entry.reasons.length
         ? `frozen: ${entry.reasons.join("; ")}`
         : "open";
-    lines.push(`| ${entry.branch} | ${entry.pulls ?? "?"} | ${state.replace(/\|/g, "\\|")} |`);
+    // Escape backslashes as well as pipes so a cell cannot end early.
+    const cell = state.replace(/[\\|]/g, (character) => `\\${character}`).replace(/[\r\n]+/g, " ");
+    lines.push(`| ${entry.branch} | ${entry.pulls ?? "?"} | ${cell} |`);
   }
   lines.push("", `${result.written} status update(s) across ${result.heads} pull request head(s).`);
   const text = lines.join("\n") + "\n";
