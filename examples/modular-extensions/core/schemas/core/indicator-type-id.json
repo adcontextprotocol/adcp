@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/indicator-type-id.json",
+  "title": "Indicator Type Id",
+  "description": "Open id of an indicator type. Creative keeps the known values in its registry (enums/indicator-type.json); the build composes them into every published field typed with this id, so validation stays the same.",
+  "type": "string"
+}

@@ -1,0 +1,144 @@
+id: makegood_units/binding_rules
+version: "1.0.0"
+title: "Make-good rules in signed terms"
+category: extension_conformance
+extension: makegood-units
+summary: "Well-formed rules pass; each broken bound in the rules is rejected before the buyer signs."
+narrative: |
+  The buyer installed both creator extensions. It receives a committed proposal whose
+  commercial_terms carry one make-good rule per video. The storyboard then plays a seller
+  that gets the rules wrong, one bound at a time, and a GREASE entry: an extension with a
+  random uri@digest that no buyer can hold. Every one of them is binding data under
+  terms_digest, so the buyer must reject the terms.
+
+fixture: creator_network
+buyer:
+  extensions: [seller-adjustable-terms, makegood-units]
+
+phases:
+  - id: proposal
+    title: "Receive the committed proposal"
+    steps:
+      - id: draft_carries_rules
+        title: "The draft carries the rules at the digest the buyer listed"
+        task: request_proposals
+        covers: [MG-R2]
+        expect:
+          ok: true
+          status: { ext: makegood-units, point: commercial_terms, status: understood }
+          checks:
+            - path: draft.commercial_terms.extensions.@makegood-units.digest
+              equals: { $digest: makegood-units }
+      - id: finalize
+        title: "Finalize the draft"
+        task: refine_proposals
+        expect:
+          ok: true
+
+  - id: rules
+    title: "Grade the rules"
+    steps:
+      - id: well_formed_rules
+        title: "The seller's rules pass"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+        covers: [MG-R3, MG-R4, MG-R5, MG-R6]
+        expect:
+          ok: true
+          status: { ext: makegood-units, point: commercial_terms, status: understood }
+      - id: rules_out_of_order
+        title: "Rules out of rule_id order are rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@makegood-units/data/rules/0/rule_id, value: mg_video_9 }
+        covers: [MG-R3]
+        expect:
+          ok: false
+          error_code: EXTENSION_SEMANTIC_ERROR
+          error_match: "rules must be ordered by rule_id"
+      - id: duplicate_rule_id
+        title: "A duplicate rule_id is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@makegood-units/data/rules/1/rule_id, value: mg_video_1 }
+        covers: [MG-R3]
+        expect:
+          ok: false
+          error_match: "rule_id values must be unique"
+      - id: purchase_out_of_range
+        title: "A rule for a purchase the terms do not have is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@makegood-units/data/rules/1/purchase_index, value: 5 }
+        covers: [MG-R4]
+        expect:
+          ok: false
+          error_match: "purchase_index 5 is outside commercial_terms.purchases"
+      - id: campaign_window
+        title: "A campaign-long window is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@makegood-units/data/rules/0/window, value: { interval: 1, unit: campaign } }
+        covers: [MG-R5]
+        expect:
+          ok: false
+          error_match: "window must be a fixed duration"
+      - id: paid_replacement
+        title: "A rule that is not at no cost fails the schema"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@makegood-units/data/rules/0/at_no_cost, value: false }
+        covers: [MG-R6]
+        expect:
+          ok: false
+          error_code: EXTENSION_DATA_INVALID
+
+  - id: grease
+    title: "GREASE: an unknown extension in signed terms"
+    steps:
+      - id: grease_reject
+        title: "An unknown entry next to the rules makes the terms unacceptable"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          grease: { at: /extensions, kind: extension-point, must_understand: false }
+        covers: [MG-R1]
+        expected: |
+          The GREASE entry is binding data the buyer cannot read. The buyer rejects the terms
+          even though the entry is flagged optional, and still understands the make-good rules.
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          status:
+            - { ext: grease, point: commercial_terms, status: rejected }
+            - { ext: makegood-units, point: commercial_terms, status: understood }
+
+  - id: accept
+    title: "Sign the unchanged terms"
+    steps:
+      - id: accept
+        title: "The buyer accepts the committed proposal"
+        task: accept_proposal
+        expect:
+          ok: true
+          checks:
+            - path: media_buy_id
+              present: true

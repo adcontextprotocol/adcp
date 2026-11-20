@@ -1,0 +1,6308 @@
+{
+ "a2ui/bound-value.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "a2ui/component.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "a2ui/si-catalog.json": {
+  "cut_29": "retire",
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "a2ui/surface.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "a2ui/user-action.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "aao/agent-publishers.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "account/get-account-financials-request.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "account/get-account-financials-response.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "account/list-account-changes-request.json": {
+  "cut_29": "module:account-change-feed",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "change-feed"
+ },
+ "account/list-account-changes-response.json": {
+  "cut_29": "module:account-change-feed",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "change-feed"
+ },
+ "account/list-accounts-request.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "account/list-accounts-response.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "account/report-usage-request.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "account/report-usage-response.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "account/sync-accounts-request.json": {
+  "cut_29": "module:account-onboarding",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "onboarding"
+ },
+ "account/sync-accounts-response.json": {
+  "cut_29": "module:account-onboarding",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "onboarding"
+ },
+ "account/sync-governance-request.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "account/sync-governance-response.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "adagents.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-wellknown-document"
+ },
+ "brand.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/acquire-rights-request.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/acquire-rights-response.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/creative-approval-request.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/creative-approval-response.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/get-brand-identity-request.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/get-brand-identity-response.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/get-rights-request.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/get-rights-response.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/revocation-notification.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/rights-pricing-option.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/rights-terms.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/search-brands-request.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/search-brands-response.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/update-rights-request.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/update-rights-response.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "brand/verification-status.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/verify-brand-claim-request.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/verify-brand-claim-response.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/verify-brand-claims-request.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "brand/verify-brand-claims-response.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "collection/base-collection-source.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/collection-list-changed-webhook.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/collection-list-filters.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/collection-list.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/create-collection-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/create-collection-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/delete-collection-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/delete-collection-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/get-collection-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/get-collection-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/list-collection-lists-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/list-collection-lists-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/update-collection-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "collection/update-collection-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "compliance/comply-test-controller-request.json": {
+  "cut_29": "module:compliance-testing",
+  "label": "module:compliance-testing",
+  "reason": "M-anchor",
+  "sub_area": "controller"
+ },
+ "compliance/comply-test-controller-response.json": {
+  "cut_29": "module:compliance-testing",
+  "label": "module:compliance-testing",
+  "reason": "M-anchor",
+  "sub_area": "controller"
+ },
+ "compliance/get-creative-features-completion.json": {
+  "cut_29": "module:compliance-testing",
+  "label": "module:compliance-testing",
+  "reason": "M-anchor",
+  "sub_area": "controller"
+ },
+ "compliance/task-completion-data.json": {
+  "cut_29": "module:compliance-testing",
+  "label": "module:compliance-testing",
+  "reason": "M-anchor",
+  "sub_area": "controller"
+ },
+ "content-standards/artifact-webhook-payload.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/artifact.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:creative",
+  "label": "module:governance",
+  "reason": "star-e: content-standards format filed under creative; governance owns it",
+  "sub_area": "creative"
+ },
+ "content-standards/calibrate-content-request.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/calibrate-content-response.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/content-standards.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/create-content-standards-request.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/create-content-standards-response.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/get-content-standards-request.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/get-content-standards-response.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/get-media-buy-artifacts-request.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/get-media-buy-artifacts-response.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/list-content-standards-request.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/list-content-standards-response.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/update-content-standards-request.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/update-content-standards-response.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/validate-content-delivery-request.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "content-standards/validate-content-delivery-response.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "content-standards"
+ },
+ "core/acceptance-policy-profile-ids.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "policy"
+ },
+ "core/account-authorization.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-meet",
+  "sub_area": "account"
+ },
+ "core/account-change-recorded-webhook.json": {
+  "cut_29": "module:account-change-feed",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "change-feed"
+ },
+ "core/account-change.json": {
+  "cut_29": "module:account-change-feed",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "change-feed"
+ },
+ "core/account-identity-change-preview.json": {
+  "cut_29": "module:account-onboarding",
+  "label": "module:accounts",
+  "reason": "M-sole-user",
+  "sub_area": "onboarding"
+ },
+ "core/account-identity-change.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-meet",
+  "sub_area": "account"
+ },
+ "core/account-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/account-status-changed-webhook.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "core/account-timezone-capability.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "core/account-with-authorization.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-sole-user",
+  "sub_area": "account"
+ },
+ "core/account.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "core/activation-key.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:signals",
+  "label": "kernel-types",
+  "reason": "star-e: an identifier for a signal on a platform",
+  "sub_area": "signals"
+ },
+ "core/ad-inventory-config.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/agent-encryption-key.json": {
+  "cut_29": "module:agent-trust",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "trust"
+ },
+ "core/agent-notification-config-state.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/agent-notification-config.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/agent-reporting-destination-state.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/agent-reporting-destination.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/agent-signing-key.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-auth-signature-slot"
+ },
+ "core/agent-webhook-challenge.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/app-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/applicable-package-id.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "core/asset-group-vocabulary.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/asset-union.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/audio-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/brief-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/card-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/catalog-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/css-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/daast-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/daast-tracker-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/display-tag-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/html-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/image-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/javascript-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/markdown-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/pixel-tracker-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/published-post-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/text-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/url-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/vast-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/vast-tracker-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/video-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/video-brief-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/webhook-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assets/zip-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/assignment-tracker.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:creative",
+  "label": "kernel-types",
+  "reason": "star-a: tracker format shared by creative and buying",
+  "sub_area": "creative"
+ },
+ "core/async-response-data.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/attestation-capabilities.json": {
+  "cut_29": "module:agent-trust",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "trust"
+ },
+ "core/attestation-evaluation.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:agent-trust",
+  "label": "kernel-types",
+  "reason": "star-a: evaluator result format used by signals, creative, governance",
+  "sub_area": "trust"
+ },
+ "core/attestation-issuer.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:agent-trust",
+  "label": "kernel-types",
+  "reason": "star-a: part of the attestation reference",
+  "sub_area": "trust"
+ },
+ "core/attestation-reference.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:agent-trust",
+  "label": "kernel-types",
+  "reason": "star-a: reference-first claim presentation",
+  "sub_area": "trust"
+ },
+ "core/attestation-subject.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:agent-trust",
+  "label": "kernel-types",
+  "reason": "star-a: part of the attestation reference",
+  "sub_area": "trust"
+ },
+ "core/attribution-window.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/audience-activation-method.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/audience-characteristic.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "audiences-events"
+ },
+ "core/audience-evidence-pin.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:audiences-events",
+  "label": "module:buying",
+  "reason": "star-e: only buying uses it",
+  "sub_area": "audiences-events"
+ },
+ "core/audience-evidence-requirements.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:audiences-events",
+  "label": "module:buying",
+  "reason": "star-e: only buying uses it",
+  "sub_area": "audiences-events"
+ },
+ "core/audience-evidence-selection.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:audiences-events",
+  "label": "module:buying",
+  "reason": "star-e: only buying uses it",
+  "sub_area": "audiences-events"
+ },
+ "core/audience-evidence.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "core/audience-member.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "core/audience-selector.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:media-buy",
+  "label": "kernel-types",
+  "reason": "star-a: signal_ref or description; same family as signal-targeting",
+  "sub_area": "media-buy"
+ },
+ "core/audience-size.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: people count as a range; 11 days old",
+  "sub_area": "dimensions"
+ },
+ "core/audience-source.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "core/authorized-agent-base.json": {
+  "cut_29": "module:agent-trust",
+  "label": "module:identity",
+  "reason": "M-deps-only",
+  "sub_area": "trust"
+ },
+ "core/bidding-policy-capability.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/bidding-policy.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "core/brand-id.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/brand-key.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/brand-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/brand-response-authorization-result.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "brand"
+ },
+ "core/budget-allocation.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/budget-range.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/business-entity.json": {
+  "cut_10": "module:accounts",
+  "cut_29": "module:account",
+  "label": "kernel-types",
+  "reason": "star-a: legal-entity format for invoicing; buying, governance, accounts",
+  "sub_area": "account"
+ },
+ "core/cancellation-policy.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/canonical-account-ref.json": {
+  "cut_10": "module:accounts",
+  "cut_29": "module:account",
+  "label": "kernel-types",
+  "reason": "star-e: an account reference type; belongs with account-ref",
+  "sub_area": "account"
+ },
+ "core/canonical-audience-evidence-selection.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/canonical-audience-evidence.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/canonical-budget-allocation.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/canonical-delivery-forecast.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/canonical-forecast-point.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/canonical-forecast-vendor-metric-value.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "targeting"
+ },
+ "core/canonical-format-kind.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/canonical-format-option.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/canonical-measurement-terms.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/canonical-media-buy-action-fields.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "core/canonical-media-buy-action.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "core/canonical-media-buy-features.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/canonical-metric-qualifier.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/canonical-optimization-goal.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "core/canonical-performance-standard.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/canonical-placement.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/canonical-pricing-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/canonical-product-action.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/canonical-product.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/canonical-projection-ref.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/canonical-projection-slot-override.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/canonical-proposal.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "core/canonical-reporting-capabilities.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/canonical-reporting-commitment.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/canvas-constraint.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/capabilities-changed-webhook.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/catalog-field-mapping.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-ingestion-capability.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-item-availability-error.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-item-availability-ref.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-item-availability-state.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-item-availability-update-result.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-item-availability-update.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-item-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/catalog-item-reference-not-found-error.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog-selection.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catalog.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/catchment.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/collection-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/collection-distribution.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/collection-list-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/collection-property-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/collection-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/collection-selection.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/collection-selector.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/collection.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/committed-metric.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-e: only buying uses it (plus test params)",
+  "sub_area": "metrics"
+ },
+ "core/compact-task-input-required.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/compact-task-submitted.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/compact-task-working.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/content-rating.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: inventory classification shared with governance lists",
+  "sub_area": "inventory"
+ },
+ "core/context.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/creative-approval-scope.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-asset.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-assets.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-assignment.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:creative",
+  "label": "module:buying",
+  "reason": "star-e: only buying uses it: assignment of a creative_id",
+  "sub_area": "creative"
+ },
+ "core/creative-brief.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/creative-consumption.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/creative-filters.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-item.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-locale-policy.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-meet",
+  "sub_area": "formats"
+ },
+ "core/creative-localization-readback.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-localization.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-manifest.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-operation-format-declaration.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/creative-policy.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/creative-representation-set.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-representation.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-revision-id.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-variable.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/creative-variant.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/daast-tracker-constraints.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/data-provider-signal-selector.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:signals",
+  "label": "module:buying",
+  "reason": "star-e: only buying uses it",
+  "sub_area": "signals"
+ },
+ "core/date-range.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/datetime-range.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/daypart-target.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/deadline-policy.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "core/definition-pin.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "proposals"
+ },
+ "core/delivery-breakdown-controls.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "delivery"
+ },
+ "core/delivery-forecast.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/delivery-metric-aggregate.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/delivery-metrics.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-a-split: 28 -> 46 fields since GA; creative reports metric_value[] keyed by metric_id",
+  "sub_area": "metrics"
+ },
+ "core/delivery-provider.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-sole-user",
+  "sub_area": "reliable-reporting"
+ },
+ "core/delivery-recipient.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/demographic-age-range.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "kernel-types",
+  "reason": "star-a: closure of demographic-predicate",
+  "sub_area": "dimensions"
+ },
+ "core/demographic-predicate.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "kernel-types",
+  "reason": "star-a: portable demographic predicate",
+  "sub_area": "dimensions"
+ },
+ "core/demographic-reporting-capability.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/demographic-targeting-capability.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/demographic-targeting-intent.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/demographic-targeting-resolution.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/deployment.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "signals"
+ },
+ "core/destination-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/destination.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-sole-user",
+  "sub_area": "signals"
+ },
+ "core/diagnostic-issue.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:audiences-events",
+  "label": "kernel-types",
+  "reason": "star-a: code + message diagnostic",
+  "sub_area": "audiences-events"
+ },
+ "core/dooh-inventory-summary.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/downstream-connection-requirement.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-auth-signature-slot"
+ },
+ "core/duration.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/education-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/error.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "core/evaluator-spec.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "core/event-custom-data.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "core/event-source-health.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "core/event-surface.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "core/event.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "core/experimental-feature-id.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-capability-discovery"
+ },
+ "core/ext.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/feature-requirement.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: feature predicate; governance and creative",
+  "sub_area": "identifiers"
+ },
+ "core/flight-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/forecast-dimension-audience.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-dimension-device-platform.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-dimension-device-type.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-dimension-geo.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-dimension-placement.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-dimension-signal.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-dimension-time.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-point-dimensions.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-point.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-a-split: signals coverage points use kernel forecast-range keyed by metric_id",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-range.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "kernel-types",
+  "reason": "star-a: low/mid/high numeric range",
+  "sub_area": "dimensions"
+ },
+ "core/forecast-rate-range.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/forecast-vendor-metric-value.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/format-id.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/format-option-ref.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-e: a reference type",
+  "sub_area": "formats"
+ },
+ "core/format-shape-vocabulary.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/format.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/frequency-cap-constraints.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/frequency-cap-duration-unit.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/frequency-cap-impression-constraints.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/frequency-cap-interval-constraints.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/frequency-cap-requirements.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/frequency-cap.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/generation-credential.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "core/geo-breakdown-support.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/geo-metro.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-area.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-catalog-capability.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-catalog-entry.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-requirement.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-resolver.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-support.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-system.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-place-type.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-region-requirement.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/geo-region-support.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/get-geo-place-resolution-request.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/get-geo-place-resolution-response.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/hold-policy.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "core/hotel-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/iana-timezone.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/identifier.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: type + value; per-type value rules (#8289, Oct 18) move to buying",
+  "sub_area": "identifiers"
+ },
+ "core/identity-relying-party.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-meet",
+  "sub_area": "brand"
+ },
+ "core/impairment.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "core/indicator-bearing.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-meet",
+  "sub_area": "creative"
+ },
+ "core/indicator-scope.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:creative",
+  "label": "kernel-types",
+  "reason": "star-a: resource-scoped indicator format",
+  "sub_area": "creative"
+ },
+ "core/indicator.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:creative",
+  "label": "kernel-types",
+  "reason": "star-a: resource-scoped indicator format",
+  "sub_area": "creative"
+ },
+ "core/indicators-changed-webhook.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "core/industry-identifier.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/insertion-order.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "proposals"
+ },
+ "core/installment-deadlines.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/installment-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/installment-property-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/installment-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/installment.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/inventory-list-application.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/job-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/keyword-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/keyword-target.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "core/later-proposals-state.json": {
+  "cut_29": "-",
+  "label": "module:buying",
+  "reason": "star-new-sole-referrer"
+ },
+ "core/limited-series.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "core/locale-tag.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-time-locale"
+ },
+ "core/localized-creative-asset.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/macro-bearing-url.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: URL-with-macros string format",
+  "sub_area": "formats"
+ },
+ "core/macro-declaration.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/macro-encoding.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/macro-resolution-capability.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/macro-resolution-result.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/macro-translation-target.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/material-deadline.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/mcp-webhook-payload.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/measurement-readiness.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/measurement-terms.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/measurement-window.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/media-buy-available-action-id.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "core/media-buy-available-action.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "core/media-buy-change-term-id.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/media-buy-features.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/media-buy-frequency-cap-capability.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-deps-only",
+  "sub_area": "targeting"
+ },
+ "core/media-buy-frequency-cap-requirement.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/media-buy-frequency-cap-support.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/media-buy-frequency-cap.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "core/media-buy-legacy-terms-ref.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "core/media-buy-support-requirements.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/media-buy-support.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/media-buy.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "core/missing-metric.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/negative-keyword.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/notification-config.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/offering-asset-group.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/offering.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/operator-identity.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-meet",
+  "sub_area": "account"
+ },
+ "core/operator-unit.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/opportunity-context.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/optimization-goal.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "core/outcome-measurement.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/outcome-target-cost-per.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/overlay.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/package-delivery-metric-value.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/package-format-snapshot.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/package-signal-targeting-group.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/package-signal-targeting-groups.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/package-signal-targeting.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/package-targeting-resolution.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "core/package.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "core/pagination-request.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-pagination"
+ },
+ "core/pagination-response.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-pagination"
+ },
+ "core/performance-feedback-assertion.json": {
+  "cut_29": "module:measurement",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "measurement"
+ },
+ "core/performance-feedback-metric.json": {
+  "cut_29": "module:measurement",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "measurement"
+ },
+ "core/performance-feedback.json": {
+  "cut_29": "module:measurement",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "measurement"
+ },
+ "core/performance-standard.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/placement-definition.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/placement-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/placement-evidence.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/placement-identity.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/placement-presentation.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/placement-property-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/placement-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/placement-selection.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/placement.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/planned-delivery.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/platform-extension-ref.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-extension-mechanism"
+ },
+ "core/positive-postal-area-support.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/postal-area-support.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/postal-area.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "core/postal-country-system.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "core/presentation-ref.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "core/preview-provider.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "core/preview-renderer-metadata.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/price.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-money"
+ },
+ "core/pricing-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/principal-changed-webhook.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "core/principal-declarations-state.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "core/principal-declarations.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "core/principal-state.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "core/product-allocation.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-allowed-action.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-audience-evidence-requirements.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-card-reference-asset.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-change-map.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-execution-requirement.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-filters.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-format-declaration.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/product-identity.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-offer-filters.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-signal-targeting-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product-targeting-resolution.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/product.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/property-delivery-metrics.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "core/property-id.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/property-list-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/property-ref.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/property-tag.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-e: an identifier string",
+  "sub_area": "inventory"
+ },
+ "core/property.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/proposal-created-webhook.json": {
+  "cut_29": "-",
+  "label": "module:buying",
+  "reason": "star-new-dir"
+ },
+ "core/proposal.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "core/protocol-envelope.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/provenance.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: provenance format; creative and governance",
+  "sub_area": "formats"
+ },
+ "core/publisher-property-selector.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/push-notification-config.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/real-estate-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/reference-asset.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/reference-renderer.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/registry-event.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/registry-feed-response.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/reporting-adjustment-receipt.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-adjustment.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-canonical-content-digest.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-canonicalization-contract.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-capabilities.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/reporting-consumer-status.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-control-total.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-coverage.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-dataset-share-destination.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-delivery-capabilities.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-delivery-config-state.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-delivery-config.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-delivery-method.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-delivery-offering-id.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/reporting-delivery-offering.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-delivery-ready-webhook.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-file-compression.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-file-entry.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-file-manifest.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-file-object-ref.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-ledger-changed-webhook.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-materialization.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-native-version-ref.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-obligation.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-receipt.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-reconciliation-mode.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-reliability-statistics.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-report-definition.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-resource.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-revision.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-schedule-offering.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-schedule.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-status-changed-webhook.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-status-issue.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-verification-profile-set.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-sole-user",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-verification-profile.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-verification.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/reporting-webhook.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/reporting-write-destination.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "core/representation-destination.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/representation-rejection.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/representation-selection.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/requirements/asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/audio-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/catalog-field-binding.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/catalog-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/css-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/daast-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/html-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/image-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/javascript-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/markdown-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/offering-asset-constraint.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/text-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/url-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/vast-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/video-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/requirements/webhook-asset-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "core/response-collection.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "core/response-payload-jws-envelope.json": {
+  "cut_29": "extension:response-signing-jws",
+  "label": "extension:response-signing-jws",
+  "reason": "X-signing-profile"
+ },
+ "core/response.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/rights-attestation-evaluation.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/rights-constraint.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-meet",
+  "sub_area": "creative"
+ },
+ "core/seller-agent-ref.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-e: an agent reference; graduates as kernel agent-ref",
+  "sub_area": "inventory"
+ },
+ "core/signal-coverage-forecast.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "core/signal-definition-enrichment.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "core/signal-definition.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "core/signal-filters.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "core/signal-id.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/signal-listing.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "core/signal-modeling-disclosure.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "core/signal-pricing-option.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "core/signal-pricing.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-vendor-pricing"
+ },
+ "core/signal-ref.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-reference"
+ },
+ "core/signal-selection-group-rule.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:signals",
+  "label": "module:buying",
+  "reason": "star-e: only buying uses it",
+  "sub_area": "signals"
+ },
+ "core/signal-targeting-expression.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/signal-targeting-rules.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/signal-targeting.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:signals",
+  "label": "kernel-types",
+  "reason": "star-a: signal_ref + value predicate; 1 non-additive (signal_ref migration)",
+  "sub_area": "signals"
+ },
+ "core/sla-window.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "core/special.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "inventory"
+ },
+ "core/spot-reporting-capability.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "core/start-timing.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "core/store-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/talent.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "inventory"
+ },
+ "core/targeting-input.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/targeting-modification.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/targeting-overlay-requirements.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/targeting-overlay-support.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/targeting-unknown-age-eligibility-constraint.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/targeting-verified-age-basis-constraint.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/targeting.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/tasks-get-request.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/tasks-get-response.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/tasks-list-request.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "core/tasks-list-response.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "core/tracker-execution-contract.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/tracker-execution-selector.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/transformer-param.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/transformer.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "core/truncation-sentinel.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/user-match.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-sole-user",
+  "sub_area": "audiences-events"
+ },
+ "core/vast-media-file-requirements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/vast-tracker-constraints.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "core/vehicle-item.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "core/vendor-metric-id.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "kernel-types",
+  "reason": "star-a: vendor metric id",
+  "sub_area": "metrics"
+ },
+ "core/vendor-metric-optimization-supported-metric.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/vendor-metric-optimization.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/vendor-metric-value.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "core/vendor-pricing-option.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-vendor-pricing"
+ },
+ "core/verification-token-claims.json": {
+  "cut_29": "extension:aao-verification-token",
+  "label": "extension:aao-verification-token",
+  "reason": "X-registry-vocabulary"
+ },
+ "core/version-envelope.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-envelope"
+ },
+ "core/warning-resource.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "core/warning.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "core/webhook-activity-record.json": {
+  "cut_10": "module:accounts",
+  "cut_29": "module:notifications",
+  "label": "kernel",
+  "reason": "star-e: one webhook delivery attempt; webhook delivery is kernel",
+  "sub_area": "notifications"
+ },
+ "core/webhook-challenge-response.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/webhook-challenge.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "core/wholesale-feed-event.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/wholesale-feed-webhook.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "core/x-entity-types.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "creative/asset-types/index.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "creative/audit-observation.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/creative-assignment-changed-webhook.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/creative-feature-result.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/creative-purged-webhook.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/creative-status-changed-webhook.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/get-creative-delivery-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/get-creative-delivery-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/get-creative-features-async-response-submitted.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/get-creative-features-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/get-creative-features-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/get-creative-features-terminal-success.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/list-creative-formats-request.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "creative/list-creative-formats-response.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "creative/list-creatives-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/list-creatives-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/list-transformers-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/list-transformers-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/preview-creative-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/preview-creative-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/preview-render.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/sync-creatives-async-response-input-required.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/sync-creatives-async-response-submitted.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/sync-creatives-async-response-working.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/sync-creatives-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/sync-creatives-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/validate-input-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/validate-input-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/validate-input-result.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "creative/video-brief.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/account-currency-mode.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "enums/account-scope.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-meet",
+  "sub_area": "account"
+ },
+ "enums/account-status.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-sole-user",
+  "sub_area": "account"
+ },
+ "enums/action-not-allowed-reason.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "enums/action-source.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "kernel-types",
+  "reason": "star-a: event source channel",
+  "sub_area": "metrics"
+ },
+ "enums/activation-method.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/adcp-protocol.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/adjustment-kind.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/advertiser-industry.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:brand",
+  "label": "kernel-types",
+  "reason": "star-a: industry classification; brand.json and buying",
+  "sub_area": "brand"
+ },
+ "enums/age-determination-basis.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "kernel-types",
+  "reason": "star-a: demographic vocabulary",
+  "sub_area": "dimensions"
+ },
+ "enums/age-verification-method.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "targeting"
+ },
+ "enums/assessment-status.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:audiences-events",
+  "label": "kernel-types",
+  "reason": "star-a: readiness status",
+  "sub_area": "audiences-events"
+ },
+ "enums/asset-content-type.json": {
+  "cut_29": "module:formats",
+  "label": "module:identity",
+  "reason": "cut-10-move: shared by brand.json and formats; moved down",
+  "sub_area": "brand"
+ },
+ "enums/attestation-claim.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-sole-user",
+  "sub_area": "tmp"
+ },
+ "enums/attribution-methodology.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "kernel-types",
+  "reason": "star-a: metric qualifier",
+  "sub_area": "metrics"
+ },
+ "enums/attribution-model.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "enums/audience-evidence-methodology.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "audiences-events"
+ },
+ "enums/audience-match-rate-basis.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-sole-user",
+  "sub_area": "audiences-events"
+ },
+ "enums/audience-resolution-method.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "signals"
+ },
+ "enums/audience-size-precision.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: closure of audience-size",
+  "sub_area": "dimensions"
+ },
+ "enums/audience-source.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "enums/audience-status.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-sole-user",
+  "sub_area": "audiences-events"
+ },
+ "enums/audience-subject-type.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "signals"
+ },
+ "enums/audio-channel-layout.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/audio-distribution-type.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "inventory"
+ },
+ "enums/auth-scheme.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-auth-signature-slot"
+ },
+ "enums/availability-status.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "enums/available-metric.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-a-split: 13 commits, 1 non-additive; kernel gets open metric_id, list stays in buying",
+  "sub_area": "metrics"
+ },
+ "enums/billing-party.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-meet",
+  "sub_area": "account"
+ },
+ "enums/binary-verdict.json": {
+  "cut_29": "module:content-standards",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "content-standards"
+ },
+ "enums/brand-agent-type.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-sole-user",
+  "sub_area": "brand"
+ },
+ "enums/browser-family.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/c2pa-watermark-action.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: closure of provenance",
+  "sub_area": "formats"
+ },
+ "enums/canceled-by.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "enums/canonical-media-buy-action-mode.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/canonical-media-buy-action.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/catalog-action.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "enums/catalog-item-status.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "enums/catalog-type.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: catalog type id shared by creative and buying",
+  "sub_area": "formats"
+ },
+ "enums/channels.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-vocabulary"
+ },
+ "enums/cloud-storage-protocol.json": {
+  "cut_10": "module:accounts",
+  "cut_29": "module:account",
+  "label": "kernel-types",
+  "reason": "star-a: transport enum shared by accounts and buying",
+  "sub_area": "account"
+ },
+ "enums/co-branding-requirement.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/collection-cadence.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "enums/collection-kind.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: inventory classification shared with governance lists",
+  "sub_area": "inventory"
+ },
+ "enums/collection-relationship.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "enums/collection-status.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "inventory"
+ },
+ "enums/completion-source.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "kernel-types",
+  "reason": "star-a: metric qualifier",
+  "sub_area": "metrics"
+ },
+ "enums/consent-basis.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "signals"
+ },
+ "enums/content-id-type.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "enums/content-rating-system.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: closure of content-rating",
+  "sub_area": "inventory"
+ },
+ "enums/creative-action.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/creative-agent-capability.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/creative-approval-status.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-meet",
+  "sub_area": "creative"
+ },
+ "enums/creative-event-reason-code.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/creative-identifier-type.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/creative-merge-rejection-reason.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/creative-quality.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/creative-selection-strategy.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/creative-sort-field.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/creative-status.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/ctv-ad-experience.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/daast-tracking-event.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/daast-version.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: IAB DAAST version",
+  "sub_area": "formats"
+ },
+ "enums/day-of-week.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "enums/daypart-time-granularity.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "enums/daypart-timezone-mode.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/definition-pin-ref-kind.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "proposals"
+ },
+ "enums/delegation-authority.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "campaign"
+ },
+ "enums/delivery-recipient-cloud.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "enums/delivery-status.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "enums/delivery-type.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/demographic-system.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "targeting"
+ },
+ "enums/derivative-type.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/device-platform.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "enums/device-type.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "enums/digital-source-type.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: closure of provenance",
+  "sub_area": "formats"
+ },
+ "enums/dimension-unit.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/disclosure-persistence.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: closure of provenance",
+  "sub_area": "formats"
+ },
+ "enums/disclosure-position.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: closure of provenance",
+  "sub_area": "formats"
+ },
+ "enums/distance-unit.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "targeting"
+ },
+ "enums/distribution-identifier-type.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: identifier namespace; open id with known values",
+  "sub_area": "inventory"
+ },
+ "enums/dooh-motion-type.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "enums/embedded-provenance-method.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: closure of provenance",
+  "sub_area": "formats"
+ },
+ "enums/error-code.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "enums/error-scope.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "enums/escalation-severity.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "campaign"
+ },
+ "enums/event-type.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "kernel-types",
+  "reason": "star-a: conversion event type; open id",
+  "sub_area": "metrics"
+ },
+ "enums/exclusivity.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/feature-check-status.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-meet",
+  "sub_area": "lists"
+ },
+ "enums/feed-format.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: feed format id; brand.json, catalogs, creative",
+  "sub_area": "brand"
+ },
+ "enums/feedback-source.json": {
+  "cut_29": "module:measurement",
+  "label": "module:reporting",
+  "reason": "M-sole-user",
+  "sub_area": "measurement"
+ },
+ "enums/forecast-method.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "kernel-types",
+  "reason": "star-a: forecast method",
+  "sub_area": "dimensions"
+ },
+ "enums/forecast-range-unit.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "targeting"
+ },
+ "enums/forecastable-metric.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/format-id-parameter.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/frame-rate-type.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/frequency-cap-control-mode.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "targeting"
+ },
+ "enums/frequency-cap-mutable-field.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "targeting"
+ },
+ "enums/frequency-cap-scope.json": {
+  "cut_29": "retire",
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/genre-taxonomy.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: taxonomy id shared with governance lists",
+  "sub_area": "inventory"
+ },
+ "enums/geo-level.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "enums/gop-type.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/governance-decision.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "campaign"
+ },
+ "enums/governance-domain.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:governance",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "policy"
+ },
+ "enums/governance-mode.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "campaign"
+ },
+ "enums/governance-phase.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "campaign"
+ },
+ "enums/history-entry-type.json": {
+  "cut_29": "retire",
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/http-method.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-auth-signature-slot"
+ },
+ "enums/identifier-types.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: identifier namespace; open id with known values",
+  "sub_area": "identifiers"
+ },
+ "enums/impairment-offline-state.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "enums/impairment-reason-code.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "enums/indicator-type.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-meet",
+  "sub_area": "creative"
+ },
+ "enums/installment-status.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/javascript-module-type.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/landing-page-requirement.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/later-proposal-reason.json": {
+  "cut_29": "-",
+  "label": "module:buying",
+  "reason": "star-new-dir"
+ },
+ "enums/legacy-postal-system.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "enums/lift-dimension.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "kernel-types",
+  "reason": "star-a: metric qualifier",
+  "sub_area": "metrics"
+ },
+ "enums/logo-slot.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: logo slot id; brand.json and creative",
+  "sub_area": "brand"
+ },
+ "enums/macro-dialect.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/macro-mapping-status.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/macro-processing-operation.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/macro-resolution-reason.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/macro-resolver.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/macro-value-context.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/makegood-remedy.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "enums/markdown-flavor.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/match-id-type.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-sole-user",
+  "sub_area": "audiences-events"
+ },
+ "enums/match-type.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/media-buy-action-mode.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/media-buy-frequency-cap-control-mode.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "targeting"
+ },
+ "enums/media-buy-health.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "media-buy"
+ },
+ "enums/media-buy-status.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/media-buy-valid-action.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/metric-scope.json": {
+  "cut_29": "retire",
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/metric-type.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:reporting",
+  "reason": "star-e: only reporting uses it",
+  "sub_area": "metrics"
+ },
+ "enums/metro-system.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "kernel-types",
+  "reason": "star-a: geo system id",
+  "sub_area": "dimensions"
+ },
+ "enums/moov-atom-position.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/motion-level.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/notification-type.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/offering-availability-status.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-sole-user",
+  "sub_area": "si"
+ },
+ "enums/outcome-target-cost-strength.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/outcome-type.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "campaign"
+ },
+ "enums/pacing.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/payment-terms.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-meet",
+  "sub_area": "account"
+ },
+ "enums/performance-baseline.json": {
+  "cut_29": "module:measurement",
+  "label": "module:reporting",
+  "reason": "M-sole-user",
+  "sub_area": "measurement"
+ },
+ "enums/performance-standard-metric.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "enums/pixel-tracking-event.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: closure of assignment-tracker",
+  "sub_area": "formats"
+ },
+ "enums/policy-category.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:governance",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "policy"
+ },
+ "enums/policy-enforcement.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:governance",
+  "reason": "star-e: only governance uses it",
+  "sub_area": "policy"
+ },
+ "enums/postal-system.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "dimensions"
+ },
+ "enums/preview-output-format.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/pricing-model.json": {
+  "cut_29": "kernel-types",
+  "label": "kernel-types",
+  "reason": "KT-vocabulary"
+ },
+ "enums/pricing-structure.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/principal-kind.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "enums/production-quality.json": {
+  "cut_10": "module:buying",
+  "cut_29": "module:inventory",
+  "label": "kernel-types",
+  "reason": "star-a: inventory classification shared with governance lists",
+  "sub_area": "inventory"
+ },
+ "enums/property-type.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:brand",
+  "label": "kernel-types",
+  "reason": "star-a: property type id; identity, buying, governance, TMP",
+  "sub_area": "brand"
+ },
+ "enums/proposal-decline-reason.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "enums/proposal-disposition.json": {
+  "cut_29": "-",
+  "label": "module:buying",
+  "reason": "star-new-dir"
+ },
+ "enums/proposal-refinement-reason.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "enums/proposal-status.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "enums/publisher-identifier-types.json": {
+  "cut_29": "retire",
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "enums/purchase-type.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-sole-user",
+  "sub_area": "campaign"
+ },
+ "enums/reach-aggregation.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "enums/reach-unit.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "enums/reporting-destination-setup-state.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "enums/reporting-finality.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-sole-user",
+  "sub_area": "reliable-reporting"
+ },
+ "enums/reporting-frequency.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "enums/reporting-health.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-sole-user",
+  "sub_area": "reliable-reporting"
+ },
+ "enums/representation-selection-strategy.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "creative"
+ },
+ "enums/request-signing-error-code.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-auth-signature-slot"
+ },
+ "enums/response-type.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "enums/restricted-attribute.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "kernel-types",
+  "reason": "star-a: restricted data attribute; signals, governance, buying",
+  "sub_area": "policy"
+ },
+ "enums/right-type.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-meet",
+  "sub_area": "brand"
+ },
+ "enums/right-use.json": {
+  "cut_29": "module:brand",
+  "label": "module:identity",
+  "reason": "M-meet",
+  "sub_area": "brand"
+ },
+ "enums/rights-billing-period.json": {
+  "cut_29": "module:brand-rights",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "rights"
+ },
+ "enums/scan-type.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/seller-policy-decline-reason.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "media-buy"
+ },
+ "enums/si-session-status.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-sole-user",
+  "sub_area": "si"
+ },
+ "enums/signal-catalog-type.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "signals"
+ },
+ "enums/signal-source.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "enums/signal-value-type.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-meet",
+  "sub_area": "signals"
+ },
+ "enums/snapshot-unavailable-reason.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-meet",
+  "sub_area": "creative"
+ },
+ "enums/social-placement-surface.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "inventory"
+ },
+ "enums/sort-direction.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "enums/sort-metric.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "delivery"
+ },
+ "enums/special-category.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "inventory"
+ },
+ "enums/specialism.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/sponsored-placement-type.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "inventory"
+ },
+ "enums/spot-status.json": {
+  "cut_29": "extension:spot-lifecycle",
+  "label": "extension:spot-lifecycle",
+  "reason": "X-market-variation"
+ },
+ "enums/talent-role.json": {
+  "cut_10": "module:identity",
+  "cut_29": "module:brand",
+  "label": "kernel-types",
+  "reason": "star-a: talent role id; brand.json and buying",
+  "sub_area": "brand"
+ },
+ "enums/task-status.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "enums/task-type.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-module-enum"
+ },
+ "enums/tracker-execution-actor.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/tracker-firing-path.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/transport-mode.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "targeting"
+ },
+ "enums/travel-time-unit.json": {
+  "cut_29": "module:targeting",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "targeting"
+ },
+ "enums/uid-type.json": {
+  "cut_10": "module:signals",
+  "cut_29": "module:audiences-events",
+  "label": "kernel-types",
+  "reason": "star-a: user id type; open id (TMP needs world_id_nullifier)",
+  "sub_area": "audiences-events"
+ },
+ "enums/universal-macro.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "enums/update-frequency.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "enums/url-asset-type.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/validation-mode.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:targeting",
+  "label": "kernel-types",
+  "reason": "star-a: sync validation mode; creative and buying",
+  "sub_area": "dimensions"
+ },
+ "enums/vast-media-delivery-method.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/vast-tracking-event.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/vast-version.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: IAB VAST version",
+  "sub_area": "formats"
+ },
+ "enums/vendor-relationship.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "enums/video-placement-type.json": {
+  "cut_29": "module:inventory",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "inventory"
+ },
+ "enums/view-threshold-basis.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "module:buying",
+  "reason": "star-dissolve: follows its referrers",
+  "sub_area": "metrics"
+ },
+ "enums/viewability-standard.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:metrics",
+  "label": "kernel-types",
+  "reason": "star-a: metric qualifier",
+  "sub_area": "metrics"
+ },
+ "enums/warning-code.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "enums/watermark-media-type.json": {
+  "cut_10": "module:creative",
+  "cut_29": "module:formats",
+  "label": "kernel-types",
+  "reason": "star-a: closure of provenance",
+  "sub_area": "formats"
+ },
+ "enums/wcag-level.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/webhook-response-type.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-sole-user",
+  "sub_area": "formats"
+ },
+ "enums/webhook-security-method.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-auth-signature-slot"
+ },
+ "error-details/accessibility-violation.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "error-details/account-moved.json": {
+  "cut_29": "module:account",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "account"
+ },
+ "error-details/account-setup-required.json": {
+  "cut_29": "module:account-onboarding",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "onboarding"
+ },
+ "error-details/action-not-allowed.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "error-details/agent-permission-denied.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/audience-too-small.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "error-details/authorization-required.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/billing-not-permitted-for-agent.json": {
+  "cut_29": "module:account-onboarding",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "onboarding"
+ },
+ "error-details/billing-not-supported.json": {
+  "cut_29": "module:account-onboarding",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "onboarding"
+ },
+ "error-details/budget-too-low.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "error-details/conflict.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/creative-merge-rejected.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "error-details/creative-rejected.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "error-details/creative-representation-unresolved.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "error-details/creative-revision-content-mismatch.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "error-details/execution-requirement-unmet.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "error-details/governance-agent-not-accepted.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "error-details/macro-resolution-failed.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "error-details/policy-violation.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "error-details/rate-limited.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/reference-definition-changed.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "error-details/requote-required.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "error-details/stale-response.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/unsupported-refinement-dimension.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "error-details/unsupported-targeting-dimension.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "error-details/vast-version-mismatch.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "error-details/vendor-error-codes.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "error-details/version-unsupported.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-error-model"
+ },
+ "extensions/adcp.json": {
+  "cut_29": "extension:adcp-ext-namespace",
+  "label": "extension:adcp-ext-namespace",
+  "reason": "X-existing-ext-namespace"
+ },
+ "extensions/extension-meta.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-extension-mechanism"
+ },
+ "extensions/index.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-registry"
+ },
+ "formats/canonical/_base.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/agent_placement.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/audio_daast.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/audio_hosted.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/audio_vast.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/coordinated_placements.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/display_tag.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/html5.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/image.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/image_carousel.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/native_in_feed.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/responsive_creative.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/seller_rendered_stateful_display.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/sponsored_placement.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/video_hosted.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "formats/canonical/video_vast.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "governance/accepted-governance-agents.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/attribute-definition.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:governance",
+  "reason": "star-dissolve: unreferenced; placed by directory",
+  "sub_area": "policy"
+ },
+ "governance/audience-constraints.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/check-governance-request.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/check-governance-response.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/get-plan-audit-logs-request.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/get-plan-audit-logs-response.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/policy-category-definition.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:governance",
+  "reason": "star-dissolve: unreferenced; placed by directory",
+  "sub_area": "policy"
+ },
+ "governance/policy-entry.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:governance",
+  "reason": "star-e: only governance uses it",
+  "sub_area": "policy"
+ },
+ "governance/policy-ref.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:governance",
+  "reason": "star-dissolve: unreferenced; placed by directory",
+  "sub_area": "policy"
+ },
+ "governance/report-plan-adjustment-request.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/report-plan-adjustment-response.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/report-plan-outcome-request.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/report-plan-outcome-response.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/reported-outcome-error.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/sync-plans-request.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "governance/sync-plans-response.json": {
+  "cut_29": "module:campaign-governance",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "campaign"
+ },
+ "index.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-registry"
+ },
+ "manifest.schema.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-registry"
+ },
+ "media-buy/accept-proposal-async-response-input-required.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/accept-proposal-async-response-submitted.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/accept-proposal-async-response-working.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/accept-proposal-request.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/accept-proposal-response.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/acceptance-context.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "products"
+ },
+ "media-buy/acceptance-policy-catalog.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:buying",
+  "reason": "star-e: seller acceptance policy",
+  "sub_area": "policy"
+ },
+ "media-buy/acceptance-policy-profile-ref.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "kernel-types",
+  "reason": "star-e: a reference type",
+  "sub_area": "policy"
+ },
+ "media-buy/acceptance-policy-profile.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:buying",
+  "reason": "star-e: seller acceptance policy",
+  "sub_area": "policy"
+ },
+ "media-buy/acceptance-policy-requirement.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:buying",
+  "reason": "star-e: seller acceptance policy",
+  "sub_area": "policy"
+ },
+ "media-buy/acceptance-policy-rule.json": {
+  "cut_10": "module:media-vocabulary",
+  "cut_29": "module:policy",
+  "label": "module:buying",
+  "reason": "star-e: seller acceptance policy",
+  "sub_area": "policy"
+ },
+ "media-buy/build-creative-async-response-input-required.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "media-buy/build-creative-async-response-submitted.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "media-buy/build-creative-async-response-working.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "media-buy/build-creative-request.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "media-buy/build-creative-response.json": {
+  "cut_29": "module:creative",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "creative"
+ },
+ "media-buy/buy-products-async-response-input-required.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/buy-products-async-response-submitted.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/buy-products-async-response-working.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/buy-products-request.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/buy-products-response.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/change-term-constraints.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-meet",
+  "sub_area": "products"
+ },
+ "media-buy/change-term.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-sole-user",
+  "sub_area": "proposals"
+ },
+ "media-buy/commercial-terms.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/control-media-buy-async-response-input-required.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/control-media-buy-async-response-submitted.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/control-media-buy-async-response-working.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/control-media-buy-request.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/control-media-buy-response.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/create-media-buy-async-response-input-required.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/create-media-buy-async-response-submitted.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/create-media-buy-async-response-working.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/create-media-buy-request.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/create-media-buy-response.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/decline-proposals-async-response-input-required.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/decline-proposals-async-response-submitted.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/decline-proposals-async-response-working.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/decline-proposals-request.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/decline-proposals-response.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/get-media-buy-delivery-request.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "delivery"
+ },
+ "media-buy/get-media-buy-delivery-response.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "delivery"
+ },
+ "media-buy/get-media-buys-request.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/get-media-buys-response.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/get-products-async-response-input-required.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/get-products-async-response-submitted.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/get-products-async-response-working.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/get-products-rejected.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/get-products-request.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/get-products-response.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/get-products-targeting-resolution.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/get-reporting-status-request.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "media-buy/get-reporting-status-response.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "media-buy/legacy-purchase-continuation-input.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/list-collections-request.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/list-collections-response.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/list-creative-formats-request.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "media-buy/list-creative-formats-response.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "media-buy/list-products-request.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/list-products-response.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/list-proposals-request.json": {
+  "cut_29": "-",
+  "label": "module:buying",
+  "reason": "star-new-dir"
+ },
+ "media-buy/list-proposals-response.json": {
+  "cut_29": "-",
+  "label": "module:buying",
+  "reason": "star-new-dir"
+ },
+ "media-buy/log-event-request.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "media-buy/log-event-response.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "media-buy/media-buy-commitment-response.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/media-buy-delivery-webhook-result.json": {
+  "cut_29": "module:delivery-reporting",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "delivery"
+ },
+ "media-buy/outcome-target.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/package-control.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/package-request.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/package-update.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/product-discovery-criteria.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/product-fields.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/product-purchase-input.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/product-purchase.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "media-buy/product-refinement.json": {
+  "cut_29": "retire",
+  "label": "retire",
+  "reason": "R-unreferenced"
+ },
+ "media-buy/proposal-budget-constraint.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/proposal-decline.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/proposal-refinement.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/provide-performance-feedback-request.json": {
+  "cut_29": "module:measurement",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "measurement"
+ },
+ "media-buy/provide-performance-feedback-response.json": {
+  "cut_29": "module:measurement",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "measurement"
+ },
+ "media-buy/refine-proposals-async-response-input-required.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/refine-proposals-async-response-submitted.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/refine-proposals-async-response-working.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/refine-proposals-request.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/refine-proposals-response.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/request-proposals-async-response-input-required.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/request-proposals-async-response-submitted.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/request-proposals-async-response-working.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/request-proposals-request.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/request-proposals-response.json": {
+  "cut_29": "module:proposal-negotiation",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "proposals"
+ },
+ "media-buy/sync-audiences-request.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "media-buy/sync-audiences-response.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "media-buy/sync-catalogs-async-response-input-required.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "media-buy/sync-catalogs-async-response-submitted.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "media-buy/sync-catalogs-async-response-working.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "media-buy/sync-catalogs-request.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "media-buy/sync-catalogs-response.json": {
+  "cut_29": "module:catalogs",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "catalogs"
+ },
+ "media-buy/sync-event-sources-request.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "media-buy/sync-event-sources-response.json": {
+  "cut_29": "module:audiences-events",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "audiences-events"
+ },
+ "media-buy/sync-reporting-receipts-request.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "media-buy/sync-reporting-receipts-response.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "media-buy/sync-reporting-status-request.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "media-buy/sync-reporting-status-response.json": {
+  "cut_29": "module:reliable-reporting",
+  "label": "module:reporting",
+  "reason": "M-anchor",
+  "sub_area": "reliable-reporting"
+ },
+ "media-buy/update-media-buy-async-response-input-required.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/update-media-buy-async-response-submitted.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/update-media-buy-async-response-working.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/update-media-buy-request.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "media-buy/update-media-buy-response.json": {
+  "cut_29": "module:media-buy",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "media-buy"
+ },
+ "pricing-options/cpa-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/cpc-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/cpcv-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/cpm-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/cpp-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/cpv-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/flat-rate-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/price-breakdown.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/price-guidance.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/revenue-share-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/time-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "pricing-options/vcpm-option.json": {
+  "cut_29": "module:products",
+  "label": "module:buying",
+  "reason": "M-anchor",
+  "sub_area": "products"
+ },
+ "property/authorization-result.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/base-property-source.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/create-property-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/create-property-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/delete-property-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/delete-property-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/delivery-record.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/get-property-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/get-property-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/list-property-lists-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/list-property-lists-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-error.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-feature-definition.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-feature-result.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-feature-value.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-feature.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-list-changed-webhook.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-list-filters.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/property-list.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/update-property-list-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/update-property-list-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/validate-property-delivery-request.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/validate-property-delivery-response.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "property/validation-result.json": {
+  "cut_29": "module:governance-lists",
+  "label": "module:governance",
+  "reason": "M-anchor",
+  "sub_area": "lists"
+ },
+ "protocol/get-adcp-capabilities-request.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-capability-discovery"
+ },
+ "protocol/get-adcp-capabilities-response.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-caps-god-object"
+ },
+ "protocol/get-principal-request.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "protocol/get-principal-response.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "protocol/get-task-status-request.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "protocol/get-task-status-response.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "protocol/list-tasks-request.json": {
+  "cut_29": "kernel",
+  "label": "kernel",
+  "reason": "K-task-lifecycle"
+ },
+ "protocol/list-tasks-response.json": {
+  "cut_29": "assembly",
+  "label": "assembly",
+  "reason": "A-closed-task-union"
+ },
+ "protocol/sync-agent-notification-configs-request.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "protocol/sync-agent-notification-configs-response.json": {
+  "cut_29": "module:notifications",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "notifications"
+ },
+ "protocol/sync-principal-request.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "protocol/sync-principal-response.json": {
+  "cut_29": "module:principal",
+  "label": "module:accounts",
+  "reason": "M-anchor",
+  "sub_area": "principal"
+ },
+ "registries/v1-canonical-mapping.json": {
+  "cut_29": "module:formats",
+  "label": "module:creative",
+  "reason": "M-anchor",
+  "sub_area": "formats"
+ },
+ "signals/activate-signal-request.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "signals/activate-signal-response.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "signals/get-signals-async-response-submitted.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "signals/get-signals-async-response-working.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "signals/get-signals-request.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "signals/get-signals-response.json": {
+  "cut_29": "module:signals",
+  "label": "module:signals",
+  "reason": "M-anchor",
+  "sub_area": "signals"
+ },
+ "sponsored-intelligence/si-capabilities.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-context-use.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-get-offering-request.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-get-offering-response.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-identity.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-initiate-session-request.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-initiate-session-response.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-send-message-request.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-send-message-response.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-sponsored-context-receipt.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-sponsored-context.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-terminate-session-request.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-terminate-session-response.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "sponsored-intelligence/si-ui-element.json": {
+  "cut_29": "module:sponsored-intelligence",
+  "label": "module:sponsored-intelligence",
+  "reason": "M-anchor",
+  "sub_area": "si"
+ },
+ "trust/v1/trust-acknowledgements.json": {
+  "cut_29": "module:agent-trust",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "trust"
+ },
+ "trust/v1/trust.json": {
+  "cut_29": "module:agent-trust",
+  "label": "module:identity",
+  "reason": "M-anchor",
+  "sub_area": "trust"
+ },
+ "trusted-match/available-package.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/context-match-request.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/context-match-response.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/error.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/identity-match-request.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/identity-match-response.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/offer-price.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/offer.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/provider-context-match-response.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/provider-identity-match-response.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/provider-registration.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/publisher-targeting-kv-config.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/publisher-tmpx-config.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ },
+ "trusted-match/tmpx-chunk.json": {
+  "cut_29": "module:trusted-match",
+  "label": "module:trusted-match",
+  "reason": "M-anchor",
+  "sub_area": "tmp"
+ }
+}

@@ -1,0 +1,85 @@
+{
+  "id": "https://extensions.adcontextprotocol.org/linear-tv-indexed-cpp",
+  "name": "linear-tv-indexed-cpp",
+  "version": "1.5.0",
+  "title": "Indexed cost per point, with a market index fixed after booking",
+  "description": "A pricing model for Dutch-style linear TV and radio (Ster, Ad Alliance NL, Talpa). The rate per rating point is base price x indices fixed at booking x a market index the seller fixes after booking, capped for early requests. The buyer signs the formula, the cap, and the fixing date, not a number; the seller fixes the index later and invoices delivered points at the fixed rate. Core cpp cannot express this, because its fixed_price binds at acceptance. A buyer without this extension cannot buy the option, so the branch is must-understand.",
+  "owner": "AdCP Working Group",
+  "status": "candidate",
+  "origin": [
+    "https://github.com/adcontextprotocol/adcp/issues/7659",
+    "Rate-card market survey: Ster fixes the market index the day after the request deadline; early requests are capped at 100"
+  ],
+  "requires": {
+    "core": ">=3.3 <5",
+    "points": {
+      "pricing_model": 1,
+      "media_buy_state": 1,
+      "capabilities": 1
+    }
+  },
+  "extends": [
+    {
+      "point": "pricing_model",
+      "branch": "indexed_cpp",
+      "definition": "IndexedCpp",
+      "must_understand": "required",
+      "reports_as": "cpp",
+      "applies_to": {
+        "channels": [
+          "linear_tv",
+          "radio"
+        ]
+      },
+      "semantics": "A pricing option and an accepted purchase pricing. Spend = delivered rating points x the fixed rate; until the seller fixes the market index, the rate is at most ceiling_price. Delivery reports use the core cpp metric (rating points) and spend in the option currency."
+    },
+    {
+      "point": "media_buy_state",
+      "definition": "IndexFixings",
+      "must_understand": "optional",
+      "semantics": "Readback in get_media_buys: the market index the seller fixed per purchase and the resulting rate. The seller announces each fixing through the core change feed."
+    },
+    {
+      "point": "capabilities",
+      "definition": "IndexedCppCapabilities",
+      "must_understand": "optional",
+      "semantics": "Where this seller offers the model and which audience currencies it settles on."
+    }
+  ],
+  "adopters": [
+    {
+      "party": "seller D (NL linear TV)",
+      "since": "2027-01-01"
+    }
+  ],
+  "promotion": {
+    "rule": "Stays an extension unless a second market adopts post-booking index fixing (rate-card market survey: a NL and Ad Alliance DE convention)",
+    "target": "/schemas/pricing-options/indexed-cpp-option.json"
+  },
+  "changelog": [
+    {
+      "version": "1.5.0",
+      "change": "Current version: the pricing_model branch indexed_cpp, media_buy_state fixings, the capabilities fragment, the normative spec, the conformance suite, and the reference code, all pinned by the digest. The manifest registers the branch under the `branch` key. Uses the kernel container ExtensionEntry with `data`, and the host properties `extensions` and `extensions_state`. The spec and manifest text follow the documentation style guide; the rules and their IDs are unchanged."
+    },
+    {
+      "version": "1.4.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.3.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.2.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.1.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.0.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs). Storyboards use it as a second digest for the same URI."
+    }
+  ]
+}

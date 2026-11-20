@@ -1,0 +1,64 @@
+id: linear_tv_indexed_cpp/unknown_branch_in_a_list
+version: "1.0.0"
+title: "An unknown branch in a list of options is dropped"
+category: extension_conformance
+extension: linear-tv-indexed-cpp
+summary: "A seller leaks the branch into its catalog; the buyer drops only that option and keeps the product."
+narrative: |
+  The sales house in this fixture ignores understood_extensions in its catalog. A buyer
+  without the module receives the prime-time product with two options: core cpp and the
+  indexed branch. The buying module declares the pricing_model union with
+  unknown_in_list drop_option, so the buyer drops the branch, records a warning, and can
+  still buy the cpp option. A product whose only option is the branch has nothing left to
+  buy, so the buyer rejects it.
+
+fixture:
+  seller: tv_sales_house
+  ignore_understood: products
+buyer:
+  extensions: []
+
+phases:
+  - id: drop
+    title: "Drop the option, keep the product"
+    steps:
+      - id: branch_dropped
+        title: "The buyer drops the indexed option and keeps the cpp option"
+        task: get_products
+        covers: [LTV-R1]
+        expect:
+          ok: true
+          dropped: [/pricing_options/1]
+          warning_code: EXTENSION_OPTION_DROPPED
+          status: { ext: linear-tv-indexed-cpp, point: pricing_model, status: dropped }
+          checks:
+            - path: products.0.pricing_options
+              length: 1
+            - path: products.0.pricing_options.0.pricing_option_id
+              equals: po_prime_cpp_late
+      - { id: load_catalog, title: "Load the seller catalog", task: load_fixture, with: { name: catalog } }
+      - id: only_option_is_the_branch
+        title: "A product whose only option is the branch is rejected"
+        task: validate
+        with:
+          schema: product
+          subject: fixture.0
+          mutate:
+            - { op: remove, path: /pricing_options/0 }
+        covers: [LTV-R1]
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          error_match: "every item of /pricing_options carries an extension branch"
+      - id: grease_drop
+        title: "GREASE: an unknown branch on another product is dropped too"
+        task: validate
+        with:
+          schema: product
+          subject: products.1
+          grease: { at: /pricing_options, kind: branch }
+        covers: [LTV-R1]
+        expect:
+          ok: true
+          dropped: [/pricing_options/1]
+          status: { ext: grease, point: pricing_model, status: dropped }

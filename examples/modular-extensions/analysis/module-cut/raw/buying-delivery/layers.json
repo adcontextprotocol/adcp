@@ -1,0 +1,21 @@
+{
+ "assembly": "assembly",
+ "extension:aao-verification-token": "extension",
+ "extension:adcp-ext-namespace": "extension",
+ "extension:response-signing-jws": "extension",
+ "extension:spot-lifecycle": "extension",
+ "kernel": "kernel",
+ "kernel-types": "kernel",
+ "module:accounts": "module",
+ "module:buying": "module",
+ "module:compliance-testing": "module",
+ "module:creative": "module",
+ "module:governance": "module",
+ "module:identity": "module",
+ "module:media-vocabulary": "module",
+ "module:reporting": "module",
+ "module:signals": "module",
+ "module:sponsored-intelligence": "module",
+ "module:trusted-match": "module",
+ "retire": "retire"
+}

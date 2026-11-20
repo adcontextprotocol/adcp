@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/makegood-remedy.json",
+  "title": "Makegood Remedy",
+  "description": "Remedy types available when a performance standard or billing measurement threshold is breached.",
+  "type": "string",
+  "enum": [
+    "additional_delivery",
+    "credit",
+    "invoice_adjustment"
+  ],
+  "enumDescriptions": {
+    "additional_delivery": "Seller extends or adds impressions to compensate for the shortfall. Delivery is like-for-like on the same campaign or a subsequent campaign within the same account.",
+    "credit": "Seller issues a credit toward future media buys on the same account.",
+    "invoice_adjustment": "Seller reduces the invoice for the current media buy to reflect actual delivered value."
+  }
+}

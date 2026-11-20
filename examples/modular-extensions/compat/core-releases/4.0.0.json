@@ -1,0 +1,19 @@
+{
+  "$comment": "SIMULATED future core release for the compatibility example. A major: duration.json changes its schema (v2), the media buy readback extension point changes its schema (v2); everything else keeps its contract.",
+  "adcp_version": "4.0.0",
+  "points": {
+    "capabilities": 1,
+    "task": 1,
+    "commercial_terms": 1,
+    "delivery_report": 1,
+    "media_buy_state": 2,
+    "pricing_model": 1,
+    "pricing_option": 1
+  },
+  "types": {
+    "default_major": 1,
+    "overrides": {
+      "/schemas/core/duration.json": 2
+    }
+  }
+}

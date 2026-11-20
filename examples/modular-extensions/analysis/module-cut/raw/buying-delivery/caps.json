@@ -1,0 +1,166 @@
+{
+ "owners": {
+  "kernel": {
+   "paths": [
+    "adcp (block shell)",
+    "adcp.major_versions",
+    "adcp.supported_versions",
+    "adcp.build_version",
+    "adcp.implementation",
+    "adcp.idempotency",
+    "supported_protocols",
+    "oauth",
+    "specialisms",
+    "extensions_supported",
+    "experimental_features",
+    "last_updated",
+    "errors",
+    "context",
+    "ext"
+   ]
+  },
+  "module:accounts": {
+   "paths": [
+    "adcp.principal",
+    "adcp.capability_changes",
+    "account (block shell)",
+    "account.require_operator_auth",
+    "account.authorization_endpoint",
+    "account.stable_account_id",
+    "account.supported_billing",
+    "account.supported_account_currency_modes",
+    "account.timezone",
+    "account.required_for_products",
+    "account.account_financials",
+    "account.notifications",
+    "account.identity_updates",
+    "account.sandbox",
+    "account.change_feed"
+   ]
+  },
+  "module:governance": {
+   "paths": [
+    "adcp.governance_enforcement",
+    "media_buy.governance_aware",
+    "governance (block shell)",
+    "governance.runtime_attestations",
+    "governance.aggregation_window_days",
+    "governance.supports_budget_periods",
+    "media_buy.content_standards",
+    "governance.creative_features",
+    "governance.property_features"
+   ]
+  },
+  "module:identity": {
+   "paths": [
+    "adcp.attestations",
+    "identity",
+    "brand.description"
+   ]
+  },
+  "module:buying": {
+   "paths": [
+    "media_buy (block shell)",
+    "media_buy.lifecycle_tools",
+    "media_buy.propagation_surfaces",
+    "media_buy.creative_approval_mode",
+    "media_buy.supported_indicator_types",
+    "media_buy.relationship_notifications",
+    "media_buy.features",
+    "media_buy.execution",
+    "media_buy.budget_capping",
+    "media_buy.anonymous_discovery",
+    "media_buy.supported_pricing_models",
+    "media_buy.buying_modes",
+    "media_buy.measurement_terms_acceptance",
+    "media_buy.availability_horizon",
+    "media_buy.outcome_target",
+    "media_buy.audience_targeting",
+    "media_buy.portfolio",
+    "wholesale_feed_versioning",
+    "wholesale_feed_webhooks",
+    "media_buy.proposal_refinement",
+    "media_buy.supports_proposals",
+    "media_buy.supports_exclusive_product_ids",
+    "media_buy.reporting_delivery_methods",
+    "media_buy.offline_delivery_protocols",
+    "media_buy.frequency_capping",
+    "media_buy.aggregate_frequency_capping"
+   ]
+  },
+  "module:media-vocabulary": {
+   "paths": [
+    "media_buy.acceptance_policy_discovery",
+    "media_buy.supported_optimization_metrics",
+    "media_buy.vendor_metric_optimization"
+   ]
+  },
+  "module:reporting": {
+   "paths": [
+    "media_buy.performance_feedback",
+    "measurement_gateway",
+    "measurement",
+    "media_buy.reporting_delivery"
+   ]
+  },
+  "module:signals": {
+   "paths": [
+    "media_buy.audience_evidence",
+    "media_buy.conversion_tracking",
+    "signals"
+   ]
+  },
+  "module:creative": {
+   "paths": [
+    "media_buy.rights_attestations",
+    "brand (block shell)",
+    "brand.rights",
+    "brand.right_types",
+    "brand.available_uses",
+    "brand.generation_providers",
+    "creative (block shell)",
+    "creative.supports_compliance",
+    "creative.has_creative_library",
+    "creative.stable_creative_ids",
+    "creative.supports_revisions",
+    "creative.supports_assignment_merge",
+    "creative.supports_assignment_trackers",
+    "creative.supports_assignment_landing_page",
+    "creative.supports_generation",
+    "creative.supports_transformation",
+    "creative.representation_resolution",
+    "creative.supports_transformers",
+    "creative.supports_refinement",
+    "creative.supports_spend_controls",
+    "creative.supports_evaluator",
+    "creative.refinable_retention_seconds",
+    "creative.multiplicity",
+    "creative.preview",
+    "creative.localization",
+    "creative.bills_through_adcp",
+    "creative.canonical_catalog_version",
+    "creative.supported_formats"
+   ]
+  },
+  "module:sponsored-intelligence": {
+   "paths": [
+    "sponsored_intelligence"
+   ]
+  },
+  "extension:request-signing-rfc9421": {
+   "paths": [
+    "request_signing"
+   ]
+  },
+  "extension:webhook-signing": {
+   "paths": [
+    "webhook_signing"
+   ]
+  },
+  "module:compliance-testing": {
+   "paths": [
+    "compliance_testing"
+   ]
+  }
+ }
+}

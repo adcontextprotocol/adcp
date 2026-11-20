@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/property-list-ref.json",
+  "title": "Property List Reference",
+  "description": "Reference to an externally managed property list. The receiver MUST call get_property_list at agent_url over MCP, or another AdCP task transport advertised by that agent, and follow pagination to completion before applying the list. A custom HTTP GET path alone does not satisfy reference resolution. See the property list task reference for authentication and caching requirements.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "AdCP task endpoint of the agent exposing get_property_list. Receivers MUST support resolution over MCP; another advertised AdCP task transport MAY be used by agreement. This is not a base URL for an inferred /lists/{list_id} HTTP path."
+    },
+    "list_id": {
+      "type": "string",
+      "description": "Identifier for the property list within the agent",
+      "minLength": 1,
+      "x-entity": "property_list"
+    },
+    "auth_token": {
+      "type": "string",
+      "description": "Bearer credential authorizing read-only get_property_list access to this list_id, including every pagination request. When supplied, the managing agent MUST accept it instead of its normal credentials, without requiring the recipient to have an account. It MUST NOT grant access to other lists or mutations. Omit for a public list or independently authorized receiver. Deliver this credential to the intended receiver inside the reference, including in seller task arguments. When authenticating get_property_list requests to the managing agent, send it only in the Authorization header, never in those task arguments or a URL."
+    }
+  },
+  "required": [
+    "agent_url",
+    "list_id"
+  ],
+  "additionalProperties": false
+}

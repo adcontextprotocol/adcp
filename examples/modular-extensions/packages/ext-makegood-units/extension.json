@@ -1,0 +1,78 @@
+{
+  "id": "https://extensions.adcontextprotocol.org/makegood-units",
+  "name": "makegood-units",
+  "version": "1.5.0",
+  "title": "Make-good units (pre-agreed, capped, zero-cost replacements)",
+  "description": "Lets the buyer pre-authorize the seller to add zero-cost replacement units when the seller misses a deliverable or under-delivers, within a cap, a time window, and sameness rules (such as the same creator, platform, or creative format). A unit the seller adds under a rule is an ordinary core package with budget 0; this extension records why it exists and lets the buyer check that it stayed inside the rule. Anything outside a rule is a seller offer (core offer lane), not a make-good unit.",
+  "owner": "AdCP Working Group",
+  "status": "candidate",
+  "origin": [
+    "https://github.com/adcontextprotocol/adcp/issues/8087",
+    "Make-good terms survey: capped zero-cost make-good/bonus units (IAB/4A's T&Cs v3.0 VII(b), Goldbach, SevenOne, Calm 90-day window, Creators Agency 'one scoped extra deliverable')"
+  ],
+  "requires": {
+    "core": ">=3.3 <5",
+    "points": {
+      "commercial_terms": 1,
+      "media_buy_state": 1,
+      "task": 1
+    }
+  },
+  "extends": [
+    {
+      "point": "commercial_terms",
+      "definition": "MakegoodTerms",
+      "must_understand": "required",
+      "semantics": "Binding make-good rules under terms_digest."
+    },
+    {
+      "point": "media_buy_state",
+      "definition": "MakegoodLedger",
+      "must_understand": "optional",
+      "semantics": "Readback of the make-good units the seller issued under the rules, each pointing at its zero-cost core package. Same uri@digest as the accepted rules."
+    },
+    {
+      "point": "task",
+      "branch": "request_makegood",
+      "definition": "MakegoodRequest",
+      "response": "MakegoodResponse",
+      "semantics": "The buyer asks the seller to issue a make-good unit under an accepted rule for a missed deliverable. The seller answers accepted, with the zero-cost package that carries the unit, or rejected, with a reason."
+    }
+  ],
+  "adopters": [
+    {
+      "party": "seller B (creator network)",
+      "since": "2026-11-01"
+    }
+  ],
+  "promotion": {
+    "rule": "2+ independent adopters across two channels for 90+ days",
+    "target": "/schemas/media-buy/makegood-rule.json"
+  },
+  "changelog": [
+    {
+      "version": "1.5.0",
+      "change": "Current version: the contributed task request_makegood, a branch of the kernel's task union with request and response definitions, spec rules MG-R18 to MG-R22, and a storyboard. Also: make-good rules in commercial_terms, the media_buy_state ledger, the normative spec, the conformance suite, and the reference code, all pinned by the digest. Uses the kernel container ExtensionEntry with `data`, and the host properties `extensions` and `extensions_state`. The spec and manifest text follow the documentation style guide; the rules and their IDs are unchanged."
+    },
+    {
+      "version": "1.4.0",
+      "change": "Registry fixture: the current sources under this version number, with the request_makegood task (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.3.0",
+      "change": "Registry fixture: the current sources without the request_makegood task (scripts/registry-history.mjs). Buyers pinned to it cannot call request_makegood."
+    },
+    {
+      "version": "1.2.0",
+      "change": "Registry fixture: the current sources without the request_makegood task (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.1.0",
+      "change": "Registry fixture: the current sources without the request_makegood task (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.0.0",
+      "change": "Registry fixture: the current sources without the request_makegood task (scripts/registry-history.mjs). Storyboards use it as a second digest for the same URI."
+    }
+  ]
+}

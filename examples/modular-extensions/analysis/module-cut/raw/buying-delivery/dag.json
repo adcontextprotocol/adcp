@@ -1,0 +1,58 @@
+{
+ "module:accounts": [],
+ "module:buying": [
+  "module:accounts",
+  "module:creative",
+  "module:identity",
+  "module:media-vocabulary",
+  "module:signals"
+ ],
+ "module:compliance-testing": [
+  "module:accounts",
+  "module:buying",
+  "module:creative",
+  "module:governance",
+  "module:identity",
+  "module:media-vocabulary",
+  "module:reporting",
+  "module:signals",
+  "module:sponsored-intelligence",
+  "module:trusted-match"
+ ],
+ "module:creative": [
+  "module:accounts",
+  "module:identity",
+  "module:media-vocabulary",
+  "module:signals"
+ ],
+ "module:governance": [
+  "module:accounts",
+  "module:buying",
+  "module:creative",
+  "module:identity",
+  "module:media-vocabulary"
+ ],
+ "module:identity": [],
+ "module:media-vocabulary": [],
+ "module:reporting": [
+  "module:accounts",
+  "module:buying",
+  "module:media-vocabulary"
+ ],
+ "module:signals": [
+  "module:identity",
+  "module:media-vocabulary"
+ ],
+ "module:sponsored-intelligence": [],
+ "module:trusted-match": [
+  "module:buying",
+  "module:creative",
+  "module:identity",
+  "module:media-vocabulary",
+  "module:signals"
+ ],
+ "kernel": [],
+ "kernel-types": [
+  "kernel"
+ ]
+}

@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-resolution-capability.json",
+  "title": "Macro Processing Capability",
+  "description": "One exact processing capability for one governed dialect semantic, operation, actor, occurrence context, and encoding set. Entries are intentionally semantic-specific; they do not create a semantics × maximum-depth cross-product. Seller-wide capabilities are only a ceiling and the selected product format option is binding.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "adcp_semantic_identity": "when dialect is adcp, dialect_semantic must equal universal_semantic",
+      "translation_chain": "a translate_to_native entry is usable only when the same capability set contains an exact resolve_value entry for translation_target"
+    },
+    "spec": "docs/creative/universal-macros.mdx#capability-matching-and-validation"
+  },
+  "type": "object",
+  "properties": {
+    "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
+    "dialect_namespace": { "type": "string", "format": "uri" },
+    "dialect_revision": { "type": "string", "minLength": 1 },
+    "dialect_semantic": { "type": "string", "minLength": 1 },
+    "mapping_status": {
+      "type": "string",
+      "enum": ["verified_universal", "dialect_defined"]
+    },
+    "universal_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
+    "operation": {
+      "type": "string",
+      "enum": ["translate_to_native", "resolve_value"]
+    },
+    "performed_by": { "$ref": "/schemas/enums/macro-resolver.json" },
+    "supported_contexts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/enums/macro-value-context.json" },
+          { "not": { "const": "opaque" } }
+        ]
+      }
+    },
+    "supported_encodings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "/schemas/core/macro-encoding.json" },
+      "description": "Exact supported encoding profiles, not a maximum depth. Required for value resolution."
+    },
+    "translation_target": { "$ref": "/schemas/core/macro-translation-target.json" }
+  },
+  "required": [
+    "dialect",
+    "dialect_semantic",
+    "mapping_status",
+    "operation",
+    "performed_by",
+    "supported_contexts"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "dialect": { "enum": ["iab_vast", "iab_daast", "vendor"] } }, "required": ["dialect"] },
+      "then": { "required": ["dialect_namespace", "dialect_revision"] }
+    },
+    {
+      "if": { "properties": { "dialect": { "enum": ["adcp", "unknown"] } }, "required": ["dialect"] },
+      "then": { "not": { "anyOf": [{ "required": ["dialect_namespace"] }, { "required": ["dialect_revision"] }] } }
+    },
+    {
+      "if": { "properties": { "dialect": { "const": "unknown" } }, "required": ["dialect"] },
+      "then": false
+    },
+    {
+      "if": { "properties": { "mapping_status": { "const": "verified_universal" } }, "required": ["mapping_status"] },
+      "then": { "required": ["universal_semantic"] },
+      "else": { "not": { "required": ["universal_semantic"] } }
+    },
+    {
+      "if": { "properties": { "dialect": { "const": "adcp" } }, "required": ["dialect"] },
+      "then": {
+        "required": ["universal_semantic"],
+        "properties": {
+          "dialect_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
+          "mapping_status": { "const": "verified_universal" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "universal_semantic": {
+            "enum": ["CATALOG_ID", "SKU", "GTIN", "OFFERING_ID", "JOB_ID", "HOTEL_ID", "FLIGHT_ID", "VEHICLE_ID", "LISTING_ID", "STORE_ID", "PROGRAM_ID", "DESTINATION_ID", "ITEM_NAME", "ITEM_DESCRIPTION", "ITEM_TAGLINE", "ITEM_PRICE", "ITEM_PRICE_CURRENCY"]
+          }
+        },
+        "required": ["universal_semantic"]
+      },
+      "then": {
+        "properties": {
+          "operation": { "const": "resolve_value" },
+          "performed_by": { "const": "seller" },
+          "supported_contexts": { "items": { "enum": ["url_query_value", "url_path_segment"] } },
+          "supported_encodings": {
+            "items": {
+              "properties": { "kind": { "const": "rfc3986" }, "depth": { "const": 1 } },
+              "required": ["kind", "depth"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "resolve_value" } }, "required": ["operation"] },
+      "then": {
+        "required": ["supported_encodings"],
+        "not": { "required": ["translation_target"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "dialect": { "enum": ["iab_vast", "iab_daast"] }, "operation": { "const": "resolve_value" } },
+        "required": ["dialect", "operation"]
+      },
+      "then": { "properties": { "performed_by": { "const": "request_executor" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "translate_to_native" } }, "required": ["operation"] },
+      "then": {
+        "required": ["translation_target"],
+        "not": { "required": ["supported_encodings"] }
+      }
+    }
+  ]
+}

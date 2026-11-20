@@ -1,0 +1,6126 @@
+{
+ "repo": "adcp",
+ "ref": "45591e97b3",
+ "head": "45591e97b36b45e880c6d480526c11499bbc7c5c",
+ "since": "2025-10-19",
+ "milestones": [
+  {
+   "name": "3.0",
+   "tag": "v3.0.0",
+   "intro_index": 2078
+  },
+  {
+   "name": "3.1",
+   "tag": "v3.1.0",
+   "intro_index": 3536
+  },
+  {
+   "name": "3.2",
+   "tag": "v3.2.1",
+   "intro_index": 4789
+  }
+ ],
+ "fp_head_index": 5007,
+ "tags": {
+  "v2.0.0": {
+   "sha": "78e8a85dc94a6e715b664e3883d805106a52bf7f",
+   "date": "2025-10-15T10:41:49-04:00",
+   "ga": true,
+   "intro_index": 157,
+   "intro_sha": "78e8a85dc94a6e715b664e3883d805106a52bf7f",
+   "on_first_parent": true
+  },
+  "v2.1.0": {
+   "sha": "029101d5e8e7b09242641866206d8971f7f24cf5",
+   "date": "2025-10-19T10:00:18-04:00",
+   "ga": true,
+   "intro_index": 167,
+   "intro_sha": "029101d5e8e7b09242641866206d8971f7f24cf5",
+   "on_first_parent": true
+  },
+  "v2.5.0": {
+   "sha": "993ee3cf5c5cced40a0d99c538f8f2732c75f854",
+   "date": "2025-11-22T16:42:35-05:00",
+   "ga": true,
+   "intro_index": 254,
+   "intro_sha": "993ee3cf5c5cced40a0d99c538f8f2732c75f854",
+   "on_first_parent": true
+  },
+  "v2.5.1": {
+   "sha": "9ba8c55e4d647679680e3e469bdd95ba78b5cc78",
+   "date": "2025-12-24T07:54:30-05:00",
+   "ga": true,
+   "intro_index": 341,
+   "intro_sha": "9ba8c55e4d647679680e3e469bdd95ba78b5cc78",
+   "on_first_parent": true
+  },
+  "v3.0.0": {
+   "sha": "4472eb295cf49e6a0ff5dcf69e72749da8ca31ae",
+   "date": "2026-04-22T05:43:57-04:00",
+   "ga": true,
+   "intro_index": 2078,
+   "intro_sha": "4472eb295cf49e6a0ff5dcf69e72749da8ca31ae",
+   "on_first_parent": true
+  },
+  "v3.0.0-beta.1": {
+   "sha": "56a719d26f482ebe2799ef37e3b48ff8874096ab",
+   "date": "2026-01-26T08:03:25-05:00",
+   "ga": false,
+   "intro_index": 802,
+   "intro_sha": "56a719d26f482ebe2799ef37e3b48ff8874096ab",
+   "on_first_parent": true
+  },
+  "v3.0.0-beta.2": {
+   "sha": "1f24108cb46dc9f8a8ddbe2ed4c55d3868641207",
+   "date": "2026-02-02T11:38:12-05:00",
+   "ga": false,
+   "intro_index": 850,
+   "intro_sha": "1f24108cb46dc9f8a8ddbe2ed4c55d3868641207",
+   "on_first_parent": true
+  },
+  "v3.0.0-beta.3": {
+   "sha": "d9b8449917f97da39d22b9c88861e0e8c5ad2d87",
+   "date": "2026-02-12T07:34:52-05:00",
+   "ga": false,
+   "intro_index": 933,
+   "intro_sha": "d9b8449917f97da39d22b9c88861e0e8c5ad2d87",
+   "on_first_parent": true
+  },
+  "v3.0.0-rc.1": {
+   "sha": "fabe1da47f06b629825a6eb92623c801e125be5b",
+   "date": "2026-03-01T07:32:22-05:00",
+   "ga": false,
+   "intro_index": 1106,
+   "intro_sha": "fabe1da47f06b629825a6eb92623c801e125be5b",
+   "on_first_parent": true
+  },
+  "v3.0.0-rc.2": {
+   "sha": "3e793c029cbe94c1a37fcde15d53fadf5412b485",
+   "date": "2026-03-15T19:33:00-04:00",
+   "ga": false,
+   "intro_index": 1261,
+   "intro_sha": "3e793c029cbe94c1a37fcde15d53fadf5412b485",
+   "on_first_parent": true
+  },
+  "v3.0.0-rc.3": {
+   "sha": "89bc3ae530bcea0f663fd3931fcff0f5b0da6be0",
+   "date": "2026-04-01T22:42:07+09:00",
+   "ga": false,
+   "intro_index": 1489,
+   "intro_sha": "89bc3ae530bcea0f663fd3931fcff0f5b0da6be0",
+   "on_first_parent": true
+  },
+  "v3.0.1": {
+   "sha": "2a24ca5f070f36bf7d1793651a1f0fb4f50084dd",
+   "date": "2026-04-28T08:43:11-04:00",
+   "ga": true,
+   "intro_index": 2360,
+   "intro_sha": "2a24ca5f070f36bf7d1793651a1f0fb4f50084dd",
+   "on_first_parent": true
+  },
+  "v3.0.10": {
+   "sha": "d48ca0ea00540b91fcd58b2c6af76cd9eac26025",
+   "date": "2026-05-10T19:22:21-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.11": {
+   "sha": "d805fa2d65f335d97990517ea7dbfe30cc2f3212",
+   "date": "2026-05-11T04:51:15-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.12": {
+   "sha": "173402db996b0e8cd776932e4fc6ef26dbd266a2",
+   "date": "2026-05-13T06:42:39-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.13": {
+   "sha": "21413f6d76bb31207eda25d3f4efeb4a15833a15",
+   "date": "2026-05-22T18:46:32-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.14": {
+   "sha": "3f1dde415534aa3a8a6bdb398aec4bd1bcd868f9",
+   "date": "2026-05-30T09:00:16-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.15": {
+   "sha": "2bf3505eae772edabd6e45762c2f72d13057fac4",
+   "date": "2026-05-31T19:10:35-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.16": {
+   "sha": "6b96e69b275ea9d7f8662f7663aed7ef871a24a1",
+   "date": "2026-06-14T12:43:03-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.17": {
+   "sha": "088a962ed0913954851402fb78d63dfd1d6f2f58",
+   "date": "2026-06-16T08:22:06+02:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.18": {
+   "sha": "5919879eedcc89dc6a88d099e40e742c5104b9e7",
+   "date": "2026-06-16T08:42:58+02:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.19": {
+   "sha": "2508b392b9a3e74e0e568b2e4009a9e2a489f9c7",
+   "date": "2026-06-17T15:37:24+02:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.2": {
+   "sha": "22a69cf33f674a79e1e75200f8f0b1d08588aad9",
+   "date": "2026-04-29T22:28:18-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.20": {
+   "sha": "a16ae8babfc3efef8d373562578fb2914564c3df",
+   "date": "2026-07-02T08:11:58+01:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.21": {
+   "sha": "5ffe457f9190b6cfa92174bf4acdadc150a4be07",
+   "date": "2026-07-02T11:11:46+01:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.22": {
+   "sha": "72688089985dc703dafcde693399705c5be3c1a4",
+   "date": "2026-07-24T15:46:42+01:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.23": {
+   "sha": "64f68907e9b8d79d32af9f1b9a49a9479461ac06",
+   "date": "2026-08-15T22:09:58+02:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.24": {
+   "sha": "d72e226a5807d8f739a824649694b6ed2c75005b",
+   "date": "2026-08-16T21:10:21+02:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.25": {
+   "sha": "335b89282dffe4bc79f5cd234d0f2eb63d5c0c38",
+   "date": "2026-08-20T00:02:51+02:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.26": {
+   "sha": "40fa114a59d3f53ac6fa84fb3e64d46705a6ceba",
+   "date": "2026-08-21T07:49:20+02:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.27": {
+   "sha": "1bb836845ea0e1639028d9eee20923308f44ea9d",
+   "date": "2026-10-01T07:13:18-07:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.28": {
+   "sha": "12f2d0d91ad47deefcff78fb21e8cef2b5e9ecd9",
+   "date": "2026-10-07T10:11:12-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.3": {
+   "sha": "8dc3d15e4be6de844862395c164c9ac1c39d0b59",
+   "date": "2026-05-01T16:05:46-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.4": {
+   "sha": "4555f01b0f6345907237ce4812c84e85625acb19",
+   "date": "2026-05-02T07:34:06-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.5": {
+   "sha": "1cb57a67d4af6683472d82be23c2afb6fe17880e",
+   "date": "2026-05-02T19:24:21-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.6": {
+   "sha": "2cea1dcd6218ecee15039906d1f0f4b0c3b7e794",
+   "date": "2026-05-03T14:07:12-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.7": {
+   "sha": "7d656dabb39f26d76237444c08a1b3610c3df625",
+   "date": "2026-05-08T07:49:44-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.8": {
+   "sha": "13f8f4b1702705892ac3e62194d2c49578fe8f87",
+   "date": "2026-05-08T10:25:22-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.0.9": {
+   "sha": "ea2025f06386c325a796d87b2a7d5a6f1f97e325",
+   "date": "2026-05-09T16:46:21-04:00",
+   "ga": true,
+   "intro_index": null,
+   "intro_sha": null,
+   "on_first_parent": false
+  },
+  "v3.1.0": {
+   "sha": "e19ef26ee9803b923dbaec22ded2021c98c1a22e",
+   "date": "2026-06-18T10:43:34+02:00",
+   "ga": true,
+   "intro_index": 3536,
+   "intro_sha": "e19ef26ee9803b923dbaec22ded2021c98c1a22e",
+   "on_first_parent": true
+  },
+  "v3.1.0-beta.0": {
+   "sha": "82fd19bf327104c4f52664b12261d100b324831a",
+   "date": "2026-05-19T14:04:07-07:00",
+   "ga": false,
+   "intro_index": 3076,
+   "intro_sha": "82fd19bf327104c4f52664b12261d100b324831a",
+   "on_first_parent": true
+  },
+  "v3.1.0-beta.1": {
+   "sha": "b7d4a9a865dc3505c0173f5902cfc1ddee8991d8",
+   "date": "2026-05-19T14:51:29-07:00",
+   "ga": false,
+   "intro_index": 3084,
+   "intro_sha": "b7d4a9a865dc3505c0173f5902cfc1ddee8991d8",
+   "on_first_parent": true
+  },
+  "v3.1.0-beta.2": {
+   "sha": "40c2a894cd6057a08950287abd0a45efbbac3106",
+   "date": "2026-05-20T12:50:15-07:00",
+   "ga": false,
+   "intro_index": 3115,
+   "intro_sha": "40c2a894cd6057a08950287abd0a45efbbac3106",
+   "on_first_parent": true
+  },
+  "v3.1.0-beta.3": {
+   "sha": "4be6178175a330ecbf4e06c593a3a217b677482c",
+   "date": "2026-05-22T07:51:55-04:00",
+   "ga": false,
+   "intro_index": 3131,
+   "intro_sha": "4be6178175a330ecbf4e06c593a3a217b677482c",
+   "on_first_parent": true
+  },
+  "v3.1.0-beta.4": {
+   "sha": "19c33c2a367c77803030381fb9339f6e8dbbeaf3",
+   "date": "2026-05-25T23:19:58-04:00",
+   "ga": false,
+   "intro_index": 3200,
+   "intro_sha": "19c33c2a367c77803030381fb9339f6e8dbbeaf3",
+   "on_first_parent": true
+  },
+  "v3.1.0-beta.5": {
+   "sha": "9fc9f7660625f8e4ecc3ea861e2c1a1a6821e46c",
+   "date": "2026-05-26T06:19:43-04:00",
+   "ga": false,
+   "intro_index": 3206,
+   "intro_sha": "9fc9f7660625f8e4ecc3ea861e2c1a1a6821e46c",
+   "on_first_parent": true
+  },
+  "v3.1.0-beta.7": {
+   "sha": "e2aadcd12711bc22f5976ebbb11f3de60730364c",
+   "date": "2026-05-28T06:19:33-04:00",
+   "ga": false,
+   "intro_index": 3251,
+   "intro_sha": "e2aadcd12711bc22f5976ebbb11f3de60730364c",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.10": {
+   "sha": "eda66513dc6c471ab08ce3abf02a9dbc2169730e",
+   "date": "2026-06-07T17:24:41-04:00",
+   "ga": false,
+   "intro_index": 3425,
+   "intro_sha": "eda66513dc6c471ab08ce3abf02a9dbc2169730e",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.11": {
+   "sha": "c99becfdd473c091a1407b64090538115667fd1b",
+   "date": "2026-06-08T13:28:18-04:00",
+   "ga": false,
+   "intro_index": 3434,
+   "intro_sha": "c99becfdd473c091a1407b64090538115667fd1b",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.12": {
+   "sha": "a8b9c6b076e543c2944e9ad51e335c10706c1eef",
+   "date": "2026-06-09T06:24:47-04:00",
+   "ga": false,
+   "intro_index": 3442,
+   "intro_sha": "a8b9c6b076e543c2944e9ad51e335c10706c1eef",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.13": {
+   "sha": "7ac9d3c95f7805215a516a2d6a7dc8853db9f8c3",
+   "date": "2026-06-12T06:46:49-04:00",
+   "ga": false,
+   "intro_index": 3488,
+   "intro_sha": "7ac9d3c95f7805215a516a2d6a7dc8853db9f8c3",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.14": {
+   "sha": "c06de17846cf5720f7d0bf011af35109ff80c2c0",
+   "date": "2026-06-13T04:36:37-04:00",
+   "ga": false,
+   "intro_index": 3498,
+   "intro_sha": "c06de17846cf5720f7d0bf011af35109ff80c2c0",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.15": {
+   "sha": "cffa9a7a894a2ecb9ec0eb4e6934c577b131d7e3",
+   "date": "2026-06-16T11:54:14+02:00",
+   "ga": false,
+   "intro_index": 3517,
+   "intro_sha": "cffa9a7a894a2ecb9ec0eb4e6934c577b131d7e3",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.2": {
+   "sha": "838d26aa74683c4bf7e7af94c7b477485bb198ba",
+   "date": "2026-05-29T19:33:30-04:00",
+   "ga": false,
+   "intro_index": 3293,
+   "intro_sha": "838d26aa74683c4bf7e7af94c7b477485bb198ba",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.4": {
+   "sha": "6e314d0a055d0cce3cd08bd4d22fff4beca0f8e5",
+   "date": "2026-05-30T12:50:57-04:00",
+   "ga": false,
+   "intro_index": 3319,
+   "intro_sha": "6e314d0a055d0cce3cd08bd4d22fff4beca0f8e5",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.6": {
+   "sha": "40a473be7c77aece7775e7915af081d3eb0b77be",
+   "date": "2026-05-31T19:19:43-04:00",
+   "ga": false,
+   "intro_index": 3336,
+   "intro_sha": "40a473be7c77aece7775e7915af081d3eb0b77be",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.7": {
+   "sha": "1197bd449f9dab01c4ca066983c9547682d37175",
+   "date": "2026-06-04T06:57:59-04:00",
+   "ga": false,
+   "intro_index": 3378,
+   "intro_sha": "1197bd449f9dab01c4ca066983c9547682d37175",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.8": {
+   "sha": "25514e3ff5bf627e072cf4cfee950693d6a61c3d",
+   "date": "2026-06-04T15:24:43-04:00",
+   "ga": false,
+   "intro_index": 3391,
+   "intro_sha": "25514e3ff5bf627e072cf4cfee950693d6a61c3d",
+   "on_first_parent": true
+  },
+  "v3.1.0-rc.9": {
+   "sha": "736dff6af070e6566de4e8f327d4c9f5503b8320",
+   "date": "2026-06-05T12:29:26-04:00",
+   "ga": false,
+   "intro_index": 3406,
+   "intro_sha": "736dff6af070e6566de4e8f327d4c9f5503b8320",
+   "on_first_parent": true
+  },
+  "v3.1.1": {
+   "sha": "467fd93d77112baf9e094e18980119edcd3a4d07",
+   "date": "2026-06-30T20:58:33+01:00",
+   "ga": true,
+   "intro_index": 3622,
+   "intro_sha": "467fd93d77112baf9e094e18980119edcd3a4d07",
+   "on_first_parent": true
+  },
+  "v3.1.10": {
+   "sha": "266a52e661b5bd229557c2daa79b7b39828f6fc2",
+   "date": "2026-08-04T07:57:40+02:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.11": {
+   "sha": "59df40e4be004b299342320d1067c669dde2695b",
+   "date": "2026-08-07T07:04:09+02:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.12": {
+   "sha": "434d58cbf3e5009c57e51b78e8d958cfdb44749b",
+   "date": "2026-08-08T22:46:41+02:00",
+   "ga": true,
+   "intro_index": 4062,
+   "intro_sha": "93e89307b49c7c08337a0fc981275d8420cc79dd",
+   "on_first_parent": false
+  },
+  "v3.1.13": {
+   "sha": "5d7a75a8195fd2c9241faee85b5da2373effb46e",
+   "date": "2026-08-11T12:21:30+02:00",
+   "ga": true,
+   "intro_index": 4062,
+   "intro_sha": "93e89307b49c7c08337a0fc981275d8420cc79dd",
+   "on_first_parent": false
+  },
+  "v3.1.14": {
+   "sha": "67d488ec9949160100361e678652495216fbd4f5",
+   "date": "2026-08-15T22:24:25+02:00",
+   "ga": true,
+   "intro_index": 4062,
+   "intro_sha": "93e89307b49c7c08337a0fc981275d8420cc79dd",
+   "on_first_parent": false
+  },
+  "v3.1.15": {
+   "sha": "bcc130be1e18acd241ceced1229ab39021b95668",
+   "date": "2026-08-16T21:36:38+02:00",
+   "ga": true,
+   "intro_index": 4062,
+   "intro_sha": "93e89307b49c7c08337a0fc981275d8420cc79dd",
+   "on_first_parent": false
+  },
+  "v3.1.16": {
+   "sha": "2d64735e21558674dfaab2e2e2ec036b9706d51f",
+   "date": "2026-08-20T00:14:15+02:00",
+   "ga": true,
+   "intro_index": 4062,
+   "intro_sha": "93e89307b49c7c08337a0fc981275d8420cc79dd",
+   "on_first_parent": false
+  },
+  "v3.1.17": {
+   "sha": "a18201e6aef5a1b3094263d0eba974d1a9a40875",
+   "date": "2026-08-20T11:54:32+02:00",
+   "ga": true,
+   "intro_index": 4062,
+   "intro_sha": "93e89307b49c7c08337a0fc981275d8420cc79dd",
+   "on_first_parent": false
+  },
+  "v3.1.18": {
+   "sha": "560668e0378ba3e997711bb6b506c38d94c414ff",
+   "date": "2026-08-20T13:10:54+02:00",
+   "ga": true,
+   "intro_index": 4062,
+   "intro_sha": "93e89307b49c7c08337a0fc981275d8420cc79dd",
+   "on_first_parent": false
+  },
+  "v3.1.19": {
+   "sha": "f95ba8a0d565578c412283f78d79c7aa3e3b17e6",
+   "date": "2026-08-21T08:11:00+02:00",
+   "ga": true,
+   "intro_index": 4386,
+   "intro_sha": "bc6d455d565e0190fbd020f70f2975d6a10ba795",
+   "on_first_parent": false
+  },
+  "v3.1.2": {
+   "sha": "16c8be1288eb55091954abb6ea172b20878d37b8",
+   "date": "2026-07-08T17:50:21+02:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.20": {
+   "sha": "75d1454815ca7302908262b9309afd1d4a2f0ec1",
+   "date": "2026-09-02T09:05:43-04:00",
+   "ga": true,
+   "intro_index": 4386,
+   "intro_sha": "bc6d455d565e0190fbd020f70f2975d6a10ba795",
+   "on_first_parent": false
+  },
+  "v3.1.21": {
+   "sha": "e384ef14c554f6d286e2ed26dd3e3171411085ea",
+   "date": "2026-09-09T11:12:49-04:00",
+   "ga": true,
+   "intro_index": 4707,
+   "intro_sha": "86af798ef3a448af67bd86982a8129913349fa7d",
+   "on_first_parent": false
+  },
+  "v3.1.22": {
+   "sha": "3cb6cbc38293577fd27ac73ceeb2251e5464e673",
+   "date": "2026-09-13T08:53:58-04:00",
+   "ga": true,
+   "intro_index": 4707,
+   "intro_sha": "86af798ef3a448af67bd86982a8129913349fa7d",
+   "on_first_parent": false
+  },
+  "v3.1.23": {
+   "sha": "e57647988c44d93518f1d58cc15731aa5cf0fb54",
+   "date": "2026-09-14T08:42:05-04:00",
+   "ga": true,
+   "intro_index": 4707,
+   "intro_sha": "86af798ef3a448af67bd86982a8129913349fa7d",
+   "on_first_parent": false
+  },
+  "v3.1.24": {
+   "sha": "2b2f6569e54e6e887215010fc4a40396d8789030",
+   "date": "2026-09-23T11:41:04-04:00",
+   "ga": true,
+   "intro_index": 4707,
+   "intro_sha": "86af798ef3a448af67bd86982a8129913349fa7d",
+   "on_first_parent": false
+  },
+  "v3.1.25": {
+   "sha": "76b031a85eb8efd7727c9107254ee0bcef3af037",
+   "date": "2026-10-01T07:13:25-07:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.1.26": {
+   "sha": "2267672a0b074e78deb190716f657e7c7d188ea5",
+   "date": "2026-10-07T13:27:46-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.1.27": {
+   "sha": "f46c09ea9ee9a115faf0bf877fd66f6637ad2571",
+   "date": "2026-10-08T07:46:19-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.1.28": {
+   "sha": "f4d53b8a8c228c27a579228590257228684c39bb",
+   "date": "2026-10-16T11:53:07-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.1.29": {
+   "sha": "f082c7a4be42c58f35103cf3db1d642ed6de24a3",
+   "date": "2026-10-16T14:00:27-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.1.3": {
+   "sha": "b41c882936ae892c2cabd4f36040152d6f258338",
+   "date": "2026-07-13T15:59:11+02:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.4": {
+   "sha": "31523e73b83e7a513b60beeb11811e8041de5414",
+   "date": "2026-07-18T20:26:12-04:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.5": {
+   "sha": "2c546ff13cd7226e5374fe4beb692f4411dff9d8",
+   "date": "2026-07-24T15:48:45+01:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.6": {
+   "sha": "d2a4fac711fc281e2587b63a28c676559de3365f",
+   "date": "2026-07-27T13:50:45-04:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.7": {
+   "sha": "1cb0eadebb002c13c0d00767be7575a69415af5a",
+   "date": "2026-07-27T20:49:24-04:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.8": {
+   "sha": "aa4ae310011bcbfe47f5cb6984dc334a813c8f4d",
+   "date": "2026-07-28T09:27:08-04:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.1.9": {
+   "sha": "6ed8bb2f0c15e76b62e26ed9050e4550171807e4",
+   "date": "2026-08-03T18:11:14+02:00",
+   "ga": true,
+   "intro_index": 3811,
+   "intro_sha": "83903ac16e535b857c95b8d163904d89c2c07111",
+   "on_first_parent": false
+  },
+  "v3.2.0-beta.0": {
+   "sha": "28c04087f0f5246e3a2d6e76491195aa23a0be9e",
+   "date": "2026-08-17T22:44:29+02:00",
+   "ga": false,
+   "intro_index": 4024,
+   "intro_sha": "28c04087f0f5246e3a2d6e76491195aa23a0be9e",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.1": {
+   "sha": "32773ee89983dc634a9d854e996f447cb0b91bb0",
+   "date": "2026-08-19T00:20:58+02:00",
+   "ga": false,
+   "intro_index": 4035,
+   "intro_sha": "32773ee89983dc634a9d854e996f447cb0b91bb0",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.10": {
+   "sha": "4767269125b449b9dfb49bbda12bad2aa9283964",
+   "date": "2026-09-01T12:30:24-04:00",
+   "ga": false,
+   "intro_index": 4357,
+   "intro_sha": "4767269125b449b9dfb49bbda12bad2aa9283964",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.11": {
+   "sha": "48fc8968b4db9ff992d9b9bb01a6124a99deba94",
+   "date": "2026-09-02T10:16:50-04:00",
+   "ga": false,
+   "intro_index": 4387,
+   "intro_sha": "8e11853a5669fe3b38c01b183172869fb7f81533",
+   "on_first_parent": false
+  },
+  "v3.2.0-beta.2": {
+   "sha": "e5a734f63e7536337eeec2cec111fd9e27633512",
+   "date": "2026-08-19T07:36:15+02:00",
+   "ga": false,
+   "intro_index": 4037,
+   "intro_sha": "e5a734f63e7536337eeec2cec111fd9e27633512",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.3": {
+   "sha": "4776f972e55e49786f0da27b6a617c2989fd5358",
+   "date": "2026-08-19T23:37:56+02:00",
+   "ga": false,
+   "intro_index": 4052,
+   "intro_sha": "4776f972e55e49786f0da27b6a617c2989fd5358",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.4": {
+   "sha": "77b07f8aab339e5bac7d20e6a5259af26cbef6bc",
+   "date": "2026-08-20T20:43:42+02:00",
+   "ga": false,
+   "intro_index": 4067,
+   "intro_sha": "77b07f8aab339e5bac7d20e6a5259af26cbef6bc",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.5": {
+   "sha": "c85d109f322b32854b3823cac7e8211a459a7e90",
+   "date": "2026-08-22T16:59:11+02:00",
+   "ga": false,
+   "intro_index": 4079,
+   "intro_sha": "c85d109f322b32854b3823cac7e8211a459a7e90",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.6": {
+   "sha": "bfccb09028f9f704de1f4816104f20e04ad7453f",
+   "date": "2026-08-24T05:49:10+02:00",
+   "ga": false,
+   "intro_index": 4114,
+   "intro_sha": "bfccb09028f9f704de1f4816104f20e04ad7453f",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.7": {
+   "sha": "0a292ed89c77b98fcd049f6562db659ac138b98d",
+   "date": "2026-08-27T16:06:20+01:00",
+   "ga": false,
+   "intro_index": 4193,
+   "intro_sha": "0a292ed89c77b98fcd049f6562db659ac138b98d",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.8": {
+   "sha": "466b2f4d840ca3b72d8b9fa828a442d04a525048",
+   "date": "2026-08-27T22:26:36+01:00",
+   "ga": false,
+   "intro_index": 4209,
+   "intro_sha": "466b2f4d840ca3b72d8b9fa828a442d04a525048",
+   "on_first_parent": true
+  },
+  "v3.2.0-beta.9": {
+   "sha": "c330e364196c10c8dd0dad356ce13680139e60a6",
+   "date": "2026-08-28T12:29:26+01:00",
+   "ga": false,
+   "intro_index": 4235,
+   "intro_sha": "c330e364196c10c8dd0dad356ce13680139e60a6",
+   "on_first_parent": true
+  },
+  "v3.2.0-rc.0": {
+   "sha": "0a3672608d323c615e7ea73c9e8a62306510cb76",
+   "date": "2026-09-03T13:25:38-04:00",
+   "ga": false,
+   "intro_index": 4417,
+   "intro_sha": "0a3672608d323c615e7ea73c9e8a62306510cb76",
+   "on_first_parent": true
+  },
+  "v3.2.0-rc.1": {
+   "sha": "a42e86df500b176c8d9d1d6640dc7edbf2eb21a6",
+   "date": "2026-09-05T04:59:07-04:00",
+   "ga": false,
+   "intro_index": 4468,
+   "intro_sha": "a42e86df500b176c8d9d1d6640dc7edbf2eb21a6",
+   "on_first_parent": true
+  },
+  "v3.2.0-rc.2": {
+   "sha": "929ceb16090b2f11ad20348b889780097173b00a",
+   "date": "2026-09-13T14:42:48-04:00",
+   "ga": false,
+   "intro_index": 4595,
+   "intro_sha": "929ceb16090b2f11ad20348b889780097173b00a",
+   "on_first_parent": true
+  },
+  "v3.2.0-rc.3": {
+   "sha": "71f9cd5414454e94ccfef87ce25777ead6fad228",
+   "date": "2026-09-14T08:34:22-04:00",
+   "ga": false,
+   "intro_index": 4607,
+   "intro_sha": "71f9cd5414454e94ccfef87ce25777ead6fad228",
+   "on_first_parent": true
+  },
+  "v3.2.0-rc.4": {
+   "sha": "94976657c8456e5ad6de55d9793a883542a4fc5f",
+   "date": "2026-09-19T20:41:33-04:00",
+   "ga": false,
+   "intro_index": 4652,
+   "intro_sha": "94976657c8456e5ad6de55d9793a883542a4fc5f",
+   "on_first_parent": true
+  },
+  "v3.2.0-rc.6": {
+   "sha": "f7932355a52f81c64f4c8ff8cc0a36f57677d711",
+   "date": "2026-09-23T16:39:20-04:00",
+   "ga": false,
+   "intro_index": 4687,
+   "intro_sha": "f7932355a52f81c64f4c8ff8cc0a36f57677d711",
+   "on_first_parent": true
+  },
+  "v3.2.0-rc.7": {
+   "sha": "4ca13ae5cb65dff40aa514619f677293616522cd",
+   "date": "2026-09-27T17:23:23+01:00",
+   "ga": false,
+   "intro_index": 4723,
+   "intro_sha": "4ca13ae5cb65dff40aa514619f677293616522cd",
+   "on_first_parent": true
+  },
+  "v3.2.1": {
+   "sha": "c32bd78c5389753e3b8f3ffd8a1c04b777854d83",
+   "date": "2026-10-01T05:18:58+01:00",
+   "ga": true,
+   "intro_index": 4789,
+   "intro_sha": "c32bd78c5389753e3b8f3ffd8a1c04b777854d83",
+   "on_first_parent": true
+  },
+  "v3.2.2": {
+   "sha": "e3b3aaa9f40551fcb854c28f29559a8060f9a75d",
+   "date": "2026-10-04T12:09:33-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.2.3": {
+   "sha": "dfc6ad602780c1cff4fe23e16e30a570900c89d7",
+   "date": "2026-10-07T13:35:36-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.2.4": {
+   "sha": "5e6c4b01113237234b440b6c95adb8c6e0a07ca9",
+   "date": "2026-10-12T03:56:02-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  },
+  "v3.2.5": {
+   "sha": "3512882b67592622d2ae8bf5c853f565cf58043a",
+   "date": "2026-10-16T13:16:55-04:00",
+   "ga": true,
+   "intro_index": 4972,
+   "intro_sha": "9c850e10fd10b83d1e34c49a76621e45c7a94915",
+   "on_first_parent": false
+  }
+ },
+ "tree": [
+  "a2ui/bound-value.json",
+  "a2ui/component.json",
+  "a2ui/si-catalog.json",
+  "a2ui/surface.json",
+  "a2ui/user-action.json",
+  "aao/agent-publishers.json",
+  "account/get-account-financials-request.json",
+  "account/get-account-financials-response.json",
+  "account/list-account-changes-request.json",
+  "account/list-account-changes-response.json",
+  "account/list-accounts-request.json",
+  "account/list-accounts-response.json",
+  "account/report-usage-request.json",
+  "account/report-usage-response.json",
+  "account/sync-accounts-request.json",
+  "account/sync-accounts-response.json",
+  "account/sync-governance-request.json",
+  "account/sync-governance-response.json",
+  "adagents.json",
+  "brand.json",
+  "brand/acquire-rights-request.json",
+  "brand/acquire-rights-response.json",
+  "brand/creative-approval-request.json",
+  "brand/creative-approval-response.json",
+  "brand/get-brand-identity-request.json",
+  "brand/get-brand-identity-response.json",
+  "brand/get-rights-request.json",
+  "brand/get-rights-response.json",
+  "brand/revocation-notification.json",
+  "brand/rights-pricing-option.json",
+  "brand/rights-terms.json",
+  "brand/search-brands-request.json",
+  "brand/search-brands-response.json",
+  "brand/update-rights-request.json",
+  "brand/update-rights-response.json",
+  "brand/verification-status.json",
+  "brand/verify-brand-claim-request.json",
+  "brand/verify-brand-claim-response.json",
+  "brand/verify-brand-claims-request.json",
+  "brand/verify-brand-claims-response.json",
+  "collection/base-collection-source.json",
+  "collection/collection-list-changed-webhook.json",
+  "collection/collection-list-filters.json",
+  "collection/collection-list.json",
+  "collection/create-collection-list-request.json",
+  "collection/create-collection-list-response.json",
+  "collection/delete-collection-list-request.json",
+  "collection/delete-collection-list-response.json",
+  "collection/get-collection-list-request.json",
+  "collection/get-collection-list-response.json",
+  "collection/list-collection-lists-request.json",
+  "collection/list-collection-lists-response.json",
+  "collection/update-collection-list-request.json",
+  "collection/update-collection-list-response.json",
+  "compliance/comply-test-controller-request.json",
+  "compliance/comply-test-controller-response.json",
+  "compliance/get-creative-features-completion.json",
+  "compliance/task-completion-data.json",
+  "content-standards/artifact-webhook-payload.json",
+  "content-standards/artifact.json",
+  "content-standards/calibrate-content-request.json",
+  "content-standards/calibrate-content-response.json",
+  "content-standards/content-standards.json",
+  "content-standards/create-content-standards-request.json",
+  "content-standards/create-content-standards-response.json",
+  "content-standards/get-content-standards-request.json",
+  "content-standards/get-content-standards-response.json",
+  "content-standards/get-media-buy-artifacts-request.json",
+  "content-standards/get-media-buy-artifacts-response.json",
+  "content-standards/list-content-standards-request.json",
+  "content-standards/list-content-standards-response.json",
+  "content-standards/update-content-standards-request.json",
+  "content-standards/update-content-standards-response.json",
+  "content-standards/validate-content-delivery-request.json",
+  "content-standards/validate-content-delivery-response.json",
+  "core/acceptance-policy-profile-ids.json",
+  "core/account-authorization.json",
+  "core/account-change-recorded-webhook.json",
+  "core/account-change.json",
+  "core/account-identity-change-preview.json",
+  "core/account-identity-change.json",
+  "core/account-ref.json",
+  "core/account-status-changed-webhook.json",
+  "core/account-timezone-capability.json",
+  "core/account-with-authorization.json",
+  "core/account.json",
+  "core/activation-key.json",
+  "core/ad-inventory-config.json",
+  "core/agent-encryption-key.json",
+  "core/agent-notification-config-state.json",
+  "core/agent-notification-config.json",
+  "core/agent-reporting-destination-state.json",
+  "core/agent-reporting-destination.json",
+  "core/agent-signing-key.json",
+  "core/agent-webhook-challenge.json",
+  "core/app-item.json",
+  "core/applicable-package-id.json",
+  "core/asset-group-vocabulary.json",
+  "core/assets/asset-union.json",
+  "core/assets/audio-asset.json",
+  "core/assets/brief-asset.json",
+  "core/assets/card-asset.json",
+  "core/assets/catalog-asset.json",
+  "core/assets/css-asset.json",
+  "core/assets/daast-asset.json",
+  "core/assets/daast-tracker-asset.json",
+  "core/assets/display-tag-asset.json",
+  "core/assets/html-asset.json",
+  "core/assets/image-asset.json",
+  "core/assets/javascript-asset.json",
+  "core/assets/markdown-asset.json",
+  "core/assets/pixel-tracker-asset.json",
+  "core/assets/published-post-asset.json",
+  "core/assets/text-asset.json",
+  "core/assets/url-asset.json",
+  "core/assets/vast-asset.json",
+  "core/assets/vast-tracker-asset.json",
+  "core/assets/video-asset.json",
+  "core/assets/video-brief-asset.json",
+  "core/assets/webhook-asset.json",
+  "core/assets/zip-asset.json",
+  "core/assignment-tracker.json",
+  "core/async-response-data.json",
+  "core/attestation-capabilities.json",
+  "core/attestation-evaluation.json",
+  "core/attestation-issuer.json",
+  "core/attestation-reference.json",
+  "core/attestation-subject.json",
+  "core/attribution-window.json",
+  "core/audience-activation-method.json",
+  "core/audience-characteristic.json",
+  "core/audience-evidence-pin.json",
+  "core/audience-evidence-requirements.json",
+  "core/audience-evidence-selection.json",
+  "core/audience-evidence.json",
+  "core/audience-member.json",
+  "core/audience-selector.json",
+  "core/audience-size.json",
+  "core/audience-source.json",
+  "core/authorized-agent-base.json",
+  "core/bidding-policy-capability.json",
+  "core/bidding-policy.json",
+  "core/brand-id.json",
+  "core/brand-key.json",
+  "core/brand-ref.json",
+  "core/brand-response-authorization-result.json",
+  "core/budget-allocation.json",
+  "core/budget-range.json",
+  "core/business-entity.json",
+  "core/cancellation-policy.json",
+  "core/canonical-account-ref.json",
+  "core/canonical-audience-evidence-selection.json",
+  "core/canonical-audience-evidence.json",
+  "core/canonical-budget-allocation.json",
+  "core/canonical-delivery-forecast.json",
+  "core/canonical-forecast-point.json",
+  "core/canonical-forecast-vendor-metric-value.json",
+  "core/canonical-format-kind.json",
+  "core/canonical-format-option.json",
+  "core/canonical-measurement-terms.json",
+  "core/canonical-media-buy-action-fields.json",
+  "core/canonical-media-buy-action.json",
+  "core/canonical-media-buy-features.json",
+  "core/canonical-metric-qualifier.json",
+  "core/canonical-optimization-goal.json",
+  "core/canonical-performance-standard.json",
+  "core/canonical-placement.json",
+  "core/canonical-pricing-option.json",
+  "core/canonical-product-action.json",
+  "core/canonical-product.json",
+  "core/canonical-projection-ref.json",
+  "core/canonical-projection-slot-override.json",
+  "core/canonical-proposal.json",
+  "core/canonical-reporting-capabilities.json",
+  "core/canonical-reporting-commitment.json",
+  "core/canvas-constraint.json",
+  "core/capabilities-changed-webhook.json",
+  "core/catalog-field-mapping.json",
+  "core/catalog-ingestion-capability.json",
+  "core/catalog-item-availability-error.json",
+  "core/catalog-item-availability-ref.json",
+  "core/catalog-item-availability-state.json",
+  "core/catalog-item-availability-update-result.json",
+  "core/catalog-item-availability-update.json",
+  "core/catalog-item-delivery-metrics.json",
+  "core/catalog-item-reference-not-found-error.json",
+  "core/catalog-selection.json",
+  "core/catalog.json",
+  "core/catchment.json",
+  "core/collection-delivery-metrics.json",
+  "core/collection-distribution.json",
+  "core/collection-list-ref.json",
+  "core/collection-property-delivery-metrics.json",
+  "core/collection-ref.json",
+  "core/collection-selection.json",
+  "core/collection-selector.json",
+  "core/collection.json",
+  "core/committed-metric.json",
+  "core/compact-task-input-required.json",
+  "core/compact-task-submitted.json",
+  "core/compact-task-working.json",
+  "core/content-rating.json",
+  "core/context.json",
+  "core/creative-approval-scope.json",
+  "core/creative-asset.json",
+  "core/creative-assets.json",
+  "core/creative-assignment.json",
+  "core/creative-brief.json",
+  "core/creative-consumption.json",
+  "core/creative-delivery-metrics.json",
+  "core/creative-filters.json",
+  "core/creative-item.json",
+  "core/creative-locale-policy.json",
+  "core/creative-localization-readback.json",
+  "core/creative-localization.json",
+  "core/creative-manifest.json",
+  "core/creative-operation-format-declaration.json",
+  "core/creative-policy.json",
+  "core/creative-representation-set.json",
+  "core/creative-representation.json",
+  "core/creative-revision-id.json",
+  "core/creative-variable.json",
+  "core/creative-variant.json",
+  "core/daast-tracker-constraints.json",
+  "core/data-provider-signal-selector.json",
+  "core/date-range.json",
+  "core/datetime-range.json",
+  "core/daypart-target.json",
+  "core/deadline-policy.json",
+  "core/definition-pin.json",
+  "core/delivery-breakdown-controls.json",
+  "core/delivery-forecast.json",
+  "core/delivery-metric-aggregate.json",
+  "core/delivery-metrics.json",
+  "core/delivery-provider.json",
+  "core/delivery-recipient.json",
+  "core/demographic-age-range.json",
+  "core/demographic-predicate.json",
+  "core/demographic-reporting-capability.json",
+  "core/demographic-targeting-capability.json",
+  "core/demographic-targeting-intent.json",
+  "core/demographic-targeting-resolution.json",
+  "core/deployment.json",
+  "core/destination-item.json",
+  "core/destination.json",
+  "core/diagnostic-issue.json",
+  "core/dooh-inventory-summary.json",
+  "core/downstream-connection-requirement.json",
+  "core/duration.json",
+  "core/education-item.json",
+  "core/error.json",
+  "core/evaluator-spec.json",
+  "core/event-custom-data.json",
+  "core/event-source-health.json",
+  "core/event-surface.json",
+  "core/event.json",
+  "core/experimental-feature-id.json",
+  "core/ext.json",
+  "core/feature-requirement.json",
+  "core/flight-item.json",
+  "core/forecast-dimension-audience.json",
+  "core/forecast-dimension-device-platform.json",
+  "core/forecast-dimension-device-type.json",
+  "core/forecast-dimension-geo.json",
+  "core/forecast-dimension-placement.json",
+  "core/forecast-dimension-signal.json",
+  "core/forecast-dimension-time.json",
+  "core/forecast-point-dimensions.json",
+  "core/forecast-point.json",
+  "core/forecast-range.json",
+  "core/forecast-rate-range.json",
+  "core/forecast-vendor-metric-value.json",
+  "core/format-id.json",
+  "core/format-option-ref.json",
+  "core/format-shape-vocabulary.json",
+  "core/format.json",
+  "core/frequency-cap-constraints.json",
+  "core/frequency-cap-duration-unit.json",
+  "core/frequency-cap-impression-constraints.json",
+  "core/frequency-cap-interval-constraints.json",
+  "core/frequency-cap-requirements.json",
+  "core/frequency-cap.json",
+  "core/generation-credential.json",
+  "core/geo-breakdown-support.json",
+  "core/geo-delivery-metrics.json",
+  "core/geo-metro.json",
+  "core/geo-place-area.json",
+  "core/geo-place-catalog-capability.json",
+  "core/geo-place-catalog-entry.json",
+  "core/geo-place-requirement.json",
+  "core/geo-place-resolver.json",
+  "core/geo-place-support.json",
+  "core/geo-place-system.json",
+  "core/geo-place-type.json",
+  "core/geo-region-requirement.json",
+  "core/geo-region-support.json",
+  "core/get-geo-place-resolution-request.json",
+  "core/get-geo-place-resolution-response.json",
+  "core/hold-policy.json",
+  "core/hotel-item.json",
+  "core/iana-timezone.json",
+  "core/identifier.json",
+  "core/identity-relying-party.json",
+  "core/impairment.json",
+  "core/indicator-bearing.json",
+  "core/indicator-scope.json",
+  "core/indicator.json",
+  "core/indicators-changed-webhook.json",
+  "core/industry-identifier.json",
+  "core/insertion-order.json",
+  "core/installment-deadlines.json",
+  "core/installment-delivery-metrics.json",
+  "core/installment-property-delivery-metrics.json",
+  "core/installment-ref.json",
+  "core/installment.json",
+  "core/inventory-list-application.json",
+  "core/job-item.json",
+  "core/keyword-delivery-metrics.json",
+  "core/keyword-target.json",
+  "core/limited-series.json",
+  "core/locale-tag.json",
+  "core/localized-creative-asset.json",
+  "core/macro-bearing-url.json",
+  "core/macro-declaration.json",
+  "core/macro-encoding.json",
+  "core/macro-resolution-capability.json",
+  "core/macro-resolution-result.json",
+  "core/macro-translation-target.json",
+  "core/material-deadline.json",
+  "core/mcp-webhook-payload.json",
+  "core/measurement-readiness.json",
+  "core/measurement-terms.json",
+  "core/measurement-window.json",
+  "core/media-buy-available-action-id.json",
+  "core/media-buy-available-action.json",
+  "core/media-buy-change-term-id.json",
+  "core/media-buy-features.json",
+  "core/media-buy-frequency-cap-capability.json",
+  "core/media-buy-frequency-cap-requirement.json",
+  "core/media-buy-frequency-cap-support.json",
+  "core/media-buy-frequency-cap.json",
+  "core/media-buy-legacy-terms-ref.json",
+  "core/media-buy-support-requirements.json",
+  "core/media-buy-support.json",
+  "core/media-buy.json",
+  "core/missing-metric.json",
+  "core/negative-keyword.json",
+  "core/notification-config.json",
+  "core/offering-asset-group.json",
+  "core/offering.json",
+  "core/operator-identity.json",
+  "core/operator-unit.json",
+  "core/opportunity-context.json",
+  "core/optimization-goal.json",
+  "core/outcome-measurement.json",
+  "core/outcome-target-cost-per.json",
+  "core/overlay.json",
+  "core/package-delivery-metric-value.json",
+  "core/package-format-snapshot.json",
+  "core/package-signal-targeting-group.json",
+  "core/package-signal-targeting-groups.json",
+  "core/package-signal-targeting.json",
+  "core/package-targeting-resolution.json",
+  "core/package.json",
+  "core/pagination-request.json",
+  "core/pagination-response.json",
+  "core/performance-feedback-assertion.json",
+  "core/performance-feedback-metric.json",
+  "core/performance-feedback.json",
+  "core/performance-standard.json",
+  "core/placement-definition.json",
+  "core/placement-delivery-metrics.json",
+  "core/placement-evidence.json",
+  "core/placement-identity.json",
+  "core/placement-presentation.json",
+  "core/placement-property-delivery-metrics.json",
+  "core/placement-ref.json",
+  "core/placement-selection.json",
+  "core/placement.json",
+  "core/planned-delivery.json",
+  "core/platform-extension-ref.json",
+  "core/positive-postal-area-support.json",
+  "core/postal-area-support.json",
+  "core/postal-area.json",
+  "core/postal-country-system.json",
+  "core/presentation-ref.json",
+  "core/preview-provider.json",
+  "core/preview-renderer-metadata.json",
+  "core/price.json",
+  "core/pricing-option.json",
+  "core/principal-changed-webhook.json",
+  "core/principal-declarations-state.json",
+  "core/principal-declarations.json",
+  "core/principal-state.json",
+  "core/product-allocation.json",
+  "core/product-allowed-action.json",
+  "core/product-audience-evidence-requirements.json",
+  "core/product-card-reference-asset.json",
+  "core/product-change-map.json",
+  "core/product-execution-requirement.json",
+  "core/product-filters.json",
+  "core/product-format-declaration.json",
+  "core/product-identity.json",
+  "core/product-offer-filters.json",
+  "core/product-signal-targeting-option.json",
+  "core/product-targeting-resolution.json",
+  "core/product.json",
+  "core/property-delivery-metrics.json",
+  "core/property-id.json",
+  "core/property-list-ref.json",
+  "core/property-ref.json",
+  "core/property-tag.json",
+  "core/property.json",
+  "core/proposal.json",
+  "core/protocol-envelope.json",
+  "core/provenance.json",
+  "core/publisher-property-selector.json",
+  "core/push-notification-config.json",
+  "core/real-estate-item.json",
+  "core/reference-asset.json",
+  "core/reference-renderer.json",
+  "core/registry-event.json",
+  "core/registry-feed-response.json",
+  "core/reporting-adjustment-receipt.json",
+  "core/reporting-adjustment.json",
+  "core/reporting-canonical-content-digest.json",
+  "core/reporting-canonicalization-contract.json",
+  "core/reporting-capabilities.json",
+  "core/reporting-consumer-status.json",
+  "core/reporting-control-total.json",
+  "core/reporting-coverage.json",
+  "core/reporting-dataset-share-destination.json",
+  "core/reporting-delivery-capabilities.json",
+  "core/reporting-delivery-config-state.json",
+  "core/reporting-delivery-config.json",
+  "core/reporting-delivery-method.json",
+  "core/reporting-delivery-offering-id.json",
+  "core/reporting-delivery-offering.json",
+  "core/reporting-delivery-ready-webhook.json",
+  "core/reporting-file-compression.json",
+  "core/reporting-file-entry.json",
+  "core/reporting-file-manifest.json",
+  "core/reporting-file-object-ref.json",
+  "core/reporting-ledger-changed-webhook.json",
+  "core/reporting-materialization.json",
+  "core/reporting-native-version-ref.json",
+  "core/reporting-obligation.json",
+  "core/reporting-receipt.json",
+  "core/reporting-reconciliation-mode.json",
+  "core/reporting-reliability-statistics.json",
+  "core/reporting-report-definition.json",
+  "core/reporting-resource.json",
+  "core/reporting-revision.json",
+  "core/reporting-schedule-offering.json",
+  "core/reporting-schedule.json",
+  "core/reporting-status-changed-webhook.json",
+  "core/reporting-status-issue.json",
+  "core/reporting-verification-profile-set.json",
+  "core/reporting-verification-profile.json",
+  "core/reporting-verification.json",
+  "core/reporting-webhook.json",
+  "core/reporting-write-destination.json",
+  "core/representation-destination.json",
+  "core/representation-rejection.json",
+  "core/representation-selection.json",
+  "core/requirements/asset-requirements.json",
+  "core/requirements/audio-asset-requirements.json",
+  "core/requirements/catalog-field-binding.json",
+  "core/requirements/catalog-requirements.json",
+  "core/requirements/css-asset-requirements.json",
+  "core/requirements/daast-asset-requirements.json",
+  "core/requirements/html-asset-requirements.json",
+  "core/requirements/image-asset-requirements.json",
+  "core/requirements/javascript-asset-requirements.json",
+  "core/requirements/markdown-asset-requirements.json",
+  "core/requirements/offering-asset-constraint.json",
+  "core/requirements/text-asset-requirements.json",
+  "core/requirements/url-asset-requirements.json",
+  "core/requirements/vast-asset-requirements.json",
+  "core/requirements/video-asset-requirements.json",
+  "core/requirements/webhook-asset-requirements.json",
+  "core/response-collection.json",
+  "core/response-payload-jws-envelope.json",
+  "core/response.json",
+  "core/rights-attestation-evaluation.json",
+  "core/rights-constraint.json",
+  "core/seller-agent-ref.json",
+  "core/signal-coverage-forecast.json",
+  "core/signal-definition-enrichment.json",
+  "core/signal-definition.json",
+  "core/signal-filters.json",
+  "core/signal-id.json",
+  "core/signal-listing.json",
+  "core/signal-modeling-disclosure.json",
+  "core/signal-pricing-option.json",
+  "core/signal-pricing.json",
+  "core/signal-ref.json",
+  "core/signal-selection-group-rule.json",
+  "core/signal-targeting-expression.json",
+  "core/signal-targeting-rules.json",
+  "core/signal-targeting.json",
+  "core/sla-window.json",
+  "core/special.json",
+  "core/spot-reporting-capability.json",
+  "core/start-timing.json",
+  "core/store-item.json",
+  "core/talent.json",
+  "core/targeting-input.json",
+  "core/targeting-modification.json",
+  "core/targeting-overlay-requirements.json",
+  "core/targeting-overlay-support.json",
+  "core/targeting-unknown-age-eligibility-constraint.json",
+  "core/targeting-verified-age-basis-constraint.json",
+  "core/targeting.json",
+  "core/tasks-get-request.json",
+  "core/tasks-get-response.json",
+  "core/tasks-list-request.json",
+  "core/tasks-list-response.json",
+  "core/tracker-execution-contract.json",
+  "core/tracker-execution-selector.json",
+  "core/transformer-param.json",
+  "core/transformer.json",
+  "core/truncation-sentinel.json",
+  "core/user-match.json",
+  "core/vast-media-file-requirements.json",
+  "core/vast-tracker-constraints.json",
+  "core/vehicle-item.json",
+  "core/vendor-metric-id.json",
+  "core/vendor-metric-optimization-supported-metric.json",
+  "core/vendor-metric-optimization.json",
+  "core/vendor-metric-value.json",
+  "core/vendor-pricing-option.json",
+  "core/verification-token-claims.json",
+  "core/version-envelope.json",
+  "core/warning-resource.json",
+  "core/warning.json",
+  "core/webhook-activity-record.json",
+  "core/webhook-challenge-response.json",
+  "core/webhook-challenge.json",
+  "core/wholesale-feed-event.json",
+  "core/wholesale-feed-webhook.json",
+  "core/x-entity-types.json",
+  "creative/asset-types/index.json",
+  "creative/audit-observation.json",
+  "creative/creative-assignment-changed-webhook.json",
+  "creative/creative-feature-result.json",
+  "creative/creative-purged-webhook.json",
+  "creative/creative-status-changed-webhook.json",
+  "creative/get-creative-delivery-request.json",
+  "creative/get-creative-delivery-response.json",
+  "creative/get-creative-features-async-response-submitted.json",
+  "creative/get-creative-features-request.json",
+  "creative/get-creative-features-response.json",
+  "creative/get-creative-features-terminal-success.json",
+  "creative/list-creative-formats-request.json",
+  "creative/list-creative-formats-response.json",
+  "creative/list-creatives-request.json",
+  "creative/list-creatives-response.json",
+  "creative/list-transformers-request.json",
+  "creative/list-transformers-response.json",
+  "creative/preview-creative-request.json",
+  "creative/preview-creative-response.json",
+  "creative/preview-render.json",
+  "creative/sync-creatives-async-response-input-required.json",
+  "creative/sync-creatives-async-response-submitted.json",
+  "creative/sync-creatives-async-response-working.json",
+  "creative/sync-creatives-request.json",
+  "creative/sync-creatives-response.json",
+  "creative/validate-input-request.json",
+  "creative/validate-input-response.json",
+  "creative/validate-input-result.json",
+  "creative/video-brief.json",
+  "enums/account-currency-mode.json",
+  "enums/account-scope.json",
+  "enums/account-status.json",
+  "enums/action-not-allowed-reason.json",
+  "enums/action-source.json",
+  "enums/activation-method.json",
+  "enums/adcp-protocol.json",
+  "enums/adjustment-kind.json",
+  "enums/advertiser-industry.json",
+  "enums/age-determination-basis.json",
+  "enums/age-verification-method.json",
+  "enums/assessment-status.json",
+  "enums/asset-content-type.json",
+  "enums/attestation-claim.json",
+  "enums/attribution-methodology.json",
+  "enums/attribution-model.json",
+  "enums/audience-evidence-methodology.json",
+  "enums/audience-match-rate-basis.json",
+  "enums/audience-resolution-method.json",
+  "enums/audience-size-precision.json",
+  "enums/audience-source.json",
+  "enums/audience-status.json",
+  "enums/audience-subject-type.json",
+  "enums/audio-channel-layout.json",
+  "enums/audio-distribution-type.json",
+  "enums/auth-scheme.json",
+  "enums/availability-status.json",
+  "enums/available-metric.json",
+  "enums/billing-party.json",
+  "enums/binary-verdict.json",
+  "enums/brand-agent-type.json",
+  "enums/browser-family.json",
+  "enums/c2pa-watermark-action.json",
+  "enums/canceled-by.json",
+  "enums/canonical-media-buy-action-mode.json",
+  "enums/canonical-media-buy-action.json",
+  "enums/catalog-action.json",
+  "enums/catalog-item-status.json",
+  "enums/catalog-type.json",
+  "enums/channels.json",
+  "enums/cloud-storage-protocol.json",
+  "enums/co-branding-requirement.json",
+  "enums/collection-cadence.json",
+  "enums/collection-kind.json",
+  "enums/collection-relationship.json",
+  "enums/collection-status.json",
+  "enums/completion-source.json",
+  "enums/consent-basis.json",
+  "enums/content-id-type.json",
+  "enums/content-rating-system.json",
+  "enums/creative-action.json",
+  "enums/creative-agent-capability.json",
+  "enums/creative-approval-status.json",
+  "enums/creative-event-reason-code.json",
+  "enums/creative-identifier-type.json",
+  "enums/creative-merge-rejection-reason.json",
+  "enums/creative-quality.json",
+  "enums/creative-selection-strategy.json",
+  "enums/creative-sort-field.json",
+  "enums/creative-status.json",
+  "enums/ctv-ad-experience.json",
+  "enums/daast-tracking-event.json",
+  "enums/daast-version.json",
+  "enums/day-of-week.json",
+  "enums/daypart-time-granularity.json",
+  "enums/daypart-timezone-mode.json",
+  "enums/definition-pin-ref-kind.json",
+  "enums/delegation-authority.json",
+  "enums/delivery-recipient-cloud.json",
+  "enums/delivery-status.json",
+  "enums/delivery-type.json",
+  "enums/demographic-system.json",
+  "enums/derivative-type.json",
+  "enums/device-platform.json",
+  "enums/device-type.json",
+  "enums/digital-source-type.json",
+  "enums/dimension-unit.json",
+  "enums/disclosure-persistence.json",
+  "enums/disclosure-position.json",
+  "enums/distance-unit.json",
+  "enums/distribution-identifier-type.json",
+  "enums/dooh-motion-type.json",
+  "enums/embedded-provenance-method.json",
+  "enums/error-code.json",
+  "enums/error-scope.json",
+  "enums/escalation-severity.json",
+  "enums/event-type.json",
+  "enums/exclusivity.json",
+  "enums/feature-check-status.json",
+  "enums/feed-format.json",
+  "enums/feedback-source.json",
+  "enums/forecast-method.json",
+  "enums/forecast-range-unit.json",
+  "enums/forecastable-metric.json",
+  "enums/format-id-parameter.json",
+  "enums/frame-rate-type.json",
+  "enums/frequency-cap-control-mode.json",
+  "enums/frequency-cap-mutable-field.json",
+  "enums/frequency-cap-scope.json",
+  "enums/genre-taxonomy.json",
+  "enums/geo-level.json",
+  "enums/gop-type.json",
+  "enums/governance-decision.json",
+  "enums/governance-domain.json",
+  "enums/governance-mode.json",
+  "enums/governance-phase.json",
+  "enums/history-entry-type.json",
+  "enums/http-method.json",
+  "enums/identifier-types.json",
+  "enums/impairment-offline-state.json",
+  "enums/impairment-reason-code.json",
+  "enums/indicator-type.json",
+  "enums/installment-status.json",
+  "enums/javascript-module-type.json",
+  "enums/landing-page-requirement.json",
+  "enums/legacy-postal-system.json",
+  "enums/lift-dimension.json",
+  "enums/logo-slot.json",
+  "enums/macro-dialect.json",
+  "enums/macro-mapping-status.json",
+  "enums/macro-processing-operation.json",
+  "enums/macro-resolution-reason.json",
+  "enums/macro-resolver.json",
+  "enums/macro-value-context.json",
+  "enums/makegood-remedy.json",
+  "enums/markdown-flavor.json",
+  "enums/match-id-type.json",
+  "enums/match-type.json",
+  "enums/media-buy-action-mode.json",
+  "enums/media-buy-frequency-cap-control-mode.json",
+  "enums/media-buy-health.json",
+  "enums/media-buy-status.json",
+  "enums/media-buy-valid-action.json",
+  "enums/metric-scope.json",
+  "enums/metric-type.json",
+  "enums/metro-system.json",
+  "enums/moov-atom-position.json",
+  "enums/motion-level.json",
+  "enums/notification-type.json",
+  "enums/offering-availability-status.json",
+  "enums/outcome-target-cost-strength.json",
+  "enums/outcome-type.json",
+  "enums/pacing.json",
+  "enums/payment-terms.json",
+  "enums/performance-baseline.json",
+  "enums/performance-standard-metric.json",
+  "enums/pixel-tracking-event.json",
+  "enums/policy-category.json",
+  "enums/policy-enforcement.json",
+  "enums/postal-system.json",
+  "enums/preview-output-format.json",
+  "enums/pricing-model.json",
+  "enums/pricing-structure.json",
+  "enums/principal-kind.json",
+  "enums/production-quality.json",
+  "enums/property-type.json",
+  "enums/proposal-decline-reason.json",
+  "enums/proposal-refinement-reason.json",
+  "enums/proposal-status.json",
+  "enums/publisher-identifier-types.json",
+  "enums/purchase-type.json",
+  "enums/reach-aggregation.json",
+  "enums/reach-unit.json",
+  "enums/reporting-destination-setup-state.json",
+  "enums/reporting-finality.json",
+  "enums/reporting-frequency.json",
+  "enums/reporting-health.json",
+  "enums/representation-selection-strategy.json",
+  "enums/request-signing-error-code.json",
+  "enums/response-type.json",
+  "enums/restricted-attribute.json",
+  "enums/right-type.json",
+  "enums/right-use.json",
+  "enums/rights-billing-period.json",
+  "enums/scan-type.json",
+  "enums/seller-policy-decline-reason.json",
+  "enums/si-session-status.json",
+  "enums/signal-catalog-type.json",
+  "enums/signal-source.json",
+  "enums/signal-value-type.json",
+  "enums/snapshot-unavailable-reason.json",
+  "enums/social-placement-surface.json",
+  "enums/sort-direction.json",
+  "enums/sort-metric.json",
+  "enums/special-category.json",
+  "enums/specialism.json",
+  "enums/sponsored-placement-type.json",
+  "enums/spot-status.json",
+  "enums/talent-role.json",
+  "enums/task-status.json",
+  "enums/task-type.json",
+  "enums/tracker-execution-actor.json",
+  "enums/tracker-firing-path.json",
+  "enums/transport-mode.json",
+  "enums/travel-time-unit.json",
+  "enums/uid-type.json",
+  "enums/universal-macro.json",
+  "enums/update-frequency.json",
+  "enums/url-asset-type.json",
+  "enums/validation-mode.json",
+  "enums/vast-media-delivery-method.json",
+  "enums/vast-tracking-event.json",
+  "enums/vast-version.json",
+  "enums/vendor-relationship.json",
+  "enums/video-placement-type.json",
+  "enums/view-threshold-basis.json",
+  "enums/viewability-standard.json",
+  "enums/warning-code.json",
+  "enums/watermark-media-type.json",
+  "enums/wcag-level.json",
+  "enums/webhook-response-type.json",
+  "enums/webhook-security-method.json",
+  "error-details/accessibility-violation.json",
+  "error-details/account-moved.json",
+  "error-details/account-setup-required.json",
+  "error-details/action-not-allowed.json",
+  "error-details/agent-permission-denied.json",
+  "error-details/audience-too-small.json",
+  "error-details/authorization-required.json",
+  "error-details/billing-not-permitted-for-agent.json",
+  "error-details/billing-not-supported.json",
+  "error-details/budget-too-low.json",
+  "error-details/conflict.json",
+  "error-details/creative-merge-rejected.json",
+  "error-details/creative-rejected.json",
+  "error-details/creative-representation-unresolved.json",
+  "error-details/creative-revision-content-mismatch.json",
+  "error-details/execution-requirement-unmet.json",
+  "error-details/governance-agent-not-accepted.json",
+  "error-details/macro-resolution-failed.json",
+  "error-details/policy-violation.json",
+  "error-details/rate-limited.json",
+  "error-details/reference-definition-changed.json",
+  "error-details/requote-required.json",
+  "error-details/stale-response.json",
+  "error-details/unsupported-refinement-dimension.json",
+  "error-details/unsupported-targeting-dimension.json",
+  "error-details/vast-version-mismatch.json",
+  "error-details/vendor-error-codes.json",
+  "error-details/version-unsupported.json",
+  "extensions/adcp.json",
+  "extensions/extension-meta.json",
+  "extensions/index.json",
+  "formats/canonical/_base.json",
+  "formats/canonical/agent_placement.json",
+  "formats/canonical/audio_daast.json",
+  "formats/canonical/audio_hosted.json",
+  "formats/canonical/audio_vast.json",
+  "formats/canonical/coordinated_placements.json",
+  "formats/canonical/display_tag.json",
+  "formats/canonical/html5.json",
+  "formats/canonical/image.json",
+  "formats/canonical/image_carousel.json",
+  "formats/canonical/native_in_feed.json",
+  "formats/canonical/responsive_creative.json",
+  "formats/canonical/seller_rendered_stateful_display.json",
+  "formats/canonical/sponsored_placement.json",
+  "formats/canonical/video_hosted.json",
+  "formats/canonical/video_vast.json",
+  "governance/accepted-governance-agents.json",
+  "governance/attribute-definition.json",
+  "governance/audience-constraints.json",
+  "governance/check-governance-request.json",
+  "governance/check-governance-response.json",
+  "governance/get-plan-audit-logs-request.json",
+  "governance/get-plan-audit-logs-response.json",
+  "governance/policy-category-definition.json",
+  "governance/policy-entry.json",
+  "governance/policy-ref.json",
+  "governance/report-plan-adjustment-request.json",
+  "governance/report-plan-adjustment-response.json",
+  "governance/report-plan-outcome-request.json",
+  "governance/report-plan-outcome-response.json",
+  "governance/reported-outcome-error.json",
+  "governance/sync-plans-request.json",
+  "governance/sync-plans-response.json",
+  "index.json",
+  "manifest.schema.json",
+  "media-buy/accept-proposal-async-response-input-required.json",
+  "media-buy/accept-proposal-async-response-submitted.json",
+  "media-buy/accept-proposal-async-response-working.json",
+  "media-buy/accept-proposal-request.json",
+  "media-buy/accept-proposal-response.json",
+  "media-buy/acceptance-context.json",
+  "media-buy/acceptance-policy-catalog.json",
+  "media-buy/acceptance-policy-profile-ref.json",
+  "media-buy/acceptance-policy-profile.json",
+  "media-buy/acceptance-policy-requirement.json",
+  "media-buy/acceptance-policy-rule.json",
+  "media-buy/build-creative-async-response-input-required.json",
+  "media-buy/build-creative-async-response-submitted.json",
+  "media-buy/build-creative-async-response-working.json",
+  "media-buy/build-creative-request.json",
+  "media-buy/build-creative-response.json",
+  "media-buy/buy-products-async-response-input-required.json",
+  "media-buy/buy-products-async-response-submitted.json",
+  "media-buy/buy-products-async-response-working.json",
+  "media-buy/buy-products-request.json",
+  "media-buy/buy-products-response.json",
+  "media-buy/change-term-constraints.json",
+  "media-buy/change-term.json",
+  "media-buy/commercial-terms.json",
+  "media-buy/control-media-buy-async-response-input-required.json",
+  "media-buy/control-media-buy-async-response-submitted.json",
+  "media-buy/control-media-buy-async-response-working.json",
+  "media-buy/control-media-buy-request.json",
+  "media-buy/control-media-buy-response.json",
+  "media-buy/create-media-buy-async-response-input-required.json",
+  "media-buy/create-media-buy-async-response-submitted.json",
+  "media-buy/create-media-buy-async-response-working.json",
+  "media-buy/create-media-buy-request.json",
+  "media-buy/create-media-buy-response.json",
+  "media-buy/decline-proposals-async-response-input-required.json",
+  "media-buy/decline-proposals-async-response-submitted.json",
+  "media-buy/decline-proposals-async-response-working.json",
+  "media-buy/decline-proposals-request.json",
+  "media-buy/decline-proposals-response.json",
+  "media-buy/get-media-buy-delivery-request.json",
+  "media-buy/get-media-buy-delivery-response.json",
+  "media-buy/get-media-buys-request.json",
+  "media-buy/get-media-buys-response.json",
+  "media-buy/get-products-async-response-input-required.json",
+  "media-buy/get-products-async-response-submitted.json",
+  "media-buy/get-products-async-response-working.json",
+  "media-buy/get-products-rejected.json",
+  "media-buy/get-products-request.json",
+  "media-buy/get-products-response.json",
+  "media-buy/get-products-targeting-resolution.json",
+  "media-buy/get-reporting-status-request.json",
+  "media-buy/get-reporting-status-response.json",
+  "media-buy/legacy-purchase-continuation-input.json",
+  "media-buy/list-collections-request.json",
+  "media-buy/list-collections-response.json",
+  "media-buy/list-creative-formats-request.json",
+  "media-buy/list-creative-formats-response.json",
+  "media-buy/list-products-request.json",
+  "media-buy/list-products-response.json",
+  "media-buy/log-event-request.json",
+  "media-buy/log-event-response.json",
+  "media-buy/media-buy-commitment-response.json",
+  "media-buy/media-buy-delivery-webhook-result.json",
+  "media-buy/outcome-target.json",
+  "media-buy/package-control.json",
+  "media-buy/package-request.json",
+  "media-buy/package-update.json",
+  "media-buy/product-discovery-criteria.json",
+  "media-buy/product-fields.json",
+  "media-buy/product-purchase-input.json",
+  "media-buy/product-purchase.json",
+  "media-buy/product-refinement.json",
+  "media-buy/proposal-budget-constraint.json",
+  "media-buy/proposal-decline.json",
+  "media-buy/proposal-refinement.json",
+  "media-buy/provide-performance-feedback-request.json",
+  "media-buy/provide-performance-feedback-response.json",
+  "media-buy/refine-proposals-async-response-input-required.json",
+  "media-buy/refine-proposals-async-response-submitted.json",
+  "media-buy/refine-proposals-async-response-working.json",
+  "media-buy/refine-proposals-request.json",
+  "media-buy/refine-proposals-response.json",
+  "media-buy/request-proposals-async-response-input-required.json",
+  "media-buy/request-proposals-async-response-submitted.json",
+  "media-buy/request-proposals-async-response-working.json",
+  "media-buy/request-proposals-request.json",
+  "media-buy/request-proposals-response.json",
+  "media-buy/sync-audiences-request.json",
+  "media-buy/sync-audiences-response.json",
+  "media-buy/sync-catalogs-async-response-input-required.json",
+  "media-buy/sync-catalogs-async-response-submitted.json",
+  "media-buy/sync-catalogs-async-response-working.json",
+  "media-buy/sync-catalogs-request.json",
+  "media-buy/sync-catalogs-response.json",
+  "media-buy/sync-event-sources-request.json",
+  "media-buy/sync-event-sources-response.json",
+  "media-buy/sync-reporting-receipts-request.json",
+  "media-buy/sync-reporting-receipts-response.json",
+  "media-buy/sync-reporting-status-request.json",
+  "media-buy/sync-reporting-status-response.json",
+  "media-buy/update-media-buy-async-response-input-required.json",
+  "media-buy/update-media-buy-async-response-submitted.json",
+  "media-buy/update-media-buy-async-response-working.json",
+  "media-buy/update-media-buy-request.json",
+  "media-buy/update-media-buy-response.json",
+  "pricing-options/cpa-option.json",
+  "pricing-options/cpc-option.json",
+  "pricing-options/cpcv-option.json",
+  "pricing-options/cpm-option.json",
+  "pricing-options/cpp-option.json",
+  "pricing-options/cpv-option.json",
+  "pricing-options/flat-rate-option.json",
+  "pricing-options/price-breakdown.json",
+  "pricing-options/price-guidance.json",
+  "pricing-options/revenue-share-option.json",
+  "pricing-options/time-option.json",
+  "pricing-options/vcpm-option.json",
+  "property/authorization-result.json",
+  "property/base-property-source.json",
+  "property/create-property-list-request.json",
+  "property/create-property-list-response.json",
+  "property/delete-property-list-request.json",
+  "property/delete-property-list-response.json",
+  "property/delivery-record.json",
+  "property/get-property-list-request.json",
+  "property/get-property-list-response.json",
+  "property/list-property-lists-request.json",
+  "property/list-property-lists-response.json",
+  "property/property-error.json",
+  "property/property-feature-definition.json",
+  "property/property-feature-result.json",
+  "property/property-feature-value.json",
+  "property/property-feature.json",
+  "property/property-list-changed-webhook.json",
+  "property/property-list-filters.json",
+  "property/property-list.json",
+  "property/update-property-list-request.json",
+  "property/update-property-list-response.json",
+  "property/validate-property-delivery-request.json",
+  "property/validate-property-delivery-response.json",
+  "property/validation-result.json",
+  "protocol/get-adcp-capabilities-request.json",
+  "protocol/get-adcp-capabilities-response.json",
+  "protocol/get-principal-request.json",
+  "protocol/get-principal-response.json",
+  "protocol/get-task-status-request.json",
+  "protocol/get-task-status-response.json",
+  "protocol/list-tasks-request.json",
+  "protocol/list-tasks-response.json",
+  "protocol/sync-agent-notification-configs-request.json",
+  "protocol/sync-agent-notification-configs-response.json",
+  "protocol/sync-principal-request.json",
+  "protocol/sync-principal-response.json",
+  "registries/v1-canonical-mapping.json",
+  "signals/activate-signal-request.json",
+  "signals/activate-signal-response.json",
+  "signals/get-signals-async-response-submitted.json",
+  "signals/get-signals-async-response-working.json",
+  "signals/get-signals-request.json",
+  "signals/get-signals-response.json",
+  "sponsored-intelligence/si-capabilities.json",
+  "sponsored-intelligence/si-context-use.json",
+  "sponsored-intelligence/si-get-offering-request.json",
+  "sponsored-intelligence/si-get-offering-response.json",
+  "sponsored-intelligence/si-identity.json",
+  "sponsored-intelligence/si-initiate-session-request.json",
+  "sponsored-intelligence/si-initiate-session-response.json",
+  "sponsored-intelligence/si-send-message-request.json",
+  "sponsored-intelligence/si-send-message-response.json",
+  "sponsored-intelligence/si-sponsored-context-receipt.json",
+  "sponsored-intelligence/si-sponsored-context.json",
+  "sponsored-intelligence/si-terminate-session-request.json",
+  "sponsored-intelligence/si-terminate-session-response.json",
+  "sponsored-intelligence/si-ui-element.json",
+  "trust/v1/trust-acknowledgements.json",
+  "trust/v1/trust.json",
+  "trusted-match/available-package.json",
+  "trusted-match/context-match-request.json",
+  "trusted-match/context-match-response.json",
+  "trusted-match/error.json",
+  "trusted-match/identity-match-request.json",
+  "trusted-match/identity-match-response.json",
+  "trusted-match/offer-price.json",
+  "trusted-match/offer.json",
+  "trusted-match/provider-context-match-response.json",
+  "trusted-match/provider-identity-match-response.json",
+  "trusted-match/provider-registration.json",
+  "trusted-match/publisher-targeting-kv-config.json",
+  "trusted-match/publisher-tmpx-config.json",
+  "trusted-match/tmpx-chunk.json"
+ ],
+ "experimental_now": {
+  "a2ui/bound-value.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "a2ui/component.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "a2ui/si-catalog.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "a2ui/surface.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "a2ui/user-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "aao/agent-publishers.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/get-account-financials-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/get-account-financials-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/list-account-changes-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "account/list-account-changes-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "account/list-accounts-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/list-accounts-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/report-usage-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/report-usage-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/sync-accounts-request.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "account/sync-accounts-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "account/sync-governance-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "account/sync-governance-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "adagents.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "brand/acquire-rights-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/acquire-rights-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/creative-approval-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/creative-approval-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/get-brand-identity-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/get-brand-identity-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "brand/get-rights-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/get-rights-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/revocation-notification.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/rights-pricing-option.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/rights-terms.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/search-brands-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/search-brands-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/update-rights-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/update-rights-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "brand/verification-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/verify-brand-claim-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/verify-brand-claim-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/verify-brand-claims-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "brand/verify-brand-claims-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/base-collection-source.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/collection-list-changed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/collection-list-filters.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/collection-list.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/create-collection-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/create-collection-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/delete-collection-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/delete-collection-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/get-collection-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/get-collection-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/list-collection-lists-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/list-collection-lists-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/update-collection-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "collection/update-collection-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "compliance/comply-test-controller-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "compliance/comply-test-controller-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "compliance/get-creative-features-completion.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "compliance/task-completion-data.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/artifact-webhook-payload.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/artifact.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/calibrate-content-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/calibrate-content-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/content-standards.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/create-content-standards-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/create-content-standards-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/get-content-standards-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/get-content-standards-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/get-media-buy-artifacts-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/get-media-buy-artifacts-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/list-content-standards-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/list-content-standards-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/update-content-standards-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/update-content-standards-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/validate-content-delivery-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "content-standards/validate-content-delivery-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/acceptance-policy-profile-ids.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-authorization.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-change-recorded-webhook.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/account-change.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-identity-change-preview.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-identity-change.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-status-changed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-timezone-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account-with-authorization.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/account.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/activation-key.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/ad-inventory-config.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/agent-encryption-key.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/agent-notification-config-state.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/agent-notification-config.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/agent-reporting-destination-state.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/agent-reporting-destination.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/agent-signing-key.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/agent-webhook-challenge.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/app-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/applicable-package-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/asset-group-vocabulary.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/asset-union.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/audio-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/brief-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/card-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/catalog-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/css-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/daast-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/daast-tracker-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/display-tag-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/html-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/image-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/javascript-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/markdown-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/pixel-tracker-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/published-post-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/text-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/url-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/vast-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/vast-tracker-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/video-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/video-brief-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/webhook-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assets/zip-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/assignment-tracker.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/async-response-data.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/attestation-capabilities.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/attestation-evaluation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/attestation-issuer.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/attestation-reference.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/attestation-subject.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/attribution-window.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-activation-method.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/audience-characteristic.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-evidence-pin.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-evidence-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-evidence-selection.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-evidence.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-member.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-selector.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-size.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/audience-source.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/authorized-agent-base.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/bidding-policy-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/bidding-policy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/brand-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/brand-key.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/brand-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/brand-response-authorization-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/budget-allocation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/budget-range.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/business-entity.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/cancellation-policy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-account-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-audience-evidence-selection.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-audience-evidence.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-budget-allocation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-delivery-forecast.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-forecast-point.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-forecast-vendor-metric-value.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-format-kind.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-format-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-measurement-terms.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-media-buy-action-fields.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-media-buy-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-media-buy-features.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-metric-qualifier.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-optimization-goal.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-performance-standard.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-placement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-pricing-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-product-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-product.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/canonical-projection-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-projection-slot-override.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-proposal.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/canonical-reporting-capabilities.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canonical-reporting-commitment.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/canvas-constraint.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/capabilities-changed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-field-mapping.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-ingestion-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-item-availability-error.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-item-availability-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-item-availability-state.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-item-availability-update-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-item-availability-update.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-item-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-item-reference-not-found-error.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog-selection.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catalog.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/catchment.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/collection-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/collection-distribution.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/collection-list-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/collection-property-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/collection-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/collection-selection.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/collection-selector.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/collection.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/committed-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/compact-task-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/compact-task-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/compact-task-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/content-rating.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/context.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-approval-scope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-assets.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-assignment.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-brief.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-consumption.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-filters.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-locale-policy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-localization-readback.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-localization.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-manifest.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-operation-format-declaration.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-policy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-representation-set.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-representation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-revision-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-variable.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/creative-variant.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/daast-tracker-constraints.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/data-provider-signal-selector.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/date-range.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/datetime-range.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/daypart-target.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/deadline-policy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/definition-pin.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/delivery-breakdown-controls.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/delivery-forecast.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/delivery-metric-aggregate.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/delivery-provider.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/delivery-recipient.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/demographic-age-range.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/demographic-predicate.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/demographic-reporting-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/demographic-targeting-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/demographic-targeting-intent.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/demographic-targeting-resolution.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/deployment.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/destination-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/destination.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/diagnostic-issue.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/dooh-inventory-summary.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/downstream-connection-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/duration.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/education-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/error.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/evaluator-spec.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/event-custom-data.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/event-source-health.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/event-surface.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/event.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/experimental-feature-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/ext.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/feature-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/flight-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-dimension-audience.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-dimension-device-platform.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-dimension-device-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-dimension-geo.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-dimension-placement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-dimension-signal.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-dimension-time.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-point-dimensions.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-point.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-range.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-rate-range.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/forecast-vendor-metric-value.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/format-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/format-option-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/format-shape-vocabulary.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/format.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/frequency-cap-constraints.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/frequency-cap-duration-unit.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/frequency-cap-impression-constraints.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/frequency-cap-interval-constraints.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/frequency-cap-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/frequency-cap.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/generation-credential.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-breakdown-support.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-metro.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-area.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-catalog-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-catalog-entry.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-resolver.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-support.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-system.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-place-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-region-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/geo-region-support.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/get-geo-place-resolution-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/get-geo-place-resolution-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/hold-policy.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/hotel-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/iana-timezone.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/identifier.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/identity-relying-party.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/impairment.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/indicator-bearing.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/indicator-scope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/indicator.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/indicators-changed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/industry-identifier.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/insertion-order.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/installment-deadlines.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/installment-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/installment-property-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/installment-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/installment.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/inventory-list-application.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/job-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/keyword-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/keyword-target.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/limited-series.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/locale-tag.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/localized-creative-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/macro-bearing-url.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/macro-declaration.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/macro-encoding.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/macro-resolution-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/macro-resolution-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/macro-translation-target.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/material-deadline.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/mcp-webhook-payload.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/measurement-readiness.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/measurement-terms.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/measurement-window.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-available-action-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-available-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-change-term-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-features.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-frequency-cap-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-frequency-cap-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-frequency-cap-support.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-frequency-cap.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-legacy-terms-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-support-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy-support.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/media-buy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/missing-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/negative-keyword.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/notification-config.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/offering-asset-group.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/offering.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/operator-identity.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/operator-unit.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/opportunity-context.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/optimization-goal.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/outcome-measurement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/outcome-target-cost-per.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/overlay.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/package-delivery-metric-value.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/package-format-snapshot.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/package-signal-targeting-group.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/package-signal-targeting-groups.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/package-signal-targeting.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/package-targeting-resolution.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/package.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/pagination-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/pagination-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/performance-feedback-assertion.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/performance-feedback-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/performance-feedback.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/performance-standard.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement-definition.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement-evidence.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/placement-identity.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement-presentation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement-property-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement-selection.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/placement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/planned-delivery.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/platform-extension-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/positive-postal-area-support.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/postal-area-support.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/postal-area.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/postal-country-system.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/presentation-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/preview-provider.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/preview-renderer-metadata.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/price.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/pricing-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/principal-changed-webhook.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/principal-declarations-state.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/principal-declarations.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/principal-state.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/product-allocation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-allowed-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-audience-evidence-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-card-reference-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-change-map.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-execution-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-filters.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/product-format-declaration.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-identity.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/product-offer-filters.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-signal-targeting-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product-targeting-resolution.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/product.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/property-delivery-metrics.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/property-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/property-list-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/property-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/property-tag.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/property.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/proposal.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/protocol-envelope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/provenance.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/publisher-property-selector.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/push-notification-config.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/real-estate-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/reference-asset.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/reference-renderer.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/registry-event.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/registry-feed-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/reporting-adjustment-receipt.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-adjustment.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-canonical-content-digest.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-canonicalization-contract.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-capabilities.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/reporting-consumer-status.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-control-total.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-coverage.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-dataset-share-destination.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-delivery-capabilities.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-delivery-config-state.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-delivery-config.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-delivery-method.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-delivery-offering-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/reporting-delivery-offering.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-delivery-ready-webhook.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-file-compression.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-file-entry.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-file-manifest.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-file-object-ref.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-ledger-changed-webhook.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-materialization.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-native-version-ref.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-obligation.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-receipt.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-reconciliation-mode.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-reliability-statistics.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-report-definition.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-resource.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-revision.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-schedule-offering.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-schedule.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-status-changed-webhook.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-status-issue.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-verification-profile-set.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/reporting-verification-profile.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-verification.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/reporting-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/reporting-write-destination.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/representation-destination.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/representation-rejection.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/representation-selection.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/audio-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/catalog-field-binding.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/catalog-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/css-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/daast-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/html-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/image-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/javascript-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/markdown-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/offering-asset-constraint.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/text-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/url-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/vast-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/video-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/requirements/webhook-asset-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/response-collection.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/response-payload-jws-envelope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/rights-attestation-evaluation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/rights-constraint.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/seller-agent-ref.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "core/signal-coverage-forecast.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-definition-enrichment.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-definition.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-filters.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-listing.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-modeling-disclosure.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-pricing-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-pricing.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-selection-group-rule.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-targeting-expression.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-targeting-rules.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/signal-targeting.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/sla-window.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/special.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/spot-reporting-capability.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/start-timing.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/store-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/talent.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/targeting-input.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/targeting-modification.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/targeting-overlay-requirements.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/targeting-overlay-support.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/targeting-unknown-age-eligibility-constraint.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/targeting-verified-age-basis-constraint.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/targeting.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/tasks-get-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/tasks-get-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/tasks-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/tasks-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/tracker-execution-contract.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/tracker-execution-selector.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/transformer-param.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/transformer.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/truncation-sentinel.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/user-match.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vast-media-file-requirements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vast-tracker-constraints.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vehicle-item.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vendor-metric-id.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vendor-metric-optimization-supported-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vendor-metric-optimization.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vendor-metric-value.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/vendor-pricing-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/verification-token-claims.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/version-envelope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/warning-resource.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/warning.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/webhook-activity-record.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/webhook-challenge-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/webhook-challenge.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/wholesale-feed-event.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "core/wholesale-feed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "core/x-entity-types.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/asset-types/index.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/audit-observation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/creative-assignment-changed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/creative-feature-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/creative-purged-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/creative-status-changed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/get-creative-delivery-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/get-creative-delivery-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/get-creative-features-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/get-creative-features-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/get-creative-features-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/get-creative-features-terminal-success.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/list-creative-formats-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/list-creative-formats-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/list-creatives-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/list-creatives-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/list-transformers-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/list-transformers-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/preview-creative-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/preview-creative-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/preview-render.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/sync-creatives-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/sync-creatives-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/sync-creatives-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/sync-creatives-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/sync-creatives-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/validate-input-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/validate-input-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/validate-input-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "creative/video-brief.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/account-currency-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/account-scope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/account-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/action-not-allowed-reason.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/action-source.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/activation-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/adcp-protocol.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/adjustment-kind.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/advertiser-industry.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/age-determination-basis.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/age-verification-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/assessment-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/asset-content-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/attestation-claim.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/attribution-methodology.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/attribution-model.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audience-evidence-methodology.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audience-match-rate-basis.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audience-resolution-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audience-size-precision.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audience-source.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audience-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audience-subject-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audio-channel-layout.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/audio-distribution-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/auth-scheme.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/availability-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/available-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/billing-party.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/binary-verdict.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/brand-agent-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/browser-family.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/c2pa-watermark-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/canceled-by.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/canonical-media-buy-action-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/canonical-media-buy-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/catalog-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/catalog-item-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/catalog-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/channels.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/cloud-storage-protocol.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/co-branding-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/collection-cadence.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/collection-kind.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/collection-relationship.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/collection-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/completion-source.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/consent-basis.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/content-id-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/content-rating-system.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-agent-capability.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-approval-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-event-reason-code.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-identifier-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-merge-rejection-reason.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-quality.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-selection-strategy.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/creative-sort-field.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/creative-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/ctv-ad-experience.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/daast-tracking-event.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/daast-version.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/day-of-week.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/daypart-time-granularity.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/daypart-timezone-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/definition-pin-ref-kind.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/delegation-authority.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/delivery-recipient-cloud.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/delivery-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/delivery-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/demographic-system.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/derivative-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/device-platform.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/device-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/digital-source-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/dimension-unit.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/disclosure-persistence.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/disclosure-position.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/distance-unit.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/distribution-identifier-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/dooh-motion-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/embedded-provenance-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/error-code.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/error-scope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/escalation-severity.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/event-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/exclusivity.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/feature-check-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/feed-format.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/feedback-source.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/forecast-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/forecast-range-unit.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/forecastable-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/format-id-parameter.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/frame-rate-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/frequency-cap-control-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/frequency-cap-mutable-field.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/frequency-cap-scope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/genre-taxonomy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/geo-level.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/gop-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/governance-decision.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/governance-domain.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/governance-mode.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/governance-phase.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/history-entry-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/http-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/identifier-types.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/impairment-offline-state.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/impairment-reason-code.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/indicator-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/installment-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/javascript-module-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/landing-page-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/legacy-postal-system.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/lift-dimension.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/logo-slot.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/macro-dialect.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/macro-mapping-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/macro-processing-operation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/macro-resolution-reason.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/macro-resolver.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/macro-value-context.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/makegood-remedy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/markdown-flavor.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/match-id-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/match-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/media-buy-action-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/media-buy-frequency-cap-control-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/media-buy-health.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/media-buy-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/media-buy-valid-action.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/metric-scope.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/metric-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/metro-system.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/moov-atom-position.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/motion-level.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/notification-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/offering-availability-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/outcome-target-cost-strength.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/outcome-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/pacing.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/payment-terms.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/performance-baseline.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/performance-standard-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/pixel-tracking-event.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/policy-category.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/policy-enforcement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/postal-system.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/preview-output-format.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/pricing-model.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/pricing-structure.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/principal-kind.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/production-quality.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/property-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/proposal-decline-reason.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/proposal-refinement-reason.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/proposal-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/publisher-identifier-types.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/purchase-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/reach-aggregation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/reach-unit.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/reporting-destination-setup-state.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/reporting-finality.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/reporting-frequency.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/reporting-health.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/representation-selection-strategy.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/request-signing-error-code.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/response-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/restricted-attribute.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/right-type.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/right-use.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/rights-billing-period.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/scan-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/seller-policy-decline-reason.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/si-session-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/signal-catalog-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/signal-source.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/signal-value-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/snapshot-unavailable-reason.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/social-placement-surface.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/sort-direction.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/sort-metric.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/special-category.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/specialism.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/sponsored-placement-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/spot-status.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "enums/talent-role.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/task-status.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/task-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/tracker-execution-actor.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/tracker-firing-path.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/transport-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/travel-time-unit.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/uid-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/universal-macro.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/update-frequency.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/url-asset-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/validation-mode.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/vast-media-delivery-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/vast-tracking-event.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/vast-version.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/vendor-relationship.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/video-placement-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/view-threshold-basis.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/viewability-standard.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/warning-code.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/watermark-media-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/wcag-level.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/webhook-response-type.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "enums/webhook-security-method.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/accessibility-violation.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "error-details/account-moved.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/account-setup-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/action-not-allowed.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/agent-permission-denied.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/audience-too-small.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/authorization-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/billing-not-permitted-for-agent.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/billing-not-supported.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/budget-too-low.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/conflict.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/creative-merge-rejected.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/creative-rejected.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/creative-representation-unresolved.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/creative-revision-content-mismatch.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/execution-requirement-unmet.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/governance-agent-not-accepted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/macro-resolution-failed.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/policy-violation.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/rate-limited.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/reference-definition-changed.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/requote-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/stale-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/unsupported-refinement-dimension.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/unsupported-targeting-dimension.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/vast-version-mismatch.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/vendor-error-codes.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "error-details/version-unsupported.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "extensions/adcp.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "extensions/extension-meta.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "extensions/index.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/_base.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/agent_placement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/audio_daast.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/audio_hosted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/audio_vast.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/coordinated_placements.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/display_tag.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/html5.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/image.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/image_carousel.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/native_in_feed.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/responsive_creative.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/seller_rendered_stateful_display.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/sponsored_placement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "formats/canonical/video_hosted.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "formats/canonical/video_vast.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/accepted-governance-agents.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/attribute-definition.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/audience-constraints.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/check-governance-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/check-governance-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/get-plan-audit-logs-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/get-plan-audit-logs-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/policy-category-definition.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/policy-entry.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/policy-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/report-plan-adjustment-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/report-plan-adjustment-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/report-plan-outcome-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/report-plan-outcome-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/reported-outcome-error.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "governance/sync-plans-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "governance/sync-plans-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "index.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "manifest.schema.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/accept-proposal-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/accept-proposal-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/accept-proposal-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/accept-proposal-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/accept-proposal-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/acceptance-context.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/acceptance-policy-catalog.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/acceptance-policy-profile-ref.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/acceptance-policy-profile.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/acceptance-policy-requirement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/acceptance-policy-rule.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/build-creative-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/build-creative-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/build-creative-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/build-creative-request.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/build-creative-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/buy-products-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/buy-products-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/buy-products-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/buy-products-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/buy-products-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/change-term-constraints.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/change-term.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/commercial-terms.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/control-media-buy-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/control-media-buy-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/control-media-buy-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/control-media-buy-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/control-media-buy-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/create-media-buy-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/create-media-buy-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/create-media-buy-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/create-media-buy-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/create-media-buy-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/decline-proposals-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/decline-proposals-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/decline-proposals-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/decline-proposals-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/decline-proposals-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-media-buy-delivery-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-media-buy-delivery-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/get-media-buys-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-media-buys-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-products-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-products-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-products-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-products-rejected.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-products-request.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/get-products-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/get-products-targeting-resolution.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/get-reporting-status-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/get-reporting-status-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/legacy-purchase-continuation-input.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/list-collections-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/list-collections-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/list-creative-formats-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/list-creative-formats-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/list-products-request.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/list-products-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/log-event-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/log-event-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/media-buy-commitment-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/media-buy-delivery-webhook-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/outcome-target.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/package-control.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/package-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/package-update.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/product-discovery-criteria.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/product-fields.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/product-purchase-input.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/product-purchase.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/product-refinement.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/proposal-budget-constraint.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/proposal-decline.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/proposal-refinement.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/provide-performance-feedback-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/provide-performance-feedback-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/refine-proposals-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/refine-proposals-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/refine-proposals-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/refine-proposals-request.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/refine-proposals-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/request-proposals-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/request-proposals-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/request-proposals-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/request-proposals-request.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/request-proposals-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/sync-audiences-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-audiences-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "media-buy/sync-catalogs-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-catalogs-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-catalogs-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-catalogs-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-catalogs-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-event-sources-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-event-sources-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/sync-reporting-receipts-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/sync-reporting-receipts-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/sync-reporting-status-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/sync-reporting-status-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "media-buy/update-media-buy-async-response-input-required.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/update-media-buy-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/update-media-buy-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/update-media-buy-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "media-buy/update-media-buy-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/cpa-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/cpc-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/cpcv-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/cpm-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/cpp-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/cpv-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/flat-rate-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/price-breakdown.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/price-guidance.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/revenue-share-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/time-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "pricing-options/vcpm-option.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/authorization-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/base-property-source.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/create-property-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/create-property-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/delete-property-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/delete-property-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/delivery-record.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/get-property-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/get-property-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/list-property-lists-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/list-property-lists-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-error.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-feature-definition.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-feature-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-feature-value.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-feature.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-list-changed-webhook.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-list-filters.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/property-list.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/update-property-list-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/update-property-list-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/validate-property-delivery-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/validate-property-delivery-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "property/validation-result.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/get-adcp-capabilities-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/get-adcp-capabilities-response.json": {
+   "file_exp": false,
+   "has_exp": true
+  },
+  "protocol/get-principal-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "protocol/get-principal-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "protocol/get-task-status-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/get-task-status-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/list-tasks-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/list-tasks-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/sync-agent-notification-configs-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/sync-agent-notification-configs-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "protocol/sync-principal-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "protocol/sync-principal-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "registries/v1-canonical-mapping.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "signals/activate-signal-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "signals/activate-signal-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "signals/get-signals-async-response-submitted.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "signals/get-signals-async-response-working.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "signals/get-signals-request.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "signals/get-signals-response.json": {
+   "file_exp": false,
+   "has_exp": false
+  },
+  "sponsored-intelligence/si-capabilities.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-context-use.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-get-offering-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-get-offering-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-identity.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-initiate-session-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-initiate-session-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-send-message-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-send-message-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-sponsored-context-receipt.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-sponsored-context.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-terminate-session-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-terminate-session-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "sponsored-intelligence/si-ui-element.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trust/v1/trust-acknowledgements.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trust/v1/trust.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/available-package.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/context-match-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/context-match-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/error.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/identity-match-request.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/identity-match-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/offer-price.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/offer.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/provider-context-match-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/provider-identity-match-response.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/provider-registration.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/publisher-targeting-kv-config.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/publisher-tmpx-config.json": {
+   "file_exp": true,
+   "has_exp": true
+  },
+  "trusted-match/tmpx-chunk.json": {
+   "file_exp": true,
+   "has_exp": true
+  }
+ }
+}

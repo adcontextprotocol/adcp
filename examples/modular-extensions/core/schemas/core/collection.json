@@ -1,0 +1,351 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/collection.json",
+  "title": "Collection",
+  "description": "A recurring inventory container — a named program, publication, event series, rotation, or programmed channel that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling, and 'channel' for continuously programmed audio or video streams regardless of carriage or monetization model. Declared in the publisher's adagents.json and referenced by products via collection selectors. Selling agents may also return copies in product and proposal responses (core/response-collection.json); adagents.json remains the authorization source.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "description": "Publisher namespace that owns this collection. Required for supply-path verification when the declaration is read from a cross-origin authoritative document; it must match the publisher whose origin delegated retrieval. A pointer alone cannot claim another publisher's collection. May be omitted for a publisher-origin document, where that origin supplies the namespace."
+    },
+    "collection_id": {
+      "type": "string",
+      "description": "Publisher-assigned identifier for this collection. Declared in the publisher's adagents.json collections array. Products reference collections via collection selectors with publisher_domain and collection_ids. Use distribution identifiers for cross-seller matching across publishers.",
+      "x-entity": "collection"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable collection name"
+    },
+    "kind": {
+      "$ref": "/schemas/enums/collection-kind.json",
+      "description": "What kind of content program this is. Helps agents interpret installments correctly. A channel collection represents the persistent programmed stream; its installments, when present, are scheduled airings or programming blocks. Defaults to 'series' when absent."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the collection is about"
+    },
+    "genre": {
+      "type": "array",
+      "description": "Genre tags. When genre_taxonomy is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0 codes). Otherwise free-form.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "genre_taxonomy": {
+      "type": "string",
+      "description": "Taxonomy system for genre values (e.g., 'iab_content_3.0'). When present, genre values should be valid taxonomy IDs. Recommended for machine-readable brand safety evaluation."
+    },
+    "language": {
+      "type": "string",
+      "description": "Primary language (BCP 47 tag, e.g., 'en', 'es-MX')"
+    },
+    "content_rating": {
+      "$ref": "/schemas/core/content-rating.json",
+      "description": "Baseline content rating for the collection. Individual installments may override this."
+    },
+    "cadence": {
+      "$ref": "/schemas/enums/collection-cadence.json",
+      "description": "How frequently the collection releases new installments"
+    },
+    "season": {
+      "type": "string",
+      "description": "Current or most recent season identifier (e.g., '3', '2026', 'spring_2026'). A lightweight label — not a full season object."
+    },
+    "status": {
+      "$ref": "/schemas/enums/collection-status.json",
+      "description": "Lifecycle status of the collection"
+    },
+    "production_quality": {
+      "$ref": "/schemas/enums/production-quality.json",
+      "description": "Production quality tier. Seller-declared. Maps to OpenRTB content.prodq (professional=1, prosumer=2, ugc=3)."
+    },
+    "talent": {
+      "type": "array",
+      "description": "Hosts, recurring cast, creators associated with the collection. Each talent entry may link to the person's brand.json identity through brand_ref (typed) or brand_url.",
+      "items": {
+        "$ref": "/schemas/core/talent.json"
+      }
+    },
+    "images": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Pictures for a collection card (cover art, show poster, creator avatar). The first entry is the primary thumbnail. Display only, and excluded from publisher_collection definition pins.",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "/schemas/core/media-asset.json"
+          },
+          {
+            "title": "Image Asset",
+            "description": "Image asset with URL and dimensions",
+            "type": "object",
+            "properties": {
+              "asset_type": {
+                "type": "string",
+                "const": "image",
+                "description": "Discriminator identifying this as an image asset. See /schemas/creative/asset-types for the registry."
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the image asset"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Width in pixels"
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Height in pixels"
+              },
+              "file_size_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Image file size in bytes. Required by agents that advertise a max_file_size_kb constraint."
+              },
+              "pixel_ratio": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
+              },
+              "state_id": {
+                "type": "string",
+                "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it). Omit for ordinary image slots."
+              },
+              "breakpoint_id": {
+                "type": "string",
+                "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one breakpoint declared on the selected state (semantic validators resolve it). Omit for ordinary image slots."
+              },
+              "focal_point": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "Normalized `[x, y]` coordinates (0–1 from top-left) of the image's visual anchor. Seller-side renderers crop toward the focal point when deriving renditions across breakpoints and aspect ratios; absent, cropping falls back to center-weighted defaults."
+              },
+              "format": {
+                "type": "string",
+                "description": "Image file format (jpg, png, gif, webp, etc.)"
+              },
+              "alt_text": {
+                "type": "string",
+                "description": "Alternative text for accessibility",
+                "x-accessibility": true
+              },
+              "provenance": {
+                "$ref": "/schemas/core/provenance.json",
+                "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+              }
+            },
+            "required": [
+              "asset_type",
+              "url",
+              "width",
+              "height"
+            ],
+            "additionalProperties": true
+          }
+        ],
+        "x-adcp-registry": "/schemas/core/assets/image-asset.json"
+      },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "sample_content": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Representative past installments or a sizzle reel, as published-post references. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content; reference_authorization and identity_ref are not authorization here. Consumers skip entries without post_url. Excluded from publisher_collection definition pins.",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "/schemas/core/media-asset.json"
+          },
+          {
+            "title": "Published Post Asset",
+            "description": "Reference to an already-published post on a publisher, creator, or social platform. The buyer supplies a reference to the existing post; the seller resolves, authorizes, reviews, and serves the referenced post according to the target product's format declaration. This asset is for post references, not uploaded bytes and not catalog rows.",
+            "type": "object",
+            "properties": {
+              "asset_type": {
+                "type": "string",
+                "const": "published_post",
+                "description": "Discriminator identifying this as a published-post reference asset. See /schemas/creative/asset-types for the registry."
+              },
+              "post_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Canonical URL for the published post. Preferred when the platform exposes a stable public or authenticated URL."
+              },
+              "platform": {
+                "type": "string",
+                "description": "Optional platform or publisher namespace for the referenced post. Informational unless the seller's product declaration or platform extension narrows the accepted values."
+              },
+              "platform_post_id": {
+                "type": "string",
+                "description": "Optional platform-native post identifier when a URL alone is not stable or not available. Buyers SHOULD include `platform` when using `platform_post_id` without `post_url`, unless the product or format declaration already narrows the platform. Platform-specific identifier semantics belong in platform_extensions; this field is only an opaque reference."
+              },
+              "identity_ref": {
+                "type": "object",
+                "description": "Optional identity hint for the authoring handle/page/channel that owns the post. Sellers MUST verify authorization from platform state; buyers MUST NOT use this object as proof of authorization.",
+                "properties": {
+                  "handle": {
+                    "type": "string",
+                    "description": "Human-readable handle or username when available."
+                  },
+                  "profile_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL for the authoring profile, page, or channel."
+                  },
+                  "platform_identity_id": {
+                    "type": "string",
+                    "description": "Opaque platform-native identity identifier."
+                  }
+                },
+                "additionalProperties": true
+              },
+              "published_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the referenced post was originally published, if known."
+              },
+              "reference_authorization": {
+                "type": "object",
+                "readOnly": true,
+                "description": "Server-emitted, seller-observed authorization state for the referenced post or identity. Sellers MAY return this object on read surfaces. On write requests, sellers MUST ignore buyer-supplied `reference_authorization.status` and other authorization-state claims unless a platform extension explicitly defines a signed proof shape and the seller verifies that proof.",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "authorized",
+                      "pending",
+                      "expired",
+                      "revoked",
+                      "not_required",
+                      "unknown"
+                    ],
+                    "description": "Current seller-observed authorization state. `authorized`: seller can serve the referenced post. `pending`: additional creator/account action is required. `expired` or `revoked`: authorization previously existed but no longer permits serving. `not_required`: the seller can legally and technically serve without a separate identity authorization. `unknown`: seller has not checked or cannot disclose the state."
+                  },
+                  "checked_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the seller last checked the authorization state."
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the authorization expires, if the platform exposes an expiry."
+                  },
+                  "authorization_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Optional URL the buyer or creator can use to complete authorization."
+                  },
+                  "authorization_instructions": {
+                    "type": "string",
+                    "description": "Human-readable instructions for completing or restoring authorization."
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": true
+              },
+              "provenance": {
+                "$ref": "/schemas/core/provenance.json",
+                "description": "Provenance metadata for this reference asset, overrides manifest-level provenance."
+              }
+            },
+            "required": [
+              "asset_type"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "post_url"
+                ]
+              },
+              {
+                "required": [
+                  "platform_post_id"
+                ]
+              }
+            ],
+            "additionalProperties": true
+          }
+        ],
+        "x-adcp-registry": "/schemas/core/assets/published-post-asset.json"
+      },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Experimental (media_buy.collection_cards). Canonical HTTPS page about this collection, operated by the publisher or selling agent, for example a creator profile with full analytics. Buyers link out to it for depth beyond the card, and MAY suppress the link-out when its host is neither the publisher's nor the selling agent's domain. Display only: not authorization evidence, and excluded from publisher_collection definition pins.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "special": {
+      "$ref": "/schemas/core/special.json",
+      "description": "When present, this collection is a special — content anchored to a real-world event or occasion. Individual installments may override with their own event context."
+    },
+    "limited_series": {
+      "$ref": "/schemas/core/limited-series.json",
+      "description": "When present, this collection is a limited series — a bounded run with a defined arc, installment count, and end date."
+    },
+    "distribution": {
+      "type": "array",
+      "description": "Where this collection is distributed. Each entry maps the collection to a publisher platform using host property IDs, identifiers, or both. For channel collections this is the carriage map. It is a publisher assertion for discovery, not sales authorization; buyers validate owner-sold carriage against the host publisher's collection-scoped authorized_agents declaration. Collections SHOULD include at least one platform-independent identifier (imdb_id, gracenote_id, eidr_id) when available.",
+      "items": {
+        "$ref": "/schemas/core/collection-distribution.json"
+      }
+    },
+    "deadline_policy": {
+      "$ref": "/schemas/core/deadline-policy.json",
+      "description": "Default deadline rules for installments of this collection. Agents compute absolute deadlines from each installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy. Only meaningful when installments carry scheduled_at; a continuously programmed channel collection without enumerated installments has no deadlines to derive."
+    },
+    "related_collections": {
+      "type": "array",
+      "description": "Relationships to other collections (spin-offs, companion collections, etc.). Each entry references another collection by collection_id within the same publisher's adagents.json.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "collection_id": {
+            "type": "string",
+            "description": "The related collection's collection_id within this seller's response",
+            "x-entity": "collection"
+          },
+          "relationship": {
+            "$ref": "/schemas/enums/collection-relationship.json",
+            "description": "How the collections are related"
+          }
+        },
+        "required": [
+          "collection_id",
+          "relationship"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "collection_id",
+    "name"
+  ],
+  "additionalProperties": true
+}

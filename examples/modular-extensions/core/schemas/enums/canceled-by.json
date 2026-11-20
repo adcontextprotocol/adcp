@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/canceled-by.json",
+  "title": "Canceled By",
+  "description": "Identifies which party initiated a cancellation.",
+  "type": "string",
+  "enum": [
+    "buyer",
+    "seller"
+  ],
+  "enumDescriptions": {
+    "buyer": "Cancellation initiated by the buyer via update_media_buy",
+    "seller": "Cancellation initiated by the seller (e.g., policy violation, inventory withdrawal)"
+  }
+}

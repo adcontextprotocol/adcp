@@ -1,0 +1,3 @@
+{"governance": ["governance"], "signals": ["signals"], "creative/formats": ["creative"],
+ "buying": ["discovery", "media-buy"], "accounts/onboarding": ["account"],
+ "reporting": ["media-buy", "x-reporting-delivery", "x-measurement"]}
