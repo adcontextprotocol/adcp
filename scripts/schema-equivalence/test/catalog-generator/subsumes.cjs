@@ -1,27 +1,20 @@
-#!/usr/bin/env node
 'use strict';
 
 /**
- * Reruns the subsumes oracle on every construct catalog pair, in both
- * directions, and records its verdicts in the catalog files
- * (test/catalog/<group>/<construct>.json, one `subsumes` record per pair).
- * See test/catalog/README.md.
- *
- *   node scripts/schema-equivalence/catalog-oracle-subsumes.cjs
- *
- * subsumes (https://github.com/georg-wolflein/subsumes, MIT) has no command
- * line tool; its `harness run` checks a folder of cases in both directions.
- * Install that binary at the pinned commit:
+ * The catalog's inclusion oracle: subsumes
+ * (https://github.com/georg-wolflein/subsumes, MIT) at a pinned commit, run
+ * through its `harness run` binary, since subsumes has no command line tool.
+ * Install it with
  *
  *   cargo install --locked --git https://github.com/georg-wolflein/subsumes \
  *     --rev 9a9d00afa3e1c46015949a74faa91b4ce71f4ab0 harness
  *
- * With `--root DIR`, set SUBSUMES_ROOT=DIR.
+ * and, with `--root DIR`, set SUBSUMES_ROOT=DIR.
  *
- * Each side goes through the prototype's bundling (catalog-generator/
- * oracle-bundle.cjs, which turns `discriminator` into Ajv's formula) and is
- * then translated from draft-07 to draft 2020-12, the only dialect subsumes
- * reads. A verdict is recorded as follows:
+ * Each side goes through the bundling in oracle-bundle.cjs (which turns
+ * `discriminator` into Ajv's formula) and is then translated from draft-07 to
+ * draft 2020-12, the only dialect subsumes reads. A verdict is recorded as
+ * follows:
  *
  *   - `no` only with a counterexample that the repo's Ajv configuration
  *     confirms against the pair's files; otherwise `unknown`;
@@ -30,24 +23,18 @@
  *     does), or a pattern that names a surrogate code point (subsumes models
  *     strings as Unicode scalar values and can't see lone surrogates);
  *   - `unknown` stays `unknown`.
- *
- * A decided direction must agree with the pair's label. On any disagreement,
- * or a decided direction that the label leaves open, the script names the
- * pair, writes nothing, and exits 1.
  */
 
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { createAjv } = require('./lib/ajv.cjs');
-const { inclusionProblems } = require('./test/catalog-generator/oracle-bundle.cjs');
+const { createAjv } = require('../../lib/ajv.cjs');
+const { inclusionProblems } = require('./oracle-bundle.cjs');
 
 const SUBSUMES_REPO = 'https://github.com/georg-wolflein/subsumes';
 const SUBSUMES_COMMIT = '9a9d00afa3e1c46015949a74faa91b4ce71f4ab0';
 const INSTALL = `cargo install --locked --git ${SUBSUMES_REPO} --rev ${SUBSUMES_COMMIT} harness`;
-const CATALOG = path.join(__dirname, 'test', 'catalog');
-const DIRECTIONS = ['base_in_head', 'head_in_base'];
 const UNPROVEN_FORMATS = new Set(['date-time', 'uuid', 'uri']);
 const AJV_RULES = new Set(Object.keys(createAjv().RULES.all));
 
@@ -180,16 +167,13 @@ function record(pair, dir, result, why) {
   return { verdict: 'unknown', reason: 'counterexample not confirmed by Ajv', counterexample: x };
 }
 
-function main() {
+/**
+ * Checks every pair in both directions. Returns, per pair, the recorded
+ * verdict of `base_in_head` and `head_in_base`, and the time the checks took.
+ */
+function runSubsumes(pairs) {
   const bin = harness();
-  const files = fs.readdirSync(CATALOG, { withFileTypes: true }).filter(d => d.isDirectory())
-    .flatMap(d => fs.readdirSync(path.join(CATALOG, d.name)).filter(f => f.endsWith('.json')).map(f => path.join(CATALOG, d.name, f)))
-    .sort()
-    .map(f => ({ f, doc: JSON.parse(fs.readFileSync(f, 'utf8')) }));
-  const pairs = files.flatMap(({ doc }) => doc.pairs);
-
   const corpus = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-subsumes-'));
-  const t0 = Date.now();
   let lines;
   try {
     fs.mkdirSync(path.join(corpus, 'catalog'));
@@ -201,56 +185,26 @@ function main() {
     });
     const out = path.join(corpus, 'results.jsonl');
     const run = spawnSync(bin, ['run', corpus, out, '--jobs', String(os.availableParallelism())], { encoding: 'utf8' });
-    // Exit 1 flags its own validator's doubts; Ajv decides here.
+    // Exit 1 flags the harness's own validator's doubts; Ajv decides here.
     if (run.status !== 0 && run.status !== 1) throw new Error(`harness run failed (${run.status}): ${run.stderr}`);
     lines = fs.readFileSync(out, 'utf8').trim().split('\n').map(l => JSON.parse(l));
   } finally {
     fs.rmSync(corpus, { recursive: true, force: true });
   }
   const results = new Map(lines.map(r => [`${r.case.replace('catalog/', '')}|${r.direction}`, r]));
-
-  const count = { decided: 0, agree: 0, settled: 0, no: 0, confirmed: 0, yes: 0, unproven: 0, unknown: 0, checkMs: 0 };
-  const conflicts = [];
-  pairs.forEach((p, i) => {
+  let checkMs = 0;
+  const records = pairs.map((p, i) => {
     const why = unprovenReason(p);
-    p.subsumes = {};
+    const rec = {};
     for (const [dir, side] of [['base_in_head', 'a_subsumes_b'], ['head_in_base', 'b_subsumes_a']]) {
       const r = results.get(`${i}|${side}`);
       if (!r) throw new Error(`${p.id} ${dir}: no harness result`);
-      count.checkMs += r.nanos / 1e6;
-      if (r.verdict === 'no') count.no++;
-      const rec = record(p, dir, r, why);
-      p.subsumes[dir] = rec;
-      count[rec.verdict === 'no' ? 'confirmed' : rec.verdict]++;
-      if (rec.verdict !== 'yes' && rec.verdict !== 'no') continue;
-      count.decided++;
-      const label = p.verdict[dir];
-      const says = rec.verdict === 'yes';
-      if (label === null) conflicts.push(`${p.id} ${dir}: the label is open, subsumes says ${rec.verdict}`);
-      else if (label !== says) conflicts.push(`${p.id} ${dir}: the ${p.decided_by === 'oracle' ? 'prototype' : 'hand verdict'} says ${label}, subsumes says ${rec.verdict}`);
-      else if (p.decided_by === 'oracle') count.agree++;
-      else count.settled++;
+      checkMs += r.nanos / 1e6;
+      rec[dir] = record(p, dir, r, why);
     }
+    return rec;
   });
-  const wall = (Date.now() - t0) / 1000;
-  const directions = pairs.length * DIRECTIONS.length;
-  process.stdout.write(`${pairs.length} pairs, ${directions} directions in ${wall.toFixed(1)} s (checks ${count.checkMs.toFixed(0)} ms)\n`
-    + `decided ${count.decided}: ${count.agree} agree with the prototype, ${count.settled} settle a hand verdict, ${conflicts.length} disagree\n`
-    + `no ${count.no} (${count.confirmed} confirmed by Ajv), yes ${count.yes}, unproven ${count.unproven}, unknown ${count.unknown}\n`);
-  if (conflicts.length) {
-    for (const c of conflicts) process.stderr.write(`DISAGREE ${c}\n`);
-    process.stderr.write('Nothing written. Give each pair a hand verdict in catalog-generator/pairs.cjs that notes the disagreement.\n');
-    process.exit(1);
-  }
-  for (const { f, doc } of files) {
-    const { pairs: list, ...head } = doc;
-    fs.writeFileSync(f, `${JSON.stringify({ ...head, subsumes_commit: SUBSUMES_COMMIT, pairs: list }, null, 2)}\n`);
-  }
+  return { records, checkMs };
 }
 
-try {
-  main();
-} catch (e) {
-  process.stderr.write(`${e.message}\n`);
-  process.exit(2);
-}
+module.exports = { runSubsumes, SUBSUMES_COMMIT };

@@ -1,8 +1,10 @@
 'use strict';
 
 /**
- * Turns one catalog pair into the self-contained inclusion problems the
- * offline oracle decides: `{"definitions": {...}, "allOf": [S1, {"not": S2}]}`.
+ * Turns one catalog pair into self-contained inclusion problems:
+ * `{"definitions": {...}, "allOf": [S1, {"not": S2}]}`. This was the input of
+ * the prototype oracle, whose verdicts the catalog keeps as a frozen record;
+ * subsumes.cjs reuses the per-side definitions.
  *
  * Every `$ref` target (file plus JSON pointer) becomes its own top-level
  * definition, named per side (`L0...`, `R0...`), so the two sides never share
@@ -19,8 +21,7 @@
  *     whose `properties/<tag>` `const` or `enum` lists that value. Ajv skips
  *     the `oneOf` itself.
  *
- * `format` is kept, and the oracle ignores it, so the generator decides pairs
- * that use `format` by hand.
+ * `format` is kept. The prototype ignored it; subsumes asserts it.
  */
 
 const path = require('node:path');

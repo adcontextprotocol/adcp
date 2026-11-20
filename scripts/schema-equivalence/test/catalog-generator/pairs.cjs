@@ -5,9 +5,10 @@
  *
  * Each entry names a construct, a base and a head schema, and the authoring
  * intent (`equivalent` or `different`). The intent is only a cross-check for
- * the author: the stored verdict comes from the offline oracle, or from a
- * hand proof (`manual`) for constructs the oracle does not model like Ajv
- * (`format`, `uniqueItems`, `.` in a pattern, lookahead, astral characters).
+ * the author: the stored verdict comes from a hand proof (`manual`), from the
+ * frozen prototype record, or from subsumes (see generate.cjs). A pair that
+ * subsumes can't settle needs a hand proof. "The oracle" in the hand reasons
+ * is the prototype, whose verdicts the catalog keeps as a frozen record.
  *
  * Snippet pairs are placed in contexts the AdCP bundle uses (top level,
  * inside `allOf`, under `not`, behind a `$ref` to another file, inside a

@@ -6,31 +6,33 @@
  * from the pair definitions in pairs.cjs. The equivalence tool under test
  * plays no part here.
  *
- * For every pair it decides inclusion in both directions:
- *   - by default with an external inclusion oracle, one process for all
- *     pairs: `<oracle> <problem.json>...` must print one JSON line per file,
- *     {"file", "verdict": "sat" | "unsat" | ..., "witness"}, for problems of
- *     the form {"definitions", "allOf": [S1, {"not": S2}]} (sat: S1 is not
- *     included in S2, and the witness is in S1 and not in S2);
- *   - by hand (`manual` in pairs.cjs) for constructs the oracle does not model
- *     like Ajv. A hand verdict lists its reason and witnesses.
- * Every witness is then checked with the repo's Ajv configuration against the
+ * Every pair is checked in both directions with subsumes (subsumes.cjs). Its
+ * label comes from one of three sources:
+ *   - a hand verdict (`manual` in pairs.cjs), with its reason and witnesses;
+ *   - the frozen prototype verdict already in the catalog, for a pair whose
+ *     files are unchanged (`decided_by: oracle`); the prototype is not run;
+ *   - otherwise subsumes, which must settle both directions with `yes` or an
+ *     Ajv-confirmed `no` (`decided_by: subsumes`). A pair it can't settle
+ *     needs a hand verdict.
+ * A subsumes `yes` or `no` must agree with a hand or prototype label.
+ * Every witness is checked with the repo's Ajv configuration against the
  * pair's files: it must be valid on one side and invalid on the other, in the
- * direction the verdict states. A pair whose verdict and Ajv disagree, or
- * whose oracle run fails, stops the generator.
+ * direction the verdict states. Any failure stops the generator before it
+ * writes anything.
  *
- *   node generate.cjs --oracle /path/to/run.sh --work /tmp/catalog-work [--out DIR]
+ *   node generate.cjs [--out DIR]
  */
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseArgs } = require('node:util');
-const { spawnSync } = require('node:child_process');
 const { createAjv } = require('../../lib/ajv.cjs');
-const { inclusionProblems } = require('./oracle-bundle.cjs');
+const { runSubsumes, SUBSUMES_COMMIT } = require('./subsumes.cjs');
 const P = require('./pairs.cjs');
 
+// The prototype (arXiv 2603.25306) whose verdicts the catalog keeps as a frozen record.
 const ORACLE_COMMIT = '8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf';
+const ORACLE_FROZEN = '2026-11-20';
 
 function withIds(files) {
   const out = {};
@@ -116,81 +118,44 @@ function validator(files, root) {
   return v;
 }
 
-/** Constructs the oracle does not model like Ajv; such pairs need a hand verdict. */
-function needsManual(files) {
-  const reasons = new Set();
-  const walk = (v, key) => {
-    if (Array.isArray(v)) return v.forEach(x => walk(x, key));
-    if (v && typeof v === 'object') {
-      for (const [k, x] of Object.entries(v)) {
-        if (k === 'format') reasons.add('format');
-        if (k === 'uniqueItems' && x === true) reasons.add('uniqueItems');
-        if (k === 'pattern' || k === 'patternProperties') {
-          for (const p of k === 'pattern' ? [x] : Object.keys(x)) {
-            if (/(^|[^\\])\./.test(p)) reasons.add('"." in a pattern');
-            if (/\(\?[=!<]/.test(p)) reasons.add('lookaround');
-            if (/\\u\{|\\uD[89AB]/i.test(p) || /[\u{10000}-\u{10FFFF}]/u.test(p)) reasons.add('astral characters');
-          }
-        }
-        if (typeof x === 'string' && /[\u{10000}-\u{10FFFF}]/u.test(x)) reasons.add('astral characters');
-        walk(x, k);
+/** The frozen prototype verdicts in a catalog directory, by pair id. */
+function frozenVerdicts(out) {
+  const frozen = new Map();
+  if (!fs.existsSync(out)) return frozen;
+  for (const d of fs.readdirSync(out, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    for (const f of fs.readdirSync(path.join(out, d.name)).filter(n => n.endsWith('.json'))) {
+      for (const rec of JSON.parse(fs.readFileSync(path.join(out, d.name, f), 'utf8')).pairs) {
+        if (rec.decided_by === 'oracle') frozen.set(rec.id, rec);
       }
     }
-  };
-  walk(files);
-  return [...reasons];
-}
-
-function runOracle(oracle, work, problems) {
-  fs.mkdirSync(work, { recursive: true });
-  const files = problems.map(({ key, doc }) => {
-    const f = path.join(work, `${key}.json`);
-    fs.writeFileSync(f, JSON.stringify(doc));
-    return f;
-  });
-  const results = new Map();
-  for (let i = 0; i < files.length; i += 400) {
-    const chunk = files.slice(i, i + 400);
-    // One oracle process at a time, with a bounded heap.
-    const res = spawnSync(oracle, chunk, { encoding: 'utf8', maxBuffer: 1 << 28, env: { ...process.env, JAVA_EXTRA: process.env.JAVA_EXTRA || '-Xmx4g -Doracle.timeout.ms=60000' } });
-    for (const line of res.stdout.split('\n')) {
-      if (!line.startsWith('{')) continue;
-      const r = JSON.parse(line);
-      results.set(path.basename(r.file, '.json'), r);
-    }
   }
-  return results;
+  return frozen;
 }
 
 function main() {
-  const { values } = parseArgs({ options: { oracle: { type: 'string' }, work: { type: 'string' }, out: { type: 'string' } } });
-  if (!values.oracle || !values.work) throw new Error('usage: generate.cjs --oracle CMD --work DIR [--out DIR]');
+  const { values } = parseArgs({ options: { out: { type: 'string' } } });
   const out = path.resolve(values.out || path.join(__dirname, '..', 'catalog'));
   const pairs = enumerate();
+  const frozen = frozenVerdicts(out);
   const ids = new Set();
   for (const p of pairs) {
     if (ids.has(p.id)) throw new Error(`duplicate id ${p.id}`);
     ids.add(p.id);
     p.validators = { base: validator(p.base, p.root), head: validator(p.head, p.root) };
-    const unmodelled = needsManual([p.base, p.head]);
-    if (unmodelled.length && !p.manual) throw new Error(`${p.id}: uses ${unmodelled.join(', ')}; needs a hand verdict`);
-    p.unmodelled = unmodelled;
+    const f = frozen.get(p.id);
+    const same = f && JSON.stringify([f.base, f.head]) === JSON.stringify([p.base, p.head]);
+    if (!p.manual && same) p.frozen = f;
   }
 
-  // Oracle problems for every pair the oracle can decide.
-  const problems = [];
-  pairs.forEach((p, i) => {
-    if (p.manual) return;
-    const { fwd, rev } = inclusionProblems(p.base, p.head, p.root);
-    problems.push({ key: `${i}.fwd`, doc: fwd }, { key: `${i}.rev`, doc: rev });
-  });
   const t0 = Date.now();
-  const results = runOracle(values.oracle, values.work, problems);
-  const oracleMs = Date.now() - t0;
+  const { records, checkMs } = runSubsumes(pairs);
+  const subsumesMs = Date.now() - t0;
 
   const failures = [];
   const intentMismatches = [];
   pairs.forEach((p, i) => {
+    const sub = records[i];
     let verdict;
     const witnesses = [];
     const check = (payload) => {
@@ -209,30 +174,38 @@ function main() {
       if (base_in_head === false && !bNotH) failures.push(`${p.id}: hand verdict says base not in head, no witness shows it`);
       if (head_in_base === false && !hNotB) failures.push(`${p.id}: hand verdict says head not in base, no witness shows it`);
       verdict = { base_in_head, head_in_base };
-    } else {
-      const f = results.get(`${i}.fwd`);
-      const r = results.get(`${i}.rev`);
-      for (const [dir, res] of [['fwd', f], ['rev', r]]) {
-        if (!res || !['sat', 'unsat'].includes(res.verdict)) {
-          failures.push(`${p.id}: oracle ${dir} ${res ? `${res.verdict} ${res.error || ''}` : 'no result'}`);
-          continue;
-        }
-        if (res.verdict === 'sat') {
-          const w = check(res.witness);
-          const ok = dir === 'fwd' ? w.base && !w.head : w.head && !w.base;
-          if (!ok) failures.push(`${p.id}: oracle ${dir} witness ${JSON.stringify(res.witness)} not confirmed by Ajv (base ${w.base}, head ${w.head})`);
-          witnesses.push(w);
-        }
+    } else if (p.frozen) {
+      for (const w of p.frozen.witnesses || []) {
+        const c = check(w.payload);
+        if (c.base !== w.base || c.head !== w.head) failures.push(`${p.id}: frozen witness ${JSON.stringify(w.payload)} no longer holds under Ajv`);
+        witnesses.push(c);
       }
-      verdict = { base_in_head: f && f.verdict === 'unsat', head_in_base: r && r.verdict === 'unsat' };
+      verdict = { base_in_head: p.frozen.verdict.base_in_head, head_in_base: p.frozen.verdict.head_in_base };
+    } else {
+      verdict = {};
+      for (const [dir, rec] of Object.entries(sub)) {
+        if (rec.verdict === 'no') witnesses.push(check(rec.counterexample));
+        else if (rec.verdict !== 'yes') failures.push(`${p.id}: subsumes can't settle ${dir} (${rec.verdict}: ${rec.reason}); give the pair a hand verdict in pairs.cjs`);
+        verdict[dir] = rec.verdict === 'yes';
+      }
+    }
+    if (p.manual || p.frozen) {
+      const source = p.manual ? 'hand verdict' : 'frozen prototype verdict';
+      for (const [dir, rec] of Object.entries(sub)) {
+        if (rec.verdict !== 'yes' && rec.verdict !== 'no') continue;
+        if (verdict[dir] === null) failures.push(`${p.id}: the hand verdict leaves ${dir} open, subsumes says ${rec.verdict}`);
+        else if (verdict[dir] !== (rec.verdict === 'yes')) failures.push(`${p.id}: the ${source} says ${dir} ${verdict[dir]}, subsumes says ${rec.verdict}; give the pair a hand verdict that notes the disagreement`);
+      }
     }
     verdict.equivalent = verdict.base_in_head === true && verdict.head_in_base === true;
-    if (!verdict.equivalent && witnesses.every(w => w.base === w.head)) failures.push(`${p.id}: not equivalent but no distinguishing witness`);
+    const unsettled = !p.manual && !p.frozen && Object.values(sub).some(r => r.verdict !== 'yes' && r.verdict !== 'no');
+    if (!unsettled && !verdict.equivalent && witnesses.every(w => w.base === w.head)) failures.push(`${p.id}: not equivalent but no distinguishing witness`);
     for (const k of ['base_in_head', 'head_in_base']) {
       if (p.intent[k] !== null && p.intent[k] !== verdict[k]) intentMismatches.push(`${p.id}: intent ${k}=${p.intent[k]}, decided ${verdict[k]}`);
     }
     p.verdict = verdict;
     p.witnesses = witnesses.filter(w => w.base !== w.head);
+    p.subsumes = sub;
   });
 
   for (const m of intentMismatches) process.stderr.write(`intent mismatch: ${m}\n`);
@@ -256,19 +229,27 @@ function main() {
       base: p.base,
       head: p.head,
       verdict: { equivalent: p.verdict.equivalent, base_in_head: p.verdict.base_in_head, head_in_base: p.verdict.head_in_base },
-      decided_by: p.manual ? 'manual' : 'oracle',
+      decided_by: p.manual ? 'manual' : p.frozen ? 'oracle' : 'subsumes',
     };
     if (p.manual) rec.manual_reason = p.manual.reason;
     if (p.witnesses.length) rec.witnesses = p.witnesses;
+    rec.subsumes = p.subsumes;
     byFile.get(key).push(rec);
   }
   for (const [key, list] of byFile) {
     const f = path.join(out, key);
     fs.mkdirSync(path.dirname(f), { recursive: true });
-    fs.writeFileSync(f, `${JSON.stringify({ oracle_commit: ORACLE_COMMIT, pairs: list }, null, 2)}\n`);
+    fs.writeFileSync(f, `${JSON.stringify({ oracle_commit: ORACLE_COMMIT, oracle_frozen: ORACLE_FROZEN, subsumes_commit: SUBSUMES_COMMIT, pairs: list }, null, 2)}\n`);
   }
-  const eq = pairs.filter(p => p.verdict.equivalent).length;
-  process.stdout.write(`${pairs.length} pairs (${eq} equivalent, ${pairs.length - eq} different), ${pairs.filter(p => p.manual).length} decided by hand, ${problems.length} oracle problems in ${oracleMs} ms, ${byFile.size} files, ${intentMismatches.length} intent mismatches\n`);
+  const count = (k) => pairs.filter(k).length;
+  const eq = count(p => p.verdict.equivalent);
+  process.stdout.write(`${pairs.length} pairs (${eq} equivalent, ${pairs.length - eq} different): ${count(p => p.frozen)} frozen prototype, ${count(p => p.manual)} by hand, ${count(p => !p.manual && !p.frozen)} by subsumes; `
+    + `subsumes checks in ${subsumesMs} ms (${checkMs.toFixed(0)} ms in checks), ${byFile.size} files, ${intentMismatches.length} intent mismatches\n`);
 }
 
-main();
+try {
+  main();
+} catch (e) {
+  process.stderr.write(`${e.message}\n`);
+  process.exit(2);
+}
