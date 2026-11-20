@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/revision-token.json",
+  "title": "Revision Token",
+  "description": "Seller-maintained change token for a resource: a positive integer or a string of 1 to 255 characters. Equal values mean the same state, and integer values also order numerically. The schema states only the JSON types, because bounds on an integer-or-string type break SDK code generation.",
+  "type": [
+    "integer",
+    "string"
+  ]
+}

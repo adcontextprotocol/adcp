@@ -79,7 +79,7 @@
       "x-added-in": "3.3.0"
     },
     "resource_revision": {
-      "type": ["integer", "string"],
+      "$ref": "/schemas/core/revision-token.json",
       "description": "Post-change seller revision from the repair read (`revision` or `seller_revision`), when that family defines one."
     },
     "changed_paths": {
