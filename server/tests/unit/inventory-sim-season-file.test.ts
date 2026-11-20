@@ -18,6 +18,12 @@ import {
   readSeasonFile,
   seasonToYaml,
 } from '../../src/training-agent/inventory-sim/season-file.js';
+import {
+  INVENTORY_ADSERVER_TENANT_ID,
+  INVENTORY_CONTENT_TENANT_ID,
+  INVENTORY_SEASON_FILE_ENV,
+  resolveInventoryTenantProfiles,
+} from '../../src/training-agent/tenants/inventory.js';
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -173,5 +179,48 @@ describe('season files', () => {
   it('refuses duplicate keys', () => {
     const file = write('dupes.yaml', MINIMAL_YAML.replace('days: 30', 'days: 30\ndays: 60'));
     expect(invalidSeedMessage(() => readSeasonFile(file))).toMatch(/dupes\.yaml:\d+:\d+/);
+  });
+});
+
+describe('resolveInventoryTenantProfiles', () => {
+  const FIXTURE = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    '../fixtures/inventory-sim/small-season.yaml',
+  );
+  const ADSERVER_VAR = INVENTORY_SEASON_FILE_ENV[INVENTORY_ADSERVER_TENANT_ID];
+  const CONTENT_VAR = INVENTORY_SEASON_FILE_ENV[INVENTORY_CONTENT_TENANT_ID];
+
+  it('names one env var per tenant', () => {
+    expect(ADSERVER_VAR).toBe('TRAINING_AGENT_INVENTORY_ADSERVER_SEASON_FILE');
+    expect(CONTENT_VAR).toBe('TRAINING_AGENT_INVENTORY_CONTENT_SEASON_FILE');
+  });
+
+  it('uses the shipped seasons, by identity, when nothing is set', () => {
+    for (const env of [{}, { [ADSERVER_VAR]: '', [CONTENT_VAR]: '   ' }]) {
+      const profiles = resolveInventoryTenantProfiles(env);
+      expect(profiles[INVENTORY_ADSERVER_TENANT_ID].seed).toBe(ADSERVER_SEASON);
+      expect(profiles[INVENTORY_CONTENT_TENANT_ID].seed).toBe(CONTENT_SEASON);
+    }
+  });
+
+  it('serves a tenant from its season file and leaves the other shipped', () => {
+    const profiles = resolveInventoryTenantProfiles({ [ADSERVER_VAR]: FIXTURE });
+    expect(profiles[INVENTORY_ADSERVER_TENANT_ID].seed).toEqual(readSeasonFile(FIXTURE));
+    expect(profiles[INVENTORY_ADSERVER_TENANT_ID].seed.seed_id).toBe('small-season');
+    expect(profiles[INVENTORY_CONTENT_TENANT_ID].seed).toBe(CONTENT_SEASON);
+  });
+
+  it('names the env var and the path when the file is missing', () => {
+    const missing = path.join(dir, 'nope.yaml');
+    expect(() => resolveInventoryTenantProfiles({ [CONTENT_VAR]: missing })).toThrow(
+      new RegExp(`${CONTENT_VAR}.*${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+    );
+  });
+
+  it('names the env var and the path when the file is invalid', () => {
+    const bad = write('bad-tenant-season.yaml', 'seed_id: x\n');
+    expect(() => resolveInventoryTenantProfiles({ [ADSERVER_VAR]: bad })).toThrow(
+      new RegExp(`${ADSERVER_VAR}.*${bad.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+    );
   });
 });
