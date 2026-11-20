@@ -224,7 +224,9 @@ export function syncCreatives(doc: MarketDocument, accountId: string, req: Json,
     }
 
     if (req.delete_missing === true && creatives.length > 0) {
-      const kept = new Set(parsed.flatMap(({ result }) => ('creative' in result ? [result.creative.creative_id] : [])));
+      // Every creative the request named stays, including one that failed
+      // lenient validation: its library version is left as it was.
+      const kept = new Set(creatives.flatMap(input => (isObject(input) && typeof input.creative_id === 'string' ? [input.creative_id] : [])));
       for (const creative of libraryOf(doc).filter(candidate => candidate.account_id === accountId && !kept.has(candidate.creative_id))) {
         for (const { pkg } of accountPackages(doc, accountId).values()) unassign(pkg, creative.creative_id);
         rows.set(creative.creative_id, { creative_id: creative.creative_id, action: 'deleted' });

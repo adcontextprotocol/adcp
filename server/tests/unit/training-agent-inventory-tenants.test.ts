@@ -479,6 +479,16 @@ describe('inventory tenants', () => {
       const lenient = await sync({ validation_mode: 'lenient', creatives: [banner('banner_d'), banner('podcast_ad', 'audio_spot')] });
       expectCanonical('sync_creatives', lenient);
       expect(lenient.creatives.map((row: Structured) => [row.creative_id, row.action])).toEqual([['banner_d', 'created'], ['podcast_ad', 'failed']]);
+
+      // delete_missing keeps a resent creative that fails lenient validation.
+      await sync({ creatives: [banner('banner_keep')] });
+      const resent = await sync({
+        validation_mode: 'lenient', delete_missing: true, dry_run: true,
+        creatives: [banner('banner_d'), { ...banner('banner_keep'), format_id: formatId('audio_spot') }],
+      });
+      const actions = Object.fromEntries(resent.creatives.map((row: Structured) => [row.creative_id, row.action]));
+      expect(actions.banner_keep).toBe('failed');
+      expect(actions.banner_a).toBe('deleted');
     });
 
     it('takes inline creatives and replacement assignments on create_media_buy and update_media_buy', async () => {
