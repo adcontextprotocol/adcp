@@ -15,6 +15,7 @@ on:
       - '.schema-deltas/**'
       - 'scripts/schema-equivalence/**'
       - 'tests/schema-equivalence.test.cjs'
+      - 'tests/schema-equivalence-catalog.test.cjs'
       - '.github/workflows/schema-equivalence.yml'
 
 concurrency:
@@ -46,8 +47,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Fixture tests
-        run: node --test tests/schema-equivalence.test.cjs
+      - name: Fixture and construct catalog tests
+        run: node --test tests/schema-equivalence.test.cjs tests/schema-equivalence-catalog.test.cjs
 
       - name: Check the PR
         run: |

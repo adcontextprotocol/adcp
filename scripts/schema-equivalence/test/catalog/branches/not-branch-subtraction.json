@@ -1,0 +1,3250 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "branches/not-branch-subtraction/anyof-const-branches/top",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/anyof-const-branches/allOf",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "not": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "image"
+                      },
+                      "width": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/anyof-const-branches/not",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "video"
+                      },
+                      "duration": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "image"
+                      },
+                      "width": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "audio"
+                      },
+                      "bitrate": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                ]
+              },
+              {
+                "not": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "audio"
+                  },
+                  "bitrate": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/anyof-const-branches/ref",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/anyof-const-branches/cycle",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "video"
+                            },
+                            "duration": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "image"
+                            },
+                            "width": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "audio"
+                            },
+                            "bitrate": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "image"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/anyof-const-branches/discriminator",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "video"
+                            },
+                            "duration": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "image"
+                            },
+                            "width": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "audio"
+                            },
+                            "bitrate": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "image"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/oneof-const-branches/top",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/oneof-const-branches/allOf",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "not": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "image"
+                      },
+                      "width": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/oneof-const-branches/not",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "video"
+                      },
+                      "duration": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "image"
+                      },
+                      "width": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "audio"
+                      },
+                      "bitrate": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                ]
+              },
+              {
+                "not": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "audio"
+                  },
+                  "bitrate": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/oneof-const-branches/ref",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/oneof-const-branches/cycle",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "video"
+                            },
+                            "duration": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "image"
+                            },
+                            "width": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "audio"
+                            },
+                            "bitrate": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "image"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/oneof-const-branches/discriminator",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "video"
+                            },
+                            "duration": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "image"
+                            },
+                            "width": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "audio"
+                            },
+                            "bitrate": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "image"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/type-branches/top",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "null"
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/type-branches/allOf",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "not": {
+                    "type": "null"
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/type-branches/not",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "not": {
+                  "type": "null"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/type-branches/ref",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "null"
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/type-branches/cycle",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/type-branches/discriminator",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/overlapping-branch/top",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "minLength": 3
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "string",
+                "minLength": 3
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000\u0000",
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "branches/not-branch-subtraction/overlapping-branch/not",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 3
+                  }
+                ]
+              },
+              {
+                "not": {
+                  "type": "string",
+                  "minLength": 3
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000\u0000",
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/top",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "not": {
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/allOf",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "not": {
+                    "properties": {
+                      "kind": {
+                        "const": "image"
+                      },
+                      "width": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/not",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "video"
+                      },
+                      "duration": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "image"
+                      },
+                      "width": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "audio"
+                      },
+                      "bitrate": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                ]
+              },
+              {
+                "not": {
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "audio"
+                  },
+                  "bitrate": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/ref",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "not": {
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/cycle",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "video"
+                            },
+                            "duration": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "image"
+                            },
+                            "width": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "audio"
+                            },
+                            "bitrate": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "properties": {
+                          "kind": {
+                            "const": "image"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-wider-than-branch/discriminator",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "video"
+                            },
+                            "duration": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "image"
+                            },
+                            "width": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "audio"
+                            },
+                            "bitrate": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "not": {
+                        "properties": {
+                          "kind": {
+                            "const": "image"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "audio"
+                        },
+                        "bitrate": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-narrower-than-branch/top",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "audio"
+                    },
+                    "bitrate": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "not": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "kind": "image",
+            "width": 0,
+            "duration": [
+              "a0",
+              "a1",
+              "a2"
+            ],
+            "bitrate": [
+              null
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "branches/not-branch-subtraction/not-operand-narrower-than-branch/not",
+      "rule": "not-branch-subtraction: allOf [U, not B] with B a branch of U and the rest disjoint from B is U without B",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "video"
+                      },
+                      "duration": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "image"
+                      },
+                      "width": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "audio"
+                      },
+                      "bitrate": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                ]
+              },
+              {
+                "not": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "audio"
+                  },
+                  "bitrate": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "kind": "image",
+            "width": 0,
+            "duration": [
+              true,
+              false
+            ],
+            "bitrate": [
+              null
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

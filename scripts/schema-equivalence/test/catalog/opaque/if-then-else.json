@@ -1,0 +1,193 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "opaque/if-then-else/if-then-as-anyof/top",
+      "rule": "if-then-else is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "not": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "opaque/if-then-else/negated-if-swaps-branches/top",
+      "rule": "if-then-else is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          },
+          "else": {
+            "type": "integer"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "not": {
+              "type": "string"
+            }
+          },
+          "then": {
+            "type": "integer"
+          },
+          "else": {
+            "minLength": 1
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "opaque/if-then-else/then-implied/top",
+      "rule": "if-then-else is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "if": {
+            "const": "a"
+          },
+          "then": {
+            "minLength": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "opaque/if-then-else/if-narrowed-without-effect/top",
+      "rule": "if-then-else is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string",
+            "maxLength": 5
+          },
+          "then": {
+            "minLength": 1
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "opaque/if-then-else/then-tightened/top",
+      "rule": "if-then-else is compared exactly; a real change must be reported",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1,
+            "maxLength": 9
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+          "base": true,
+          "head": false
+        }
+      ]
+    }
+  ]
+}

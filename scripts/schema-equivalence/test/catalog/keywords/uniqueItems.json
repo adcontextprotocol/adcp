@@ -1,0 +1,213 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "keywords/uniqueItems/unique-items-added/top",
+      "rule": "minimal uniqueItems change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: true removes exactly the arrays with two equal elements.",
+      "witnesses": [
+        {
+          "payload": [
+            "a",
+            "a"
+          ],
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/uniqueItems/unique-items-added/ref",
+      "rule": "minimal uniqueItems change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: true removes exactly the arrays with two equal elements.",
+      "witnesses": [
+        {
+          "payload": {
+            "v": [
+              "a",
+              "a"
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/uniqueItems/unique-items-removed/top",
+      "rule": "minimal uniqueItems change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: true removes exactly the arrays with two equal elements.",
+      "witnesses": [
+        {
+          "payload": [
+            "a",
+            "a"
+          ],
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/uniqueItems/unique-items-removed/ref",
+      "rule": "minimal uniqueItems change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: true removes exactly the arrays with two equal elements.",
+      "witnesses": [
+        {
+          "payload": {
+            "v": [
+              "a",
+              "a"
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

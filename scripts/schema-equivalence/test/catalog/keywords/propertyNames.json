@@ -1,0 +1,215 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "keywords/propertyNames/property-names-added/top",
+      "rule": "minimal propertyNames change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z_]+$"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "": []
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/propertyNames/property-names-added/ref",
+      "rule": "minimal propertyNames change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z_]+$"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "": [
+                [
+                  "a0",
+                  "a1"
+                ],
+                [
+                  "a2",
+                  "a3"
+                ],
+                [
+                  "a4",
+                  "a5",
+                  "a6"
+                ]
+              ]
+            }
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/propertyNames/property-names-widened/top",
+      "rule": "minimal propertyNames change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z_]+$"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z_0-9]+$"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "0": [
+              "a0",
+              "a1"
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/propertyNames/property-names-widened/ref",
+      "rule": "minimal propertyNames change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z_]+$"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z_0-9]+$"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "0": [
+                true,
+                false
+              ]
+            }
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

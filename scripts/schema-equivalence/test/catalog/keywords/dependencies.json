@@ -1,0 +1,393 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "keywords/dependencies/dependency-added/top",
+      "rule": "minimal dependencies change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "b": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "b": {
+              "type": "string"
+            }
+          },
+          "dependencies": {
+            "a": [
+              "b"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "a": "a0"
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/dependencies/dependency-added/ref",
+      "rule": "minimal dependencies change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "b": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "b": {
+              "type": "string"
+            }
+          },
+          "dependencies": {
+            "a": [
+              "b"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "a": "a0"
+            }
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/dependencies/dependency-member-removed/top",
+      "rule": "minimal dependencies change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "dependencies": {
+            "a": [
+              "b",
+              "c"
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "dependencies": {
+            "a": [
+              "b"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "b": [
+              null
+            ],
+            "a": [
+              null
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/dependencies/dependency-member-removed/ref",
+      "rule": "minimal dependencies change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "dependencies": {
+            "a": [
+              "b",
+              "c"
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "dependencies": {
+            "a": [
+              "b"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "b": [],
+              "a": []
+            }
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/dependencies/schema-dependency-narrowed/top",
+      "rule": "minimal dependencies change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "dependencies": {
+            "a": {
+              "required": [
+                "b"
+              ]
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "dependencies": {
+            "a": {
+              "required": [
+                "b"
+              ],
+              "properties": {
+                "b": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "b": [
+              {
+                "f_8iud": [
+                  true
+                ],
+                "f_wkii": {
+                  "f_zzrp": [],
+                  "f_rrms": {}
+                }
+              }
+            ],
+            "a": [
+              "a0",
+              "a1"
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/dependencies/schema-dependency-narrowed/ref",
+      "rule": "minimal dependencies change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "dependencies": {
+            "a": {
+              "required": [
+                "b"
+              ]
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "dependencies": {
+            "a": {
+              "required": [
+                "b"
+              ],
+              "properties": {
+                "b": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "b": [
+                0,
+                0.1
+              ],
+              "a": [
+                0,
+                0.1,
+                0.2
+              ]
+            }
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    }
+  ]
+}

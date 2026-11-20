@@ -1,0 +1,681 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "keywords/discriminator/discriminator-removed/top",
+      "rule": "minimal discriminator change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [],
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/discriminator/discriminator-removed/ref",
+      "rule": "minimal discriminator change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": [
+              "a0",
+              "a1",
+              "a2"
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/discriminator/discriminator-branch-narrowed/top",
+      "rule": "minimal discriminator change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "kind": "video",
+            "duration": -1
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/discriminator/discriminator-branch-narrowed/ref",
+      "rule": "minimal discriminator change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "kind": "video",
+              "duration": -1
+            }
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/discriminator/discriminator-branch-added/top",
+      "rule": "minimal discriminator change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "kind": "audio"
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/discriminator/discriminator-branch-added/ref",
+      "rule": "minimal discriminator change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "audio"
+                },
+                "bitrate": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "kind": "audio"
+            }
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

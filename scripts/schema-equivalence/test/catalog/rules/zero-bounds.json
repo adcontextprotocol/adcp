@@ -1,0 +1,1651 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "rules/zero-bounds/required-empty/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": []
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/required-empty/allOf",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "required": []
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object"
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/required-empty/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "required": []
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/required-empty/ref",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "required": []
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/required-empty/cycle",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "required": []
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object"
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/required-empty/discriminator",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "required": []
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minlength-zero/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "minLength": 0
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minlength-zero/allOf",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "minLength": 0
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minlength-zero/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "minLength": 0
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minlength-zero/ref",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "minLength": 0
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minlength-zero/cycle",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "minLength": 0
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string"
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minlength-zero/discriminator",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "minLength": 0
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minitems-zero/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "minItems": 0
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minitems-zero/allOf",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "array",
+              "minItems": 0
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "array"
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minitems-zero/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array",
+            "minItems": 0
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minitems-zero/ref",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "minItems": 0
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minitems-zero/cycle",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "array",
+                  "minItems": 0
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "array"
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minitems-zero/discriminator",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "array",
+                  "minItems": 0
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-zero/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "minProperties": 0
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-zero/allOf",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "minProperties": 0
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object"
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-zero/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "minProperties": 0
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-zero/ref",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "minProperties": 0
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-zero/cycle",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "minProperties": 0
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object"
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-zero/discriminator",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "minProperties": 0
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-false/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "uniqueItems": false
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-false/allOf",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "array",
+              "uniqueItems": false
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "array"
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-false/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array",
+            "uniqueItems": false
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-false/ref",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "uniqueItems": false
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-false/cycle",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "array",
+                  "uniqueItems": false
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "array"
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-false/discriminator",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "array",
+                  "uniqueItems": false
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: false asserts nothing (draft-07 section 6.4.3: \"If it has boolean value true, the instance validates successfully if all of its elements are unique\"; false omits the check, and Ajv generates no code for it)."
+    },
+    {
+      "id": "rules/zero-bounds/minlength-one/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "",
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/zero-bounds/minlength-one/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "",
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/zero-bounds/minitems-one/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "minItems": 1
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [],
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/zero-bounds/minitems-one/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [],
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-one/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "minProperties": 1
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {},
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/zero-bounds/minproperties-one/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {},
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-true/top",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: true only removes arrays with equal elements, so the base is inside the head; [1, 1] is in the head only.",
+      "witnesses": [
+        {
+          "payload": [
+            1,
+            1
+          ],
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/zero-bounds/uniqueitems-true/not",
+      "rule": "required: [], minLength: 0, minItems: 0, minProperties: 0 and uniqueItems: false are absent",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array",
+            "uniqueItems": true
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: true only removes arrays with equal elements, so the base is inside the head; [1, 1] is in the head only.",
+      "witnesses": [
+        {
+          "payload": [
+            1,
+            1
+          ],
+          "base": true,
+          "head": false
+        }
+      ]
+    }
+  ]
+}

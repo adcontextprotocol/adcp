@@ -1,0 +1,277 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "keywords/maxItems/max-items-lowered/top",
+      "rule": "minimal maxItems change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "maxItems": 3
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "maxItems": 2
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [
+            [
+              []
+            ],
+            [
+              []
+            ],
+            [
+              []
+            ]
+          ],
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/maxItems/max-items-lowered/ref",
+      "rule": "minimal maxItems change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "maxItems": 3
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "maxItems": 2
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": [
+              [
+                "a0",
+                "a1",
+                "a2"
+              ],
+              [
+                "a0",
+                "a1",
+                "a2"
+              ],
+              [
+                "a0",
+                "a1",
+                "a2"
+              ]
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/maxItems/max-items-raised/top",
+      "rule": "minimal maxItems change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "maxItems": 2
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "maxItems": 3
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [
+            [],
+            [],
+            []
+          ],
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/maxItems/max-items-raised/ref",
+      "rule": "minimal maxItems change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "maxItems": 2
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "array",
+          "maxItems": 3
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": [
+              [
+                {
+                  "f_jzwe": [
+                    0,
+                    0.1
+                  ],
+                  "f_d1fu": {
+                    "f_lzzs": []
+                  }
+                },
+                {
+                  "f_vcua": "a0",
+                  "f_hnqs": 0,
+                  "f_2lxn": null
+                },
+                {
+                  "f_b9qb": true,
+                  "f_kcoa": [
+                    true,
+                    false
+                  ]
+                }
+              ],
+              [
+                {
+                  "f_jzwe": [
+                    0,
+                    0.1
+                  ],
+                  "f_d1fu": {
+                    "f_lzzs": []
+                  }
+                },
+                {
+                  "f_vcua": "a0",
+                  "f_hnqs": 0,
+                  "f_2lxn": null
+                },
+                {
+                  "f_b9qb": true,
+                  "f_kcoa": [
+                    true,
+                    false
+                  ]
+                }
+              ],
+              [
+                {
+                  "f_jzwe": [
+                    0,
+                    0.1
+                  ],
+                  "f_d1fu": {
+                    "f_lzzs": []
+                  }
+                },
+                {
+                  "f_vcua": "a0",
+                  "f_hnqs": 0,
+                  "f_2lxn": null
+                },
+                {
+                  "f_b9qb": true,
+                  "f_kcoa": [
+                    true,
+                    false
+                  ]
+                }
+              ]
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

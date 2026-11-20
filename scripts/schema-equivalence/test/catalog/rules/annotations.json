@@ -1,0 +1,1041 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "rules/annotations/annotations-dropped/top",
+      "rule": "annotation keywords are dropped",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 5,
+          "title": "Name",
+          "description": "A name.",
+          "examples": [
+            "abc"
+          ],
+          "$comment": "c",
+          "deprecated": true,
+          "readOnly": true,
+          "writeOnly": true
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/annotations-dropped/allOf",
+      "rule": "annotation keywords are dropped",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5,
+              "title": "Name",
+              "description": "A name.",
+              "examples": [
+                "abc"
+              ],
+              "$comment": "c",
+              "deprecated": true,
+              "readOnly": true,
+              "writeOnly": true
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/annotations-dropped/not",
+      "rule": "annotation keywords are dropped",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 5
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 5,
+            "title": "Name",
+            "description": "A name.",
+            "examples": [
+              "abc"
+            ],
+            "$comment": "c",
+            "deprecated": true,
+            "readOnly": true,
+            "writeOnly": true
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/annotations-dropped/ref",
+      "rule": "annotation keywords are dropped",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 5,
+          "title": "Name",
+          "description": "A name.",
+          "examples": [
+            "abc"
+          ],
+          "$comment": "c",
+          "deprecated": true,
+          "readOnly": true,
+          "writeOnly": true
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/annotations-dropped/cycle",
+      "rule": "annotation keywords are dropped",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 5,
+                  "title": "Name",
+                  "description": "A name.",
+                  "examples": [
+                    "abc"
+                  ],
+                  "$comment": "c",
+                  "deprecated": true,
+                  "readOnly": true,
+                  "writeOnly": true
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/annotations-dropped/discriminator",
+      "rule": "annotation keywords are dropped",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 5,
+                  "title": "Name",
+                  "description": "A name.",
+                  "examples": [
+                    "abc"
+                  ],
+                  "$comment": "c",
+                  "deprecated": true,
+                  "readOnly": true,
+                  "writeOnly": true
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/informational-keywords/top",
+      "rule": "annotation keywords are dropped",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 5,
+          "default": "abc",
+          "x-status": "stable",
+          "enumDescriptions": {
+            "abc": "x"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/informational-keywords/allOf",
+      "rule": "annotation keywords are dropped",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5,
+              "default": "abc",
+              "x-status": "stable",
+              "enumDescriptions": {
+                "abc": "x"
+              }
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/informational-keywords/not",
+      "rule": "annotation keywords are dropped",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 5
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 5,
+            "default": "abc",
+            "x-status": "stable",
+            "enumDescriptions": {
+              "abc": "x"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/informational-keywords/ref",
+      "rule": "annotation keywords are dropped",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 5,
+          "default": "abc",
+          "x-status": "stable",
+          "enumDescriptions": {
+            "abc": "x"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/informational-keywords/cycle",
+      "rule": "annotation keywords are dropped",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 5,
+                  "default": "abc",
+                  "x-status": "stable",
+                  "enumDescriptions": {
+                    "abc": "x"
+                  }
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/informational-keywords/discriminator",
+      "rule": "annotation keywords are dropped",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 5,
+                  "default": "abc",
+                  "x-status": "stable",
+                  "enumDescriptions": {
+                    "abc": "x"
+                  }
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/unused-definitions/top",
+      "rule": "annotation keywords are dropped",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 5,
+          "definitions": {
+            "unused": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/unused-definitions/allOf",
+      "rule": "annotation keywords are dropped",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5
+            },
+            {
+              "maxProperties": 64
+            }
+          ],
+          "definitions": {
+            "unused": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/unused-definitions/not",
+      "rule": "annotation keywords are dropped",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 5
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 5
+          },
+          "definitions": {
+            "unused": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/unused-definitions/ref",
+      "rule": "annotation keywords are dropped",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 5,
+          "definitions": {
+            "unused": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/unused-definitions/cycle",
+      "rule": "annotation keywords are dropped",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            },
+            "unused": {
+              "type": "number"
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/unused-definitions/discriminator",
+      "rule": "annotation keywords are dropped",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ],
+          "definitions": {
+            "unused": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/annotations/referenced-definition-changed/top",
+      "rule": "annotation keywords are dropped",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "$ref": "#/definitions/name",
+          "definitions": {
+            "name": {
+              "type": "string",
+              "maxLength": 5
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "$ref": "#/definitions/name",
+          "definitions": {
+            "name": {
+              "type": "string",
+              "maxLength": 4
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000\u0000\u0000\u0000",
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/annotations/referenced-definition-changed/not",
+      "rule": "annotation keywords are dropped",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "$ref": "#/definitions/name"
+          },
+          "definitions": {
+            "name": {
+              "type": "string",
+              "maxLength": 5
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "$ref": "#/definitions/name"
+          },
+          "definitions": {
+            "name": {
+              "type": "string",
+              "maxLength": 4
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000\u0000\u0000\u0000",
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

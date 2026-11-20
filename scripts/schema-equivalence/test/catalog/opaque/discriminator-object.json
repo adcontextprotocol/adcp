@@ -1,0 +1,204 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "opaque/discriminator-object/extra-member-in-discriminator/top",
+      "rule": "discriminator-object is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "discriminator": {
+            "propertyName": "kind",
+            "x-note": "n"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "opaque/discriminator-object/propertyname-changed/top",
+      "rule": "discriminator-object is compared exactly; a real change must be reported",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "discriminator": {
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                },
+                "type": {
+                  "const": "v"
+                }
+              },
+              "required": [
+                "kind",
+                "type"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "type": {
+                  "const": "i"
+                }
+              },
+              "required": [
+                "kind",
+                "type"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "kind": "video",
+            "type": [
+              "a0",
+              "a1",
+              "a2"
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    }
+  ]
+}

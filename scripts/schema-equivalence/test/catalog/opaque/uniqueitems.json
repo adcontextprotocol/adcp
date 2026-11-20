@@ -1,0 +1,80 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "opaque/uniqueitems/unique-single-value/top",
+      "rule": "uniqueitems is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "const": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "const": 1
+          },
+          "maxItems": 1
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "Every item is 1, so the items are unique exactly when there is at most one."
+    },
+    {
+      "id": "opaque/uniqueitems/unique-items-added/top",
+      "rule": "uniqueitems is compared exactly; a real change must be reported",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "uniqueItems": true
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "uniqueItems: true removes exactly the arrays with two equal elements.",
+      "witnesses": [
+        {
+          "payload": [
+            1,
+            1
+          ],
+          "base": true,
+          "head": false
+        }
+      ]
+    }
+  ]
+}

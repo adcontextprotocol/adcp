@@ -1,0 +1,4192 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const/allOf",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const/ref",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const/cycle",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const/discriminator",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-type/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-type/allOf",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-type/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-type/ref",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-type/cycle",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-type/discriminator",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const-under-parent-type/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "anyOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const-under-parent-type/allOf",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "oneOf": [
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "anyOf": [
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "video"
+                    },
+                    "duration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    },
+                    "width": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const-under-parent-type/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const-under-parent-type/ref",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "anyOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const-under-parent-type/cycle",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-const-under-parent-type/discriminator",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "video"
+                        },
+                        "duration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "image"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-values/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "enum": [
+                "a",
+                "b"
+              ],
+              "minLength": 1
+            },
+            {
+              "const": "c",
+              "maxLength": 3
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "enum": [
+                "a",
+                "b"
+              ],
+              "minLength": 1
+            },
+            {
+              "const": "c",
+              "maxLength": 3
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-values/allOf",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "enum": [
+                    "a",
+                    "b"
+                  ],
+                  "minLength": 1
+                },
+                {
+                  "const": "c",
+                  "maxLength": 3
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "a",
+                    "b"
+                  ],
+                  "minLength": 1
+                },
+                {
+                  "const": "c",
+                  "maxLength": 3
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-values/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "enum": [
+                  "a",
+                  "b"
+                ],
+                "minLength": 1
+              },
+              {
+                "const": "c",
+                "maxLength": 3
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "b"
+                ],
+                "minLength": 1
+              },
+              {
+                "const": "c",
+                "maxLength": 3
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-values/ref",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "oneOf": [
+            {
+              "enum": [
+                "a",
+                "b"
+              ],
+              "minLength": 1
+            },
+            {
+              "const": "c",
+              "maxLength": 3
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "anyOf": [
+            {
+              "enum": [
+                "a",
+                "b"
+              ],
+              "minLength": 1
+            },
+            {
+              "const": "c",
+              "maxLength": 3
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-values/cycle",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "a",
+                        "b"
+                      ],
+                      "minLength": 1
+                    },
+                    {
+                      "const": "c",
+                      "maxLength": 3
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "a",
+                        "b"
+                      ],
+                      "minLength": 1
+                    },
+                    {
+                      "const": "c",
+                      "maxLength": 3
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-values/discriminator",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "a",
+                        "b"
+                      ],
+                      "minLength": 1
+                    },
+                    {
+                      "const": "c",
+                      "maxLength": 3
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "a",
+                        "b"
+                      ],
+                      "minLength": 1
+                    },
+                    {
+                      "const": "c",
+                      "maxLength": 3
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-required-by-parent/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "a"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "anyOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "a"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-required-by-parent/allOf",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "oneOf": [
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "a"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "b"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "anyOf": [
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "a"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "kind": {
+                      "const": "b"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-required-by-parent/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "a"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "b"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "a"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "b"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-required-by-parent/ref",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "a"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "anyOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "a"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-required-by-parent/cycle",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "required": [
+                    "kind"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "a"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "b"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "required": [
+                    "kind"
+                  ],
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "a"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "b"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-required-by-parent/discriminator",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "required": [
+                    "kind"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "a"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "b"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "required": [
+                    "kind"
+                  ],
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "a"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "b"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-required-and-not-required/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "oneOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ],
+              "not": {
+                "required": [
+                  "a"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ],
+              "not": {
+                "required": [
+                  "a"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-required-and-not-required/allOf",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "oneOf": [
+                {
+                  "required": [
+                    "a"
+                  ],
+                  "not": {
+                    "required": [
+                      "b"
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "b"
+                  ],
+                  "not": {
+                    "required": [
+                      "a"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "anyOf": [
+                {
+                  "required": [
+                    "a"
+                  ],
+                  "not": {
+                    "required": [
+                      "b"
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "b"
+                  ],
+                  "not": {
+                    "required": [
+                      "a"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-required-and-not-required/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "oneOf": [
+              {
+                "required": [
+                  "a"
+                ],
+                "not": {
+                  "required": [
+                    "b"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "b"
+                ],
+                "not": {
+                  "required": [
+                    "a"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "anyOf": [
+              {
+                "required": [
+                  "a"
+                ],
+                "not": {
+                  "required": [
+                    "b"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "b"
+                ],
+                "not": {
+                  "required": [
+                    "a"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-required-and-not-required/ref",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "oneOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ],
+              "not": {
+                "required": [
+                  "a"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ],
+              "not": {
+                "required": [
+                  "a"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-required-and-not-required/cycle",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "oneOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ],
+                      "not": {
+                        "required": [
+                          "a"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "anyOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ],
+                      "not": {
+                        "required": [
+                          "a"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-required-and-not-required/discriminator",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "oneOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ],
+                      "not": {
+                        "required": [
+                          "a"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "anyOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ],
+                      "not": {
+                        "required": [
+                          "a"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-one-sided-not-required/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "oneOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-one-sided-not-required/allOf",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "oneOf": [
+                {
+                  "required": [
+                    "a"
+                  ],
+                  "not": {
+                    "required": [
+                      "b"
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "b"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "anyOf": [
+                {
+                  "required": [
+                    "a"
+                  ],
+                  "not": {
+                    "required": [
+                      "b"
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "b"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-one-sided-not-required/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "oneOf": [
+              {
+                "required": [
+                  "a"
+                ],
+                "not": {
+                  "required": [
+                    "b"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "b"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "anyOf": [
+              {
+                "required": [
+                  "a"
+                ],
+                "not": {
+                  "required": [
+                    "b"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "b"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-one-sided-not-required/ref",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "oneOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-one-sided-not-required/cycle",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "oneOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "anyOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/separated-by-one-sided-not-required/discriminator",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "oneOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "anyOf": [
+                    {
+                      "required": [
+                        "a"
+                      ],
+                      "not": {
+                        "required": [
+                          "b"
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "branches/oneof-to-anyof/overlapping-branches/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "minLength": 2
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "minLength": 2
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000",
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/overlapping-branches/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string",
+                "minLength": 2
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string",
+                "minLength": 2
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000",
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/branches-not-objects/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "video"
+                },
+                "duration": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "image"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [
+            "a0"
+          ],
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/branches-not-objects/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "video"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "image"
+                  },
+                  "width": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [
+            "a0",
+            "a1"
+          ],
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-not-required/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "k": {
+                  "const": "a"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "k": {
+                  "const": "b"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "k": {
+                  "const": "a"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "k": {
+                  "const": "b"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {},
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/tag-not-required/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "k": {
+                    "const": "a"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "k": {
+                    "const": "b"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "k": {
+                    "const": "a"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "k": {
+                    "const": "b"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {},
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/not-separated/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "a"
+              ]
+            },
+            {
+              "type": "object",
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "a"
+              ]
+            },
+            {
+              "type": "object",
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "a": [
+              [
+                "a0",
+                "a1"
+              ],
+              [
+                true
+              ],
+              []
+            ],
+            "b": [
+              [
+                "a0",
+                "a1"
+              ],
+              [
+                true
+              ],
+              []
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/not-separated/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "a"
+                ]
+              },
+              {
+                "type": "object",
+                "required": [
+                  "b"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "a"
+                ]
+              },
+              {
+                "type": "object",
+                "required": [
+                  "b"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "b": [],
+            "a": []
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/not-required-on-other-property/top",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "oneOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "c"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "a"
+              ],
+              "not": {
+                "required": [
+                  "c"
+                ]
+              }
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "a": [
+              0
+            ],
+            "b": [
+              0
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "branches/oneof-to-anyof/not-required-on-other-property/not",
+      "rule": "oneOf-to-anyOf: a oneOf over pairwise-disjoint branches is an anyOf",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "oneOf": [
+              {
+                "required": [
+                  "a"
+                ],
+                "not": {
+                  "required": [
+                    "c"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "b"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "anyOf": [
+              {
+                "required": [
+                  "a"
+                ],
+                "not": {
+                  "required": [
+                    "c"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "b"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "b": [
+              "a0",
+              "a1",
+              "a2"
+            ],
+            "a": [
+              "a0",
+              "a1",
+              "a2"
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    }
+  ]
+}

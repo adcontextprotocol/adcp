@@ -1,0 +1,127 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "opaque/format/format-uuid-implies-max-length/top",
+      "rule": "format is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "uuid",
+          "maxLength": 45
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "ajv-formats 3.0.1 uuid is /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, at most 9 + 36 = 45 characters, so maxLength 45 removes nothing."
+    },
+    {
+      "id": "opaque/format/format-date-implies-length/top",
+      "rule": "format is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "date",
+          "minLength": 10,
+          "maxLength": 10
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "ajv-formats 3.0.1 full date matches /^(\\d\\d\\d\\d)-(\\d\\d)-(\\d\\d)$/ first, so every date is exactly 10 characters."
+    },
+    {
+      "id": "opaque/format/format-on-non-string/top",
+      "rule": "format is compared exactly; this equivalent rewrite may be reported (false alarm)",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "integer",
+          "format": "email"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "integer"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "ajv-formats email is a string format; Ajv applies it to strings only, so it asserts nothing on an integer."
+    },
+    {
+      "id": "opaque/format/format-changed/top",
+      "rule": "format is compared exactly; a real change must be reported",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "A date is never a date-time and the reverse.",
+      "witnesses": [
+        {
+          "payload": "2024-01-01",
+          "base": true,
+          "head": false
+        },
+        {
+          "payload": "2024-01-01T00:00:00Z",
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

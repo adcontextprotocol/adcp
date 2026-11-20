@@ -330,5 +330,12 @@ no such payload exists.
 
 `tests/schema-equivalence.test.cjs` runs the CLI on each fixture pair in
 `test/fixtures/`. Each pair differs for exactly one reason, which its
-`expect.json` states in `why`. Run the tests with
-`npm run test:schema-equivalence`.
+`expect.json` states in `why`.
+
+`tests/schema-equivalence-catalog.test.cjs` runs the CLI on every pair of the
+construct catalog in `test/catalog/`, whose verdicts were decided without the
+tool. A pair that is not equivalent must get a difference; an equivalent pair
+must get none unless `test/catalog/false-alarms.json` lists it. See
+`test/catalog/README.md`.
+
+Run both with `npm run test:schema-equivalence`.

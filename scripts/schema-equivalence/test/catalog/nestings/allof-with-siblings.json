@@ -1,0 +1,167 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "nestings/allof-with-siblings/sibling-moved-into-allof/top",
+      "rule": "changes inside allof-with-siblings",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": [
+            "a"
+          ],
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object"
+            },
+            {
+              "required": [
+                "a"
+              ]
+            },
+            {
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "nestings/allof-with-siblings/member-narrowed/top",
+      "rule": "changes inside allof-with-siblings",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": [
+            "a"
+          ],
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": [
+            "a"
+          ],
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "a": ""
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "nestings/allof-with-siblings/sibling-removed/top",
+      "rule": "changes inside allof-with-siblings",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": [
+            "a"
+          ],
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {},
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

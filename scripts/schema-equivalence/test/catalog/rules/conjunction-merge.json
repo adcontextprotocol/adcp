@@ -1,0 +1,2816 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "rules/conjunction-merge/disjoint-keywords/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "maxLength": 5
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/disjoint-keywords/allOf",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "maxLength": 5
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/disjoint-keywords/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "string"
+              },
+              {
+                "maxLength": 5
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 5
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/disjoint-keywords/ref",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "maxLength": 5
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 5
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/disjoint-keywords/cycle",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "maxLength": 5
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/disjoint-keywords/discriminator",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "maxLength": 5
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 5
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/required-union/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "required": [
+                "a"
+              ]
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "required": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/required-union/allOf",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "a"
+                  ]
+                },
+                {
+                  "required": [
+                    "b"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "required": [
+                "a",
+                "b"
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/required-union/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "object",
+                "required": [
+                  "a"
+                ]
+              },
+              {
+                "required": [
+                  "b"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "required": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/required-union/ref",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "type": "object",
+              "required": [
+                "a"
+              ]
+            },
+            {
+              "required": [
+                "b"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "required": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/required-union/cycle",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "a"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "required": [
+                    "a",
+                    "b"
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/required-union/discriminator",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "a"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "b"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "required": [
+                    "a",
+                    "b"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/same-property-conjoined/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "properties": {
+                "a": {
+                  "maxLength": 3
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "properties": {
+            "a": {
+              "type": "string",
+              "maxLength": 3
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/same-property-conjoined/allOf",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "a": {
+                      "maxLength": 3
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string",
+                  "maxLength": 3
+                }
+              }
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/same-property-conjoined/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "a": {
+                    "maxLength": 3
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "properties": {
+              "a": {
+                "type": "string",
+                "maxLength": 3
+              }
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/same-property-conjoined/ref",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "properties": {
+                "a": {
+                  "maxLength": 3
+                }
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "properties": {
+            "a": {
+              "type": "string",
+              "maxLength": 3
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/same-property-conjoined/cycle",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "properties": {
+                        "a": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "a": {
+                          "maxLength": 3
+                        }
+                      }
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "properties": {
+                    "a": {
+                      "type": "string",
+                      "maxLength": 3
+                    }
+                  }
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/same-property-conjoined/discriminator",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "properties": {
+                        "a": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "a": {
+                          "maxLength": 3
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "properties": {
+                    "a": {
+                      "type": "string",
+                      "maxLength": 3
+                    }
+                  }
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/tighter-bound-kept/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5
+            },
+            {
+              "maxLength": 3
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "maxLength": 3
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/tighter-bound-kept/allOf",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "type": "string",
+                  "maxLength": 5
+                },
+                {
+                  "maxLength": 3
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 3
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/tighter-bound-kept/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "string",
+                "maxLength": 5
+              },
+              {
+                "maxLength": 3
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "maxLength": 3
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/tighter-bound-kept/ref",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "type": "string",
+              "maxLength": 5
+            },
+            {
+              "maxLength": 3
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 3
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/tighter-bound-kept/cycle",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 5
+                    },
+                    {
+                      "maxLength": 3
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "string",
+                  "maxLength": 3
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/tighter-bound-kept/discriminator",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 5
+                    },
+                    {
+                      "maxLength": 3
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "string",
+                  "maxLength": 3
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/type-intersection/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "integer"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/type-intersection/allOf",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "allOf": [
+                {
+                  "type": [
+                    "integer",
+                    "string"
+                  ]
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/type-intersection/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "integer"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/type-intersection/ref",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "allOf": [
+            {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "integer"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/type-intersection/cycle",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "allOf": [
+                    {
+                      "type": [
+                        "integer",
+                        "string"
+                      ]
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/type-intersection/discriminator",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "allOf": [
+                    {
+                      "type": [
+                        "integer",
+                        "string"
+                      ]
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/ref-target-and-siblings/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "$ref": "#/definitions/o",
+          "required": [
+            "b"
+          ],
+          "definitions": {
+            "o": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "a"
+              ]
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/ref-target-and-siblings/allOf",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "$ref": "#/definitions/o",
+              "required": [
+                "b"
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ],
+          "definitions": {
+            "o": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "a"
+              ]
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/ref-target-and-siblings/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "$ref": "#/definitions/o",
+            "required": [
+              "b"
+            ]
+          },
+          "definitions": {
+            "o": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "a"
+              ]
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/ref-target-and-siblings/ref",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "$ref": "#/definitions/o",
+          "required": [
+            "b"
+          ],
+          "definitions": {
+            "o": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "a"
+              ]
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/ref-target-and-siblings/cycle",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "$ref": "#/definitions/o",
+                  "required": [
+                    "b"
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            },
+            "o": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "a"
+              ]
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "object",
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b"
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/ref-target-and-siblings/discriminator",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "$ref": "#/definitions/o",
+                  "required": [
+                    "b"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ],
+          "definitions": {
+            "o": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "a"
+              ]
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "type": "object",
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "rules/conjunction-merge/additional-properties-sees-own-properties/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "a": "a0"
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/additional-properties-sees-own-properties/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "a": "a0"
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/pattern-properties-beside-additional-properties/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "object",
+              "patternProperties": {
+                "^x-": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "patternProperties": {
+            "^x-": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "x-": "a0"
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/pattern-properties-beside-additional-properties/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "object",
+                "patternProperties": {
+                  "^x-": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "object",
+            "patternProperties": {
+              "^x-": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "x-": "a0"
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/additional-items-sees-own-items/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "additionalItems": false
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "array",
+          "items": [
+            {
+              "type": "string"
+            }
+          ],
+          "additionalItems": false
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [
+            "a0",
+            [
+              {
+                "f_rnht": [
+                  0,
+                  0.1
+                ],
+                "f_kjco": {
+                  "f_um9u": []
+                },
+                "f_ghh9": "a0"
+              },
+              {
+                "f_1afh": 0,
+                "f_mo7w": null
+              },
+              {
+                "f_xivm": true,
+                "f_o3wc": [
+                  "a0"
+                ],
+                "f_6onf": {
+                  "f_kstp": {}
+                }
+              }
+            ]
+          ],
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/additional-items-sees-own-items/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "additionalItems": false
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "array",
+            "items": [
+              {
+                "type": "string"
+              }
+            ],
+            "additionalItems": false
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": [
+            "a0",
+            [
+              0,
+              0.1
+            ]
+          ],
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/two-patterns-both-apply/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^a"
+            },
+            {
+              "pattern": "b$"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "pattern": "^a"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "a",
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/two-patterns-both-apply/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "string",
+                "pattern": "^a"
+              },
+              {
+                "pattern": "b$"
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "string",
+            "pattern": "^a"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "a",
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/if-groups-stay-apart/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "a"
+                ]
+              },
+              "then": {
+                "required": [
+                  "b"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "c"
+                ]
+              },
+              "then": {
+                "required": [
+                  "d"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "required": [
+              "a"
+            ]
+          },
+          "then": {
+            "required": [
+              "d"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "b": [],
+            "a": []
+          },
+          "base": true,
+          "head": false
+        },
+        {
+          "payload": {
+            "a": [
+              "a0",
+              "a1"
+            ],
+            "d": [
+              "a0",
+              "a1"
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/if-groups-stay-apart/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "a"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "b"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "c"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "d"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "if": {
+              "required": [
+                "a"
+              ]
+            },
+            "then": {
+              "required": [
+                "d"
+              ]
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "a": [],
+            "d": []
+          },
+          "base": true,
+          "head": false
+        },
+        {
+          "payload": {
+            "b": [
+              [
+                "a0",
+                "a1",
+                "a2"
+              ]
+            ],
+            "a": [
+              [
+                "a0",
+                "a1",
+                "a2"
+              ]
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/inclusive-and-exclusive-bounds/top",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "exclusiveMinimum": 0
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": 0,
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "rules/conjunction-merge/inclusive-and-exclusive-bounds/not",
+      "rule": "conjunction members merge into one schema object where no keyword reads a sibling in its own object",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "allOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "exclusiveMinimum": 0
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": 0,
+          "base": true,
+          "head": false
+        }
+      ]
+    }
+  ]
+}

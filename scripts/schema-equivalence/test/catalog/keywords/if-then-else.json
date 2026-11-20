@@ -1,0 +1,331 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "keywords/if-then-else/then-narrowed/top",
+      "rule": "minimal if-then-else change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 2
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000",
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/if-then-else/then-narrowed/ref",
+      "rule": "minimal if-then-else change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 2
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": "\u0000"
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/if-then-else/else-widened/top",
+      "rule": "minimal if-then-else change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          },
+          "else": {
+            "type": "integer"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          },
+          "else": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": null,
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/if-then-else/else-widened/ref",
+      "rule": "minimal if-then-else change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          },
+          "else": {
+            "type": "integer"
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "minLength": 1
+          },
+          "else": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": null
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/if-then-else/if-narrowed/top",
+      "rule": "minimal if-then-else change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "maxLength": 5
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "if": {
+            "type": "string",
+            "pattern": "^a"
+          },
+          "then": {
+            "maxLength": 5
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "\u0000\u0000\u0000\u0000\u0000\u0000",
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/if-then-else/if-narrowed/ref",
+      "rule": "minimal if-then-else change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "if": {
+            "type": "string"
+          },
+          "then": {
+            "maxLength": 5
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "if": {
+            "type": "string",
+            "pattern": "^a"
+          },
+          "then": {
+            "maxLength": 5
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": "\u0000\u0000\u0000\u0000\u0000\u0000"
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

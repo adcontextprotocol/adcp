@@ -1,0 +1,224 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "keywords/minProperties/min-properties-raised/top",
+      "rule": "minimal minProperties change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "minProperties": 1
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "minProperties": 2
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "whatElse": [
+              [
+                [
+                  0,
+                  0.1,
+                  0.2
+                ]
+              ],
+              {
+                "f_ybvh": [
+                  0,
+                  0.1
+                ],
+                "f_wqkx": {
+                  "f_oa74": [],
+                  "f_hrjc": {}
+                }
+              }
+            ]
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/minProperties/min-properties-raised/ref",
+      "rule": "minimal minProperties change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "minProperties": 1
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "minProperties": 2
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "whatElse": [
+                [
+                  null
+                ],
+                {
+                  "f_5vrj": [
+                    true,
+                    false
+                  ],
+                  "f_6qmv": {
+                    "f_f2pn": [],
+                    "f_tx0x": {}
+                  },
+                  "f_iqyj": "a0"
+                }
+              ]
+            }
+          },
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "keywords/minProperties/min-properties-lowered/top",
+      "rule": "minimal minProperties change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "minProperties": 2
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "minProperties": 1
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "whatElse": [
+              0
+            ]
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    },
+    {
+      "id": "keywords/minProperties/min-properties-lowered/ref",
+      "rule": "minimal minProperties change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "minProperties": 2
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "minProperties": 1
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": {
+              "whatElse": [
+                "a0",
+                "a1",
+                "a2"
+              ]
+            }
+          },
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}

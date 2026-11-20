@@ -1,0 +1,137 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "pairs": [
+    {
+      "id": "nestings/allof-with-not/flattened/top",
+      "rule": "changes inside allof-with-not",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "not": {
+                "const": ""
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "not": {
+            "const": ""
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle"
+    },
+    {
+      "id": "nestings/allof-with-not/not-broadened/top",
+      "rule": "changes inside allof-with-not",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "not": {
+                "const": ""
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "not": {
+                "enum": [
+                  "",
+                  " "
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": " ",
+          "base": true,
+          "head": false
+        }
+      ]
+    },
+    {
+      "id": "nestings/allof-with-not/not-member-removed/top",
+      "rule": "changes inside allof-with-not",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "not": {
+                "const": ""
+              }
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "",
+          "base": false,
+          "head": true
+        }
+      ]
+    }
+  ]
+}
