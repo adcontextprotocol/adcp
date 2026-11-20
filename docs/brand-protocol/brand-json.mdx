@@ -349,6 +349,8 @@ There is no inheritance/override block. Each consumer-side question has a single
 
 ### Authorized Operator Resolution
 
+Each entry's `domain` is the operator's registrable domain (eTLD+1 under the Public Suffix List, ICANN and private sections), such as `pinnacle-media.com`, not a subdomain of it. It names the same organization as the `operator` on an account; see [Account identity](/docs/accounts/overview#account-identity).
+
 `authorized_operators[]` entries may be scoped by brand, country, activity, and time. Consumers evaluating an operator relationship MUST ignore an entry when the current time is before `valid_from` or at/after `valid_until`. Omitted validity fields mean the house has not published a machine-readable start or end bound.
 
 When `scopes` is omitted, consumers should treat the entry as backwards-compatible broad authorization for the listed brands and countries. When `scopes` is present, the operator is authorized only for the listed activities, or for all activities when it explicitly contains `all`.
