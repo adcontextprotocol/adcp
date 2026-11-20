@@ -423,26 +423,100 @@ export class TrainingGcsReporting {
   assertServing(): void { if (this.stopping) unavailable(); }
 }
 
+// Startup runs before any account data is read, so its messages name the
+// failing check (authority, migration, credential or bucket policy). Redact
+// credential shapes anyway, and never pass the raw error to the logger: its
+// serializer would emit the unredacted message inside the stack.
+const CREDENTIAL_SHAPES: readonly RegExp[] = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
+  /\b(?:Bearer|Basic)\s+[\w.~+/=-]+/gi,
+  /\bya29\.[\w.-]+/g,
+  /\beyJ[\w-]+\.[\w-]+\.[\w-]*/g,
+  /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?=@)/gi,
+  /("?(?:private_key(?:_id)?|client_secret|access_token|refresh_token|id_token|password|token)"?\s*[:=]\s*)("[^"]*"|[^\s,}]+)/gi,
+];
+function redactCredentials(text: string): string {
+  let redacted = text;
+  for (const shape of CREDENTIAL_SHAPES) {
+    redacted = redacted.replace(shape, (match, prefix?: string) =>
+      typeof prefix === 'string' && match.startsWith(prefix) ? `${prefix}[redacted]` : '[redacted]');
+  }
+  return redacted.slice(0, 1000);
+}
+function ownValue(target: object, key: string): unknown {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** Name, message, code, the first stack frames and up to four causes, without credentials. */
+export function describeReportingInitFailure(error: unknown): Record<string, unknown> {
+  const describe = (value: unknown, depth: number, seen: Set<object>): Record<string, unknown> | string | undefined => {
+    if (typeof value !== 'object' || value === null) return value === undefined ? undefined : redactCredentials(String(value));
+    if (seen.has(value)) return '[cyclic cause]';
+    seen.add(value);
+    const stack = ownValue(value, 'stack') ?? (value instanceof Error ? value.stack : undefined);
+    const code = ownValue(value, 'code');
+    const name = ownValue(value, 'name') ?? (value instanceof Error ? value.name : undefined);
+    const message = ownValue(value, 'message');
+    return {
+      name: typeof name === 'string' ? name : value.constructor?.name,
+      message: typeof message === 'string' ? redactCredentials(message) : undefined,
+      code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+      at: typeof stack === 'string' ? stack.split('\n').filter(line => /^\s+at /.test(line)).slice(0, 6).map(line => line.trim()) : undefined,
+      cause: depth < 4 ? describe(ownValue(value, 'cause'), depth + 1, seen) : undefined,
+    };
+  };
+  try {
+    const described = describe(error, 0, new Set());
+    return typeof described === 'object' ? described : { message: described };
+  } catch {
+    return { message: '[undescribable error]' };
+  }
+}
+
 let runtime: TrainingGcsReporting | undefined;
 export function getTrainingGcsReporting(): TrainingGcsReporting | undefined {
   if (trainingGcsReportingConfig() && !runtime) unavailable();
   runtime?.assertServing();
   return runtime;
 }
-export async function initializeTrainingGcsReporting(): Promise<void> {
+// Waits between startup attempts. A bluegreen rollout boots new machines
+// while the old ones still hold their pools, and the primary can be slow to
+// accept a connection then; six attempts with a 10 s connect budget each take
+// about 90 s before the boot fails as before.
+export const TRAINING_REPORTING_INIT_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 16_000];
+
+export async function initializeTrainingGcsReporting(retryDelaysMs: readonly number[] = TRAINING_REPORTING_INIT_RETRY_DELAYS_MS): Promise<void> {
   const config = trainingGcsReportingConfig();
   if (!config || runtime) return;
   const database = getDatabaseConfig();
   if (!database) throw new Error('Reporting requires the application PostgreSQL primary.');
-  const db = new Pool({ connectionString: database.connectionString, ssl: database.ssl, max: 4,
-    connectionTimeoutMillis: database.connectionTimeoutMillis || 5000, idleTimeoutMillis: 30_000,
-    options: `-c search_path=${TRAINING_REPORTING_SCHEMA},pg_catalog -c statement_timeout=30000 -c lock_timeout=5000` });
-  db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
-  try {
-    runtime = await TrainingGcsReporting.create(config, db, new Storage({ projectId: 'adcp-production', keyFilename: config.credentialsFile, timeout: 10_000, retryOptions: { totalTimeout: 30, maxRetries: 2 } }));
-  } catch {
-    await db.end();
-    throw new Error('Durable GCS reporting initialization failed; check authority, migrations, credentials and bucket policy.');
+  const attempts = retryDelaysMs.length + 1;
+  for (let attempt = 1; ; attempt += 1) {
+    // A fresh pool per attempt, so a failed one holds no connection while
+    // the next waits.
+    const db = new Pool({ connectionString: database.connectionString, ssl: database.ssl, max: 4,
+      connectionTimeoutMillis: database.connectionTimeoutMillis || 5000, idleTimeoutMillis: 30_000,
+      options: `-c search_path=${TRAINING_REPORTING_SCHEMA},pg_catalog -c statement_timeout=30000 -c lock_timeout=5000` });
+    db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
+    try {
+      runtime = await TrainingGcsReporting.create(config, db, new Storage({ projectId: 'adcp-production', keyFilename: config.credentialsFile, timeout: 10_000, retryOptions: { totalTimeout: 30, maxRetries: 2 } }));
+      if (attempt > 1) logger.warn({ attempt, attempts }, 'Durable GCS reporting initialized after a retry');
+      return;
+    } catch (error) {
+      await db.end();
+      const retryInMs = retryDelaysMs[attempt - 1];
+      logger.error({ failure: describeReportingInitFailure(error), attempt, attempts, ...(retryInMs !== undefined && { retryInMs }) },
+        'Durable GCS reporting initialization failed');
+      // Fail closed: the boot still fails once every attempt has.
+      if (retryInMs === undefined) {
+        throw new Error('Durable GCS reporting initialization failed; check authority, migrations, credentials and bucket policy.');
+      }
+      await new Promise(resolve => setTimeout(resolve, retryInMs));
+    }
   }
 }
 export async function stopTrainingGcsReporting(): Promise<void> { await runtime?.stop(); }
