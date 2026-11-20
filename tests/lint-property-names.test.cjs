@@ -72,3 +72,23 @@ test('property-like objects in examples, defaults, const and enum are not declar
   const object = { notSnake: 1, last_modified: 'x' };
   assert.deepEqual(run({ payload: { type: 'object', examples: [object], default: object, const: object, enum: [object] } }), []);
 });
+
+// A $ref reaches another schema only on the schema origin itself, so a host
+// that merely starts with it does not resolve into the tree.
+const objectSchema = { type: 'object', properties: { value: { type: 'number' } } };
+const travelTimeTypes = (ref) => findingsOf(runOnFixture(SCRIPT, {
+  ...withProperties({ travel_time: { $ref: ref } }, 'core/a.json'),
+  ...withProperties({ travel_time: objectSchema }, 'core/b.json'),
+  'core/c.json': { $id: '/schemas/core/c.json', type: 'boolean' },
+  'core/.evil.example/core/c.json': { $id: '/schemas/core/c.json', type: 'boolean' },
+}).output).filter((finding) => finding.startsWith('one-type'));
+
+test('an absolute $ref on the schema origin resolves', () => {
+  assert.deepEqual(travelTimeTypes('https://adcontextprotocol.org/schemas/core/c.json'), [
+    'one-type name:travel_time (boolean,object)',
+  ]);
+});
+
+test('an absolute $ref on a host that only starts with the schema origin does not resolve', () => {
+  assert.deepEqual(travelTimeTypes('https://adcontextprotocol.org.evil.example/core/c.json'), []);
+});

@@ -122,7 +122,8 @@ function resolveRef(ref, fromDocument, tree) {
   const fragment = hashIndex === -1 ? '' : ref.slice(hashIndex);
   let document = fromDocument;
   if (base) {
-    let key = base.startsWith(SCHEMA_ORIGIN) ? base.slice(SCHEMA_ORIGIN.length) : base;
+    // Match the origin with its path slash, so a host that only starts with it stays foreign.
+    let key = base.startsWith(`${SCHEMA_ORIGIN}/`) ? base.slice(SCHEMA_ORIGIN.length) : base;
     if (/^[a-z][a-z0-9+.-]*:/i.test(key)) return null;
     if (key.startsWith('/schemas/')) {
       key = key.replace(/^\/schemas\/(?:latest\/)?/, '');
