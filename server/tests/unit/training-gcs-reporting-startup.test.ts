@@ -97,6 +97,41 @@ describe('private GCS reporting startup connection budget', () => {
     for (const [details] of state.logError.mock.calls) expect(details.databaseCode).toBeUndefined();
   });
 
+  it('logs the underlying startup failure with its causes and no credentials', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const gcs = Object.assign(new Error(
+      'reporting@example.iam.gserviceaccount.com does not have storage.objects.create access; Authorization: Bearer ya29.a0secret-token',
+    ), { name: 'ApiError', code: 403 });
+    const credential = Object.assign(new Error(
+      'invalid_grant: {"private_key": "-----BEGIN PRIVATE KEY-----\\nMIIsecret\\n-----END PRIVATE KEY-----", "client_secret": "s3cr3t"} via https://user:pass@oauth2.example/token',
+    ), { cause: gcs });
+    vi.spyOn(module.TrainingGcsReporting, 'create').mockRejectedValue(new Error('Reporting object fence failed', { cause: credential }));
+    await expect(module.initializeTrainingGcsReporting()).rejects.toThrow('Durable GCS reporting initialization failed');
+    expect(state.pools[0].end).toHaveBeenCalledOnce();
+
+    expect(state.logError).toHaveBeenCalledWith(expect.objectContaining({ failure: expect.objectContaining({
+      name: 'Error',
+      message: 'Reporting object fence failed',
+      at: expect.any(Array),
+      cause: expect.objectContaining({
+        message: expect.stringContaining('invalid_grant'),
+        cause: expect.objectContaining({ name: 'ApiError', code: 403, message: expect.stringContaining('storage.objects.create') }),
+      }),
+    }) }), 'Durable GCS reporting initialization failed');
+    const logged = JSON.stringify(state.logError.mock.calls);
+    for (const secret of ['ya29.a0secret-token', 'MIIsecret', 's3cr3t', 'user:pass']) expect(logged).not.toContain(secret);
+  });
+
+  it('describes cyclic, primitive and hostile startup failures without throwing', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const cyclic = new Error('cyclic');
+    cyclic.cause = cyclic;
+    expect(module.describeReportingInitFailure(cyclic)).toMatchObject({ message: 'cyclic', cause: '[cyclic cause]' });
+    expect(module.describeReportingInitFailure('token=abc123 failed')).toEqual({ message: 'token=[redacted] failed' });
+    const hostile = new Proxy({}, { get() { throw new Error('hostile'); }, getOwnPropertyDescriptor() { throw new Error('hostile'); } });
+    expect(module.describeReportingInitFailure(hostile)).toEqual({ message: '[undescribable error]' });
+  });
+
   it('allows a cold primary connection longer than five seconds within the configured Fly budget', async () => {
     const module = await startup();
     const initializing = module.initializeTrainingGcsReporting();

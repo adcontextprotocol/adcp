@@ -423,6 +423,60 @@ export class TrainingGcsReporting {
   assertServing(): void { if (this.stopping) unavailable(); }
 }
 
+// Startup runs before any account data is read, so its messages name the
+// failing check (authority, migration, credential or bucket policy). Redact
+// credential shapes anyway, and never pass the raw error to the logger: its
+// serializer would emit the unredacted message inside the stack.
+const CREDENTIAL_SHAPES: readonly RegExp[] = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
+  /\b(?:Bearer|Basic)\s+[\w.~+/=-]+/gi,
+  /\bya29\.[\w.-]+/g,
+  /\beyJ[\w-]+\.[\w-]+\.[\w-]*/g,
+  /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?=@)/gi,
+  /("?(?:private_key(?:_id)?|client_secret|access_token|refresh_token|id_token|password|token)"?\s*[:=]\s*)("[^"]*"|[^\s,}]+)/gi,
+];
+function redactCredentials(text: string): string {
+  let redacted = text;
+  for (const shape of CREDENTIAL_SHAPES) {
+    redacted = redacted.replace(shape, (match, prefix?: string) =>
+      typeof prefix === 'string' && match.startsWith(prefix) ? `${prefix}[redacted]` : '[redacted]');
+  }
+  return redacted.slice(0, 1000);
+}
+function ownValue(target: object, key: string): unknown {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** Name, message, code, the first stack frames and up to four causes, without credentials. */
+export function describeReportingInitFailure(error: unknown): Record<string, unknown> {
+  const describe = (value: unknown, depth: number, seen: Set<object>): Record<string, unknown> | string | undefined => {
+    if (typeof value !== 'object' || value === null) return value === undefined ? undefined : redactCredentials(String(value));
+    if (seen.has(value)) return '[cyclic cause]';
+    seen.add(value);
+    const stack = ownValue(value, 'stack') ?? (value instanceof Error ? value.stack : undefined);
+    const code = ownValue(value, 'code');
+    const name = ownValue(value, 'name') ?? (value instanceof Error ? value.name : undefined);
+    const message = ownValue(value, 'message');
+    return {
+      name: typeof name === 'string' ? name : value.constructor?.name,
+      message: typeof message === 'string' ? redactCredentials(message) : undefined,
+      code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+      at: typeof stack === 'string' ? stack.split('\n').filter(line => /^\s+at /.test(line)).slice(0, 6).map(line => line.trim()) : undefined,
+      cause: depth < 4 ? describe(ownValue(value, 'cause'), depth + 1, seen) : undefined,
+    };
+  };
+  try {
+    const described = describe(error, 0, new Set());
+    return typeof described === 'object' ? described : { message: described };
+  } catch {
+    return { message: '[undescribable error]' };
+  }
+}
+
 let runtime: TrainingGcsReporting | undefined;
 export function getTrainingGcsReporting(): TrainingGcsReporting | undefined {
   if (trainingGcsReportingConfig() && !runtime) unavailable();
@@ -440,7 +494,8 @@ export async function initializeTrainingGcsReporting(): Promise<void> {
   db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
   try {
     runtime = await TrainingGcsReporting.create(config, db, new Storage({ projectId: 'adcp-production', keyFilename: config.credentialsFile, timeout: 10_000, retryOptions: { totalTimeout: 30, maxRetries: 2 } }));
-  } catch {
+  } catch (error) {
+    logger.error({ failure: describeReportingInitFailure(error) }, 'Durable GCS reporting initialization failed');
     await db.end();
     throw new Error('Durable GCS reporting initialization failed; check authority, migrations, credentials and bucket policy.');
   }
