@@ -13,23 +13,8 @@
     },
     "postal_area": {
       "type": "array",
-      "description": "Countries and their postal systems in the postal_area breakdown, each a native country-local postal system. Required on an offering whose standard_dimensions include postal_area.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "country": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$",
-            "description": "ISO 3166-1 alpha-2 country code."
-          },
-          "system": {
-            "$ref": "/schemas/enums/postal-system.json",
-            "description": "Country-local postal system, such as zip for US or outward for GB."
-          }
-        },
-        "required": ["country", "system"],
-        "additionalProperties": true
-      },
+      "description": "Countries and their postal systems in the postal_area breakdown, each a valid country-local pairing from postal-country-system.json, the same pairing geo-delivery-metrics.json and postal targeting use. Required on an offering whose standard_dimensions include postal_area.",
+      "items": { "$ref": "/schemas/core/postal-country-system.json" },
       "minItems": 1,
       "maxItems": 16,
       "uniqueItems": true

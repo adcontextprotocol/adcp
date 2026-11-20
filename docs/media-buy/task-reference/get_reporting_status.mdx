@@ -611,9 +611,8 @@ and fills it with codes, never display names:
 
 These are the values `geo_code` carries in a delivery report's `by_geo` rows, so a
 breakdown reads the same whether it arrives through [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) or a
-reporting feed. A definition may add a `geo_name` dimension beside them for display;
-it is non-authoritative, and no selector matches on it. A native geography
-dimension that does not follow the rule is listed in `unmapped_dimensions`, not
+reporting feed. A native geography dimension that does not follow the rule, a
+display-name column among them, is listed in `unmapped_dimensions`, not
 `standard_dimensions`.
 
 `source_timezone` represents an upstream reporting calendar that differs from
