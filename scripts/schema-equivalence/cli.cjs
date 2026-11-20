@@ -240,7 +240,11 @@ async function main() {
   return report.ok ? 0 : 1;
 }
 
-main().then((code) => process.exit(code), (err) => {
+// Set the exit code instead of calling process.exit(), which drops whatever a
+// pipe has not yet taken of a large `--json -` report.
+main().then((code) => {
+  process.exitCode = code;
+}, (err) => {
   process.stderr.write(`${err.stack || err.message}\n`);
-  process.exit(2);
+  process.exitCode = 2;
 });

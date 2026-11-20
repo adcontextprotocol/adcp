@@ -1,0 +1,1207 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a.json",
+  "type": "object",
+  "properties": {
+    "field_000": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_001": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_002": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_003": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_004": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_005": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_006": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_007": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_008": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_009": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_010": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_011": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_012": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_013": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_014": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_015": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_016": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_017": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_018": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_019": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_020": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_021": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_022": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_023": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_024": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_025": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_026": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_027": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_028": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_029": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_030": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_031": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_032": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_033": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_034": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_035": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_036": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_037": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_038": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_039": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_040": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_041": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_042": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_043": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_044": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_045": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_046": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_047": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_048": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_049": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_050": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_051": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_052": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_053": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_054": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_055": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_056": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_057": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_058": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_059": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_060": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_061": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_062": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_063": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_064": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_065": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_066": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_067": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_068": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_069": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_070": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_071": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_072": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_073": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_074": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_075": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_076": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_077": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_078": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_079": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_080": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_081": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_082": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_083": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_084": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_085": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_086": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_087": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_088": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_089": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_090": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_091": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_092": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_093": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_094": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_095": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_096": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_097": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_098": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_099": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_100": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_101": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_102": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_103": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_104": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_105": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_106": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_107": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_108": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_109": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_110": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_111": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_112": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_113": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_114": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_115": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_116": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_117": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_118": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_119": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_120": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_121": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_122": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_123": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_124": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_125": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_126": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_127": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_128": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_129": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_130": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_131": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_132": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_133": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_134": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_135": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_136": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_137": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_138": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_139": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_140": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_141": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_142": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_143": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_144": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_145": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_146": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_147": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_148": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_149": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_150": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_151": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_152": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_153": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_154": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_155": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_156": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_157": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_158": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_159": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_160": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_161": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_162": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_163": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_164": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_165": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_166": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_167": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_168": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_169": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_170": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_171": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_172": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_173": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_174": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_175": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_176": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_177": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_178": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_179": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_180": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_181": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_182": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_183": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_184": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_185": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_186": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_187": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_188": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_189": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_190": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_191": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_192": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_193": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_194": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_195": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_196": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_197": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_198": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_199": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_200": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_201": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_202": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_203": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_204": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_205": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_206": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_207": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_208": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_209": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_210": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_211": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_212": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_213": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_214": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_215": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_216": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_217": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_218": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_219": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_220": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_221": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_222": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_223": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_224": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_225": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_226": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_227": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_228": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_229": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_230": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_231": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_232": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_233": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_234": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_235": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_236": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_237": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_238": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_239": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_240": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_241": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_242": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_243": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_244": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_245": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_246": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_247": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_248": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_249": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_250": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_251": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_252": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_253": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_254": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_255": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_256": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_257": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_258": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_259": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_260": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_261": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_262": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_263": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_264": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_265": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_266": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_267": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_268": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_269": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_270": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_271": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_272": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_273": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_274": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_275": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_276": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_277": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_278": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_279": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_280": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_281": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_282": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_283": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_284": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_285": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_286": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_287": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_288": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_289": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_290": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_291": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_292": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_293": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_294": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_295": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_296": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_297": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_298": {
+      "type": "string",
+      "maxLength": 9
+    },
+    "field_299": {
+      "type": "string",
+      "maxLength": 9
+    }
+  }
+}
