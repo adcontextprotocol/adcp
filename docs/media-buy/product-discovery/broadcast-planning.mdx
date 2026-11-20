@@ -1,0 +1,524 @@
+---
+title: Planning goals and plan breakdown
+description: "Plan radio, linear TV and out-of-home buys the way buyers think about them: structured planning goals on request_proposals, a plan breakdown by market, station, format, daypart, week and spot length on every proposal, and a met-or-missed result for each goal on every revision."
+"og:title": "AdCP — Planning goals and plan breakdown"
+---
+
+<Warning>
+**Experimental.** Planning goals (`media_buy.planning_goals`) and the plan breakdown (`media_buy.plan_breakdown`) are [experimental](/docs/reference/experimental-status). The fields can change inside 3.x with at least six weeks of notice. A seller that implements either lists its feature id in `experimental_features` on `get_adcp_capabilities`.
+</Warning>
+
+Radio, linear TV and out-of-home buyers plan in a small set of figures: GRPs, CPP, CPM, reach and frequency, and a schedule split by market, station, format, daypart, week and spot length. A plan shown in any other terms is not read. This page adds the vocabulary for stating what a buyer wants (planning goals), for showing the plan back (the plan breakdown), and for saying whether a revision got closer (goal results). It builds on the [proposal lifecycle](/docs/media-buy/product-discovery/proposal-negotiation) and the [delivery forecast](/docs/media-buy/product-discovery/media-products#delivery-forecasts) and adds no task.
+
+## What already exists
+
+Most of the plan is already expressible. These are the pieces this page reuses and the gaps it closes.
+
+| A planner needs | Where it lives today | What this page adds |
+|---|---|---|
+| A budget, or a budget the seller suggests | `offer_filters.budget_range`; `total_budget_guidance` on a proposal answers an open budget | `budget_mode` says which of the two the buyer means |
+| A target audience and demographic | `targeting_overlay` (`demographics`, `audience_include`); `demographic_system`, `demographic` and `measurement_source` on the forecast | `audience_basis`, stated on the plan, adds the rating `universe` and the `index_baseline` |
+| A GRP or impression target | `criteria.outcome_target` with a `grps` or `impressions` metric goal and a volume | `delivery_target`, which carries a plan-level CPP or CPM ceiling `outcome_target.cost_per` cannot bind |
+| A maximum frequency | The `reach` optimization goal's `target_frequency`; `media_buy_frequency_cap` for an enforced cap | `max_frequency`, a planned average the seller reports against, for media that cannot enforce a per-person cap |
+| Spots in dayparts | `daypart_targets` on targeting and on proposal allocations | Spot-length mix, spots per hour, overbook and a daypart-class mix as `delivery_rules` |
+| Stations, markets to include or exclude | `property_list`, `geo_metros` and their `_exclude` forms restrict where delivery may go; `product_changes` names products | `must_include` and `must_exclude`, which ask that a plan contain or omit named stations, markets and formats |
+| GRPs, reach, frequency, impressions | `grps`, `reach`, `frequency` and `impressions` on forecast points; `reach_freq` and `package` forecast units | Plan totals, reach and frequency by window, and allocations by named dimension |
+| Revising a proposal | `refine_proposals` `revise`, with `constraints` that fail a draft as `partial` or `unable` | `goal_results` on every draft, so a miss is reported instead of failing the revision |
+
+## Planning goals
+
+A buyer sends `criteria.planning_goals` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals) or on a `revise` entry of [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals). Every property is optional.
+
+```json
+{
+  "budget_mode": "suggest",
+  "objective": "max_efficiency",
+  "delivery_target": {
+    "metric": "grps",
+    "value": 100,
+    "max_cost": {
+      "amount": 1200,
+      "currency": "USD"
+    }
+  },
+  "max_frequency": {
+    "value": 3,
+    "window": {
+      "interval": 28,
+      "unit": "days"
+    }
+  },
+  "delivery_rules": {
+    "spot_length_mix": [
+      {
+        "duration_seconds": 30,
+        "share_percentage": 100
+      }
+    ],
+    "max_spots_per_hour": 1,
+    "overbook_percentage": 0,
+    "daypart_mix": [
+      {
+        "label": "prime",
+        "share_percentage": 60
+      },
+      {
+        "label": "fringe",
+        "share_percentage": 40
+      }
+    ],
+    "pacing": "even"
+  },
+  "must_include": {
+    "markets": [
+      {
+        "system": "custom",
+        "values": [
+          "Boston, MA",
+          "Providence, RI"
+        ]
+      }
+    ]
+  },
+  "must_exclude": {
+    "stations": [
+      {
+        "type": "station_id",
+        "value": "WRKO-AM"
+      }
+    ],
+    "programming_formats": [
+      "NEWSTALK"
+    ]
+  },
+  "audience_basis": {
+    "measurement_source": "nielsen",
+    "demographic_system": "nielsen_audio",
+    "demographic": "A25-54",
+    "universe": 2500000
+  }
+}
+```
+
+| Property | Meaning |
+|---|---|
+| `budget_mode` | `set`: the buyer's `budget_range` is the budget. `suggest`: the seller sizes the budget to the other goals and states it in `commercial_terms.total_budget` and `total_budget_guidance`. Not the same as `budget_allocation.mode`, which says how an executed budget is split across packages. |
+| `objective` | `max_reach` maximizes unduplicated audience. `max_efficiency` minimizes cost per point (CPP) for a rated plan and cost per thousand impressions (CPM) for a counted one. |
+| `delivery_target` | A volume in `grps` or `impressions` over the flight, with an optional `max_cost` ceiling on the plan's effective CPP or CPM, gross or net per `cost_basis`. Effective cost is plan budget divided by delivered units, not a rate-card price. |
+| `max_frequency` | Ceiling on average exposures per person reached over a `window` counted from the first airing. Four broadcast weeks is `{ "interval": 28, "unit": "days" }`; the whole flight is `{ "interval": 1, "unit": "campaign" }`. |
+| `delivery_rules` | `spot_length_mix`, `max_spots_per_hour` (per station per clock hour), `overbook_percentage`, `daypart_mix` (a share by class such as prime and fringe; send `daypart_targets` when the classes must mean the same windows at every seller), `mix_basis` (`spots` or `budget`, the base of those shares) and `pacing`. |
+| `must_include`, `must_exclude` | Stations (by `station_id` or `facility_id`), markets (as `geo_metros` selections) and programming formats the plan should contain or omit. |
+| `audience_basis` | The provider, demographic and universe the buyer wants figures counted on. |
+
+**Goals are plans, not promises.** A seller plans toward each goal and reports whether the proposal meets it. A goal creates no delivery obligation; obligations arise only from the committed terms at finalization. A buyer who needs a hard bound sends `constraints` on `refine_proposals` (`total_budget`, `cpm`, `impressions`, `flight`), which fail a draft that cannot meet them. `constraints.cpm` bounds the fixed rate on the pricing option; `delivery_target.max_cost` bounds the plan's effective cost.
+
+**`max_frequency` is not a frequency cap.** It is also not the reach optimization goal's `target_frequency`, an integer band with a floor; a minimum such as "3+" effective frequency has no field yet. Radio and linear TV cannot count one person's exposures and stop. The seller forecasts average frequency and compares it to the ceiling. For a cap the seller enforces, use `criteria.media_buy_frequency_cap`.
+
+**`must_include` is not targeting.** `geo_metros` restricts where a package may deliver. `must_include.markets` asks that the plan contain the market, and the seller reports one it cannot add (a market outside its catalog) in the goal result's `unmet_items`.
+
+On a `revise`, `criteria.planning_goals` replaces the source proposal's goals as a whole, like every other criterion. Restate each goal that should still apply; an empty object clears them.
+
+## Plan breakdown
+
+A proposal can carry `plan_breakdown`: headline `totals` and `breakdowns` along named dimensions. It is a view of the proposal. `commercial_terms` stays authoritative for what is bought, and the proposal `forecast` stays authoritative for any metric both state.
+
+**Totals** (`plan-totals.json`): `budget`, `market_count`, `station_count`, `market_audience`, `estimated_audience`, `average_index`, `spots`, `impressions`, `grps`, `cpp`, `cpm`, and `reach_frequency[]`. Each `reach_frequency` point is cumulative from the first airing over a `window`: the four-week window, the whole flight, and optionally one point per week for reach and frequency by week. Reach is never summed from a breakdown.
+
+**Dimensions** (`plan-breakdown-dimension.json`): `market`, `station`, `programming_format`, `daypart`, `week`, `spot_length` and `custom`. A `custom` breakdown names itself in `custom_dimension`, for a venue type or an out-of-home format. The radio term *format* is `programming_format` here, because `format` already means a creative format in AdCP.
+
+**Allocations** (`plan-allocation.json`): each slice carries a stable `key`, a `label`, and where known `budget`, `spots`, `impressions`, `grps`, `cpp`, `cpm`, `composition_rate` (the share of the slice's population or audience that is in the target, 0 to 1; compare it within one dimension), `index` (target concentration against `audience_basis.index_baseline`, 100 for the baseline) and `target_persons`. A typed reference (`metro`, `identifiers`, `daypart`, `week`, `duration_seconds`, `programming_format`) says which market, station, window, week, length or format the slice is, and `within` places a slice in another breakdown, such as the market a station belongs to. A seller reports the figures it has; a buyer never reads an omitted figure as zero.
+
+**Rules.** A complete breakdown partitions the schedule: its budget, spots, impressions and GRPs sum to the plan totals within rounding. A breakdown that lists some slices sets `truncated` and, where known, `total_count`. Keys are stable across the versions of one negotiation so a buyer can compare a slice between versions.
+
+**GRPs.** `plan_breakdown.audience_basis.universe`, when stated, is the population GRPs are rated against: `grps = impressions / universe * 100`. A seller that omits it gives buyers no way to check a GRP figure.
+
+## Goal results and re-optimization
+
+Every proposal that answers `criteria.planning_goals` carries `goal_results`: one entry per goal in the request's effective goals. `status` is `met`, `missed` or `not_supported`. A seller that cannot plan against a goal reports `not_supported`; it does not ignore the goal in silence. `target` and `achieved` give the figures, `detail` says why in prose an agent can relay, and `unmet_items` names what a `must_include` or `must_exclude` goal could not satisfy.
+
+Re-optimization is the refinement loop that already exists. The buyer reads `goal_results`, sends a `revise` with a changed `criteria.planning_goals` (and, optionally, an `ask`), and the seller returns a new immutable draft that carries its own `goal_results`. Lineage is `parent_proposal_id`. A draft that misses a goal is still `revised`; only an unsatisfied entry in `constraints` makes a result `partial` or `unable`.
+
+## Worked example: Hearthside Coffee
+
+The figures below are the plan iHeartMedia's Harmony planner showed on 20 November for Hearthside Coffee Co., a 140-store New England coffee chain: nine markets, 33 stations, $198,476 across a five-week flight from 16 November to 20 December, 3.3 GRPs at $61K a point, 7.0 million impressions at a $28.39 CPM, and 2.8 frequency over four weeks. The request below is the brief Harmony's planner took, with the planner's settings as planning goals.
+
+```json
+{
+  "idempotency_key": "hearthside-winter-2026-v1",
+  "brand": {
+    "domain": "hearthsidecoffee.example"
+  },
+  "brief": "Hearthside Coffee Co., a 140-store New England coffee chain, is launching its winter menu (Maple Pecan Latte, $5 breakfast combo) and wants to drive store visits and app orders. Target adults 25-54 who commute and buy coffee out several times a week. Markets: Boston, Providence, Hartford-New Haven, Worcester, Springfield, Manchester, Portland ME, Burlington VT. Weekday morning drive and weekend mornings, some mid-afternoon, no overnight. 16 Nov to 20 Dec, 3+ frequency, weight toward Boston and Providence.",
+  "criteria": {
+    "planning_goals": {
+      "budget_mode": "suggest",
+      "max_frequency": {
+        "value": 3,
+        "window": {
+          "interval": 28,
+          "unit": "days"
+        }
+      },
+      "must_include": {
+        "markets": [
+          {
+            "system": "custom",
+            "values": [
+              "Boston, MA",
+              "Providence, RI",
+              "Hartford, CT",
+              "New Haven, CT",
+              "Worcester, MA",
+              "Springfield, MA",
+              "Manchester, NH",
+              "Portland, ME",
+              "Burlington, VT"
+            ]
+          }
+        ]
+      },
+      "delivery_rules": {
+        "spot_length_mix": [
+          {
+            "duration_seconds": 30,
+            "share_percentage": 100
+          }
+        ],
+        "pacing": "even"
+      }
+    }
+  }
+}
+```
+
+The seller answers with a draft proposal. Its `plan_breakdown` follows. The market breakdown is complete; the station, format and daypart breakdowns show their first rows, because the screens listed 10 of 33 stations, 9 of 11 formats and 4 of 6 dayparts.
+
+```json
+{
+  "currency": "USD",
+  "audience_basis": {
+    "demographic_system": "custom",
+    "demographic": "Adults 25-54",
+    "reach_unit": "individuals",
+    "index_baseline": "national"
+  },
+  "totals": {
+    "budget": 198476,
+    "market_count": 9,
+    "station_count": 33,
+    "market_audience": 3100000,
+    "estimated_audience": 2100000,
+    "average_index": 169,
+    "impressions": 6991653,
+    "grps": 3.25,
+    "cpp": 61070,
+    "cpm": 28.39,
+    "reach_frequency": [
+      {
+        "window": {
+          "interval": 28,
+          "unit": "days"
+        },
+        "frequency": 2.8
+      },
+      {
+        "window": {
+          "interval": 1,
+          "unit": "campaign"
+        },
+        "reach": 2100000,
+        "frequency": 3.33
+      }
+    ]
+  },
+  "breakdowns": [
+    {
+      "dimension": "market",
+      "allocations": [
+        {
+          "key": "boston-ma",
+          "label": "Boston, MA",
+          "budget": 90918,
+          "impressions": 3281054,
+          "cpm": 27.71
+        },
+        {
+          "key": "hartford-ct",
+          "label": "Hartford, CT",
+          "budget": 28442,
+          "impressions": 1084744,
+          "cpm": 26.22
+        },
+        {
+          "key": "providence-ri",
+          "label": "Providence, RI",
+          "budget": 24515,
+          "impressions": 903945,
+          "cpm": 27.12
+        },
+        {
+          "key": "portsmouth-nh",
+          "label": "Portsmouth, NH",
+          "budget": 15083,
+          "impressions": 332885,
+          "cpm": 45.31
+        },
+        {
+          "key": "manchester-nh",
+          "label": "Manchester, NH",
+          "budget": 9233,
+          "impressions": 281752,
+          "cpm": 32.77
+        },
+        {
+          "key": "worcester-ma",
+          "label": "Worcester, MA",
+          "budget": 8437,
+          "impressions": 220115,
+          "cpm": 38.33
+        },
+        {
+          "key": "cape-cod-ma",
+          "label": "Cape Cod, MA",
+          "budget": 7955,
+          "impressions": 156564,
+          "cpm": 50.81
+        },
+        {
+          "key": "springfield-ma",
+          "label": "Springfield, MA",
+          "budget": 7822,
+          "impressions": 234192,
+          "cpm": 33.4
+        },
+        {
+          "key": "new-haven-ct",
+          "label": "New Haven, CT",
+          "budget": 6071,
+          "impressions": 496402,
+          "cpm": 12.23
+        }
+      ]
+    },
+    {
+      "dimension": "station",
+      "allocations": [
+        {
+          "key": "wxks-fm",
+          "label": "WXKS-FM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WXKS-FM"
+            }
+          ],
+          "budget": 26393,
+          "impressions": 1160642,
+          "cpm": 22.74
+        },
+        {
+          "key": "wbz-am",
+          "label": "WBZ-AM Boston",
+          "within": {
+            "dimension": "market",
+            "key": "boston-ma"
+          },
+          "identifiers": [
+            {
+              "type": "station_id",
+              "value": "WBZ-AM"
+            }
+          ],
+          "budget": 17694,
+          "impressions": 399143,
+          "cpm": 44.33
+        }
+      ],
+      "truncated": true,
+      "total_count": 33
+    },
+    {
+      "dimension": "programming_format",
+      "allocations": [
+        {
+          "key": "chrpop",
+          "label": "CHRPOP",
+          "programming_format": "CHRPOP",
+          "budget": 44365,
+          "spots": 520,
+          "impressions": 2200000,
+          "cpm": 20.17
+        },
+        {
+          "key": "newstalk",
+          "label": "NEWSTALK",
+          "programming_format": "NEWSTALK",
+          "budget": 41510,
+          "spots": 1245,
+          "impressions": 595000,
+          "cpm": 69.76
+        }
+      ],
+      "truncated": true,
+      "total_count": 11
+    },
+    {
+      "dimension": "daypart",
+      "allocations": [
+        {
+          "key": "weekend-day",
+          "label": "Weekend Day",
+          "daypart": {
+            "days": [
+              "saturday",
+              "sunday"
+            ],
+            "start_hour": 6,
+            "end_hour": 19,
+            "label": "Weekend Day"
+          },
+          "budget": 49813,
+          "spots": 1572,
+          "impressions": 2500000,
+          "grps": 1.2
+        }
+      ],
+      "truncated": true,
+      "total_count": 6
+    }
+  ]
+}
+```
+
+And its `goal_results`:
+
+```json
+[
+  {
+    "goal": "max_frequency",
+    "status": "met",
+    "target": 3,
+    "achieved": 2.8,
+    "detail": "Average frequency over the first 28 days is 2.8; over the whole 5-week flight it is 3.3."
+  },
+  {
+    "goal": "spot_length_mix",
+    "status": "met",
+    "detail": "All spots are :30."
+  },
+  {
+    "goal": "pacing",
+    "status": "met",
+    "detail": "Even pace: about $39,695 a week."
+  },
+  {
+    "goal": "must_include",
+    "status": "missed",
+    "unmet_items": [
+      "Portland, ME",
+      "Burlington, VT"
+    ],
+    "detail": "Portland, ME and Burlington, VT are not in the seller's market catalog."
+  }
+]
+```
+
+The frequency goal is met because Harmony reports frequency "4-wk" at 2.8. Over the whole flight it is 3.3, which the campaign window of `reach_frequency` records. Portland, ME and Burlington, VT were in the brief but not in the seller's market catalog, so `must_include` is `missed` and the plan carries the other seven markets plus Cape Cod and Portsmouth.
+
+A buyer who cares about the whole flight revises:
+
+```json
+{
+  "idempotency_key": "hearthside-winter-2026-v2",
+  "refinements": [
+    {
+      "proposal_id": "hearthside_draft_01",
+      "action": "revise",
+      "criteria": {
+        "planning_goals": {
+          "budget_mode": "suggest",
+          "max_frequency": {
+            "value": 3,
+            "window": {
+              "interval": 1,
+              "unit": "campaign"
+            }
+          },
+          "must_include": {
+            "markets": [
+              {
+                "system": "custom",
+                "values": [
+                  "Boston, MA",
+                  "Providence, RI",
+                  "Hartford, CT",
+                  "New Haven, CT",
+                  "Worcester, MA",
+                  "Springfield, MA",
+                  "Manchester, NH",
+                  "Portland, ME",
+                  "Burlington, VT"
+                ]
+              }
+            ]
+          },
+          "delivery_rules": {
+            "spot_length_mix": [
+              {
+                "duration_seconds": 30,
+                "share_percentage": 100
+              }
+            ],
+            "pacing": "even"
+          }
+        }
+      },
+      "ask": "Hold average frequency to 3 over the whole flight, and keep Portland and Burlington on the list."
+    }
+  ]
+}
+```
+
+Read against that goal, the draft above would report:
+
+```json
+{
+  "goal": "max_frequency",
+  "status": "missed",
+  "target": 3,
+  "achieved": 3.33,
+  "detail": "Over the whole 5-week flight average frequency is 3.3; the ceiling is 3."
+}
+```
+
+The seller answers with a new draft, whose `goal_results` say whether it reached 3 or missed again, and the loop continues until the buyer finalizes or stops. Harmony's response to this revision was not shown on 20 November, so none is invented here.
+
+### Reading the screens
+
+- **Figures read directly.** Used budget, markets, stations, market audience, estimated audience, average index, CPM, impressions, 4-week and campaign frequency, every market's budget and CPM, the ten station tiles, nine format rows with budget, spots and impressions, four daypart rows, the five-week even pace of about $39,695 a week, and the 100% :30 spot length.
+- **Derived.** Each market's and station's impressions are budget divided by CPM; the nine market impressions sum to 6,991,653, which rounds to the 7.0M shown. Plan GRPs are carried as 3.25, which the screen rounds to 3.3, so that budget divided by GRPs gives the $61K shown. These two figures are unreconciled: the screen's GRP equals impressions divided by the 2.1 million estimated audience, which is the campaign frequency, and a conventional rating against the 3.1 million market audience would be about 225 GRPs. The proposal asks iHeartMedia which universe the 3.3 is rated against. Campaign reach is carried as 2.1 million, which is what 7.0 million impressions at a campaign frequency of 3.3 implies, and is also the estimated audience shown. Week budgets are the even-pace average the chart legend states.
+- **Not stated.** The screens do not name the data provider, show the rating universe, or say which market system the 154-market catalog uses. The fixture leaves `measurement_source` and `universe` out and marks the market system `custom`. The proposal in `specs/broadcast-planning-goals-and-plan-breakdown.md` lists these as open questions for iHeartMedia.
+
+## Declaring support
+
+A seller lists `media_buy.planning_goals` and `media_buy.plan_breakdown` in `experimental_features`, and may declare in `get_adcp_capabilities`:
+
+```json
+{
+  "media_buy": {
+    "planning_goals": {
+      "supported_goals": ["max_frequency", "delivery_target", "max_cost", "spot_length_mix", "pacing", "must_include", "must_exclude"],
+      "supported_objectives": ["max_reach", "max_efficiency"]
+    },
+    "plan_breakdown": {
+      "dimensions": ["market", "station", "programming_format", "daypart", "week", "spot_length"]
+    }
+  }
+}
+```
+
+A seller that does not list `media_buy.planning_goals` rejects `criteria.planning_goals` on `request_proposals` and on a `revise` with `UNSUPPORTED_FEATURE`; `list_products` ignores it. A seller that lists it plans toward the goals it declares and reports the rest as `not_supported`. A request with `budget_mode: "set"` and no `budget_range`, or a `spot_length_mix` or `daypart_mix` whose shares do not sum to 100, is rejected with `INVALID_REQUEST` naming the field.

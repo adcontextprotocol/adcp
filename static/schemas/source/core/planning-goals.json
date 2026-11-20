@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/planning-goals.json",
+  "title": "Planning Goals",
+  "description": "Structured planning goals for a scheduled-media plan (radio, linear TV, out-of-home), carried in criteria.planning_goals on request_proposals and on a revise refinement. Every property is optional, and an empty object states no goals. Goals are planning inputs the seller plans toward and reports on: each proposal answers with goal_results saying which goals it met or missed. A goal is not a delivery guarantee; obligations arise only from the committed terms at finalization. A buyer that needs a hard bound uses refine_proposals constraints (total_budget, cpm, impressions, flight), which fail the result as partial or unable instead of returning a missed goal. On a revise refinement criteria.planning_goals replaces the source proposal's planning_goals as a whole, like any other criterion: restate every goal that should still apply, and send an empty object to clear them all. The target audience itself is expressed through targeting_overlay (demographics, audience_include); audience_basis here states the measurement basis the buyer wants it counted on.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "budget_mode": {
+      "$ref": "/schemas/enums/planning-budget-mode.json"
+    },
+    "objective": {
+      "$ref": "/schemas/enums/planning-objective.json"
+    },
+    "delivery_target": {
+      "type": "object",
+      "description": "A fixed delivery volume the plan should reach, with an optional ceiling on what it may cost per unit. Use it for 'a 100 GRP plan at no more than $1,200 a point' or 'ten million impressions at no more than a $20 CPM'. It is the broadcast counterpart of outcome_target: use outcome_target for a delivery metric whose cost is bound as a bidding policy, and delivery_target when the figure is a rating or an impression count and the ceiling is a plan-level effective cost. A request that carries both for the same metric is rejected with INVALID_REQUEST naming criteria.planning_goals.delivery_target; they may name different metrics.",
+      "properties": {
+        "metric": {
+          "type": "string",
+          "enum": ["grps", "impressions"],
+          "description": "grps rates the target against audience_basis.universe; impressions counts it."
+        },
+        "value": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Target volume in metric over the whole flight: gross rating points for grps, impressions for impressions."
+        },
+        "max_cost": {
+          "type": "object",
+          "description": "Ceiling on the plan's effective cost per unit, in the plan currency (a different currency is rejected with INVALID_REQUEST): dollars per point (CPP) when metric is grps, per thousand impressions (CPM) when it is impressions. Effective cost is total plan budget divided by delivered units. It is not a rate-card price, which refine_proposals constraints.cpm bounds separately.",
+          "properties": {
+            "amount": { "type": "number", "exclusiveMinimum": 0 },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "cost_basis": {
+              "type": "string",
+              "enum": ["gross", "net"],
+              "description": "Whether amount is gross or net of agency commission. Absent means the seller's quoting convention, which it states in the goal result's detail; buyers compare ceilings only on the same basis."
+            }
+          },
+          "required": ["amount", "currency"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["metric", "value"],
+      "additionalProperties": true
+    },
+    "max_frequency": {
+      "type": "object",
+      "description": "Ceiling on the plan's average frequency: exposures per person reached, over a window. Unlike the integer target_frequency band on a reach optimization goal, it is a decimal ceiling with no floor; a buyer who wants a minimum (3+ effective frequency) has no field for it yet. If the seller cannot forecast frequency over the window it reports the goal not_supported. It is a planning goal evaluated against the seller's forecast, not an enforced per-person cap, which broadcast media cannot apply; for an enforced cap use criteria.media_buy_frequency_cap. A seller MUST NOT present it as a delivery guarantee.",
+      "properties": {
+        "value": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Maximum average exposures per person reached."
+        },
+        "window": {
+          "$ref": "/schemas/core/duration.json",
+          "description": "Window over which frequency is measured, counted from the first airing. Four broadcast weeks is {interval: 28, unit: days}; the whole flight is {interval: 1, unit: campaign}."
+        }
+      },
+      "required": ["value", "window"],
+      "additionalProperties": true
+    },
+    "delivery_rules": {
+      "type": "object",
+      "description": "Scheduling rules the plan should follow.",
+      "properties": {
+        "mix_basis": {
+          "type": "string",
+          "enum": ["spots", "budget"],
+          "description": "What share_percentage in spot_length_mix and daypart_mix is a share of: the number of spots or the budget. Absent means spots. Equivalized units (such as :30 equivalents) are not expressible yet."
+        },
+        "spot_length_mix": {
+          "type": "array",
+          "description": "Share of spots by length. share_percentage values MUST sum to 100; sellers reject a mix that does not with INVALID_REQUEST.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "duration_seconds": { "type": "integer", "minimum": 1 },
+              "share_percentage": { "type": "number", "minimum": 0, "maximum": 100 }
+            },
+            "required": ["duration_seconds", "share_percentage"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "max_spots_per_hour": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Most spots of this advertiser the plan may place on one station in one clock hour."
+        },
+        "overbook_percentage": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Percent by which to schedule delivery above the target to cover expected shortfall. 0 schedules exactly to the target."
+        },
+        "daypart_mix": {
+          "type": "array",
+          "description": "Share of spots or budget by daypart class, such as prime and fringe. A class named only by label (prime, fringe) is the seller's own and means different windows in radio and TV, so buyers who need the classes to compare across sellers send daypart_targets, which define it by time window. share_percentage values MUST sum to 100.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "share_percentage": { "type": "number", "minimum": 0, "maximum": 100 },
+              "daypart_targets": {
+                "type": "array",
+                "items": { "$ref": "/schemas/core/daypart-target.json" },
+                "minItems": 1
+              }
+            },
+            "required": ["label", "share_percentage"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "pacing": {
+          "$ref": "/schemas/enums/pacing.json",
+          "description": "Requested pacing across the flight. The proposal states the pacing it applies in the committed terms."
+        }
+      },
+      "additionalProperties": true
+    },
+    "must_include": {
+      "$ref": "/schemas/core/plan-scope-selector.json",
+      "description": "Stations, markets and programming formats the plan should contain. Anything the seller cannot include (for example a market outside its catalog) is named in the goal result's unmet_items."
+    },
+    "must_exclude": {
+      "$ref": "/schemas/core/plan-scope-selector.json",
+      "description": "Stations, markets and programming formats the plan should not contain."
+    },
+    "audience_basis": {
+      "$ref": "/schemas/core/plan-audience-basis.json",
+      "description": "The measurement basis the buyer wants the plan counted on. The seller states the basis it used in plan_breakdown.audience_basis."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

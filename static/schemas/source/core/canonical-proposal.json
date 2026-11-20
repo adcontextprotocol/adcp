@@ -117,6 +117,20 @@
     "forecast": {
       "allOf": [{ "$ref": "/schemas/core/canonical-delivery-forecast.json" }],
       "description": "Aggregate forecasted delivery for the proposal. For outcome_target requests, points carry the goal's metric or event key in metrics, or for a vendor_metric goal in vendor_metric_values[] plus metrics.spend; with cost_per, that is the goal volume planned under the commercial_terms.bidding policy, and currency equals cost_per.currency."
+    },
+    "plan_breakdown": {
+      "allOf": [{ "$ref": "/schemas/core/plan-breakdown.json" }],
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.plan_breakdown). The plan in the terms scheduled-media buyers plan in: headline totals and allocations by market, station, programming format, daypart, week and spot length. A view of the proposal: commercial_terms stays authoritative for what is bought and forecast for any metric both state. Sellers that emit it MUST list media_buy.plan_breakdown in experimental_features."
+    },
+    "goal_results": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.planning_goals). One result per goal in the effective criteria.planning_goals of this proposal's request or revise refinement (an unrefined proposal inherits its source's), saying whether this version met or missed it. Goal values are unique. Absent when the negotiation carries no planning goals. Each revised draft carries its own results, so a buyer compares versions through parent_proposal_id.",
+      "items": { "$ref": "/schemas/core/goal-result.json" },
+      "minItems": 1
     }
   },
   "required": ["proposal_id", "proposal_kind", "proposal_status", "name", "commercial_terms", "terms_digest"],

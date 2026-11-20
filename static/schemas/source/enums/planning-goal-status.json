@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/planning-goal-status.json",
+  "title": "Planning Goal Status",
+  "description": "A seller's evaluation of one planning goal against one proposal version.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": ["met", "missed", "not_supported"],
+  "enumDescriptions": {
+    "met": "The proposal satisfies the goal as the seller's forecast sees it.",
+    "missed": "The proposal does not satisfy the goal. target and achieved, or unmet_items, say by how much.",
+    "not_supported": "The seller cannot plan against or evaluate this goal. It is reported rather than silently ignored, so the buyer knows nothing was optimized toward it."
+  }
+}

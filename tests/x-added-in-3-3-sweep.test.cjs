@@ -47,6 +47,21 @@ const WHOLE_FILE_3_3 = [
   // DOOH impression basis (media_buy.dooh_impression_basis, RFC #7253).
   'enums/impression-estimation-basis.json',
   'core/impression-basis-breakdown-entry.json',
+  // Broadcast planning goals and plan breakdown (media_buy.planning_goals, media_buy.plan_breakdown).
+  'core/planning-goals.json',
+  'core/plan-scope-selector.json',
+  'core/plan-audience-basis.json',
+  'core/plan-breakdown.json',
+  'core/plan-totals.json',
+  'core/plan-dimension-breakdown.json',
+  'core/plan-allocation.json',
+  'core/plan-reach-frequency-point.json',
+  'core/goal-result.json',
+  'enums/planning-budget-mode.json',
+  'enums/planning-objective.json',
+  'enums/planning-goal-key.json',
+  'enums/planning-goal-status.json',
+  'enums/plan-breakdown-dimension.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -91,6 +106,13 @@ const PROPERTIES_3_3 = [
   ['core/canonical-forecast-point.json', ['properties', 'impression_basis']],
   ['core/canonical-forecast-point.json', ['properties', 'audience_multiplier']],
   ['core/canonical-forecast-point.json', ['properties', 'impression_basis_breakdown']],
+  ['media-buy/product-discovery-criteria.json', ['properties', 'planning_goals']],
+  ['core/proposal.json', ['properties', 'plan_breakdown']],
+  ['core/proposal.json', ['properties', 'goal_results']],
+  ['core/canonical-proposal.json', ['properties', 'plan_breakdown']],
+  ['core/canonical-proposal.json', ['properties', 'goal_results']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'planning_goals']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'plan_breakdown']],
   ['core/placement.json', ['definitions', 'ProductDoohPlacementAttributes', 'properties', 'impression_basis']],
   ['core/placement.json', ['definitions', 'ProductDoohPlacementAttributes', 'properties', 'audience_multiplier']],
   ['core/canonical-placement.json', ['definitions', 'CanonicalDoohPlacementAttributes', 'properties', 'impression_basis']],

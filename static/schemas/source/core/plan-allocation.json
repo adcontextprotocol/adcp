@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-allocation.json",
+  "title": "Plan Allocation",
+  "description": "One slice of a plan along a breakdown dimension: a market, a station, a programming format, a daypart, a week or a spot length. Figures are point estimates for the slice as scheduled; the proposal's forecast carries ranges and remains authoritative where both state the same metric. Every row reports the same figures within one breakdown where it can, and a seller omits the rest, and a buyer MUST NOT read an omitted figure as zero.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Seller-assigned identifier of the slice, unique within its breakdown and stable across the proposal versions of one negotiation so a buyer can compare a slice between versions."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Human-readable name of the slice, such as 'Boston, MA' or 'AM Drive'."
+    },
+    "within": {
+      "type": "object",
+      "description": "The slice of another breakdown this one belongs to, such as the market a station sits in.",
+      "properties": {
+        "dimension": { "$ref": "/schemas/enums/plan-breakdown-dimension.json" },
+        "key": { "type": "string", "minLength": 1, "maxLength": 255 }
+      },
+      "required": ["dimension", "key"],
+      "additionalProperties": true
+    },
+    "metro": {
+      "$ref": "/schemas/core/geo-metro.json",
+      "description": "Typed reference for a market slice, in the same shape as targeting_overlay.geo_metros."
+    },
+    "identifiers": {
+      "type": "array",
+      "description": "Identifiers for a station slice, of type station_id or facility_id.",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/identifier.json" },
+          { "properties": { "type": { "enum": ["station_id", "facility_id"] } } }
+        ]
+      },
+      "minItems": 1
+    },
+    "programming_format": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "The seller's programming-format code for a programming_format slice."
+    },
+    "daypart": {
+      "$ref": "/schemas/core/daypart-target.json",
+      "description": "Typed time window for a daypart slice."
+    },
+    "week": {
+      "type": "object",
+      "description": "A week slice: its 1-based index within the flight and its dates.",
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "start_date": { "type": "string", "format": "date" },
+        "end_date": { "type": "string", "format": "date" }
+      },
+      "required": ["index", "start_date", "end_date"],
+      "additionalProperties": true
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Spot length in seconds for a spot_length slice."
+    },
+    "budget": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Spend allocated to the slice, in the breakdown currency."
+    },
+    "spots": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Spots scheduled in the slice."
+    },
+    "impressions": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated impressions in the plan's target audience that the slice delivers."
+    },
+    "grps": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated gross rating points the slice contributes to the plan, rated against the plan's audience_basis.universe, so contributions sum to the plan total. A local rating against the slice's own population is a different figure and is not carried here."
+    },
+    "cpp": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Effective cost per point: budget / grps, in the breakdown currency."
+    },
+    "cpm": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Effective cost per thousand impressions: budget / impressions * 1000, in the breakdown currency."
+    },
+    "composition_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Share of the slice's population (a market) or audience (a station) that falls in the plan's target audience, 0 to 1. Measured, so a rate. The denominator differs by dimension, so compare it only between slices of one dimension."
+    },
+    "index": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Concentration of the target audience in the slice relative to audience_basis.index_baseline, where 100 equals the baseline. Compare it only between slices of one dimension."
+    },
+    "target_persons": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Target-audience persons in the slice (the slice's population in the target demographic, not delivered reach), in audience_basis.reach_unit."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["key", "budget"],
+  "additionalProperties": true
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-scope-selector.json",
+  "title": "Plan Scope Selector",
+  "description": "A set of stations, markets and programming formats, used by planning_goals.must_include and must_exclude. At least one member is required. Unlike targeting_overlay, which restricts where a package may deliver, a must_include entry asks that the plan contain the named inventory and a must_exclude entry that it contain none of it.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "stations": {
+      "type": "array",
+      "description": "Stations by identifier (station_id or facility_id). Each entry is one identifier; a station with several identifiers is named by any one of them.",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/identifier.json" },
+          { "properties": { "type": { "enum": ["station_id", "facility_id"] } } }
+        ]
+      },
+      "minItems": 1
+    },
+    "markets": {
+      "type": "array",
+      "description": "Markets as metro selections, in the same shape as targeting_overlay.geo_metros.",
+      "items": { "$ref": "/schemas/core/geo-metro.json" },
+      "minItems": 1
+    },
+    "programming_formats": {
+      "type": "array",
+      "description": "Programming formats by the seller's code, as listed on a plan_breakdown row of dimension programming_format.",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "minItems": 1
+    }
+  },
+  "anyOf": [
+    { "required": ["stations"] },
+    { "required": ["markets"] },
+    { "required": ["programming_formats"] }
+  ],
+  "additionalProperties": true
+}

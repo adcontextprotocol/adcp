@@ -1,0 +1,97 @@
+{
+  "request_proposals": {
+    "idempotency_key": "hearthside-winter-2026-v1",
+    "brand": {
+      "domain": "hearthsidecoffee.example"
+    },
+    "brief": "Hearthside Coffee Co., a 140-store New England coffee chain, is launching its winter menu (Maple Pecan Latte, $5 breakfast combo) and wants to drive store visits and app orders. Target adults 25-54 who commute and buy coffee out several times a week. Markets: Boston, Providence, Hartford-New Haven, Worcester, Springfield, Manchester, Portland ME, Burlington VT. Weekday morning drive and weekend mornings, some mid-afternoon, no overnight. 16 Nov to 20 Dec, 3+ frequency, weight toward Boston and Providence.",
+    "criteria": {
+      "planning_goals": {
+        "budget_mode": "suggest",
+        "max_frequency": {
+          "value": 3,
+          "window": {
+            "interval": 28,
+            "unit": "days"
+          }
+        },
+        "must_include": {
+          "markets": [
+            {
+              "system": "custom",
+              "values": [
+                "Boston, MA",
+                "Providence, RI",
+                "Hartford, CT",
+                "New Haven, CT",
+                "Worcester, MA",
+                "Springfield, MA",
+                "Manchester, NH",
+                "Portland, ME",
+                "Burlington, VT"
+              ]
+            }
+          ]
+        },
+        "delivery_rules": {
+          "spot_length_mix": [
+            {
+              "duration_seconds": 30,
+              "share_percentage": 100
+            }
+          ],
+          "pacing": "even"
+        }
+      }
+    }
+  },
+  "full_goals": {
+    "budget_mode": "suggest",
+    "max_frequency": {
+      "value": 3,
+      "window": {
+        "interval": 28,
+        "unit": "days"
+      }
+    },
+    "delivery_rules": {
+      "spot_length_mix": [
+        {
+          "duration_seconds": 30,
+          "share_percentage": 100
+        }
+      ],
+      "max_spots_per_hour": 1,
+      "overbook_percentage": 0,
+      "daypart_mix": [
+        {
+          "label": "prime",
+          "share_percentage": 60
+        },
+        {
+          "label": "fringe",
+          "share_percentage": 40
+        }
+      ],
+      "pacing": "even"
+    },
+    "must_include": {
+      "markets": [
+        {
+          "system": "custom",
+          "values": [
+            "Boston, MA",
+            "Providence, RI",
+            "Hartford, CT",
+            "New Haven, CT",
+            "Worcester, MA",
+            "Springfield, MA",
+            "Manchester, NH",
+            "Portland, ME",
+            "Burlington, VT"
+          ]
+        }
+      ]
+    }
+  }
+}

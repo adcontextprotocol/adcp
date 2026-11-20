@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/goal-result.json",
+  "title": "Goal Result",
+  "description": "A seller's evaluation of one planning goal against one proposal version. A proposal answering criteria.planning_goals carries one result per goal present in the request's effective planning_goals, and MUST NOT silently ignore a goal: one it cannot plan against is reported not_supported. Results are the seller's evaluation of its own forecast, a statement of what the plan is expected to do and not a delivery guarantee.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "goal": {
+      "$ref": "/schemas/enums/planning-goal-key.json"
+    },
+    "status": {
+      "$ref": "/schemas/enums/planning-goal-status.json"
+    },
+    "target": {
+      "type": "number",
+      "description": "The figure the buyer asked for, in the goal's unit (see planning-goal-key.json). Absent for goals with no single figure."
+    },
+    "achieved": {
+      "type": "number",
+      "description": "The figure the proposal is forecast to deliver, in the same unit as target."
+    },
+    "detail": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Why the goal was met or missed, or what the seller could not support, in prose an agent can relay."
+    },
+    "unmet_items": {
+      "type": "array",
+      "description": "For must_include, what the plan omits; for must_exclude, what it still contains. Market labels and programming formats as the buyer sent them; a station as type:value (station_id:WBZ-AM).",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["goal", "status"],
+  "additionalProperties": true
+}

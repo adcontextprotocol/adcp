@@ -1996,6 +1996,42 @@
           "description": "Whether this seller supports reverse-forecast planning: parsing criteria.outcome_target (a compact goal — a forecastable-metric delivery metric, an event-type conversion event, or a vendor_metric — plus a desired volume, a cost_per target, or both) and planning against it, answering with total_budget_guidance and forecasts whose points carry the goal's key in metrics, or its (vendor, metric_id) in vendor_metric_values[] for a vendor_metric goal; see outcome-target.json for cost_per answers and rejections. This flag does not distinguish sellers that plan cost_per or vendor_metric goals; buyers rely on the negotiated adcp_version together with features.bidding_policy, conversion_tracking.supported_targets, and vendor_metric_optimization. false or absent means support is unknown: buyers SHOULD express outcome goals in brief prose instead, and sellers reject a structured outcome_target on proposal requests with UNSUPPORTED_FEATURE rather than silently ignoring it (list_products ignores it for every seller).",
           "x-added-in": "3.2.0"
         },
+        "planning_goals": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.planning_goals). Declares that this seller parses criteria.planning_goals on request_proposals and revise refinements, plans toward the goals it lists, and answers with goal_results on every proposal. A seller that lists media_buy.planning_goals in experimental_features reports a goal it does not list in supported_goals as not_supported; a seller that does not list the feature rejects criteria.planning_goals with UNSUPPORTED_FEATURE, and list_products ignores it. Buyers SHOULD check supported_goals before relying on a goal being optimized toward rather than reported not_supported.",
+          "properties": {
+            "supported_goals": {
+              "type": "array",
+              "description": "Goals the seller plans toward and evaluates. Absent means support is unknown and buyers read goal_results.",
+              "items": { "$ref": "/schemas/enums/planning-goal-key.json" },
+              "uniqueItems": true
+            },
+            "supported_objectives": {
+              "type": "array",
+              "description": "Objectives the seller can optimize for.",
+              "items": { "$ref": "/schemas/enums/planning-objective.json" },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "plan_breakdown": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.plan_breakdown). Declares that this seller returns plan_breakdown on its proposals.",
+          "properties": {
+            "dimensions": {
+              "type": "array",
+              "description": "Breakdown dimensions the seller reports. Absent means buyers read the breakdowns that arrive.",
+              "items": { "$ref": "/schemas/enums/plan-breakdown-dimension.json" },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
         "governance_aware": {
           "type": "boolean",
           "description": "Compatibility claim used by existing media-buy conformance runners. A value of true corresponds only to online governance consultation for create_media_buy, the historically graded surface. Agents use adcp.governance_enforcement for explicit task-scoped claims, including update_media_buy and cross-role signed-context enforcement.",
