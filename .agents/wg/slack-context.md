@@ -7,42 +7,41 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-11-16
+- Generated: 2026-11-21
 - Window: last 14 days
 - Channels: 22 public WG channels swept (4 private excluded)
 
 ---
 
-### 3.3 GA release readiness and versioning rules
+### Makegood triggers and breach handling gaps
 - **Status:** active
-- **Summary:** The working group is closing out 3.3 against the GA criteria: SDKs are on beta.4, storyboards are green, and closed-schema triage PRs are up with a consent window closing Nov 13. A versioning discussion is underway on whether cross-release translation in SDKs should be normative. One proposal does this, a counter-proposal offers three rules instead (minors only add, and only to open schemas; replacing a field means adding the new one alongside), and a concession has been posted to reconcile them. Decisions on this were slated for the Nov 9 working group session, with 4.0 planning opening in the final minutes. Several 3.3 PRs (DOOH, enum replacements, reporting, 3.2.x governance backport) are waiting on maintainer approvals or review.
-- **Related:** #8519, #8704, #8600, #8501, #8736, #8915, #8793, #8149, #8980
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1794605247121259, https://agenticads.slack.com/archives/C09BK148CLU/p1793989289197729
+- **Summary:** A member working through how sellers make good to buyers identified gaps in the current model. Makegoods are triggered only by a breached performance-standard threshold or a billing variance beyond the allowed maximum, which misses common cases such as wrong-geo delivery, where both sides agree on impression counts and geo is not a performance-standard metric. Discussion also covered over-delivery and breach detection. A broadcast TV perspective agreed that matching counts does not prove targeting compliance and that the protocol should let parties identify affected delivery, reference the contractual requirement, and record the resolution. It also said the protocol should distinguish delivered from billable volume and carry breach notifications and evidence references, while commercial responsibility for excess and platform-side detection logic may be outside protocol scope.
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1794914494367739, https://agenticads.slack.com/archives/C0ACHCU5210/p1794934174429839
 
-### Campaign governance documentation coherence
+### 3.3 release readiness and open PRs
 - **Status:** active
-- **Summary:** A review of the campaign-governance docs found that task, audit-trail, and safety-model pages contradict the specification in several places, the spec contradicts its own schemas in a couple of spots, and a number of behaviors every governance agent must implement are undefined. Examples include inconsistent handling of budget cuts below committed spend, audit mode semantics versus mandatory escalation for plans requiring human review, and a schema that rejects a case the prose says is valid. Issues were filed against the spec repo and the Python SDK repo.
-- **Related:** #8733
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1793805096456139
+- **Summary:** The 3.3 release is close, and a maintainer shared the open-PR list heading into the weekend. Pending items include a DOOH change and an enum-replacements change, both awaiting approval or re-approval, a reporting change gated on a no-objection timer, and a 3.2.x governance backport awaiting review.
+- **Related:** #8736, #8915, #8793, #8149, #8980
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1794605247121259
 
-### Beta SDK version pinning and capabilities discovery
+### AddOn feature split into buyer-seller and seller-vendor scopes
 - **Status:** active
-- **Summary:** A reader built on the 3.3 beta SDK pinned a prerelease version in its capabilities call and failed outright when the seller returned a version-unsupported error, rather than retrying unpinned. Beta guidance says prerelease pins should only be sent to peers advertising that exact value, never negotiate down, and that buyers should retry unpinned on version-unsupported errors; the stable SDK already behaves this way. A related point is that the capabilities task is expected to be readable without credentials, so sellers locking down auth should still allow anonymous probes.
+- **Summary:** The AddOn feature was split into two issues to keep a clean separation. One covers protocol communication between buyer and sales agents, and the other covers a seller-to-vendor fragment API. The associated PR was adjusted to implement only the buyer-to-sales-agent case.
+- **Related:** #6700, #9109, #8346
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1795118725425689
+
+### Beta SDK version pinning and unauthenticated capability reads
+- **Status:** active
+- **Summary:** An implementer reported that a reader built on the 3.3 beta SDK pinned a prerelease version in its capabilities call, received a version-unsupported error from a seller supporting only 3.0, and did not retry unpinned, so agent registration failed. The 3.3 beta guidance says prerelease pins go only to peers advertising that exact value, never negotiate down, and should fall back to an unpinned call on that error, which the stable SDK already does. The thread also reiterated that the capabilities call is expected to be readable without credentials, which matters for sellers who lock down authentication.
 - **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1794418915773829
 
-### Averaged daily budget targets and acceptance matrix
+### Agent registry openness, trust signals, and lookup
 - **Status:** active
-- **Summary:** A contributor proposed drafting a small acceptance matrix covering discovery through authorization and readback for replacing a hard daily cap with an averaged target. The proposal calls for preserving existing constraint-relaxation rules and making the accepted window and timezone explicit on readback.
-- **Related:** #8685
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1793645362619399
+- **Summary:** A proposal set argues the agent registry is sparsely populated and gives little reason to publish. It proposes opening listing to non-members with owner-controlled visibility, adding environment tags and dated evidence badges (authorized, reachable, conformant, observed), and providing identity lookup, a public MCP server, and capability-based search. The open-listing question requires an executive committee decision, while the environment tag can proceed independently.
+- **Related:** #9067, #9058, #9059
+- **Thread:** https://agenticads.slack.com/archives/C09PK59GUCB/p1794868197220489
 
-### Synthetic population-model approach to audience signals
-- **Status:** parked
-- **Summary:** A member proposed an alternative to ID-based audience matching: buyers plan reach and frequency on a large population model, pass virtual IDs to sellers, and sellers map their audiences to those IDs, sidestepping match-rate and consent-state problems. A neutral party would provide the model, with others enriching attributes. A follow-up agreed the topic merits its own working group and noted that buy-side planning already happens independently of media currency.
-- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1793902771260599, https://agenticads.slack.com/archives/C09BF378H8A/p1793913489046689
-
-### Website redesign proposals
+### Gaps between governance principles and the specs
 - **Status:** active
-- **Summary:** Several proposals for redesigning the project's website pages (main page, story page, and a related proposal) were posted for member review. These concern documentation and site presentation rather than protocol schemas.
-- **Related:** #8999, #8994, #8990
-- **Thread:** https://agenticads.slack.com/archives/C09PK59GUCB/p1794607683281879, https://agenticads.slack.com/archives/C09PK59GUCB/p1794605518294669, https://agenticads.slack.com/archives/C09PK59GUCB/p1794601322954509
+- **Summary:** A member refreshing the website and docs reported a detailed analysis showing multiple gaps between the stated governance principles and what the specifications currently cover. Follow-up discussion occurred in the thread.
+- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1794913107378069
