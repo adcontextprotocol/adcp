@@ -30,7 +30,7 @@
       "uniqueItems": true,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.reporting_subscriptions). The offering's breakdown mapped onto the standard reporting dimension vocabulary, so a buyer can resolve a subscription selector's match from the wire. Empty for an offering that reports totals only. Sellers advertising media_buy.reporting_subscriptions MUST include it on every offering."
+      "description": "Experimental (media_buy.reporting_subscriptions). The offering's breakdown mapped onto the standard reporting dimension vocabulary, so a buyer can resolve a subscription selector's match from the wire. Empty for an offering that reports totals only. Sellers advertising media_buy.reporting_subscriptions MUST include it on every offering. A contract_version 1.2 report definition names each geography dimension it maps with its standard name and fills it with codes, never display names (reporting-report-definition.json dimensions)."
     },
     "unmapped_dimensions": {
       "type": "array",
@@ -40,6 +40,12 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.reporting_subscriptions). Native report-definition dimensions with no standard mapping. Present when any exist. They count as distinct under match exact and never count toward finest."
+    },
+    "dimension_systems": {
+      "$ref": "/schemas/core/reporting-dimension-systems.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.reporting_subscriptions). The metro system, and the postal countries and systems, this offering reports in. Required when standard_dimensions includes metro or postal_area, so a buyer knows which codes the rows carry and a subscription selector can name them."
     },
     "available_from": {
       "type": "string",
@@ -127,6 +133,14 @@
   },
   "required": ["offering_id", "feed_purpose", "report_definition_id", "report_definition_uri", "report_definition_sha256", "reporting_profile", "schedule", "supported_finality", "reconciliation_mode"],
   "allOf": [
+    {
+      "if": { "properties": { "standard_dimensions": { "contains": { "const": "metro" } } }, "required": ["standard_dimensions"] },
+      "then": { "required": ["dimension_systems"], "properties": { "dimension_systems": { "required": ["metro"] } } }
+    },
+    {
+      "if": { "properties": { "standard_dimensions": { "contains": { "const": "postal_area" } } }, "required": ["standard_dimensions"] },
+      "then": { "required": ["dimension_systems"], "properties": { "dimension_systems": { "required": ["postal_area"] } } }
+    },
     {
       "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
       "then": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } } }
