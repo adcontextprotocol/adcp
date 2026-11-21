@@ -308,6 +308,15 @@ describe('inventory tenants', () => {
       });
       expect(wrongPrice.errors?.[0]?.code).toBe('INVALID_PRICING_OPTION');
     });
+
+    it('reports a negative budget as invalid before looking the product up', async () => {
+      const negative = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-tenants-negative-00001',
+        account: ACCOUNT, brand: BRAND, start_time: start.toISOString(), end_time: end.toISOString(),
+        packages: [{ product_id: 'nope', pricing_option_id: 'nope_cpm', budget: -500 }],
+      });
+      expect(negative.errors?.[0]).toMatchObject({ code: 'INVALID_REQUEST', field: 'packages[0].budget' });
+    });
   });
 
   describe('sandbox_clock on the inventory tenants', () => {
