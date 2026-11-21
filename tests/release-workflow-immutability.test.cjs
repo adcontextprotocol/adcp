@@ -326,8 +326,10 @@ assert.strictEqual(
 assert(
   artifactDetection.indexOf('node scripts/check-release-supersession.cjs verify') !== -1 &&
     artifactDetection.indexOf('node scripts/check-release-supersession.cjs verify') <
-      artifactDetection.indexOf('node scripts/check-release-state.cjs current'),
-  'A supersession dispatch must re-verify the reviewed marker before the strict branch fence and Changesets.'
+      artifactDetection.indexOf('node scripts/check-release-state.cjs current') &&
+    artifactDetection.indexOf('node scripts/check-release-supersession.cjs verify') <
+      artifactDetection.indexOf('node scripts/check-release-state.cjs start'),
+  'A supersession dispatch must re-verify the reviewed marker before the branch fence and Changesets.'
 );
 
 assert.strictEqual(
@@ -356,7 +358,8 @@ assert.deepStrictEqual(
 );
 
 // Strict exact-head freshness guards every step that can lead to Changesets
-// generation. Only steps publishing the already-committed release relax it.
+// generation. The start fences use `start`, which is strict unless the run
+// publishes an already-committed release (and always strict for prepare_next).
 const fenceModes = (source) =>
   [...source.matchAll(/check-release-state\.cjs"? ([a-z-]+)/g)].map(match => match[1]);
 const stepRun = (job, name) => {
@@ -364,17 +367,41 @@ const stepRun = (job, name) => {
   assert(found, `Missing ${job} step: ${name}`);
   return found.run;
 };
-assert.deepStrictEqual(fenceModes(stepRun('verify-release', 'Require current release branch')), ['current']);
-assert.deepStrictEqual(fenceModes(stepRun('release', 'Require current release branch')), ['current']);
-assert.deepStrictEqual(
-  fenceModes(stepRun('release', 'Recheck current release branch after installation')),
-  ['current']
-);
+for (const [job, name] of [
+  ['verify-release', 'Require current release branch'],
+  ['release', 'Require current release branch'],
+  ['release', 'Recheck current release branch after installation'],
+]) {
+  assert.deepStrictEqual(fenceModes(stepRun(job, name)), ['start'], `${job}: ${name} must use the start fence.`);
+  assert.strictEqual(
+    workflowConfig.jobs[job].steps.find(step => step.name === name).env.PREPARE_NEXT,
+    '${{ inputs.prepare_next }}',
+    `${job}: ${name} must pass prepare_next so a supersession dispatch stays strict.`
+  );
+}
 assert.deepStrictEqual(
   fenceModes(artifactDetection),
-  ['recovery', 'current'],
-  'Release artifact detection precedes the Changesets path and must keep the strict fence.'
+  ['recovery', 'start', 'current'],
+  'Release artifact detection must fence the publication branch with start and the Changesets branch strictly.'
 );
+{
+  // The relaxed fence is reachable only once artifacts are detected (after
+  // the generation_only tripwire); the branch that falls through to
+  // Changesets keeps the strict exact-head fence.
+  const run = releaseJob.steps.find(step => step.id === 'release-artifacts').run;
+  const detect = run.indexOf('if grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then');
+  const trip = run.indexOf('if [ "${GENERATION_ONLY:-}" = true ]; then');
+  const start = run.indexOf('node scripts/check-release-state.cjs start');
+  const hasTrue = run.indexOf('echo "has_release_artifacts=true"');
+  const otherwise = run.indexOf('\nelse\n', detect);
+  const strict = run.indexOf('node scripts/check-release-state.cjs current');
+  const hasFalse = run.indexOf('echo "has_release_artifacts=false"');
+  assert(
+    detect >= 0 && detect < trip && trip < start && start < hasTrue && hasTrue < otherwise &&
+      otherwise < strict && strict < hasFalse,
+    'Artifact detection must choose start for the publication branch and current for the generation branch.'
+  );
+}
 assert(
   workflow.includes(`printf '#!/bin/sh\\nnode "$RUNNER_TEMP/release-hooks/check.cjs" current\\n'`),
   'The Changesets pre-push hook must keep the strict exact-head fence.'
@@ -543,6 +570,84 @@ assert(
   releaseJob.steps.indexOf(artifactCheckout) < releaseJob.steps.indexOf(r2Publication),
   'Artifact publication credentials must refresh immediately before the R2 phase.'
 );
+
+// Transient R2 errors are retried by the CLI before the per-object resume in
+// the scripts (tests/cdn-artifacts.test.cjs, recover-cdn-version-trees.test.cjs).
+{
+  const recoverWorkflow = YAML.parse(fs.readFileSync(
+    path.join(repoRoot, '.github/workflows/recover-protocol-cdn.yml'),
+    'utf8'
+  ));
+  const recoverSteps = recoverWorkflow.jobs.recover.steps;
+  const uploadSteps = [
+    ['release.yml', r2Publication],
+    ['recover-protocol-cdn.yml', recoverSteps.find(step => step.name === 'Upload only missing immutable R2 objects')],
+    ['recover-protocol-cdn.yml', recoverSteps.find(step => step.name === 'Upload only missing immutable schema and compliance objects')],
+  ];
+  for (const [file, step] of uploadSteps) {
+    assert(step, `${file} must keep its R2 upload step.`);
+    assert.strictEqual(step.env.AWS_MAX_ATTEMPTS, '10', `${file}: ${step.name} must raise the CLI retry budget.`);
+    assert.strictEqual(step.env.AWS_RETRY_MODE, 'adaptive', `${file}: ${step.name} must use adaptive retries.`);
+    assert(!('R2_OBJECT_ATTEMPTS' in step.env) && !('R2_RESUME_DELAY_SECONDS' in step.env),
+      `${file}: ${step.name} keeps the scripts' default resume budget.`);
+  }
+  // Only the write steps get the retry budget; nothing else talks to R2.
+  for (const step of [...releaseJob.steps, ...recoverSteps]) {
+    if (!uploadSteps.some(([, upload]) => upload === step))
+      assert(!step.env || !('AWS_MAX_ATTEMPTS' in step.env), `${step.name} must not carry the R2 retry budget.`);
+  }
+  // The inline protocol-tuple resume retries only exit 75 (transient) and
+  // keeps the conditional write and byte comparison.
+  const inline = recoverSteps.find(step => step.name === 'Upload only missing immutable R2 objects').run;
+  assert(inline.includes("--if-none-match '*'") && inline.includes('cmp -s "${source}" "${existing}"'));
+  assert(inline.includes('if [ "$status" -ne 75 ] || [ "$attempt" -eq 3 ]; then'));
+  assert(!/(^|\n)\s*(set \+e|aws [^\n]*\|\| true)/.test(inline.replace(/\n\s*set \+e\n\s*\(set -e; upload_immutable_once "\$@"\)\n\s*status=\$\?\n\s*set -e/, '')),
+    'Error suppression is allowed only around the single resumable attempt.');
+}
+
+// The release freeze status (RELEASING.md "Release freeze"). Its state machine
+// is tested in tests/release-freeze.test.cjs; this pins the workflow's trust
+// boundary and triggers.
+{
+  const freezeSource = fs.readFileSync(path.join(repoRoot, '.github/workflows/release-freeze.yml'), 'utf8');
+  const freeze = YAML.parse(freezeSource);
+  assert.deepStrictEqual(freeze.permissions, {}, 'The freeze workflow grants nothing at the top level.');
+  const job = freeze.jobs.evaluate;
+  assert.deepStrictEqual(
+    job.permissions,
+    { actions: 'read', contents: 'read', 'pull-requests': 'read', statuses: 'write' },
+    'The freeze job reads metadata and writes commit statuses only.'
+  );
+  assert.deepStrictEqual(freeze.on.pull_request_target.branches, ['main', '3.2.x', '3.1.x', '3.0.x']);
+  for (const type of ['opened', 'reopened', 'synchronize', 'ready_for_review', 'converted_to_draft', 'labeled', 'unlabeled', 'closed', 'edited'])
+    assert(freeze.on.pull_request_target.types.includes(type), `The freeze must re-evaluate on ${type}.`);
+  assert.deepStrictEqual(freeze.on.workflow_run.workflows, [workflowConfig.name, 'Recover release artifacts on CDN'],
+    'The freeze must follow every Release and CDN recovery run by its exact workflow name.');
+  assert.deepStrictEqual(freeze.on.workflow_run.types, ['requested', 'completed']);
+  assert.deepStrictEqual(freeze.on.release.types, ['published']);
+  assert(Array.isArray(freeze.on.schedule) && freeze.on.schedule.length === 1);
+  assert(Object.hasOwn(freeze.on, 'workflow_dispatch'));
+  assert.deepStrictEqual(freeze.concurrency, { group: 'release-freeze', 'cancel-in-progress': false },
+    'Freeze runs must be serialized so an older evaluation cannot overwrite a newer one.');
+  // pull_request_target: only the trusted evaluator from main is checked out;
+  // the PR head is never fetched and no PR field reaches a shell.
+  const checkouts = job.steps.filter(step => step.uses?.startsWith('actions/checkout@'));
+  assert.strictEqual(checkouts.length, 1);
+  assert.deepStrictEqual(checkouts[0].with, {
+    ref: 'main',
+    'fetch-depth': 1,
+    'persist-credentials': false,
+    'sparse-checkout': 'scripts/release-freeze.cjs',
+    'sparse-checkout-cone-mode': false,
+  });
+  assert(!/github\.event\.pull_request|github\.head_ref|head\.sha|head\.ref/.test(freezeSource),
+    'The freeze workflow must not reference pull request head data.');
+  const runs = job.steps.filter(step => step.run).map(step => step.run.trim());
+  assert.deepStrictEqual(runs, ['node scripts/release-freeze.cjs sweep']);
+  assert.strictEqual(job.steps.find(step => step.run).env.GH_TOKEN, '${{ github.token }}');
+  // Reads metadata only: no secrets, no App token, no package installation.
+  assert(!/secrets\.|create-github-app-token|npm (ci|install)/.test(freezeSource));
+}
 
 assert(
   !artifactDetection.includes('[ -d "dist/schemas/${VERSION}" ]'),

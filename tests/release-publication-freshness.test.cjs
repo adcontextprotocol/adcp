@@ -642,3 +642,118 @@ test("verified-merge is main-only", (t) => {
   );
   assert.match(step.if, /github\.ref_name == 'main'/);
 });
+
+// `start`: release.yml's "Require current release branch" and the other checks
+// before artifact detection. A run publishing an already-committed release
+// accepts an unrelated advance under the publication-current rules (3.3.0-rc.2
+// was stranded by #9125, run 44711592865); everything that can reach
+// Changesets, and the prepare_next supersession dispatch, stays strict.
+const push = { GITHUB_EVENT_NAME: "push" };
+
+test("start accepts an unrelated advance past a release merge and logs it", (t) => {
+  const f = freshnessFixture(t);
+  const head = f.commit({ "server/app.ts": "export const later = 1;\n" }, "Training-agent fix (#9125)");
+  f.push(head);
+  const result = f.run("start", { ...push, RELEASE_SHA: f.tested });
+  accepted(result);
+  assert.match(result.stdout, new RegExp(`Release start: ${f.tested} commits the ${escape(version)} release artifacts`));
+  assert.ok(result.stdout.includes(`advance from tested ${f.tested} to ${head} (1 commit(s))`), result.stdout);
+  // The identical head needs no advance at all.
+  const g = freshnessFixture(t);
+  accepted(g.run("start", { ...push, RELEASE_SHA: g.tested }));
+});
+
+for (const [name, files, pattern] of [
+  ["a package version bump", { "package.json": JSON.stringify({ version: "3.3.0-rc.3" }) }, /package version changed/],
+  ["a change to this version's tarball", { [`dist/protocol/${version}.tgz`]: "resigned\n" }, /release paths: dist\/protocol/],
+  ["a change to this version's schema tree", { [`dist/schemas/${version}/index.json`]: "[]\n" }, /release paths: dist\/schemas/],
+  ["a release identity change", { ".changeset/pre.json": JSON.stringify({ mode: "exit" }) }, /release paths: \.changeset\/pre\.json/],
+  ["a release status change", { ".changeset/withdrawn-release.json": "{}" }, /release paths: \.changeset\/withdrawn-release\.json/],
+  ["a release.yml change", { ".github/workflows/release.yml": "name: Release\n" }, /release paths: \.github\/workflows\/release\.yml/],
+  ["a fence change", { "scripts/check-release-state.cjs": "// changed\n" }, /release paths: scripts\/check-release-state\.cjs/],
+]) {
+  test(`start refuses ${name} after a release merge`, (t) => {
+    const f = freshnessFixture(t);
+    f.commit({ "server/app.ts": "export const later = 1;\n" });
+    f.push(f.commit(files));
+    refused(f.run("start", { ...push, RELEASE_SHA: f.tested }), pattern);
+  });
+}
+
+test("start keeps the strict fence for a push that does not commit release artifacts", (t) => {
+  const f = freshnessFixture(t);
+  // The tested push is an ordinary commit: it can only lead to generation.
+  const ordinary = f.commit({ "server/app.ts": "export const ordinary = 1;\n" });
+  f.push(ordinary);
+  f.publisher("fetch", "-q", "origin", "main");
+  f.publisher("checkout", "-q", "--detach", ordinary);
+  const env = { ...push, TESTED_SHA: ordinary, RELEASE_SHA: ordinary };
+  accepted(f.run("start", env));
+  f.push(f.commit({ "server/app.ts": "export const later = 1;\n" }));
+  const result = f.run("start", env);
+  refused(result, new RegExp(`Refusing stale tested SHA ${ordinary}`));
+  assert.doesNotMatch(result.stdout, /Release start:/);
+  // An artifact change for another version does not make it a release commit.
+  const g = freshnessFixture(t);
+  const other = g.commit({ "dist/schemas/0.0.1/index.json": "{}\n" });
+  g.push(other);
+  g.publisher("fetch", "-q", "origin", "main");
+  g.publisher("checkout", "-q", "--detach", other);
+  g.push(g.commit({ "server/app.ts": "export const later = 1;\n" }));
+  refused(g.run("start", { ...push, TESTED_SHA: other, RELEASE_SHA: other }), /Refusing stale tested SHA/);
+});
+
+test("start keeps a prepare_next supersession dispatch strict on its exact SHA", (t) => {
+  const f = freshnessFixture(t);
+  f.push(f.commit({ "server/app.ts": "export const later = 1;\n" }));
+  const dispatch = { GITHUB_EVENT_NAME: "workflow_dispatch", RELEASE_SHA: f.tested };
+  for (const prepareNext of ["true", undefined, "", "TRUE"]) {
+    const result = f.run("start", { ...dispatch, ...(prepareNext === undefined ? {} : { PREPARE_NEXT: prepareNext }) });
+    refused(result, /Refusing stale tested SHA/);
+    assert.match(result.stdout, /keeps the strict exact-head fence/);
+  }
+  // A recovery dispatch says prepare_next=false and names a release merge.
+  accepted(f.run("start", { ...dispatch, PREPARE_NEXT: "false" }));
+});
+
+test("start refuses without an exact release commit", (t) => {
+  const f = freshnessFixture(t);
+  refused(f.run("start", { ...push, RELEASE_SHA: "" }), /exact release commit/);
+  refused(f.run("start", { ...push, RELEASE_SHA: "abc" }), /exact release commit/);
+});
+
+test("a recovery dispatch accepts an unrelated advance after its tested head", (t) => {
+  const f = freshnessFixture(t);
+  // Dispatched on current main, two unrelated commits after the release merge.
+  f.commit({ "server/app.ts": "export const first = 1;\n" });
+  const dispatchedOn = f.commit({ "server/app.ts": "export const second = 1;\n" });
+  f.push(dispatchedOn);
+  f.publisher("fetch", "-q", "origin", "main");
+  f.publisher("checkout", "-q", "--detach", dispatchedOn);
+  const env = {
+    GITHUB_EVENT_NAME: "workflow_dispatch",
+    PREPARE_NEXT: "false",
+    TESTED_SHA: dispatchedOn,
+    RELEASE_SHA: f.tested,
+  };
+  accepted(f.run("recovery", env, [f.tested]));
+  const head = f.commit({ "server/app.ts": "export const during = 1;\n" });
+  f.push(head);
+  const result = f.run("recovery", env, [f.tested]);
+  accepted(result);
+  assert.ok(result.stdout.includes(`advance from tested ${dispatchedOn} to ${head}`), result.stdout);
+  // ...but a version bump during the run still stops it.
+  f.push(f.commit({ "package.json": JSON.stringify({ version: "3.3.0-rc.3" }) }));
+  refused(f.run("recovery", env, [f.tested]), /package version changed/);
+});
+
+test("a recovery dispatch naming a commit without release artifacts stays strict", (t) => {
+  const f = freshnessFixture(t);
+  const ordinary = f.commit({ "server/app.ts": "export const ordinary = 1;\n" });
+  f.push(ordinary);
+  f.publisher("fetch", "-q", "origin", "main");
+  f.publisher("checkout", "-q", "--detach", ordinary);
+  f.push(f.commit({ "server/app.ts": "export const later = 1;\n" }));
+  const env = { GITHUB_EVENT_NAME: "workflow_dispatch", PREPARE_NEXT: "false", TESTED_SHA: ordinary, RELEASE_SHA: ordinary };
+  refused(f.run("recovery", env, [ordinary]), /Refusing stale tested SHA/);
+});

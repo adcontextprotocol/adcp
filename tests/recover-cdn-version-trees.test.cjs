@@ -165,10 +165,17 @@ function fixture(t, options = {}) {
     }
     if(args[1]==='put-object') {
       if(value('--if-none-match')!=='*') throw Error('unconditional write');
-      if(fs.existsSync(object)) {console.error('PreconditionFailed');process.exit(1);}
+      // PUT_FAULT=<unavailable|lost>:<n> injects a fault on the first n writes.
+      const [fault,times]=(process.env.PUT_FAULT||':0').split(':');
+      const attempt=(fs.existsSync('put-attempts')?Number(read('put-attempts')):0)+1;
+      fs.writeFileSync('put-attempts',String(attempt));
+      const faulted=attempt<=Number(times);
+      if(faulted&&fault==='unavailable'){console.error('An error occurred (ServiceUnavailable) when calling the PutObject operation (reached max retries: 9): Service Unavailable');process.exit(254);}
+      if(fs.existsSync(object)) {console.error('An error occurred (PreconditionFailed) when calling the PutObject operation');process.exit(1);}
       fs.mkdirSync(path.dirname(object),{recursive:true});fs.copyFileSync(value('--body'),object);
       fs.writeFileSync(metaPath,JSON.stringify({ContentType:value('--content-type'),CacheControl:value('--cache-control')}));
       log('put '+key+' | '+value('--content-type')+' | '+value('--cache-control'));
+      if(faulted&&fault==='lost'){console.error('Read timeout on endpoint URL');process.exit(255);}
       process.exit(0);
     }
     if(args[0]==='s3'&&args[1]==='cp'&&args[2].startsWith('s3://')) {
@@ -194,6 +201,7 @@ function fixture(t, options = {}) {
     AWS_ACCESS_KEY_ID: "test",
     AWS_SECRET_ACCESS_KEY: "test",
     CDN_VERIFY_ATTEMPTS: "1",
+    R2_RESUME_DELAY_SECONDS: "0",
   };
 
   const argv = (mode) => [
@@ -340,7 +348,45 @@ test("an inconclusive existence check never reads as absent", (t) => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Could not safely determine whether R2 object/);
+  assert.doesNotMatch(result.stdout, /Transient R2 error/, "a 403 is not transient and is never retried");
   assert.deepEqual(f.calls(), []);
+});
+
+test("a transient R2 error resumes that object and recovery completes", (t) => {
+  const f = fixture(t);
+  const result = f.run("upload", { PUT_FAULT: "unavailable:2" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal((result.stdout.match(/::warning::Transient R2 error/g) || []).length, 2);
+  assert.match(result.stdout, /created 8 missing object\(s\), verified 0/);
+  assert.deepEqual(f.bucketKeys(), expectedKeys);
+  // Each failed attempt still fenced before its existence check and before
+  // its write: one preflight, three fences per object, two per failed attempt.
+  assert.equal(fs.readFileSync(path.join(f.dir, "fence-count"), "utf8"), String(1 + 3 * 8 + 2 * 2));
+});
+
+test("a write whose response was lost resumes as a verified existing object", (t) => {
+  const f = fixture(t);
+  const result = f.run("upload", { PUT_FAULT: "lost:1" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /created 7 missing object\(s\), verified 1/);
+  assert.equal(f.calls().length, 8, "no object is written twice");
+  assert.deepEqual(f.bucketKeys(), expectedKeys);
+});
+
+test("R2 that stays unavailable stops recovery after the bounded resume", (t) => {
+  const f = fixture(t);
+  const result = f.run("upload", { PUT_FAULT: "unavailable:99" });
+  assert.equal(result.status, 75);
+  assert.match(result.stderr, /R2 stayed unavailable for .* after 3 attempt\(s\)/);
+  assert.equal(fs.readFileSync(path.join(f.dir, "put-attempts"), "utf8"), "3");
+  assert.deepEqual(f.bucketKeys(), []);
+  const bounded = fixture(t);
+  for (const extra of [{ R2_OBJECT_ATTEMPTS: "0" }, { R2_OBJECT_ATTEMPTS: "9" }, { R2_RESUME_DELAY_SECONDS: "-1" }]) {
+    const refused = bounded.run("upload", extra);
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /R2_OBJECT_ATTEMPTS must be 1-5/);
+  }
+  assert.deepEqual(bounded.calls(), []);
 });
 
 for (const [label, overrides] of [

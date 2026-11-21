@@ -258,9 +258,69 @@ if [[ "$mode" == upload ]]; then
 
   existing_body="$work/existing"
   existing_type="$work/existing-type"
-  head_error="$work/head-error"
+  aws_error="$work/aws-error"
+  outcome="$work/outcome"
   created=0
   verified=0
+  # Bounded resume of one object after a transient storage error, as in
+  # backfill-cdn-artifacts.sh: the whole conditional sequence below re-runs, so
+  # a lost write response resumes as "exists, byte-compare", never an
+  # overwrite. Integrity, content-type and fence failures are never retried.
+  object_attempts="${R2_OBJECT_ATTEMPTS:-3}"
+  resume_delay="${R2_RESUME_DELAY_SECONDS:-30}"
+  [[ "$object_attempts" =~ ^[1-5]$ && "$resume_delay" =~ ^[0-9]{1,3}$ ]] ||
+    die "R2_OBJECT_ATTEMPTS must be 1-5 and R2_RESUME_DELAY_SECONDS 0-999"
+  transient_r2_error() {
+    grep -Eq 'ServiceUnavailable|SlowDown|InternalError|RequestTimeout|Throttl|PreconditionFailed|\((500|502|503|504|412)\)|Could not connect|Connection was closed|Connection reset|Read timeout|timed out|EndpointConnectionError' "$1"
+  }
+  # One attempt, run in a subshell under set -e. Exit 75 is a transient
+  # storage error; die() and any other failure are final.
+  upload_object_once() {
+    node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
+    rm -f "$existing_body" "$existing_type" "$aws_error" "$outcome"
+    if aws s3api head-object --bucket "$BUCKET" --key "$key" \
+        --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
+        --no-cli-pager --query ContentType --output text "${aws_timeouts[@]}" \
+        </dev/null >"$existing_type" 2>"$aws_error"; then
+      if ! aws s3 cp "s3://${BUCKET}/${key}" "$existing_body" \
+          --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
+          --no-cli-pager --no-progress --only-show-errors "${aws_timeouts[@]}" </dev/null 2>"$aws_error"; then
+        cat "$aws_error" >&2
+        transient_r2_error "$aws_error" && exit 75
+        die "Could not read existing R2 object ${key}"
+      fi
+      cmp -s "$body_path" "$existing_body" ||
+        die "R2 object ${key} exists with different bytes; refusing overwrite"
+      # Right bytes served under the wrong type is the same silent-wrong-answer
+      # failure this recovers, and no-overwrite means it cannot be repaired
+      # here. Stop rather than report it as verified.
+      [[ "$(tr -d '\r\n' < "$existing_type")" == "$content_type" ]] ||
+        die "R2 object ${key} exists with content type $(tr -d '\r\n' < "$existing_type"), not ${content_type}"
+      printf verified > "$outcome"
+    else
+      # "Cannot tell" must never read as "absent": only a confirmed missing
+      # object may lead to a write.
+      if ! grep -Eq 'An error occurred \(404\)|\(NoSuchKey\)' "$aws_error"; then
+        cat "$aws_error" >&2
+        transient_r2_error "$aws_error" && exit 75
+        die "Could not safely determine whether R2 object ${key} exists"
+      fi
+      node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
+      [[ "$(sha256_of "$body_path")" == "$digest" ]] ||
+        die "publication body for ${key} changed before its write"
+      if ! aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$body_path" \
+          --if-none-match '*' --endpoint-url "$endpoint" \
+          --region "$AWS_DEFAULT_REGION" --no-cli-pager \
+          --cache-control "$immutable_cache" --content-type "$content_type" \
+          "${aws_timeouts[@]}" </dev/null >/dev/null 2>"$aws_error"; then
+        cat "$aws_error" >&2
+        transient_r2_error "$aws_error" && exit 75
+        die "Could not write R2 object ${key}"
+      fi
+      printf created > "$outcome"
+    fi
+    node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
+  }
 
   while read -r digest _md5 file <&3; do
     key="${file#dist/}"
@@ -269,44 +329,30 @@ if [[ "$mode" == upload ]]; then
     [[ "$(sha256_of "$body_path")" == "$digest" ]] ||
       die "publication body for ${key} changed after the signature proof"
 
-    node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
-    rm -f "$existing_body" "$existing_type" "$head_error"
-    if aws s3api head-object --bucket "$BUCKET" --key "$key" \
-        --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
-        --no-cli-pager --query ContentType --output text "${aws_timeouts[@]}" \
-        </dev/null >"$existing_type" 2>"$head_error"; then
-      aws s3 cp "s3://${BUCKET}/${key}" "$existing_body" \
-        --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
-        --no-cli-pager --no-progress --only-show-errors "${aws_timeouts[@]}" </dev/null
-      cmp -s "$body_path" "$existing_body" ||
-        die "R2 object ${key} exists with different bytes; refusing overwrite"
-      # Right bytes served under the wrong type is the same silent-wrong-answer
-      # failure this recovers, and no-overwrite means it cannot be repaired
-      # here. Stop rather than report it as verified.
-      [[ "$(tr -d '\r\n' < "$existing_type")" == "$content_type" ]] ||
-        die "R2 object ${key} exists with content type $(tr -d '\r\n' < "$existing_type"), not ${content_type}"
-      verified=$((verified + 1))
-    else
-      # "Cannot tell" must never read as "absent": only a confirmed missing
-      # object may lead to a write.
-      if ! grep -Eq 'An error occurred \(404\)|\(NoSuchKey\)' "$head_error"; then
-        cat "$head_error" >&2
-        die "Could not safely determine whether R2 object ${key} exists"
+    for ((attempt = 1; ; attempt++)); do
+      set +e
+      (set -e; upload_object_once)
+      status=$?
+      set -e
+      [[ "$status" -eq 0 ]] && break
+      [[ "$status" -eq 75 ]] || exit "$status"
+      if [[ "$attempt" -ge "$object_attempts" ]]; then
+        echo "::error::R2 stayed unavailable for ${key} after ${attempt} attempt(s)" >&2
+        echo "Recovery stopped. Objects already written are complete and immutable; re-dispatch to resume." >&2
+        exit 75
       fi
-      node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
-      [[ "$(sha256_of "$body_path")" == "$digest" ]] ||
-        die "publication body for ${key} changed before its write"
-      aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$body_path" \
-        --if-none-match '*' --endpoint-url "$endpoint" \
-        --region "$AWS_DEFAULT_REGION" --no-cli-pager \
-        --cache-control "$immutable_cache" --content-type "$content_type" \
-        "${aws_timeouts[@]}" </dev/null >/dev/null
-      created=$((created + 1))
-    fi
-    node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
+      delay=$((resume_delay * attempt * attempt))
+      echo "::warning::Transient R2 error on ${key} (attempt ${attempt} of ${object_attempts}); resuming this object in ${delay}s."
+      sleep "$delay"
+    done
+    case "$(cat "$outcome")" in
+      created) created=$((created + 1)) ;;
+      verified) verified=$((verified + 1)) ;;
+      *) die "no recorded outcome for ${key}" ;;
+    esac
   done 3< "$digest_list"
 
-  rm -f "$existing_body" "$existing_type" "$head_error"
+  rm -f "$existing_body" "$existing_type" "$aws_error" "$outcome"
   # A short loop would mean the publication set was not what was proved.
   [[ $((created + verified)) -eq "$total" ]] ||
     die "published ${created}+${verified} of ${total} objects; the publication set is incomplete"
