@@ -1,0 +1,32 @@
+{
+  "name": "Signature header declares label 'sig1' twice (malformed structured dictionary)",
+  "spec_reference": "#verifier-checklist-requests step 1 (RFC 9421 §4.2 Signature is a Dictionary; RFC 8941 §3.2 keys are unique; AdCP rejects duplicate labels rather than retaining the last)",
+  "signing_profile_version": "3.1",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:, sig1=:BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"idempotency_key\":\"vector-negative-029-duplicate-signature-label\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000.0,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_header_malformed",
+    "failed_step": 1
+  },
+  "$comment": "RFC 9421 §4.2 defines the Signature field as a Dictionary, and RFC 8941 §3.2 makes dictionary keys unique, and a standard parser (RFC 8941 §4.2.2) resolves a duplicate by silently overwriting with the last value. That overwrite is the ambiguity: AdCP step 1 therefore treats a repeated label as malformed, the same downgrade-protection posture as 021, and verifiers MUST reject rather than retain the last value. Signature-Input carries sig1 exactly once and is well formed; only the Signature header repeats the label. Accepting it lets two parties disagree on which signature bytes belong to sig1 — one verifies the first, another reads the last — over a Signature-Input both agree on. Same rule as 021-duplicate-signature-input-label, applied to the other signature header. Both values are well-formed 64-byte sf-binary placeholders, so a verifier that rejects only on an unparseable signature will not reject here."
+}

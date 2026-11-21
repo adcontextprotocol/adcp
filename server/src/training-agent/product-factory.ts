@@ -1014,7 +1014,7 @@ function buildProduct(
     // auction-only. Guaranteed products can still steer allocation/pacing
     // toward the vendor signal, so do not gate this on delivery_type.
     ...(pub.vendorMetricOptimization && { vendor_metric_optimization: pub.vendorMetricOptimization }),
-    ...(forecast && { forecast }),
+    forecast,
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
     ...(collectionSelectors && { collections: collectionSelectors }),
     ...(exclusivity && { exclusivity }),

@@ -105,9 +105,41 @@ test('selector requires stable attributes and closes match and dimensions', () =
     'period_timezone needs exactly one account'
   );
   const dims = read('enums/reporting-dimension.json');
-  assert.deepEqual(dims.enum, ['package', 'creative', 'country', 'region', 'metro']);
+  assert.deepEqual(dims.enum, ['package', 'creative', 'country', 'region', 'metro', 'postal_area']);
   assert.equal(dims['x-extensible'], true);
   assert.match(dims.description, /MUST accept unknown values/);
+});
+
+test('metro and postal breakdowns name their systems on offerings and selectors', () => {
+  const sub = validate('/schemas/core/reporting-subscription.json');
+  const geo = dimension_systems => ({ ...allAccounts, selector: { ...allAccounts.selector, dimensions: ['package', 'metro', 'postal_area'], dimension_systems } });
+  assert.ok(sub(geo({ metro: 'nielsen_dma' })), JSON.stringify(sub.errors));
+  assert.equal(sub(geo({ metro: 'not_a_system' })), false, 'metro takes a metro-system value');
+  assert.ok(sub(geo({ postal_area: [{ country: 'US', system: 'zip' }] })), JSON.stringify(sub.errors));
+  assert.equal(sub(geo({ postal_area: [{ country: 'us', system: 'zip' }] })), false, 'postal country is ISO 3166-1 alpha-2');
+  assert.equal(sub(geo({ postal_area: [] })), false, 'postal_area lists at least one system');
+  assert.equal(sub(geo({ postal_area: [{ country: 'US', system: 'gb_outward' }] })), false, 'postal system must belong to its country');
+  assert.equal(sub(geo({ postal_area: [{ country: 'DE', system: 'zip' }] })), false, 'zip is not a German system');
+  assert.equal(sub(geo({ postal_area: [{ country: 'US', system: 'us_zip' }] })), false, 'country-fused legacy values are refused');
+  assert.ok(sub(geo({ postal_area: [{ country: 'GB', system: 'outward' }] })), JSON.stringify(sub.errors));
+  const withDims = (dimensions, dimension_systems) => ({ ...allAccounts, selector: { ...allAccounts.selector, dimensions, dimension_systems } });
+  assert.equal(sub(withDims(['package'], { metro: 'nielsen_dma' })), false, 'a metro system needs metro in dimensions');
+  assert.equal(sub(withDims(['package', 'metro'], { metro: 'nielsen_dma', postal_area: [{ country: 'US', system: 'zip' }] })), false, 'a postal system needs postal_area in dimensions');
+  const { dimensions: _d, ...noDims } = allAccounts.selector;
+  assert.equal(sub({ ...allAccounts, selector: { ...noDims, dimension_systems: { metro: 'nielsen_dma' } } }), false, 'dimension_systems needs dimensions');
+  assert.ok(sub(withDims(['package', 'metro', 'postal_area'], { metro: 'nielsen_dma', postal_area: [{ country: 'US', system: 'zip' }] })), JSON.stringify(sub.errors));
+
+  const offering = validate('/schemas/core/reporting-delivery-offering.json');
+  const vectors = JSON.parse(fs.readFileSync(path.join(ROOT, 'static/compliance/source/test-vectors/reporting-subscriptions/vectors.json'), 'utf8'));
+  const base = vectors.cases.find(c => c.id === 'match-metro-system-named').input.offerings[1];
+  assert.ok(offering(base), JSON.stringify(offering.errors));
+  const { dimension_systems: _systems, ...noSystems } = base;
+  assert.equal(offering(noSystems), false, 'a metro breakdown names its metro system');
+  assert.equal(offering({ ...base, dimension_systems: { postal_area: [{ country: 'US', system: 'zip' }] } }), false, 'metro needs dimension_systems.metro');
+  const postal = { ...base, standard_dimensions: ['package', 'postal_area'], dimension_systems: { metro: 'nielsen_dma' } };
+  assert.equal(offering(postal), false, 'a postal breakdown names its postal systems');
+  assert.ok(offering({ ...postal, dimension_systems: { postal_area: [{ country: 'GB', system: 'outward' }] } }), JSON.stringify(offering.errors));
+  assert.ok(offering({ ...base, standard_dimensions: ['package', 'country'], dimension_systems: undefined }), 'country and region need no system');
 });
 
 test('billing subscriptions are official and receipt-reconciled', () => {

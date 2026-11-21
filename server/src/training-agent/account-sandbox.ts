@@ -99,9 +99,15 @@ export function timezoneChangesFor(doc: SandboxDocument, accountId: string): Tim
   return doc.timezone_changes.find(entry => entry.account_id === accountId)?.changes ?? [];
 }
 
+/** The session that holds the caller's sandbox document and everything else
+ * kept beside it, such as the inventory tenants' markets. */
+export function sandboxSessionKey(principal: string | undefined): string {
+  return sessionKeyFromArgs({}, 'open', undefined, undefined, principalKey(principal));
+}
+
 export async function loadSandbox(principal: string | undefined): Promise<LoadedSandbox> {
   const caller = principalKey(principal);
-  const session = await getSession(sessionKeyFromArgs({}, 'open', undefined, undefined, caller));
+  const session = await getSession(sandboxSessionKey(principal));
   const key = `${SANDBOX_DOC_PREFIX}${caller}`;
   const stored = session.principalConfigurations.get(key) as SandboxDocument | undefined;
   const doc: SandboxDocument = stored
