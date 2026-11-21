@@ -30,7 +30,7 @@ import { getTenantSigningMaterial } from './signing.js';
 import { listAccountsTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
-import { createPrincipalScopedSeedCache, seedAccountAdapter } from './comply.js';
+import { SALES_COMPLY_INPUT_SCHEMA, createPrincipalScopedSeedCache, seedAccountAdapter } from './comply.js';
 
 export const INVENTORY_ADSERVER_TENANT_ID = 'inventory-adserver';
 export const INVENTORY_CONTENT_TENANT_ID = 'inventory-content';
@@ -108,6 +108,9 @@ export function buildInventoryTenantConfig(
           list_accounts: listAccountsTool(options.storyboardCompat),
         },
         complyTest: {
+          // The sales schema keeps the router-stamped caller field, so
+          // seed_account provisions for the bearer's principal, not anonymous.
+          inputSchema: SALES_COMPLY_INPUT_SCHEMA,
           seedCache: createPrincipalScopedSeedCache(),
           // Seeds a storyboard's fixtures. Accounts go to the shared account
           // store; products and pricing options to the caller's market here,

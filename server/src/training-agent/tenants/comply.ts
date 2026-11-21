@@ -451,7 +451,7 @@ function simulateAdapter(scenario: string, storyboardCompat?: TrainingContext['s
  * reads `account.brand.domain` for session keying. F10's `inputSchema`
  * extension point preserves those canonical fields through v6 dispatch.
  */
-const SALES_COMPLY_INPUT_SCHEMA = {
+export const SALES_COMPLY_INPUT_SCHEMA = {
   ...TOOL_INPUT_SHAPE,
   account: z.object({
     account_id: z.string().optional(),

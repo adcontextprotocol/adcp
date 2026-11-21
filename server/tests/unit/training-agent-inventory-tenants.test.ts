@@ -889,6 +889,20 @@ describe('inventory tenants', () => {
       expect(seeded.forecast.points[0].metrics.impressions.mid).toBeGreaterThan(0);
     });
 
+    it('provisions a seeded account for the caller, so get_products prices for it without a sync', async () => {
+      const token = 'demo-inventory-seed-account-v1';
+      const account = { brand: { domain: 'seeded-account.example' }, operator: 'seed-agency.example', operator_unit: { id: 'seeded-unit' }, sandbox: true };
+      const before = await call('inventory-adserver', 'get_products', { buying_mode: 'wholesale', account, filters: flight }, token);
+      expect(before.adcp_error?.code).toBe('ACCOUNT_NOT_FOUND');
+      const seeded = await call('inventory-adserver', 'comply_test_controller', {
+        scenario: 'seed_account', account, params: { account_id: 'acct_seeded_account_example', fixture: { ...account, billing: 'operator', status: 'active' } },
+      }, token);
+      expect(seeded.success, JSON.stringify(seeded)).toBe(true);
+      const after = await call('inventory-adserver', 'get_products', { buying_mode: 'wholesale', account, filters: flight }, token);
+      expectCanonical('get_products', after);
+      expect(after.cache_scope).toBe('account');
+    });
+
     it('rejects a seeded product that reuses one of the tenant\'s own ids', async () => {
       const refused = await controller('inventory-adserver', 'seed_product', { product_id: 'ros_display_guaranteed', fixture: displayFixture });
       expect(refused.success).toBe(false);
