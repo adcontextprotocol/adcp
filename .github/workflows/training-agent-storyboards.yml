@@ -128,9 +128,9 @@ jobs:
           # They run isolated: a monolithic run stalled after signed_requests.
           # Floors are the first CI result (runs took 35 and 38 minutes). Each
           # tenant still fails media_buy_seller/unprovisioned_account_reference
-          # (it serves public products for an unprovisioned account reference)
-          # and signed_requests on /mcp-strict-required, a route these tenants
-          # do not mount.
+          # (it serves public products for an unprovisioned account reference).
+          # signed_requests is out of scope: it is graded on the /mcp-strict*
+          # routes, which these tenants do not mount.
           - surface: current
             tenant: inventory-adserver
             isolated: true
