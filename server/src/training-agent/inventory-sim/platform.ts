@@ -423,6 +423,9 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           ? [...REPORTED_METRICS, 'completed_views', 'completion_rate']
           : REPORTED_METRICS,
         date_range_support: 'date_range' as const,
+        // A seeded product reports what its fixture declares (its metrics,
+        // say) over these defaults, which fill the fields the schema requires.
+        ...(seeded && isContext(seeded.record.fixture.reporting_capabilities) && structuredClone(seeded.record.fixture.reporting_capabilities)),
       },
       overlay_support: { geo_countries: true },
       ...(installments && {
@@ -683,7 +686,11 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     updateMediaBuy: this.serialized(async (buyId: string, patch: any, ctx) => {
       const market = await this.market(ctx);
       const buy = this.requireBuy(market, buyId, ctx);
-      if (buy.canceled) throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Media buy ${buyId} is canceled` });
+      if (buy.canceled) {
+        // Cancelling again is its own refusal; any other change is an invalid state.
+        if (patch.canceled === true) throw new AdcpError('NOT_CANCELLABLE', { recovery: 'terminal', message: `Media buy ${buyId} is already canceled`, field: 'canceled' });
+        throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Media buy ${buyId} is canceled` });
+      }
       if (typeof patch.revision === 'number' && patch.revision !== buy.revision) {
         throw new AdcpError('CONFLICT', { recovery: 'correctable', message: `Media buy ${buyId} is at revision ${buy.revision}`, field: 'revision' });
       }
@@ -709,7 +716,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         const field = `packages[${index}]`;
         const pkg = buy.packages.find(candidate => candidate.package_id === change.package_id);
         if (!pkg) throw new AdcpError('PACKAGE_NOT_FOUND', { recovery: 'correctable', message: `Unknown package ${String(change.package_id)}`, field: `${field}.package_id` });
-        if (pkg.canceled) throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Package ${pkg.package_id} is canceled`, field });
+        if (pkg.canceled) {
+          if (change.canceled === true) throw new AdcpError('NOT_CANCELLABLE', { recovery: 'terminal', message: `Package ${pkg.package_id} is already canceled`, field: `${field}.canceled` });
+          throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Package ${pkg.package_id} is canceled`, field });
+        }
         if (typeof change.budget === 'number') {
           pkg.budget = change.budget;
           apply(pkg, { budget: change.budget }, `${field}.budget`);
