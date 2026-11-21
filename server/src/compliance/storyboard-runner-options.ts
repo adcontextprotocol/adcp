@@ -165,6 +165,18 @@ export type MultiAgentRouting =
   };
 
 /**
+ * Whether a storyboard grades a tenant other than `tenantPath`. A
+ * `requires: [multi_agent]` storyboard grades only its `default_agent`, so a
+ * run under any other tenant reports it not applicable rather than running it
+ * (`multiAgentRoutingForStoryboard` refuses that run).
+ */
+export function gradesAnotherTenant(storyboard: MultiAgentStoryboardShape, tenantPath: string): boolean {
+  return storyboard.requires?.includes('multi_agent') === true
+    && storyboard.default_agent !== undefined
+    && storyboard.default_agent !== tenantPath;
+}
+
+/**
  * Route a `requires: [multi_agent]` storyboard across training-agent tenants.
  *
  * Storyboard agent keys name training-agent tenants (`sales`, `governance`,

@@ -126,18 +126,23 @@ jobs:
           # sandbox_clock but no seed_* scenario, so fixture-seeded media-buy
           # storyboards skip as fixture_seed_unsupported rather than fail.
           # They run isolated: a monolithic run stalled after signed_requests.
+          # Floors are the first CI result (runs took 35 and 38 minutes). Each
+          # tenant still fails media_buy_seller/unprovisioned_account_reference
+          # (it serves public products for an unprovisioned account reference)
+          # and signed_requests on /mcp-strict-required, a route these tenants
+          # do not mount.
           - surface: current
             tenant: inventory-adserver
             isolated: true
             timeout_minutes: 45
-            min_clean_storyboards: 0
-            min_passing_steps: 0
+            min_clean_storyboards: 178
+            min_passing_steps: 28
           - surface: current
             tenant: inventory-content
             isolated: true
             timeout_minutes: 45
-            min_clean_storyboards: 0
-            min_passing_steps: 0
+            min_clean_storyboards: 177
+            min_passing_steps: 28
           # Proposal-negotiation profile routes (/sales/profiles/<profile>)
           # serve the sales tenant with a deterministic seller policy. The
           # full sales suite is already graded by the isolated /sales

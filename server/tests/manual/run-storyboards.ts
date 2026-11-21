@@ -39,6 +39,7 @@ import {
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import {
   authForStoryboard,
+  gradesAnotherTenant,
   multiAgentRoutingForStoryboard,
   testKitOptionsFromKit,
   type LoadedTestKit,
@@ -754,11 +755,15 @@ async function selectStoryboardsForTenant(
   const inDeclaredScope = new Set(resolved.storyboards.map(sb => sb.id));
   const versionExcluded = new Set(resolved.not_applicable.map(entry => entry.storyboard_id));
   const selectedCorpus = everything.filter(matchesExplicitSelection);
-  const declared = resolved.storyboards.filter(matchesExplicitSelection);
+  // A multi-agent storyboard grades only its default_agent tenant; under any
+  // other tenant it is out of scope, not a failure.
+  const tenantPath = process.env.TENANT_PATH ?? '';
+  const otherTenants = new Set(resolved.storyboards.filter(sb => gradesAnotherTenant(sb, tenantPath)).map(sb => sb.id));
+  const declared = resolved.storyboards.filter(sb => matchesExplicitSelection(sb) && !otherTenants.has(sb.id));
   const quarantined = declared.filter(sb => knownFailingReason(sb.id) !== undefined);
   const applicable = declared.filter(sb => knownFailingReason(sb.id) === undefined);
   const notApplicable = selectedCorpus.filter(sb => (
-    !inDeclaredScope.has(sb.id) || versionExcluded.has(sb.id)
+    !inDeclaredScope.has(sb.id) || versionExcluded.has(sb.id) || otherTenants.has(sb.id)
   ));
 
   return {
