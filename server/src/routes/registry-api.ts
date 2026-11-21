@@ -13380,7 +13380,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   // ── Agent Search ──────────────────────────────────────────────
 
   if (config.profilesDb) {
-    if (!authMiddleware) throw new Error('requireAuth middleware is required when profilesDb is provided');
     const profilesDb = config.profilesDb;
 
     router.get("/registry/agents/search", authMiddleware, async (req, res) => {
@@ -13572,8 +13571,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       memberState.count--;
     }
   }
-
-  if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
 
   router.post("/registry/publisher/:domain/adagents/revalidate", authMiddleware, async (req, res) => {
     const principal = captureRegistryPrincipal(req);
