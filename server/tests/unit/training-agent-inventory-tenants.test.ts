@@ -317,6 +317,34 @@ describe('inventory tenants', () => {
       expect(malformed.adcp_error?.code ?? malformed.errors?.[0]?.code).toBe('INVALID_REQUEST');
     });
 
+    it('answers NOT_CANCELLABLE to a second cancel, and INVALID_STATE to any other change after one', async () => {
+      const create = (key: string) => call(tenant, 'create_media_buy', {
+        idempotency_key: key, account: ACCOUNT, brand: BRAND, start_time: start.toISOString(), end_time: end.toISOString(),
+        packages: [
+          { product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 100 },
+          { product_id: 'ros_display_auction', pricing_option_id: 'ros_display_auction_cpm', budget: 100 },
+        ],
+      });
+      const update = (key: string, patch: Record<string, unknown>) => call(tenant, 'update_media_buy', {
+        idempotency_key: key, account: ACCOUNT, ...patch,
+      });
+
+      const buy = await create('inventory-tenants-recancel-buy-01');
+      expect((await update('inventory-tenants-recancel-first-01', { media_buy_id: buy.media_buy_id, canceled: true })).media_buy_status).toBe('canceled');
+      const again = await update('inventory-tenants-recancel-again-01', { media_buy_id: buy.media_buy_id, canceled: true });
+      expect(again.adcp_error ?? again.errors?.[0]).toMatchObject({ code: 'NOT_CANCELLABLE' });
+      const paused = await update('inventory-tenants-recancel-pause-01', { media_buy_id: buy.media_buy_id, paused: true });
+      expect((paused.adcp_error ?? paused.errors?.[0])?.code).toBe('INVALID_STATE');
+
+      const other = await create('inventory-tenants-recancel-buy-02');
+      const pkg = other.packages[0].package_id;
+      await update('inventory-tenants-recancel-pkg-first', { media_buy_id: other.media_buy_id, packages: [{ package_id: pkg, canceled: true }] });
+      const pkgAgain = await update('inventory-tenants-recancel-pkg-again', { media_buy_id: other.media_buy_id, packages: [{ package_id: pkg, canceled: true }] });
+      expect(pkgAgain.adcp_error ?? pkgAgain.errors?.[0]).toMatchObject({ code: 'NOT_CANCELLABLE', field: 'packages[0].canceled' });
+      const pkgBudget = await update('inventory-tenants-recancel-pkg-budget', { media_buy_id: other.media_buy_id, packages: [{ package_id: pkg, budget: 200 }] });
+      expect((pkgBudget.adcp_error ?? pkgBudget.errors?.[0])?.code).toBe('INVALID_STATE');
+    });
+
     it('refuses an unknown product and a wrong pricing option', async () => {
       const unknown = await call(tenant, 'create_media_buy', {
         idempotency_key: 'inventory-tenants-unknown-00001',
