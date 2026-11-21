@@ -546,11 +546,12 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const budget = typeof budgetMax === 'number' && budgetMax > 0 ? budgetMax : undefined;
       const channels = Array.isArray(filters.channels) ? new Set(filters.channels as string[]) : undefined;
       // With an account, forecasts net out the caller's own bookings, an
-      // account-specific overlay. Without one the seller MUST answer with the
-      // public card, so forecast against an empty market: the same for every
-      // caller at the same simulated time.
+      // account-specific overlay, and the catalogue carries the caller's
+      // seeded products. Without one the seller MUST answer with the public
+      // card: the season's products against an empty market, the same for
+      // every caller at the same simulated time.
       const scoped = req.account !== undefined && req.account !== null;
-      const sim = scoped ? market.sim : InventorySimulation.create(this.profile.seed, market.nowMs, engineProducts(this.profile.seed, market.doc.seeded));
+      const sim = scoped ? market.sim : InventorySimulation.create(this.profile.seed, market.nowMs);
       const pagination = req.pagination as { max_results?: unknown; cursor?: string } | undefined;
       const offset = pagination ? decodeOffsetCursor('products', pagination.cursor) : 0;
       if (offset === null) throw invalid('pagination.cursor is malformed', 'pagination.cursor');

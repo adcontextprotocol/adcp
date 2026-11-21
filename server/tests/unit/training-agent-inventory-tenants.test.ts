@@ -828,6 +828,10 @@ describe('inventory tenants', () => {
 
       // A caller that never seeded sees exactly what it saw before.
       expect(stable(await products(tenant, UNSEEDED_TOKEN))).toEqual(before);
+      // The public card never carries a caller's seeds, even the seeder's own.
+      const publicCard = await call(tenant, 'get_products', { buying_mode: 'wholesale', filters: flight }, SEED_TOKEN);
+      expect(publicCard.cache_scope).toBe('public');
+      expect(publicCard.products.map((product: Structured) => product.product_id)).not.toContain('seeded_rectangle');
 
       const wrongPrice = await call(tenant, 'create_media_buy', {
         idempotency_key: 'inventory-seeds-wrong-price-01', account: ACCOUNT, brand: BRAND,
