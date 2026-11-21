@@ -525,6 +525,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         paused: false,
         canceled: false,
         packages: records,
+        ...(isContext(req.context) && { context: structuredClone(req.context) }),
       };
       market.doc.media_buys.push(buy);
       market.save();
@@ -644,6 +645,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           created_at: buy.confirmed_at,
           updated_at: buy.updated_at,
           revision: buy.revision,
+          ...(buy.context && { context: buy.context }),
           packages: buy.packages.map(pkg => {
             const approvals = creativeApprovals(pkg);
             return { ...this.wirePackage(pkg, buy.currency), ...(approvals && { creative_approvals: approvals }) };

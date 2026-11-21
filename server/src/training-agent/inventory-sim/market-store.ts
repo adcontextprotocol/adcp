@@ -49,6 +49,9 @@ export interface MediaBuyRecord {
   paused: boolean;
   canceled: boolean;
   packages: PackageRecord[];
+  /** The buyer's opaque media-buy correlation data from create_media_buy,
+   * echoed unchanged on reads. */
+  context?: Record<string, unknown>;
 }
 
 export interface MarketDocument extends Record<string, unknown> {
