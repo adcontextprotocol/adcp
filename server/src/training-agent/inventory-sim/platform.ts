@@ -113,6 +113,15 @@ function parseInstant(value: unknown, field: string, nowMs: number): number {
   return ms;
 }
 
+/** A flight start, which may not fall before the caller's current sandbox
+ * day (UTC). The engine books whole days, so any start earlier today books
+ * the same flight as now. */
+function parseStart(value: unknown, field: string, nowMs: number): number {
+  const ms = parseInstant(value, field, nowMs);
+  if (ms < Math.floor(nowMs / DAY_MS) * DAY_MS) throw invalid(`${field} must not be in the past`, field);
+  return ms;
+}
+
 function parseDateStart(value: unknown, field: string): number {
   const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : Number.NaN;
   if (!Number.isFinite(ms)) throw invalid(`${field} must be a YYYY-MM-DD date`, field);
@@ -466,7 +475,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const market = await this.market(ctx);
       const packages = Array.isArray(req.packages) ? req.packages : [];
       if (packages.length === 0) throw invalid('create_media_buy needs at least one package', 'packages');
-      const buyStart = parseInstant(req.start_time, 'start_time', market.nowMs);
+      const buyStart = parseStart(req.start_time, 'start_time', market.nowMs);
       const buyEnd = parseInstant(req.end_time, 'end_time', market.nowMs);
       if (buyEnd <= buyStart) throw invalid('end_time must be after start_time', 'end_time');
       const mediaBuyId = market.nextId('mb');
@@ -480,7 +489,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         }
         const budget = typeof pkg.budget === 'number' ? pkg.budget : Number.NaN;
         if (!(budget > 0)) throw invalid('Each package needs a positive budget', `${field}.budget`);
-        const startMs = pkg.start_time !== undefined ? parseInstant(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
+        const startMs = pkg.start_time !== undefined ? parseStart(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
         const endMs = pkg.end_time !== undefined ? parseInstant(pkg.end_time, `${field}.end_time`, market.nowMs) : buyEnd;
         const targeting = this.targetingFrom(pkg.targeting_overlay, `${field}.targeting_overlay`);
         const bid = typeof pkg.bid_price === 'number' ? pkg.bid_price : undefined;

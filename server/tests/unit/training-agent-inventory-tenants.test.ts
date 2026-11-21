@@ -308,6 +308,24 @@ describe('inventory tenants', () => {
       });
       expect(wrongPrice.errors?.[0]?.code).toBe('INVALID_PRICING_OPTION');
     });
+
+    it('refuses a flight that starts before today, and books one that starts at midnight today', async () => {
+      const past = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-tenants-past-start-0001',
+        account: ACCOUNT, brand: BRAND, start_time: '2020-01-01T00:00:00Z', end_time: end.toISOString(),
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 100 }],
+      });
+      expect(past.errors?.[0]).toMatchObject({ code: 'INVALID_REQUEST', field: 'start_time' });
+
+      // The sandbox clock reads WALL_CLOCK (09:00 UTC), so its midnight has passed.
+      const today = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-tenants-today-start-001',
+        account: ACCOUNT, brand: BRAND, start_time: `${WALL_CLOCK.slice(0, 10)}T00:00:00Z`, end_time: end.toISOString(),
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 100 }],
+      });
+      expect(today.errors).toBeUndefined();
+      expect(today.media_buy_id).toBeDefined();
+    });
   });
 
   describe('sandbox_clock on the inventory tenants', () => {
