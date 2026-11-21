@@ -58,7 +58,7 @@ changes:
               type:
                 - number
             max_weight_grams:
-              exclusiveMinimum: 0
+              minimum: 1
               type:
                 - integer
             max_width:
