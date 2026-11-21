@@ -52,6 +52,16 @@ describe('inventory tenants', () => {
     return (envelope.result?.structuredContent ?? { __envelope: envelope }) as Structured;
   };
 
+  /** A storefront's first call: provision the buyer's account, so get_products
+   * can price for it. */
+  const provision = async (token: string) => {
+    const synced = await call('inventory-adserver', 'sync_accounts', {
+      idempotency_key: `inventory-tenants-provision-${token}`,
+      accounts: [{ ...ACCOUNT, billing: 'operator' }],
+    }, token);
+    if (synced.adcp_error || synced.__envelope) throw new Error(`sync_accounts failed: ${JSON.stringify(synced).slice(0, 500)}`);
+  };
+
   beforeAll(async () => {
     const app = express();
     app.use(express.json({ limit: '5mb' }));
@@ -75,6 +85,7 @@ describe('inventory tenants', () => {
 
   describe('/inventory-adserver', () => {
     const tenant = 'inventory-adserver';
+    beforeAll(() => provision(TOKEN));
     const start = new Date(Date.parse(WALL_CLOCK.slice(0, 10)) + 2 * DAY_MS);
     const end = new Date(start.getTime() + 30 * DAY_MS);
     const day = (date: Date) => date.toISOString().slice(0, 10);
@@ -255,6 +266,34 @@ describe('inventory tenants', () => {
       expect(hero(open) - hero(scoped)).toBeGreaterThan(95_000);
     });
 
+    it('answers ACCOUNT_NOT_FOUND for an account it never provisioned, and prices it once synced', async () => {
+      // The public token is one caller; its own flow (sync, then discover)
+      // is the one a storefront runs.
+      const token = process.env.PUBLIC_TEST_AGENT_TOKEN!;
+      const account = { brand: { domain: 'never-synced-inventory.example' }, operator: 'unprovisioned-agency.example', sandbox: true };
+      const filters = { start_date: day(start), end_date: day(new Date(end.getTime() - DAY_MS)) };
+      const rejected = await call(tenant, 'get_products', { buying_mode: 'wholesale', account, filters }, token);
+      expect(rejected.adcp_error?.code).toBe('ACCOUNT_NOT_FOUND');
+      expect(rejected).not.toHaveProperty('products');
+
+      // The read did not provision it.
+      const again = await call(tenant, 'get_products', { buying_mode: 'wholesale', account, filters }, token);
+      expect(again.adcp_error?.code).toBe('ACCOUNT_NOT_FOUND');
+
+      const synced = await call(tenant, 'sync_accounts', {
+        idempotency_key: 'inventory-tenants-unprovisioned-sync-01', accounts: [{ ...account, billing: 'operator' }],
+      }, token);
+      expect(synced.adcp_error).toBeUndefined();
+      const priced = await call(tenant, 'get_products', { buying_mode: 'wholesale', account, filters }, token);
+      expectCanonical('get_products', priced);
+      expect(priced.cache_scope).toBe('account');
+
+      // Without an account, discovery still answers with the public card.
+      const open = await call(tenant, 'get_products', { buying_mode: 'wholesale', filters }, token);
+      expectCanonical('get_products', open);
+      expect(open.cache_scope).toBe('public');
+    });
+
     it('refuses an unknown product and a wrong pricing option', async () => {
       const unknown = await call(tenant, 'create_media_buy', {
         idempotency_key: 'inventory-tenants-unknown-00001',
@@ -274,6 +313,7 @@ describe('inventory tenants', () => {
   describe('sandbox_clock on the inventory tenants', () => {
     const tenant = 'inventory-adserver';
     const CLOCK_TOKEN = 'demo-inventory-clock-v1';
+    beforeAll(() => provision(CLOCK_TOKEN));
     const controller = (params: Record<string, unknown>, scenario = 'sandbox_clock') =>
       call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, CLOCK_TOKEN);
     const flight = { start_time: '2027-01-01T00:00:00Z', end_time: '2027-01-31T00:00:00Z' };
@@ -399,6 +439,7 @@ describe('inventory tenants', () => {
   describe('creatives on /inventory-adserver', () => {
     const tenant = 'inventory-adserver';
     const CREATIVE_TOKEN = 'demo-inventory-creatives-v1';
+    beforeAll(() => provision(CREATIVE_TOKEN));
     // The format ids a buyer copies from this tenant's products.
     const formatId = (id: string) => ({ agent_url: getAgentUrl(), id });
     const banner = (id: string, format = 'display_300x250') => ({
@@ -621,6 +662,7 @@ describe('inventory tenants', () => {
   describe('/inventory-content', () => {
     const tenant = 'inventory-content';
     const CONTENT_TOKEN = 'demo-inventory-content-v1';
+    beforeAll(() => provision(CONTENT_TOKEN));
     const clock = (params: Record<string, unknown>) =>
       call(tenant, 'comply_test_controller', { scenario: 'sandbox_clock', account: ACCOUNT, params }, CONTENT_TOKEN);
     const products = (startDate: string, endDate: string) => call(tenant, 'get_products', {
