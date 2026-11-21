@@ -249,6 +249,7 @@ function mergeFixture(t, { tamperTree = false, headFiles = {} } = {}) {
       (tenant) => job(`Storyboards (3.0-compat /${tenant})`),
     ),
     ...[0, 1, 2, 3, 4, 5, 6, 7].map((n) => job(`Sales storyboard orchestrator (${n}/8)`)),
+    ...["inventory-adserver", "inventory-content"].flatMap((tenant) => [0, 1].map((n) => job(`Inventory storyboard orchestrator (/${tenant} ${n}/2)`))),
     job("Storyboards (current /sales)"),
   ];
   const responses = {
@@ -580,7 +581,7 @@ const r=require('node:child_process').spawnSync(${JSON.stringify(realGit)},args,
 });
 
 test("verified-merge requires the full expected storyboard matrix", (t) => {
-  assert.equal(storyboardJobs.length, 27);
+  assert.equal(storyboardJobs.length, 31);
   const f = mergeFixture(t);
   // The narrowed shape the first version accepted: one job per surface plus
   // the aggregate /sales job.

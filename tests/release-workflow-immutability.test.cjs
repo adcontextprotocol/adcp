@@ -447,10 +447,18 @@ assert.strictEqual(
       jobs.sales_storyboard_orchestrators.name.replace('${{ matrix.orchestrator }}', String(n))
     ),
     jobs.sales_storyboards.name,
+    ...jobs.inventory_storyboard_orchestrators.strategy.matrix.tenant.flatMap(tenant =>
+      jobs.inventory_storyboard_orchestrators.strategy.matrix.group.map(group =>
+        jobs.inventory_storyboard_orchestrators.name.replace('${{ matrix.tenant }}', tenant).replace('${{ matrix.group }}', String(group))
+      )
+    ),
+    ...jobs.inventory_storyboards.strategy.matrix.include.map(({ tenant }) =>
+      jobs.inventory_storyboards.name.replace('${{ matrix.tenant }}', tenant)
+    ),
   ];
   assert.deepStrictEqual(
     Object.keys(jobs).sort(),
-    ['sales_storyboard_orchestrators', 'sales_storyboards', 'storyboards'],
+    ['inventory_storyboard_orchestrators', 'inventory_storyboards', 'sales_storyboard_orchestrators', 'sales_storyboards', 'storyboards'],
     'A new storyboard job must be added to check-release-state.cjs storyboardJobs.'
   );
   assert.deepStrictEqual(
