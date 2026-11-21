@@ -7,7 +7,8 @@
  * shapes as they are, filled from the delivery engine.
  */
 import { AdcpError, type AccountStore, type DecisioningPlatform, type SalesPlatform } from '@adcp/sdk/server';
-import { syncAccountsUpsert } from '../v6-account-helpers.js';
+import { assertDiscoveryAccountProvisioned, syncAccountsUpsert } from '../v6-account-helpers.js';
+import { canonicalizeAccountRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { getAgentUrl } from '../config.js';
 import { formatOptionsForTrainingFormats } from '../product-factory.js';
@@ -184,11 +185,19 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
   accounts: AccountStore<InventoryMeta> = {
     resolution: 'explicit',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolve: async (ref: any, ctx?: { authInfo?: { clientId?: string } }) => {
+    resolve: async (ref: any, ctx?: { authInfo?: { clientId?: string }; toolName?: string }) => {
       const principal = ctx?.authInfo?.clientId;
       const authInfo = principal ? { kind: 'api_key' as const, principal } : { kind: 'public' as const };
       if (ref == null) {
         return { id: 'public_sandbox', name: 'Public Sandbox', status: 'active', mode: 'sandbox', ctx_metadata: {}, sandbox: true, authInfo };
+      }
+      // get_products, the one discovery task these tenants serve, takes only
+      // a natural key already provisioned with sync_accounts:
+      // ACCOUNT_NOT_FOUND, never the public card. Other tasks keep resolving
+      // any reference.
+      const toolName = ctx?.toolName;
+      if (toolName === 'get_products') {
+        await assertDiscoveryAccountProvisioned(canonicalizeAccountRef(ref), toolName, principal);
       }
       const brandDomain = typeof ref.brand?.domain === 'string' ? (ref.brand.domain as string) : undefined;
       const id = typeof ref.account_id === 'string' ? (ref.account_id as string) : `synthetic_${brandDomain ?? 'anon'}`;
