@@ -68,7 +68,17 @@ Every time-dependent behaviour of these tenants reads your *sandbox clock*. Unti
 - `reset_state` on either inventory tenant unpins the clock and discards your buys on both. A `reset_state` elsewhere that unpins the clock, such as `/sales/mcp`'s, also leaves your inventory buys behind: a market that has run days the clock has not reached starts fresh.
 - You have one clock per credential. It is the same clock that `reporting_subscription_probe` `advance_time` moves on `/sales/mcp`, so moving it on either tenant moves it for both.
 
-Both tenants list `sandbox_clock` and `reset_state` in `list_scenarios` and in `compliance_testing.scenarios`.
+Both tenants list `sandbox_clock`, `reset_state` and the seeds below in `list_scenarios` and in `compliance_testing.scenarios`.
+
+### Test controller seeds
+
+A storyboard's fixtures are seeded through the same controller, so the media-buy storyboards run against these tenants:
+
+- `seed_account` provisions an account, exactly as on `/sales/mcp`.
+- `seed_product` adds a product to your market on the tenant you call. It is sold on the season's own placements, so it forecasts, books and delivers like any other product. A video fixture uses the video placements, an audio fixture the audio ones, and anything else display. A season without that channel uses its nearest installment placement instead: the creator series for video, the podcast for audio, the newsletter otherwise. The product shows the fixture's own name, channels, formats and publisher properties.
+- `seed_pricing_option` prices a seeded product. A `floor_price` is the lowest bid an auction booking places, and a `fixed_price` is a guaranteed booking's rate. A seeded product with no seeded pricing option is priced like the season's own products.
+
+Seeded products are private to your credential, like your buys. A credential that never seeds sees only the season's products. `reset_state` discards your seeds with the rest of your market.
 
 ## What happens each simulated day
 

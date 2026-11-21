@@ -30,6 +30,7 @@ import { getTenantSigningMaterial } from './signing.js';
 import { listAccountsTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
+import { createPrincipalScopedSeedCache, seedAccountAdapter } from './comply.js';
 
 export const INVENTORY_ADSERVER_TENANT_ID = 'inventory-adserver';
 export const INVENTORY_CONTENT_TENANT_ID = 'inventory-content';
@@ -51,7 +52,7 @@ export function isInventoryTenant(tenantId: string): boolean {
 }
 
 /** Controller scenarios an inventory tenant lists. */
-export const INVENTORY_COMPLY_SCENARIOS: readonly string[] = ['reset_state', SANDBOX_CLOCK_SCENARIO];
+export const INVENTORY_COMPLY_SCENARIOS: readonly string[] = ['reset_state', SANDBOX_CLOCK_SCENARIO, 'seed_account', 'seed_product', 'seed_pricing_option'];
 
 /** `sandbox_clock` for a caller, called on one inventory tenant. Moving the
  * clock runs the market's days, so it is one of the caller's market requests. */
@@ -70,6 +71,10 @@ async function resetInventoryCaller(principal: string | undefined): Promise<void
     await resetReportingSubscriptionProbe({ mode: 'open', principal: principal ?? 'anonymous' });
     for (const id of INVENTORY_TENANT_IDS) await resetMarket(id, principal);
   });
+}
+
+function callerOf(ctx: { authInfo?: unknown }): string | undefined {
+  return (ctx.authInfo as { clientId?: string } | undefined)?.clientId;
 }
 
 export function buildInventoryTenantConfig(
@@ -103,8 +108,22 @@ export function buildInventoryTenantConfig(
           list_accounts: listAccountsTool(options.storyboardCompat),
         },
         complyTest: {
+          seedCache: createPrincipalScopedSeedCache(),
+          // Seeds a storyboard's fixtures. Accounts go to the shared account
+          // store; products and pricing options to the caller's market here,
+          // which reset_state discards.
+          seed: {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            account: seedAccountAdapter(options.storyboardCompat) as any,
+            product: async (params, ctx) => {
+              await platform.seedProduct(callerOf(ctx), params.product_id, params.fixture ?? {});
+            },
+            pricing_option: async (params, ctx) => {
+              await platform.seedPricingOption(callerOf(ctx), params.product_id, params.pricing_option_id, params.fixture ?? {});
+            },
+          },
           resetState: async ctx => {
-            await resetInventoryCaller((ctx.authInfo as { clientId?: string } | undefined)?.clientId);
+            await resetInventoryCaller(callerOf(ctx));
           },
         },
       },

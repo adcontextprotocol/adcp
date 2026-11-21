@@ -697,4 +697,111 @@ describe('inventory tenants', () => {
       expect(moved.scheduled_at).toBe('2027-01-23T00:00:00Z');
     });
   });
+
+  describe('test controller seeds', () => {
+    const SEED_TOKEN = 'demo-inventory-seeds-v1';
+    const UNSEEDED_TOKEN = 'demo-inventory-unseeded-v1';
+    const flight = { start_date: '2027-02-01', end_date: '2027-02-28' };
+    const controller = (tenant: string, scenario: string, params: Record<string, unknown>, token = SEED_TOKEN) =>
+      call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, token);
+    const displayFixture = {
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      name: 'Seeded rectangle',
+      format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+    };
+    const products = (tenant: string, token: string) =>
+      call(tenant, 'get_products', { buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: flight }, token);
+    // Forecast timestamps follow the moving wall clock; everything else must
+    // not change.
+    const stable = (value: Structured): Structured => JSON.parse(JSON.stringify(value, (key, field) =>
+      key === 'generated_at' || key === 'valid_until' ? undefined : field));
+
+    // A storefront provisions the account before naming it on get_products.
+    beforeAll(async () => {
+      for (const token of [SEED_TOKEN, UNSEEDED_TOKEN]) {
+        const synced = await call('inventory-adserver', 'sync_accounts', {
+          idempotency_key: `inventory-seeds-provision-${token}`, accounts: [{ ...ACCOUNT, billing: 'operator' }],
+        }, token);
+        expect(synced.adcp_error).toBeUndefined();
+      }
+    });
+
+    it('lists the seed scenarios', async () => {
+      const listed = await controller('inventory-adserver', 'list_scenarios', {});
+      expect(listed.scenarios).toEqual(expect.arrayContaining(['seed_account', 'seed_product', 'seed_pricing_option']));
+    });
+
+    it('sells a seeded product at its seeded price, only to the caller that seeded it', async () => {
+      const tenant = 'inventory-adserver';
+      const before = stable(await products(tenant, UNSEEDED_TOKEN));
+
+      expect((await controller(tenant, 'seed_product', { product_id: 'seeded_rectangle', fixture: displayFixture })).success).toBe(true);
+      expect((await controller(tenant, 'seed_pricing_option', {
+        product_id: 'seeded_rectangle', pricing_option_id: 'cpm_seeded', fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 8 },
+      })).success).toBe(true);
+      // A replay with the same fixture succeeds; a divergent one is refused.
+      expect((await controller(tenant, 'seed_product', { product_id: 'seeded_rectangle', fixture: displayFixture })).success).toBe(true);
+      expect((await controller(tenant, 'seed_product', { product_id: 'seeded_rectangle', fixture: { ...displayFixture, name: 'Other' } })).success).toBe(false);
+
+      const offer = await products(tenant, SEED_TOKEN);
+      expectCanonical('get_products', offer);
+      const seeded = offer.products.find((product: Structured) => product.product_id === 'seeded_rectangle');
+      expect(seeded.name).toBe('Seeded rectangle');
+      expect(seeded.format_options).toEqual(displayFixture.format_options);
+      expect(seeded.pricing_options).toEqual([{ pricing_option_id: 'cpm_seeded', pricing_model: 'cpm', currency: 'USD', floor_price: 8 }]);
+      expect(seeded.forecast.points[0].metrics.impressions.mid).toBeGreaterThan(0);
+
+      // A caller that never seeded sees exactly what it saw before.
+      expect(stable(await products(tenant, UNSEEDED_TOKEN))).toEqual(before);
+
+      const wrongPrice = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-seeds-wrong-price-01', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-02-01T00:00:00Z', end_time: '2027-02-28T00:00:00Z',
+        packages: [{ product_id: 'seeded_rectangle', pricing_option_id: 'seeded_rectangle_cpm', budget: 1000 }],
+      }, SEED_TOKEN);
+      expect(wrongPrice.adcp_error?.code).toBe('INVALID_PRICING_OPTION');
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-seeds-buy-0001', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-02-01T00:00:00Z', end_time: '2027-02-28T00:00:00Z',
+        packages: [{ product_id: 'seeded_rectangle', pricing_option_id: 'cpm_seeded', budget: 1000, bid_price: 9 }],
+      }, SEED_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      expect(buy.packages[0].pricing_option_id).toBe('cpm_seeded');
+
+      // The other caller cannot buy it.
+      const foreign = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-seeds-foreign-01', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-02-01T00:00:00Z', end_time: '2027-02-28T00:00:00Z',
+        packages: [{ product_id: 'seeded_rectangle', pricing_option_id: 'cpm_seeded', budget: 1000 }],
+      }, UNSEEDED_TOKEN);
+      expect(foreign.adcp_error?.code).toBe('PRODUCT_NOT_FOUND');
+
+      // reset_state discards the seeds with the rest of the market.
+      await controller(tenant, 'reset_state', {});
+      const reset = await products(tenant, SEED_TOKEN);
+      expect(reset.products.map((product: Structured) => product.product_id)).not.toContain('seeded_rectangle');
+    });
+
+    it('sells a seeded product on the content platform\'s nearest placement', async () => {
+      const tenant = 'inventory-content';
+      expect((await controller(tenant, 'seed_product', { product_id: 'seeded_content_display', fixture: displayFixture })).success).toBe(true);
+      const offer = await products(tenant, SEED_TOKEN);
+      expectCanonical('get_products', offer);
+      const seeded = offer.products.find((product: Structured) => product.product_id === 'seeded_content_display');
+      expect(seeded.channels).toEqual(['display']);
+      expect(seeded.pricing_options[0].pricing_option_id).toBe('seeded_content_display_cpm');
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-seeds-content-01', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-02-01T00:00:00Z', end_time: '2027-02-28T00:00:00Z',
+        packages: [{ product_id: 'seeded_content_display', pricing_option_id: 'seeded_content_display_cpm', budget: 1000 }],
+      }, SEED_TOKEN);
+      expectCanonical('create_media_buy', buy);
+    });
+
+    it('rejects a seeded product that reuses one of the tenant\'s own ids', async () => {
+      const refused = await controller('inventory-adserver', 'seed_product', { product_id: 'ros_display_guaranteed', fixture: displayFixture });
+      expect(refused.success).toBe(false);
+    });
+  });
 });

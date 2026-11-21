@@ -38,6 +38,7 @@ import type {
   DeliveryMetrics,
   Installment,
   SeasonSeed,
+  SeedProduct,
   SimulationState,
 } from './types.js';
 
@@ -148,22 +149,23 @@ export class InventorySimulation {
   readonly traffic: SeasonTraffic;
   private readonly cellCache = new Map<string, number[]>();
 
-  constructor(readonly seed: SeasonSeed, readonly state: SimulationState) {
+  /** `products` are sold beside the seed's own, on its placements. */
+  constructor(readonly seed: SeasonSeed, readonly state: SimulationState, products: readonly SeedProduct[] = []) {
     if (state.seed_id !== seed.seed_id) {
       throw new EngineError('INVALID_SEED', `State belongs to seed ${state.seed_id}, not ${seed.seed_id}`);
     }
-    this.traffic = trafficFor(seed);
+    this.traffic = trafficFor(seed).withProducts(products);
   }
 
   /** A fresh market whose first unprocessed day is the day `nowMs` falls on. */
-  static create(seed: SeasonSeed, nowMs: number): InventorySimulation {
+  static create(seed: SeasonSeed, nowMs: number, products: readonly SeedProduct[] = []): InventorySimulation {
     const traffic = trafficFor(seed);
     return new InventorySimulation(seed, {
       seed_id: seed.seed_id,
       processed_through_day: traffic.calendar.dayOf(nowMs),
       bookings: [],
       log: [],
-    });
+    }, products);
   }
 
   today(nowMs: number): number {
