@@ -163,19 +163,34 @@ NODE
       fi
       if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/compliance/${latest_3_0}/index.json" 2>/dev/null; then
         bundle_tmp=$(mktemp -d "${STATE_DIR}/3-0-compat.XXXXXX")
-        git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}"
+        git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}" || {
+          echo "::error::Failed to extract dist/compliance/${latest_3_0} from ${RELEASE_GIT_REF}"
+          exit 1
+        }
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
-        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}"
+        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}" || {
+          echo "::error::Failed to patch the 3.0 compliance bundle at ${COMPLIANCE_DIR}"
+          exit 1
+        }
         if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/schemas/${latest_3_0}/index.json" 2>/dev/null; then
-          git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/schemas/${latest_3_0}" | tar -x -C "${bundle_tmp}"
+          git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/schemas/${latest_3_0}" | tar -x -C "${bundle_tmp}" || {
+            echo "::error::Failed to extract dist/schemas/${latest_3_0} from ${RELEASE_GIT_REF}"
+            exit 1
+          }
           SCHEMA_ROOT="${bundle_tmp}/dist/schemas/${latest_3_0}"
         fi
       else
         bundle_tmp=$(mktemp -d "${STATE_DIR}/3-0-compat.XXXXXX")
         mkdir -p "${bundle_tmp}/dist/compliance"
-        cp -R "${REPO_ROOT}/dist/compliance/${latest_3_0}" "${bundle_tmp}/dist/compliance/${latest_3_0}"
+        cp -R "${REPO_ROOT}/dist/compliance/${latest_3_0}" "${bundle_tmp}/dist/compliance/${latest_3_0}" || {
+          echo "::error::Failed to copy dist/compliance/${latest_3_0} into ${bundle_tmp}"
+          exit 1
+        }
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
-        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}"
+        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}" || {
+          echo "::error::Failed to patch the 3.0 compliance bundle at ${COMPLIANCE_DIR}"
+          exit 1
+        }
         if [ -f "${REPO_ROOT}/dist/schemas/${latest_3_0}/index.json" ]; then
           SCHEMA_ROOT="${REPO_ROOT}/dist/schemas/${latest_3_0}"
         fi
@@ -209,14 +224,22 @@ elif [ "${CURRENT_SOURCE}" -eq 1 ]; then
   echo "Building current compliance and schema bundles."
   # ADCP_STORYBOARD_TEST_SKIP_BUILDS is for this script's own tests (fake
   # runners); the pre-push path never sets it. Each build runs only when its
-  # inputs changed, and a failed build stops the matrix. With the builds
-  # skipped, ADCP_STORYBOARD_TEST_BUILT_DIST may name a directory that stands
-  # in for dist/ (schemas/latest and compliance/latest), so the fake runs need
-  # no real build; it is ignored unless the builds are skipped.
+  # inputs changed. A failed build leaves incomplete bundles behind; testing
+  # against them would grade the wrong inputs, so a failed build stops the
+  # matrix. With the builds skipped, ADCP_STORYBOARD_TEST_BUILT_DIST may name
+  # a directory that stands in for dist/ (schemas/latest and
+  # compliance/latest), so the fake runs need no real build; it is ignored
+  # unless the builds are skipped.
   BUILT_DIST="${REPO_ROOT}/dist"
   if [ "${ADCP_STORYBOARD_TEST_SKIP_BUILDS:-}" != "1" ]; then
-    node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure schemas || exit 1
-    node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure compliance || exit 1
+    node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure schemas || {
+      echo "::error::The schema build failed; not running storyboards against incomplete schemas"
+      exit 1
+    }
+    node "${REPO_ROOT}/scripts/built-schemas.cjs" ensure compliance || {
+      echo "::error::The compliance build failed; not running storyboards against an incomplete bundle"
+      exit 1
+    }
   elif [ -n "${ADCP_STORYBOARD_TEST_BUILT_DIST:-}" ]; then
     BUILT_DIST="${ADCP_STORYBOARD_TEST_BUILT_DIST}"
   fi
@@ -263,7 +286,10 @@ const dir = process.argv[2];
 const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
 process.stdout.write(index.adcp_version || '');
 NODE
-)
+) || {
+    echo "::error::Cannot read adcp_version from ${COMPLIANCE_DIR}/index.json"
+    exit 1
+  }
   if [ -z "${SCHEMA_ROOT}" ]; then
     SCHEMA_ROOT=$(node - <<'NODE' "${COMPLIANCE_DIR}" "${bundle_version}" "${REPO_ROOT}"
 const fs = require('node:fs');

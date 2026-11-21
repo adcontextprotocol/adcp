@@ -19,6 +19,10 @@
  *      examples, deprecated, const are all preserved through hoisting
  *   6. Fingerprint includes title — two enums with identical values but
  *      different titles stay distinct (no silent rename)
+ *
+ * And call-site annotations (#8477): a `deprecated` written beside one
+ * `$ref` to the enum stays at that call-site and never marks the hoisted
+ * $defs body, whichever occurrence the walk meets first.
  */
 
 'use strict';
@@ -249,4 +253,93 @@ test('returns input unchanged when no duplicates exist', () => {
   const before = JSON.stringify(schema);
   const result = hoistDuplicateInlineEnums(clone(schema));
   assert.equal(JSON.stringify(result), before);
+});
+
+// resolveRefs merges keys written beside a `$ref` into the inlined body, so
+// `{ "$ref": "enums/status.json", "deprecated": true, "description": "..." }`
+// on the single-value branch of a scalar-or-list union reaches the hoist as
+// an inline enum carrying the call-site's annotations (#8477).
+const STATUS = {
+  title: 'Status',
+  description: 'Status of a thing.',
+  type: 'string',
+  enum: ['active', 'paused'],
+  enumDescriptions: { active: 'Running.', paused: 'Stopped.' },
+};
+const DEPRECATION = {
+  deprecated: true,
+  'x-deprecated-in': '3.3.0',
+  'x-removed-in': '4.0.0',
+  description: 'Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead.',
+};
+
+test('an annotated first occurrence does not mark the hoisted enum', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      status_filter: {
+        oneOf: [
+          { ...clone(STATUS), ...clone(DEPRECATION) },
+          { type: 'array', items: clone(STATUS), minItems: 1 },
+        ],
+      },
+    },
+  };
+  const result = hoistDuplicateInlineEnums(clone(schema));
+
+  assert.deepEqual(result.$defs.Status, STATUS, 'the $defs body is the unannotated occurrence');
+  assert.deepEqual(result.properties.status_filter.oneOf[0], {
+    $ref: '#/$defs/Status',
+    deprecated: true,
+    'x-deprecated-in': '3.3.0',
+    'x-removed-in': '4.0.0',
+    description: DEPRECATION.description,
+  });
+  assert.deepEqual(result.properties.status_filter.oneOf[1].items, { $ref: '#/$defs/Status' });
+});
+
+test('an annotation every occurrence shares stays on the hoisted enum', () => {
+  // A deprecated enum file: `deprecated` is part of the enum's definition.
+  const deprecatedEnum = { ...clone(STATUS), deprecated: true, 'x-deprecated-in': '3.3.0' };
+  const schema = {
+    type: 'object',
+    properties: { a: clone(deprecatedEnum), b: clone(deprecatedEnum) },
+  };
+  const result = hoistDuplicateInlineEnums(clone(schema));
+
+  assert.deepEqual(result.$defs.Status, deprecatedEnum);
+  assert.deepEqual(result.properties.a, { $ref: '#/$defs/Status' });
+  assert.deepEqual(result.properties.b, { $ref: '#/$defs/Status' });
+});
+
+test('when every occurrence is annotated differently, the body drops the call-site keys', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      a: { ...clone(STATUS), deprecated: true, description: 'Use b.' },
+      b: { ...clone(STATUS), 'x-removed-in': '4.0.0' },
+    },
+  };
+  const result = hoistDuplicateInlineEnums(clone(schema));
+
+  const { description, ...withoutDescription } = STATUS;
+  assert.deepEqual(result.$defs.Status, withoutDescription, 'a description the occurrences do not share is not the enum\'s');
+  assert.deepEqual(result.properties.a, { $ref: '#/$defs/Status', deprecated: true, description: 'Use b.' });
+  assert.deepEqual(result.properties.b, { $ref: '#/$defs/Status', 'x-removed-in': '4.0.0', description });
+});
+
+test('an unannotated occurrence with its own description still becomes a bare $ref', () => {
+  // Unchanged behavior: only annotated occurrences keep keys beside the $ref.
+  const schema = {
+    type: 'object',
+    properties: {
+      a: clone(STATUS),
+      b: { ...clone(STATUS), description: 'Status of b.' },
+    },
+  };
+  const result = hoistDuplicateInlineEnums(clone(schema));
+
+  assert.deepEqual(result.$defs.Status, STATUS);
+  assert.deepEqual(result.properties.a, { $ref: '#/$defs/Status' });
+  assert.deepEqual(result.properties.b, { $ref: '#/$defs/Status' });
 });
