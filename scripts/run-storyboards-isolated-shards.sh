@@ -10,6 +10,10 @@ cd "${REPO_ROOT}"
 
 SHARD_COUNT=8
 MAX_PARALLEL=4
+# Run only the shards whose index is SHARD_GROUP modulo SHARD_GROUPS, so a
+# suite can split across jobs; each job's totals cover its own shards.
+SHARD_GROUP=0
+SHARD_GROUPS=1
 RUNNER_ARGS=()
 
 while [ "$#" -gt 0 ]; do
@@ -28,6 +32,14 @@ while [ "$#" -gt 0 ]; do
         exit 2
       fi
       MAX_PARALLEL="${2:-}"
+      shift 2
+      ;;
+    --shard-group)
+      SHARD_GROUP="${2:-}"
+      shift 2
+      ;;
+    --shard-groups)
+      SHARD_GROUPS="${2:-}"
       shift 2
       ;;
     --shard-index)
@@ -49,6 +61,18 @@ if ! [[ "${MAX_PARALLEL}" =~ ^[1-9][0-9]*$ ]] || [ "${MAX_PARALLEL}" -gt "${SHAR
   echo "::error::--max-parallel must be a positive integer no greater than --shard-count" >&2
   exit 2
 fi
+if ! [[ "${SHARD_GROUPS}" =~ ^[1-9][0-9]*$ ]] || [ "${SHARD_GROUPS}" -gt "${SHARD_COUNT}" ]; then
+  echo "::error::--shard-groups must be a positive integer no greater than --shard-count" >&2
+  exit 2
+fi
+if ! [[ "${SHARD_GROUP}" =~ ^[0-9]+$ ]] || [ "${SHARD_GROUP}" -ge "${SHARD_GROUPS}" ]; then
+  echo "::error::--shard-group must be between 0 and --shard-groups - 1" >&2
+  exit 2
+fi
+SELECTED=()
+for ((index = SHARD_GROUP; index < SHARD_COUNT; index += SHARD_GROUPS)); do
+  SELECTED+=("${index}")
+done
 
 TEMP_DIR=$(mktemp -d -t "adcp-isolated-storyboard-shards.XXXXXX")
 cleanup() {
@@ -82,7 +106,7 @@ wait_for_batch() {
   indexes=()
 }
 
-for ((index = 0; index < SHARD_COUNT; index += 1)); do
+for index in "${SELECTED[@]}"; do
   run_shard "${index}" > "${TEMP_DIR}/shard-${index}.log" 2>&1 &
   pids+=("$!")
   indexes+=("${index}")
@@ -103,7 +127,7 @@ not_applicable_sum=0
 infrastructure_failure=0
 selection_expected=""
 
-for ((index = 0; index < SHARD_COUNT; index += 1)); do
+for index in "${SELECTED[@]}"; do
   shard_number=$((index + 1))
   shard_log="${TEMP_DIR}/shard-${index}.log"
   echo ""

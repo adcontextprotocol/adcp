@@ -1,0 +1,271 @@
+id: media_buy_seller/declared_carousel_cta_values
+version: "1.0.0"
+title: "Seller holds each carousel card's cta to the declared cta_values"
+category: media_buy_seller
+summary: "sync_creatives refuses an image_carousel creative whose one card carries a cta outside the option's declared cta_values with CREATIVE_VALUE_NOT_ALLOWED, and accepts the same creative once that card uses a declared value."
+track: creative
+introduced_in: "3.3"
+requires:
+  - controller
+
+required_tools:
+  - sync_creatives
+
+requires_capability:
+  path: creative.has_creative_library
+  equals: true
+
+narrative: |
+  image_carousel declares cta_values for each card's cta (adcp#8960). When an
+  option declares it, every card's cta MUST be one of the listed values, and a
+  seller refuses any other value with CREATIVE_VALUE_NOT_ALLOWED, with
+  error.field pointing at that card's cta. This is the carousel counterpart of
+  the native_in_feed reject_cta_not_in_enum step.
+
+  The runner seeds one product whose image_carousel option declares
+  cta_values SHOP_NOW and LEARN_MORE. The buyer syncs a three-card creative
+  whose cards are all valid except the third card's cta, which is outside the
+  set, and references the option with format_option_ref. The seller MUST
+  refuse it. The buyer then syncs the same creative with the third card's cta
+  set to a declared value, and the seller MUST accept it.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Social platforms with carousel ads"
+    - "Publisher platforms with a creative library"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  controller_seeding: true
+  description: |
+    The runner seeds a product with one image_carousel format option that
+    declares cta_values. Sellers that do not implement seed_product grade this
+    scenario not_applicable.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_74323fd62783"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_declared_carousel_c-0a9ba944"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "declared_carousel_cta_product"
+      name: "Declared carousel option with cta_values"
+      channels: ["social"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_kind: "image_carousel"
+          format_option_id: "declared_carousel_cta_values"
+          canonical_formats_only: true
+          technical_requirements_complete: true
+          params:
+            card_aspect_ratio: "1:1"
+            min_cards: 3
+            max_cards: 10
+            cta_values:
+              - "SHOP_NOW"
+              - "LEARN_MORE"
+
+phases:
+  - id: carousel_cta_values
+    title: "Hold each card's cta to the declared cta_values"
+    narrative: |
+      The buyer submits the same three-card carousel twice: first with the
+      third card's cta outside the declared set, then with that cta set to a
+      declared value. Each submission is a separate sync_creatives call.
+
+    steps:
+      - id: reject_card_cta_not_in_enum
+        title: "Reject: one card's cta is not in the declared cta_values"
+        narrative: |
+          Cards one and two carry SHOP_NOW, a declared value. Card three
+          carries EXPLORE_MORE, which the option's cta_values does not list.
+          Every other card field is valid. The seller MUST refuse the creative
+          with CREATIVE_VALUE_NOT_ALLOWED and point error.field at the third
+          card's cta, so the buyer can fix that one card by picking a listed
+          value. The error SHOULD carry the declared values.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/channels/carousels#card-call-to-action"
+        comply_scenario: creative_sync
+        stateful: false
+        expect_error: true
+        expected: |
+          Seller MUST reject with CREATIVE_VALUE_NOT_ALLOWED because
+          "EXPLORE_MORE" on the third card is not in the declared cta_values,
+          with error.field pointing at that card's cta.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_declared_carousel_c-0a9ba944"
+            sandbox: true
+          creatives:
+            - creative_id: "declared_carousel_cta_001"
+              name: "Trail Pro 3000 — carousel built to the declared option"
+              format_kind: "image_carousel"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "declared_carousel_cta_values"
+              assets:
+                cards:
+                  - asset_type: "card"
+                    headline: "Trail Pro 3000"
+                    cta: "SHOP_NOW"
+                    media:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-1080x1080.jpg"
+                      width: 1080
+                      height: 1080
+                    landing_page_url:
+                      asset_type: "url"
+                      url_type: "clickthrough"
+                      url: "https://acmeoutdoor.example/trail-pro-3000"
+                  - asset_type: "card"
+                    headline: "Summit Pack"
+                    cta: "SHOP_NOW"
+                    media:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/summit-pack-1080x1080.jpg"
+                      width: 1080
+                      height: 1080
+                    landing_page_url:
+                      asset_type: "url"
+                      url_type: "clickthrough"
+                      url: "https://acmeoutdoor.example/summit-pack"
+                  - asset_type: "card"
+                    headline: "Built for the summit"
+                    cta: "EXPLORE_MORE"
+                    media:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/alpine-shell-1080x1080.jpg"
+                      width: 1080
+                      height: 1080
+                    landing_page_url:
+                      asset_type: "url"
+                      url_type: "clickthrough"
+                      url: "https://acmeoutdoor.example/our-story"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_declared_carousel_cta_values_reject_card_cta_not_in_enum"
+          context:
+            correlation_id: "media_buy_seller_declared_carousel_cta_values--reject_card_cta_not_in_enum"
+        validations:
+          - check: error_code
+            value: "CREATIVE_VALUE_NOT_ALLOWED"
+            description: "Seller returns CREATIVE_VALUE_NOT_ALLOWED for a card cta outside the declared cta_values"
+          - check: field_pattern
+            path: "errors[0].field"
+            pattern: "cards\\[2\\]\\.cta$"
+            description: "error.field points at the third card's cta"
+
+      - id: accept_card_cta_in_enum
+        title: "Accept: the same creative with every card's cta in the declared cta_values"
+        narrative: |
+          The buyer resubmits the same creative with the third card's cta set
+          to LEARN_MORE, a declared value. Nothing else changes. The seller
+          MUST accept the creative rather than refuse it with
+          CREATIVE_VALUE_NOT_ALLOWED or another conformance code. A
+          pending_review status is acceptable; review is not format
+          conformance.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/channels/carousels#card-call-to-action"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the creative:
+          - no operation-level errors
+          - creatives[0].action is created, updated, or unchanged (not failed)
+          - creatives[0] carries no errors
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_declared_carousel_c-0a9ba944"
+            sandbox: true
+          creatives:
+            - creative_id: "declared_carousel_cta_001"
+              name: "Trail Pro 3000 — carousel built to the declared option"
+              format_kind: "image_carousel"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "declared_carousel_cta_values"
+              assets:
+                cards:
+                  - asset_type: "card"
+                    headline: "Trail Pro 3000"
+                    cta: "SHOP_NOW"
+                    media:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-1080x1080.jpg"
+                      width: 1080
+                      height: 1080
+                    landing_page_url:
+                      asset_type: "url"
+                      url_type: "clickthrough"
+                      url: "https://acmeoutdoor.example/trail-pro-3000"
+                  - asset_type: "card"
+                    headline: "Summit Pack"
+                    cta: "SHOP_NOW"
+                    media:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/summit-pack-1080x1080.jpg"
+                      width: 1080
+                      height: 1080
+                    landing_page_url:
+                      asset_type: "url"
+                      url_type: "clickthrough"
+                      url: "https://acmeoutdoor.example/summit-pack"
+                  - asset_type: "card"
+                    headline: "Built for the summit"
+                    cta: "LEARN_MORE"
+                    media:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/alpine-shell-1080x1080.jpg"
+                      width: 1080
+                      height: 1080
+                    landing_page_url:
+                      asset_type: "url"
+                      url_type: "clickthrough"
+                      url: "https://acmeoutdoor.example/our-story"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_declared_carousel_cta_values_accept_card_cta_in_enum"
+          context:
+            correlation_id: "media_buy_seller_declared_carousel_cta_values--accept_card_cta_in_enum"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_absent
+            path: "errors"
+            description: "No operation-level error refuses the creative once every card's cta is declared"
+          - check: field_value
+            path: "creatives[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "The creative is accepted, not failed"
+          - check: field_absent
+            path: "creatives[0].errors"
+            description: "The accepted creative carries no conformance errors"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller_declared_carousel_cta_values--accept_card_cta_in_enum"
+            description: "Context correlation_id returned unchanged"
