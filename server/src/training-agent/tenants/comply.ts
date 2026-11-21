@@ -39,7 +39,7 @@ import { getTrainingCallerScope } from '../mcp-task-store.js';
 
 // Native seed replay keys omit the authenticated caller. Use the scope
 // already established by the tenant router before checking a seed replay.
-function createPrincipalScopedSeedCache(): SeedFixtureCache {
+export function createPrincipalScopedSeedCache(): SeedFixtureCache {
   const cache = createSeedFixtureCache();
   const scoped = (key: string): string => JSON.stringify([getTrainingCallerScope(), key]);
   return {
@@ -229,7 +229,7 @@ function throwOnFailure(result: V5Response): void {
 // `SimulateAdapter<P>` constrain `P` to per-scenario param interfaces, but
 // our shim handles all scenarios uniformly. The casts at the assignment
 // site narrow back to the typed adapter shape.
-type AdapterShim = (params: unknown, ctx: ComplyControllerContext) => Promise<unknown>;
+export type AdapterShim = (params: unknown, ctx: ComplyControllerContext) => Promise<unknown>;
 
 async function requireControllerTaskScope(
   taskRegistry: TaskRegistry,
@@ -325,6 +325,13 @@ function seedAdapter(scenario: string, storyboardCompat?: TrainingContext['story
     // Seed adapters return void — framework builds SeedSuccess envelope
     // from its own idempotency cache.
   };
+}
+
+/** `seed_account` for tenants outside this module's configs (the inventory
+ * tenants): the same shared account store, so a seeded account is
+ * provisioned on every tenant. */
+export function seedAccountAdapter(storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
+  return seedAdapter('seed_account', storyboardCompat);
 }
 
 function forceAdapter(

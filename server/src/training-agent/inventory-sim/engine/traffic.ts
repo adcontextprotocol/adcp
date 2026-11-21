@@ -324,6 +324,27 @@ export class SeasonTraffic {
     return Math.max(...product.placement_ids.map(id => this.placements.get(id)!.reporting_lag_days));
   }
 
+  /**
+   * This season's traffic, also selling `extra` products. Products only name
+   * placements, so the view shares every cell and day table: nothing is
+   * regenerated.
+   */
+  withProducts(extra: readonly SeedProduct[]): SeasonTraffic {
+    if (extra.length === 0) return this;
+    const products = new Map(this.products);
+    for (const product of extra) {
+      if (products.has(product.product_id)) invalid(`Duplicate product ${product.product_id}`);
+      if (product.placement_ids.length === 0) invalid(`Product ${product.product_id} has no placements`);
+      for (const id of product.placement_ids) if (!this.placements.has(id)) invalid(`Product ${product.product_id} names unknown placement ${id}`);
+      for (const id of product.collection_ids ?? []) if (!this.collections.has(id)) invalid(`Product ${product.product_id} names unknown collection ${id}`);
+      if (product.delivery_type === 'guaranteed' && !(product.rate_cpm! > 0)) invalid(`Guaranteed product ${product.product_id} needs rate_cpm`);
+      products.set(product.product_id, product);
+    }
+    const view = Object.create(this) as SeasonTraffic;
+    Object.defineProperty(view, 'products', { value: products });
+    return view;
+  }
+
   requireProduct(productId: string): SeedProduct {
     const product = this.products.get(productId);
     if (!product) throw new EngineError('UNKNOWN_PRODUCT', `Unknown product ${productId}`);
