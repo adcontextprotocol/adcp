@@ -529,6 +529,14 @@
                         "description": "Creative identifier",
                         "x-entity": "creative"
                       },
+                      "adjacent_code": {
+                        "type": "array",
+                        "x-added-in": "3.4.0",
+                        "description": "Complete current adjacent-code application snapshot for this assignment. Omission means undeclared; [] explicitly reports none. Includes pending and omitted entries. Mirrors the other assignment readback for the same relationship and state. Required code that is not applied blocks this assignment, leaving creative approval unchanged. Does not prove browser execution.",
+                        "items": {
+                          "$ref": "/schemas/core/adjacent-code-application.json"
+                        }
+                      },
                       "trackers": {
                         "type": "array",
                         "items": { "$ref": "/schemas/core/assignment-tracker.json" },

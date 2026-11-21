@@ -59,6 +59,10 @@ For scheduled media, request `installments` in `fields` to see which episodes, i
 
 Absence is only meaningful inside a projection that asked for the field: a product that declares `collections` and omits `installments` **in a response that returned `installments` for other products** is run-of-collection. In a projection that never requested `installments`, absence says nothing, so a buyer deciding between "specific slots" and "run-of-collection" requests the field explicitly. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
 
+## Adjacent-code disclosure
+
+Proposed for AdCP 3.4, with WG approval pending: request `adjacent_code` in `fields` to read optional seller-side code declarations. Each entry identifies an opaque seller-scoped provider and purpose, with an explicit `required` policy. Omission means undeclared; `[]` explicitly declares none. This adds no purchase-path restriction or acceptance token. See [adjacent code](/docs/creative/adjacent-code) for assignment readback and changes after purchase.
+
 ## Response
 
 Every response has an explicit `outcome`:

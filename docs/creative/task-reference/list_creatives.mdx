@@ -321,6 +321,10 @@ To manage one of these creatives, a buyer uses its `creative_id` as-is. See [sel
 
 `platform_id` is the seller's identifier for the creative in its source of truth, the same value `sync_creatives` returns. It lets operators match a creative to the seller's own UI and reports without keeping the sync response. Buyers address creatives by `creative_id`, never by `platform_id`.
 
+### Adjacent-code readback
+
+Proposed for AdCP 3.4, with WG approval pending: each `assignments.assigned_packages[]` row MAY carry `adjacent_code[]`, mirroring [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the same assignment. Supporting sellers report the complete array, including pending or omitted code. Required code that is not applied holds assignment delivery while creative `status` and assignment `approval_status` retain their review meanings. Omission means undeclared; `[]` explicitly reports none. See [adjacent code](/docs/creative/adjacent-code) for provider scope and notification rules.
+
 ### Assignment indicators
 
 In AdCP 3.3, sellers advertising `creative.supports_assignment_trackers` MUST return `assignments.assigned_packages[].trackers`: the complete assignment-scoped tracker list, or `[]` when none are attached. Preserve event names, URL templates, order, and duplicate occurrences. The list excludes the creative's own trackers in `assets`; both sets fire on this placement. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers).

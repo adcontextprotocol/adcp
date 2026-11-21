@@ -10,6 +10,14 @@
       "x-added-in": "3.3.0",
       "description": "Product creative requirements, including optional review_sla."
     },
+    "adjacent_code": {
+      "type": "array",
+      "x-added-in": "3.4.0",
+      "description": "Optional complete adjacent-code disclosure for this product. Omission means undeclared, including when excluded by field projection; [] explicitly declares no adjacent code. Entries include seller first-party code and exclude buyer creative assets and buyer-supplied assignment trackers. Disclosure does not authorize changes to accepted commercial terms.",
+      "items": {
+        "$ref": "/schemas/core/adjacent-code.json"
+      }
+    },
     "product_id": { "type": "string", "minLength": 1, "x-entity": "product" },
     "name": { "type": "string", "minLength": 1 },
     "description": { "type": "string" },

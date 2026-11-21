@@ -41,6 +41,14 @@
     "core": {
       "description": "Core data models used throughout AdCP",
       "schemas": {
+        "adjacent-code": {
+          "$ref": "/schemas/core/adjacent-code.json",
+          "description": "Seller-scoped adjacent-code declaration"
+        },
+        "adjacent-code-application": {
+          "$ref": "/schemas/core/adjacent-code-application.json",
+          "description": "Adjacent-code application state on a creative assignment"
+        },
         "product": {
           "$ref": "/schemas/core/product.json",
           "description": "Represents available advertising inventory"

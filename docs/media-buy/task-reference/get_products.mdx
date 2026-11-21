@@ -702,6 +702,10 @@ The `catalog` field uses the same [Catalog](/docs/creative/catalogs) object used
 
 Products in the response include `catalog_types` (what catalog types they support) and `catalog_match` (which items matched).
 
+## Adjacent-code disclosure
+
+Proposed for AdCP 3.4, with WG approval pending: returned products MAY carry `adjacent_code[]`. Each entry contains an opaque seller-scoped `provider`, a buyer-readable `purpose`, and `required`. Request the field explicitly when using `fields`; omission means undeclared and `[]` explicitly declares none. This disclosure introduces no new restriction on the legacy purchase path. See [adjacent code](/docs/creative/adjacent-code) for assignment readback and delivery holds.
+
 ## Response
 
 Returns an array of `products` and optionally `proposals`. When the seller's
