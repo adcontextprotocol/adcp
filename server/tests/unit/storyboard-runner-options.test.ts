@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   authForStoryboard,
+  gradesAnotherTenant,
   multiAgentRoutingForStoryboard,
   testKitOptionsFromKit,
   type LoadedTestKit,
@@ -314,6 +315,12 @@ describe('multiAgentRoutingForStoryboard', () => {
   it('refuses to grade a storyboard from a tenant other than its default_agent', () => {
     expect(() => multiAgentRoutingForStoryboard({ ...input, tenantPath: 'sales' }))
       .toThrow(/run it from the signals tenant/);
+  });
+
+  it('reports a multi-agent storyboard out of scope for every tenant but its default_agent', () => {
+    expect(gradesAnotherTenant(governed, 'signals')).toBe(false);
+    expect(gradesAnotherTenant(governed, 'inventory-adserver')).toBe(true);
+    expect(gradesAnotherTenant({ id: 'single', default_agent: 'signals' }, 'inventory-adserver')).toBe(false);
   });
 
   it('refuses agent keys that are not training-agent tenants', () => {

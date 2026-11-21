@@ -1034,9 +1034,7 @@ async function buildRequestContext(
             'The ONLY pre-module conversation allowed is helping the learner choose WHICH module to start.',
             'Once they indicate any module (or say "start certification" / "start A1" / "I want to learn"), call the tool FIRST.',
           ].join('\n');
-          certContextText = certContextText
-            ? `${noModuleWarning}\n\n${certContextText}`
-            : noModuleWarning;
+          certContextText = noModuleWarning;
         }
       } catch (error) {
         logger.warn({ error }, 'Addie Bolt: Failed to get certification progress for context');

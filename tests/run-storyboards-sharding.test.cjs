@@ -285,7 +285,7 @@ test('creative-builder uses bounded isolated children in local and CI matrices',
 
   assert.match(
     workflow,
-    /if \[ "\$\{\{ matrix\.tenant \}\}" = "creative-builder" \]; then\n\s+bash scripts\/run-storyboards-isolated-shards\.sh/,
+    /if \[ "\$\{\{ matrix\.tenant \}\}" = "creative-builder" \] \|\| \[ "\$\{\{ matrix\.isolated \}\}" = "true" \]; then\n\s+bash scripts\/run-storyboards-isolated-shards\.sh/,
   );
   assert.match(workflow, /--shard-count 8 --max-parallel 4/);
   assert.match(workflow, /isolated_orchestrator_failure=0/);

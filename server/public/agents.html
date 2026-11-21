@@ -943,6 +943,8 @@
             // auth, unreachable host) rather than just "Offline." Raw SDK
             // error is hidden behind a details/summary toggle.
             const health = agent.health || {};
+            // Agent contact data is self-reported; only link https: URLs.
+            const contactWebsite = safeHttpsUrl(agent.contact?.website);
             const statusText = health.online ? 'Active' : 'Offline';
             const errorBlock = (!health.online && health.error)
                 ? `<div class="status-banner__error">${escapeHtml(health.error)}</div>${
@@ -1124,7 +1126,7 @@
                                 <div style="margin-top: var(--space-2);">
                                     ${escapeHtml(agent.contact.name)}<br>
                                     <a href="mailto:${escapeHtml(agent.contact.email)}" class="info-box__contact-link">${escapeHtml(agent.contact.email)}</a>
-                                    ${agent.contact.website ? `<br><a href="${escapeHtml(agent.contact.website)}" target="_blank" rel="noopener noreferrer" class="info-box__contact-link">${escapeHtml(agent.contact.website)}</a>` : ''}
+                                    ${contactWebsite ? `<br><a href="${escapeHtml(contactWebsite)}" target="_blank" rel="noopener noreferrer" class="info-box__contact-link">${escapeHtml(agent.contact.website)}</a>` : ''}
                                 </div>
                             </div>
                         ` : ''}
