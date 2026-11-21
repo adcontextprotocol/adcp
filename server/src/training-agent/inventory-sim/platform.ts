@@ -18,6 +18,7 @@ import {
   EngineError,
   audienceCurve,
   toAdcpForecast,
+  trafficFor,
   type BookingTargeting,
   type ForecastResult,
   type Installment,
@@ -26,6 +27,7 @@ import {
   type SeedProduct,
 } from './engine/index.js';
 import { openMarket, withCallerMarkets, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
+import { TestControllerError } from '@adcp/sdk/testing';
 import {
   CreativeRequestError,
   assign,
@@ -39,6 +41,7 @@ import {
   type CreativeError,
 } from './creatives.js';
 import { catalogIdOf, formatFilter, listSeedCreativeFormats, resolveCreativeFormat, seedFormatDeclarations, wireFormat, type FormatDeclaration } from './creative-wire.js';
+import { engineProducts, floorPrice, seededPricing, wireOverrides, wirePricing, type SeededCatalog, type SeededPricingRecord, type SeededProductRecord } from './seeded-products.js';
 import type { TrainingContext } from '../types.js';
 
 export interface InventoryTenantProfile {
@@ -135,6 +138,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
   private readonly products: SeedProduct[];
   private readonly declarations: FormatDeclaration[];
   private readonly catalog: CreativeCatalog;
+  /** format_option_id for each training catalogue format a placement names. */
+  private readonly formatOptionIds: Map<string, string>;
 
   constructor(private readonly profile: InventoryTenantProfile) {
     this.products = profile.seed.products;
@@ -142,8 +147,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     // Placements name formats by training catalogue id; the creative library
     // keys them by format_option_id.
     const optionIds = new Map(this.declarations.map(declaration => [catalogIdOf(declaration), declaration.format_option_id]));
-    const productFormats = new Map(this.products.map(product => [product.product_id, new Set(product.placement_ids.flatMap(id =>
-      (profile.seed.placements.find(placement => placement.placement_id === id)?.formats ?? []).map(label => optionIds.get(label)!)))]));
+    this.formatOptionIds = optionIds;
+    const productFormats = new Map(this.products.map(product => [product.product_id, this.formatsOf(product)]));
     const labels = new Map(this.declarations.map(declaration => [declaration.format_option_id, catalogIdOf(declaration)]));
     this.catalog = {
       formats: new Set(optionIds.values()),
@@ -231,6 +236,43 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     return openMarket(this.profile.tenantId, this.profile.seed, principalOf(ctx));
   }
 
+  /**
+   * comply_test_controller `seed_product`: sell the fixture in the caller's
+   * market on this tenant (`seeded-products.ts`). A replay stores the same
+   * fixture again; the SDK refuses a divergent one.
+   */
+  seedProduct(principal: string | undefined, productId: string, fixture: Record<string, unknown>): Promise<void> {
+    if (this.products.some(product => product.product_id === productId)) {
+      throw new TestControllerError('INVALID_PARAMS', `${productId} is one of this tenant's own products`);
+    }
+    return this.seed(principal, seeded => {
+      seeded.products = [...(seeded.products ?? []).filter(record => record.product_id !== productId), { product_id: productId, fixture: structuredClone(fixture) }];
+    });
+  }
+
+  /** comply_test_controller `seed_pricing_option`: price a seeded product. */
+  seedPricingOption(principal: string | undefined, productId: string, pricingOptionId: string, fixture: Record<string, unknown>): Promise<void> {
+    return this.seed(principal, seeded => {
+      const others = (seeded.pricing_options ?? []).filter(record => record.product_id !== productId || record.pricing_option_id !== pricingOptionId);
+      seeded.pricing_options = [...others, { product_id: productId, pricing_option_id: pricingOptionId, fixture: structuredClone(fixture) }];
+    });
+  }
+
+  private seed(principal: string | undefined, change: (seeded: SeededCatalog) => void): Promise<void> {
+    return withCallerMarkets(principal, async () => {
+      const market = await openMarket(this.profile.tenantId, this.profile.seed, principal);
+      const seeded = structuredClone(market.doc.seeded ?? {});
+      change(seeded);
+      try {
+        trafficFor(this.profile.seed).withProducts(engineProducts(this.profile.seed, seeded));
+      } catch (error) {
+        throw new TestControllerError('INVALID_PARAMS', error instanceof Error ? error.message : String(error));
+      }
+      market.doc.seeded = seeded;
+      market.save();
+    });
+  }
+
   /** Run a market handler as the caller's only market request
    * (`withCallerMarkets`). Every handler takes its context last. */
   private serialized<A extends unknown[], R>(handler: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
@@ -239,6 +281,47 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
 
   private pricingOptionId(product: SeedProduct): string {
     return `${product.product_id}_cpm`;
+  }
+
+  /** The format_option_ids a product's placements serve. */
+  private formatsOf(product: SeedProduct): Set<string> {
+    return new Set(product.placement_ids.flatMap(id =>
+      (this.profile.seed.placements.find(placement => placement.placement_id === id)?.formats ?? []).map(label => this.formatOptionIds.get(label)!)));
+  }
+
+  /** What the caller seeded for a product, if it is a seeded one. */
+  private seededProduct(market: OpenMarket, productId: string): { record: SeededProductRecord; pricing: SeededPricingRecord[] } | undefined {
+    const record = market.doc.seeded?.products?.find(candidate => candidate.product_id === productId);
+    return record && { record, pricing: seededPricing(market.doc.seeded!, productId) };
+  }
+
+  /** The pricing option ids a product sells under: a seeded product's
+   * seeded ones, when it has any, otherwise its CPM. */
+  private pricingOptionIds(market: OpenMarket, product: SeedProduct): string[] {
+    const seeded = this.seededProduct(market, product.product_id)?.pricing ?? [];
+    return seeded.length > 0 ? seeded.map(option => option.pricing_option_id) : [this.pricingOptionId(product)];
+  }
+
+  /** The AdCP channels a product sells: a seeded product's own, when its
+   * fixture names them, otherwise its placements'. */
+  private channelsOf(market: OpenMarket, product: SeedProduct): string[] {
+    const channels = this.seededProduct(market, product.product_id)?.record.fixture.channels;
+    if (Array.isArray(channels)) return channels.map(String);
+    return product.placement_ids.map(id => ADCP_CHANNEL[this.profile.seed.placements.find(placement => placement.placement_id === id)!.channel]);
+  }
+
+  /** The creative catalogue for a caller's market, which also serves the
+   * formats of the products it seeded. */
+  private catalogFor(market: OpenMarket): CreativeCatalog {
+    if (!market.doc.seeded?.products?.length) return this.catalog;
+    return {
+      ...this.catalog,
+      productFormats: productId => {
+        const own = this.catalog.productFormats(productId);
+        if (own.size > 0 || !market.sim.traffic.products.has(productId)) return own;
+        return this.formatsOf(market.sim.traffic.requireProduct(productId));
+      },
+    };
   }
 
   private targetingFrom(overlay: unknown, field: string): BookingTargeting {
@@ -288,7 +371,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     });
   }
 
-  private wireProduct(product: SeedProduct, sim: InventorySimulation, nowMs: number, flight: { startMs: number; endMs: number }, targeting: BookingTargeting, budget?: number) {
+  private wireProduct(product: SeedProduct, sim: InventorySimulation, nowMs: number, flight: { startMs: number; endMs: number }, targeting: BookingTargeting, budget?: number, seeded?: { record: SeededProductRecord; pricing: SeededPricingRecord[] }) {
     const seed = this.profile.seed;
     const installments = product.collection_ids ? this.installmentsIn(product, sim, flight.startMs, flight.endMs) : undefined;
     const placements = product.placement_ids.map(id => seed.placements.find(placement => placement.placement_id === id)!);
@@ -296,7 +379,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     const properties = seed.properties.filter(property => propertyIds.has(property.property_id));
     const lag = Math.max(...placements.map(placement => placement.reporting_lag_days));
     const guaranteed = product.delivery_type === 'guaranteed';
-    const floor = Math.min(...placements.map(placement => placement.floor_cpm));
+    const floor = seeded?.pricing.map(floorPrice).find(value => value !== undefined)
+      ?? Math.min(...placements.map(placement => placement.floor_cpm));
     const forecast: ForecastResult = installments?.length === 0
       ? { ...sim.forecast({ product_id: product.product_id, flight_start_ms: flight.startMs, flight_end_ms: flight.endMs }, nowMs), available: 0, impressions: 0, low: 0, high: 0, spend: 0, clicks: 0, viewable_impressions: 0, completed_views: 0, conversions: 0 }
       : sim.forecast({
@@ -318,7 +402,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       format_options: formatOptionsForTrainingFormats([...new Set(placements.flatMap(placement => placement.formats))], agentUrl),
       delivery_type: product.delivery_type,
       ...(product.share_of_voice && { exclusivity: product.share_of_voice >= 1 ? 'exclusive' : 'non_exclusive' }),
-      pricing_options: [{
+      pricing_options: seeded?.pricing.length ? seeded.pricing.map(option => wirePricing(option, seed.currency)) : [{
         pricing_option_id: this.pricingOptionId(product),
         pricing_model: 'cpm' as const,
         currency: seed.currency,
@@ -349,6 +433,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         }),
         installments: this.wireInstallments(product, installments, sim, nowMs),
       }),
+      ...(seeded && wireOverrides(seeded.record)),
     };
   }
 
@@ -400,6 +485,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     const inline = Array.isArray(pkg.creatives) ? pkg.creatives as unknown[] : undefined;
     const assignments = Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments as unknown[] : undefined;
     if (!inline && !assignments) return false;
+    const catalog = this.catalogFor(market);
     const weightOf = (value: unknown, at: string) => {
       if (value === undefined) return undefined;
       if (typeof value !== 'number' || !(value >= 0 && value <= 100)) throw invalid('weight must be a number from 0 to 100', at);
@@ -411,7 +497,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         const at = `${field}.creatives[${index}]`;
         // The SDK hands these over canonicalized (format_option_ref and
         // format_kind); a kind matches only among the product's formats.
-        const parsed = parseCreative(input, at, this.catalog, this.catalog.productFormats(record.product_id));
+        const parsed = parseCreative(input, at, catalog, catalog.productFormats(record.product_id));
         if ('error' in parsed) throw creativeFailure(parsed.error);
         upsertCreative(market.doc, accountId, parsed.creative, market.nowIso);
         wanted.push({ creative_id: parsed.creative.creative_id, weight: weightOf((input as Record<string, unknown>).weight, `${at}.weight`) });
@@ -430,7 +516,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       wanted.push({ creative_id: assignment.creative_id, weight: weightOf(assignment.weight, `${at}.weight`) });
     });
     for (const { creative_id } of wanted) {
-      const error = assignmentError(market.doc, accountId, this.catalog, creative_id, record, record.package_id, field);
+      const error = assignmentError(market.doc, accountId, catalog, creative_id, record, record.package_id, field);
       if (error) throw creativeFailure(error);
     }
     if (replace) delete record.creative_assignments;
@@ -460,19 +546,24 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const budget = typeof budgetMax === 'number' && budgetMax > 0 ? budgetMax : undefined;
       const channels = Array.isArray(filters.channels) ? new Set(filters.channels as string[]) : undefined;
       // With an account, forecasts net out the caller's own bookings, an
-      // account-specific overlay. Without one the seller MUST answer with the
-      // public card, so forecast against an empty market: the same for every
-      // caller at the same simulated time.
+      // account-specific overlay, and the catalogue carries the caller's
+      // seeded products. Without one the seller MUST answer with the public
+      // card: the season's products against an empty market, the same for
+      // every caller at the same simulated time.
       const scoped = req.account !== undefined && req.account !== null;
       const sim = scoped ? market.sim : InventorySimulation.create(this.profile.seed, market.nowMs);
       const pagination = req.pagination as { max_results?: unknown; cursor?: string } | undefined;
       const offset = pagination ? decodeOffsetCursor('products', pagination.cursor) : 0;
       if (offset === null) throw invalid('pagination.cursor is malformed', 'pagination.cursor');
       const formatRefs = Array.isArray(filters.format_option_refs) ? filters.format_option_refs as FormatOptionRef[] : undefined;
-      const products = this.products
+      // A caller's seeded products come first: a storyboard that seeds the
+      // products it pages through reads them before the season's.
+      const seededIds = new Set((market.doc.seeded?.products ?? []).map(record => record.product_id));
+      const catalogue = [...sim.traffic.products.values()];
+      const products = [...catalogue.filter(product => seededIds.has(product.product_id)), ...catalogue.filter(product => !seededIds.has(product.product_id))]
         .filter(product => filters.delivery_type === undefined || product.delivery_type === filters.delivery_type)
-        .filter(product => !channels || product.placement_ids.some(id => channels.has(ADCP_CHANNEL[this.profile.seed.placements.find(p => p.placement_id === id)!.channel])))
-        .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget))
+        .filter(product => !channels || this.channelsOf(market, product).some(channel => channels.has(channel)))
+        .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget, this.seededProduct(market, product.product_id)))
         .filter(product => !formatRefs || servesFormatOptionRef(product, formatRefs));
       market.save();
       if (!pagination) return { products, cache_scope: scoped ? 'account' : 'public' } as never;
@@ -503,11 +594,15 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         // a negative budget reads as one whatever product it names.
         const budget = typeof pkg.budget === 'number' ? pkg.budget : Number.NaN;
         if (!(budget > 0)) throw invalid('Each package needs a positive budget', `${field}.budget`);
-        const product = this.products.find(candidate => candidate.product_id === pkg.product_id);
+        const product = typeof pkg.product_id === 'string' ? market.sim.traffic.products.get(pkg.product_id) : undefined;
         if (!product) throw new AdcpError('PRODUCT_NOT_FOUND', { recovery: 'correctable', message: `Unknown product ${String(pkg.product_id)}`, field: `${field}.product_id` });
-        if (pkg.pricing_option_id !== this.pricingOptionId(product)) {
-          throw new AdcpError('INVALID_PRICING_OPTION', { recovery: 'correctable', message: `Product ${product.product_id} is priced by ${this.pricingOptionId(product)}`, field: `${field}.pricing_option_id` });
+        const pricingIds = this.pricingOptionIds(market, product);
+        if (typeof pkg.pricing_option_id !== 'string' || !pricingIds.includes(pkg.pricing_option_id)) {
+          throw new AdcpError('INVALID_PRICING_OPTION', { recovery: 'correctable', message: `Product ${product.product_id} is priced by ${pricingIds.join(', ')}`, field: `${field}.pricing_option_id` });
         }
+        const pricingOptionId = pkg.pricing_option_id;
+        const seededOption = this.seededProduct(market, product.product_id)?.pricing
+          .find(option => option.pricing_option_id === pricingOptionId);
         const startMs = pkg.start_time !== undefined ? parseInstant(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
         const endMs = pkg.end_time !== undefined ? parseInstant(pkg.end_time, `${field}.end_time`, market.nowMs) : buyEnd;
         const targeting = this.targetingFrom(pkg.targeting_overlay, `${field}.targeting_overlay`);
@@ -532,7 +627,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             flight_end_ms: bookingEndMs,
             budget,
             ...(impressions !== undefined && { impression_goal: impressions }),
-            ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
+            ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? (seededOption && floorPrice(seededOption)) ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
           }, market.nowMs);
         } catch (error) {
           fromEngine(error, field);
@@ -541,7 +636,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         records.push({
           package_id: packageId,
           product_id: product.product_id,
-          pricing_option_id: this.pricingOptionId(product),
+          pricing_option_id: pricingOptionId,
           budget,
           ...(booking.impression_goal !== undefined && { impressions: booking.impression_goal }),
           ...(booking.kind === 'auction' && { bid_price: booking.cpm }),
@@ -779,14 +874,14 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       syncCreatives: this.serialized(async (req: any, ctx: Ctx) => {
         const market = await this.market(ctx);
-        const { payload, persist } = syncCreatives(market.doc, accountIdOf(ctx), req, this.catalog, market.nowIso);
+        const { payload, persist } = syncCreatives(market.doc, accountIdOf(ctx), req, this.catalogFor(market), market.nowIso);
         if (persist) market.save();
         return payload as never;
       }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       listCreatives: this.serialized(async (req: any, ctx: Ctx) => {
         const market = await this.market(ctx);
-        const payload = listCreatives(market.doc, accountIdOf(ctx), req, this.catalog);
+        const payload = listCreatives(market.doc, accountIdOf(ctx), req, this.catalogFor(market));
         market.save();
         return payload as never;
       }),

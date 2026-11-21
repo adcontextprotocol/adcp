@@ -555,6 +555,7 @@ const storyboardJobs = [
   ...["signals", "sales", "governance", "creative", "creative-builder", "brand", "si"]
     .map((tenant) => `Storyboards (3.0-compat /${tenant})`),
   ...[0, 1, 2, 3, 4, 5, 6, 7].map((n) => `Sales storyboard orchestrator (${n}/8)`),
+  ...["inventory-adserver", "inventory-content"].flatMap((tenant) => [0, 1].map((n) => `Inventory storyboard orchestrator (/${tenant} ${n}/2)`)),
   "Storyboards (current /sales)",
 ];
 // The harness the pull_request run executed. The release head must leave these
