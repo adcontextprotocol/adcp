@@ -145,11 +145,11 @@ async function runTests() {
   });
 
   await test('Extension field exists in CreativeManifest schema', async () => {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/creative-manifest.json');
+    // Both manifest branches share the fields in creative-manifest-base.json.
+    const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/creative-manifest-base.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    // Both manifest branches share the fields in definitions/creative-manifest-base.
-    validateExtField(schema.definitions['creative-manifest-base'].properties.ext, '/schemas/core/ext.json');
+    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
     return true;
   });
 

@@ -171,7 +171,7 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
     },
-    "core/creative-manifest.json##/definitions/creative-manifest-base/properties/assets/patternProperties/^/oneOf": {
+    "core/creative-manifest-base.json##/properties/assets/patternProperties/^/oneOf": {
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"

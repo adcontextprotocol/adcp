@@ -1,6 +1,6 @@
 title: Reference the canonical manifest branch from creative-representation (#9103, #8922, #8921)
 changes:
-  - location: core/creative-manifest.json#/definitions/creative-manifest-base/allOf/0
+  - location: core/creative-manifest-base.json#/allOf/0
     keyword: oneOf
     old:
       - required:
