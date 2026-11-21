@@ -895,12 +895,13 @@ and the process supervision). The root `vitest.config.ts` defines the hook's pro
   (`scripts/vitest-node-test-files.cjs`), CommonJS with vitest's globals;
 - `precommit:checks`, `npm run typecheck`, the governance JWS vector check
   and the advisory image check (`tests/hook-checks/`);
-- `precommit:server-shared`, `-fresh`, `-isolated` and `-alone`, the
+- `precommit:server-shared`, `-first`, `-fresh` and `-isolated`, the
   staged-file-scoped server unit suite, built from the same
-  `server/vitest.projects.ts` as `server/vitest.config.ts`.
+  `server/vitest.projects.ts` as `server/vitest.config.ts`. `-first` holds
+  the longest files, so they start first in the shared pool.
 
 vitest runs the projects in groups, one after another: the light checks, then
-the server unit suite, then its load-sensitive file alone.
+the server unit suite.
 
 - A group reports every failure in it; a failed group skips the later ones
   (`scripts/vitest-hook-reporter.mjs`). `ADCP_PRECOMMIT_KEEP_GOING=1` runs
