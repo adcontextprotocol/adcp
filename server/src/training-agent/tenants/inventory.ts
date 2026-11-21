@@ -23,7 +23,7 @@
 import type { TenantConfig } from '@adcp/sdk/server';
 import { ADSERVER_SEASON, CONTENT_SEASON } from '../inventory-sim/engine/index.js';
 import { InventoryPlatform, type InventoryTenantProfile } from '../inventory-sim/platform.js';
-import { resetMarket } from '../inventory-sim/market-store.js';
+import { resetMarket, withCallerMarkets } from '../inventory-sim/market-store.js';
 import { SANDBOX_CLOCK_SCENARIO, handleSandboxClock } from '../inventory-sim/sandbox-clock.js';
 import { resetReportingSubscriptionProbe } from '../subscription-probe.js';
 import { getTenantSigningMaterial } from './signing.js';
@@ -53,20 +53,23 @@ export function isInventoryTenant(tenantId: string): boolean {
 /** Controller scenarios an inventory tenant lists. */
 export const INVENTORY_COMPLY_SCENARIOS: readonly string[] = ['reset_state', SANDBOX_CLOCK_SCENARIO];
 
-/** `sandbox_clock` for a caller, called on one inventory tenant. */
+/** `sandbox_clock` for a caller, called on one inventory tenant. Moving the
+ * clock runs the market's days, so it is one of the caller's market requests. */
 export function handleInventorySandboxClock(tenantId: string, params: Record<string, unknown>, principal: string | undefined) {
-  return handleSandboxClock(
+  return withCallerMarkets(principal, () => handleSandboxClock(
     params,
     { mode: 'open', principal: principal ?? 'anonymous' },
     INVENTORY_TENANT_PROFILES[tenantId],
-  );
+  ));
 }
 
 /** `reset_state`: unpin the caller's clock, which every tenant shares, and
  * discard the caller's market on every inventory tenant with it. */
 async function resetInventoryCaller(principal: string | undefined): Promise<void> {
-  await resetReportingSubscriptionProbe({ mode: 'open', principal: principal ?? 'anonymous' });
-  for (const id of INVENTORY_TENANT_IDS) await resetMarket(id, principal);
+  await withCallerMarkets(principal, async () => {
+    await resetReportingSubscriptionProbe({ mode: 'open', principal: principal ?? 'anonymous' });
+    for (const id of INVENTORY_TENANT_IDS) await resetMarket(id, principal);
+  });
 }
 
 export function buildInventoryTenantConfig(

@@ -23,7 +23,7 @@ import {
   type SeasonSeed,
   type SeedProduct,
 } from './engine/index.js';
-import { openMarket, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
+import { openMarket, withCallerMarkets, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
 import {
   CreativeRequestError,
   assign,
@@ -208,6 +208,12 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
 
   private market(ctx: Ctx): Promise<OpenMarket> {
     return openMarket(this.profile.tenantId, this.profile.seed, principalOf(ctx));
+  }
+
+  /** Run a market handler as the caller's only market request
+   * (`withCallerMarkets`). Every handler takes its context last. */
+  private serialized<A extends unknown[], R>(handler: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+    return (...args: A) => withCallerMarkets(principalOf((args[args.length - 1] ?? {}) as Ctx), () => handler(...args));
   }
 
   private pricingOptionId(product: SeedProduct): string {
@@ -419,7 +425,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
 
   sales: SalesPlatform<InventoryMeta> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getProducts: async (req: any, ctx) => {
+    getProducts: this.serialized(async (req: any, ctx) => {
       const market = await this.market(ctx);
       const filters = (req.filters ?? {}) as Record<string, unknown>;
       const startMs = filters.start_date !== undefined ? parseDateStart(filters.start_date, 'filters.start_date') : market.nowMs;
@@ -444,10 +450,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget));
       market.save();
       return { products, cache_scope: scoped ? 'account' : 'public' } as never;
-    },
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    createMediaBuy: async (req: any, ctx) => {
+    createMediaBuy: this.serialized(async (req: any, ctx) => {
       const market = await this.market(ctx);
       const packages = Array.isArray(req.packages) ? req.packages : [];
       if (packages.length === 0) throw invalid('create_media_buy needs at least one package', 'packages');
@@ -525,6 +531,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         paused: false,
         canceled: false,
         packages: records,
+        ...(isContext(req.context) && { context: structuredClone(req.context) }),
       };
       market.doc.media_buys.push(buy);
       market.save();
@@ -538,10 +545,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         packages: records.map(pkg => this.wirePackage(pkg, buy.currency)),
         sandbox: true,
       } as never;
-    },
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    updateMediaBuy: async (buyId: string, patch: any, ctx) => {
+    updateMediaBuy: this.serialized(async (buyId: string, patch: any, ctx) => {
       const market = await this.market(ctx);
       const buy = this.requireBuy(market, buyId, ctx);
       if (buy.canceled) throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Media buy ${buyId} is canceled` });
@@ -623,10 +630,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         affected_packages: buy.packages.filter(pkg => affected.has(pkg.package_id)).map(pkg => this.wirePackage(pkg, buy.currency)),
         sandbox: true,
       } as never;
-    },
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getMediaBuys: async (req: any, ctx) => {
+    getMediaBuys: this.serialized(async (req: any, ctx) => {
       const market = await this.market(ctx);
       const ids = Array.isArray(req.media_buy_ids) ? new Set(req.media_buy_ids as string[]) : undefined;
       const buys = market.doc.media_buys.filter(buy => buy.account_id === accountIdOf(ctx) && (!ids || ids.has(buy.media_buy_id)));
@@ -644,6 +651,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           created_at: buy.confirmed_at,
           updated_at: buy.updated_at,
           revision: buy.revision,
+          ...(buy.context && { context: buy.context }),
           packages: buy.packages.map(pkg => {
             const approvals = creativeApprovals(pkg);
             return { ...this.wirePackage(pkg, buy.currency), ...(approvals && { creative_approvals: approvals }) };
@@ -651,10 +659,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         })),
         sandbox: true,
       } as never;
-    },
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getMediaBuyDelivery: async (filter: any, ctx) => {
+    getMediaBuyDelivery: this.serialized(async (filter: any, ctx) => {
       const market = await this.market(ctx);
       const ids = Array.isArray(filter.media_buy_ids) ? new Set(filter.media_buy_ids as string[]) : undefined;
       const buys = market.doc.media_buys.filter(buy => buy.account_id === accountIdOf(ctx) && (!ids || ids.has(buy.media_buy_id)));
@@ -720,7 +728,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         media_buy_deliveries: deliveries,
         sandbox: true,
       } as never;
-    },
+    }),
   };
 
   /**
@@ -732,19 +740,19 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
   creativeHandlers(storyboardCompat?: TrainingContext['storyboardCompat']) {
     return {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      syncCreatives: async (req: any, ctx: Ctx) => {
+      syncCreatives: this.serialized(async (req: any, ctx: Ctx) => {
         const market = await this.market(ctx);
         const { payload, persist } = syncCreatives(market.doc, accountIdOf(ctx), req, this.catalog, market.nowIso);
         if (persist) market.save();
         return payload as never;
-      },
+      }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      listCreatives: async (req: any, ctx: Ctx) => {
+      listCreatives: this.serialized(async (req: any, ctx: Ctx) => {
         const market = await this.market(ctx);
         const payload = listCreatives(market.doc, accountIdOf(ctx), req, this.catalog);
         market.save();
         return payload as never;
-      },
+      }),
       // The training creative catalogue, limited to the formats this seed
       // serves.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -227,10 +227,52 @@ function mergeTopLevelSessionChanges(
   for (const key of keys) {
     const changedLocally = stableStringify({ value: current[key] })
       !== stableStringify({ value: snapshot[key] });
-    const value = changedLocally ? current[key] : latest[key];
+    const value = !changedLocally
+      ? latest[key]
+      : ENTRY_MERGED_SESSION_FIELDS.has(key)
+        ? mergeMapEntries(snapshot[key], current[key], latest[key])
+        : current[key];
     if (value !== undefined) merged[key] = value;
   }
   return merged;
+}
+
+/**
+ * Session Maps whose entries are independent documents, written by different
+ * requests: `principalConfigurations` holds the caller's sandbox document and
+ * each inventory tenant's market. They merge entry by entry, so a request
+ * that wrote one entry does not put back the stale copies of the others.
+ */
+const ENTRY_MERGED_SESSION_FIELDS = new Set(['principalConfigurations']);
+
+type SerializedMap = { __adcpType: 'Map'; entries: Array<[unknown, unknown]> };
+
+function isSerializedMap(value: unknown): value is SerializedMap {
+  return typeof value === 'object' && value !== null
+    && (value as { __adcpType?: unknown }).__adcpType === 'Map'
+    && Array.isArray((value as { entries?: unknown }).entries);
+}
+
+/** Merge a serialized Map: entries this request changed (or removed) take its
+ * value, every other entry takes the newest durable one. Anything that is not
+ * a serialized Map on all three sides falls back to this request's value. */
+function mergeMapEntries(snapshot: unknown, current: unknown, latest: unknown): unknown {
+  const empty: SerializedMap = { __adcpType: 'Map', entries: [] };
+  const base = snapshot === undefined ? empty : snapshot;
+  const newest = latest === undefined ? empty : latest;
+  if (!isSerializedMap(base) || !isSerializedMap(current) || !isSerializedMap(newest)) return current;
+  const entryKey = (key: unknown) => stableStringify({ key });
+  const before = new Map(base.entries.map(([key, value]) => [entryKey(key), value]));
+  const mine = new Map(current.entries.map(([key, value]) => [entryKey(key), [key, value] as [unknown, unknown]]));
+  const merged = new Map(newest.entries.map(([key, value]) => [entryKey(key), [key, value] as [unknown, unknown]]));
+  for (const [id, value] of before) {
+    if (!mine.has(id)) merged.delete(id);
+    else if (stableStringify({ value: mine.get(id)![1] }) !== stableStringify({ value })) merged.set(id, mine.get(id)!);
+  }
+  for (const [id, entry] of mine) {
+    if (!before.has(id)) merged.set(id, entry);
+  }
+  return { __adcpType: 'Map', entries: [...merged.values()] };
 }
 
 /**
