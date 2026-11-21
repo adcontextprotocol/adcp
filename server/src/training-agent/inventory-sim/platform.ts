@@ -473,13 +473,15 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const records: PackageRecord[] = [];
       packages.forEach((pkg: Record<string, unknown>, index: number) => {
         const field = `packages[${index}]`;
+        // A request that can never be valid is rejected before any lookup, so
+        // a negative budget reads as one whatever product it names.
+        const budget = typeof pkg.budget === 'number' ? pkg.budget : Number.NaN;
+        if (!(budget > 0)) throw invalid('Each package needs a positive budget', `${field}.budget`);
         const product = this.products.find(candidate => candidate.product_id === pkg.product_id);
         if (!product) throw new AdcpError('PRODUCT_NOT_FOUND', { recovery: 'correctable', message: `Unknown product ${String(pkg.product_id)}`, field: `${field}.product_id` });
         if (pkg.pricing_option_id !== this.pricingOptionId(product)) {
           throw new AdcpError('INVALID_PRICING_OPTION', { recovery: 'correctable', message: `Product ${product.product_id} is priced by ${this.pricingOptionId(product)}`, field: `${field}.pricing_option_id` });
         }
-        const budget = typeof pkg.budget === 'number' ? pkg.budget : Number.NaN;
-        if (!(budget > 0)) throw invalid('Each package needs a positive budget', `${field}.budget`);
         const startMs = pkg.start_time !== undefined ? parseInstant(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
         const endMs = pkg.end_time !== undefined ? parseInstant(pkg.end_time, `${field}.end_time`, market.nowMs) : buyEnd;
         const targeting = this.targetingFrom(pkg.targeting_overlay, `${field}.targeting_overlay`);
