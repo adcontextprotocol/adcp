@@ -423,6 +423,9 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           ? [...REPORTED_METRICS, 'completed_views', 'completion_rate']
           : REPORTED_METRICS,
         date_range_support: 'date_range' as const,
+        // A seeded product reports what its fixture declares (its metrics,
+        // say) over these defaults, which fill the fields the schema requires.
+        ...(seeded && isContext(seeded.record.fixture.reporting_capabilities) && structuredClone(seeded.record.fixture.reporting_capabilities)),
       },
       overlay_support: { geo_countries: true },
       ...(installments && {
