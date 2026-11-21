@@ -24,6 +24,7 @@ import { getIdempotencyStore } from '../idempotency.js';
 import { evictSessionFromRequestCache, flushDirtySessions } from '../state.js';
 import { InventorySimulation, type SeasonSeed, type SimulationState } from './engine/index.js';
 import type { AssignmentRecord, CreativeRecord } from './creatives.js';
+import { engineProducts, type SeededCatalog } from './seeded-products.js';
 
 const MARKET_DOC_PREFIX = 'inventory_market\u001f';
 const MARKET_LOCK_PRINCIPAL = 'inventory-market-mutex';
@@ -74,6 +75,9 @@ export interface MarketDocument extends Record<string, unknown> {
   next_id: number;
   /** The caller's creative library (`creatives.ts`), absent until it syncs one. */
   creatives?: CreativeRecord[];
+  /** Products and pricing options the caller seeded with the test
+   * controller (`seeded-products.ts`), absent until it seeds one. */
+  seeded?: SeededCatalog;
 }
 
 export interface OpenMarket {
@@ -98,7 +102,7 @@ function marketKey(tenantId: string, principal: string | undefined): string {
  */
 function isCurrent(stored: MarketDocument | undefined, seed: SeasonSeed, nowMs: number): stored is MarketDocument {
   if (!stored || stored.seed_id !== seed.seed_id) return false;
-  return stored.sim.processed_through_day <= new InventorySimulation(seed, stored.sim).today(nowMs);
+  return stored.sim.processed_through_day <= new InventorySimulation(seed, stored.sim, engineProducts(seed, stored.seeded)).today(nowMs);
 }
 
 /** Open the caller's market on a tenant, caught up to the caller's sandbox
@@ -111,7 +115,7 @@ export async function openMarket(tenantId: string, seed: SeasonSeed, principal: 
   const doc: MarketDocument = isCurrent(stored, seed, nowMs)
     ? structuredClone(stored)
     : { seed_id: seed.seed_id, sim: InventorySimulation.create(seed, nowMs).state, media_buys: [], next_id: 1 };
-  const sim = new InventorySimulation(seed, doc.sim);
+  const sim = new InventorySimulation(seed, doc.sim, engineProducts(seed, doc.seeded));
   sim.advanceTo(nowMs);
   return {
     sim,
@@ -137,7 +141,7 @@ export async function advanceMarket(tenantId: string, seed: SeasonSeed, principa
   const stored = sandbox.session.principalConfigurations.get(key) as MarketDocument | undefined;
   if (!isCurrent(stored, seed, sandboxNowMs(sandbox.doc))) return 0;
   const doc = structuredClone(stored);
-  const ran = new InventorySimulation(seed, doc.sim).advanceTo(sandboxNowMs(sandbox.doc));
+  const ran = new InventorySimulation(seed, doc.sim, engineProducts(seed, doc.seeded)).advanceTo(sandboxNowMs(sandbox.doc));
   if (ran.length > 0) sandbox.session.principalConfigurations.set(key, doc);
   return ran.length;
 }
