@@ -294,6 +294,29 @@ describe('inventory tenants', () => {
       expect(open.cache_scope).toBe('public');
     });
 
+    it('filters by format_option_refs and pages with max_results and a cursor', async () => {
+      const filters = { format_option_refs: [{ scope: 'product', format_option_id: 'display_300x250_image' }] };
+      const all = await call(tenant, 'get_products', { buying_mode: 'wholesale', filters });
+      expectCanonical('get_products', all);
+      const serving = all.products.map((product: Structured) => product.product_id);
+      expect(serving).toEqual(['ros_display_guaranteed', 'sports_fans_display_guaranteed', 'ros_display_auction']);
+      // Without pagination the response is unchanged: every match, no pagination block.
+      expect(all).not.toHaveProperty('pagination');
+
+      const first = await call(tenant, 'get_products', { buying_mode: 'wholesale', filters, pagination: { max_results: 2 } });
+      expectCanonical('get_products', first);
+      expect(first.products.map((product: Structured) => product.product_id)).toEqual(serving.slice(0, 2));
+      expect(first.pagination).toMatchObject({ has_more: true, total_count: 3 });
+      const second = await call(tenant, 'get_products', {
+        buying_mode: 'wholesale', filters, pagination: { max_results: 2, cursor: first.pagination.cursor },
+      });
+      expect(second.products.map((product: Structured) => product.product_id)).toEqual(serving.slice(2));
+      expect(second.pagination).toEqual({ has_more: false, total_count: 3 });
+
+      const malformed = await call(tenant, 'get_products', { buying_mode: 'wholesale', filters, pagination: { cursor: 'not-a-cursor' } });
+      expect(malformed.adcp_error?.code ?? malformed.errors?.[0]?.code).toBe('INVALID_REQUEST');
+    });
+
     it('refuses an unknown product and a wrong pricing option', async () => {
       const unknown = await call(tenant, 'create_media_buy', {
         idempotency_key: 'inventory-tenants-unknown-00001',

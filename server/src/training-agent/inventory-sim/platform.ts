@@ -11,6 +11,7 @@ import { assertDiscoveryAccountProvisioned, syncAccountsUpsert } from '../v6-acc
 import { canonicalizeAccountRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { getAgentUrl } from '../config.js';
+import { decodeOffsetCursor, encodeOffsetCursor } from '../pagination.js';
 import { formatOptionsForTrainingFormats } from '../product-factory.js';
 import {
   DAY_MS,
@@ -111,6 +112,17 @@ function parseInstant(value: unknown, field: string, nowMs: number): number {
   const ms = typeof value === 'string' ? Date.parse(value) : Number.NaN;
   if (!Number.isFinite(ms)) throw invalid(`${field} must be an ISO 8601 date-time`, field);
   return ms;
+}
+
+type FormatOptionRef = { scope?: unknown; format_option_id?: unknown; publisher_domain?: unknown };
+
+/** Whether a wire product has a format option that `filters.format_option_refs`
+ * names: a product-scoped ref by its id, a publisher-scoped one by id and
+ * publisher domain. */
+function servesFormatOptionRef(product: { format_options?: unknown }, refs: readonly FormatOptionRef[]): boolean {
+  const options = Array.isArray(product.format_options) ? product.format_options as FormatOptionRef[] : [];
+  return refs.some(ref => options.some(option => option.format_option_id === ref.format_option_id
+    && (ref.scope !== 'publisher' || option.publisher_domain === ref.publisher_domain)));
 }
 
 function parseDateStart(value: unknown, field: string): number {
@@ -453,12 +465,26 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       // caller at the same simulated time.
       const scoped = req.account !== undefined && req.account !== null;
       const sim = scoped ? market.sim : InventorySimulation.create(this.profile.seed, market.nowMs);
+      const pagination = req.pagination as { max_results?: unknown; cursor?: string } | undefined;
+      const offset = pagination ? decodeOffsetCursor('products', pagination.cursor) : 0;
+      if (offset === null) throw invalid('pagination.cursor is malformed', 'pagination.cursor');
+      const formatRefs = Array.isArray(filters.format_option_refs) ? filters.format_option_refs as FormatOptionRef[] : undefined;
       const products = this.products
         .filter(product => filters.delivery_type === undefined || product.delivery_type === filters.delivery_type)
         .filter(product => !channels || product.placement_ids.some(id => channels.has(ADCP_CHANNEL[this.profile.seed.placements.find(p => p.placement_id === id)!.channel])))
-        .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget));
+        .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget))
+        .filter(product => !formatRefs || servesFormatOptionRef(product, formatRefs));
       market.save();
-      return { products, cache_scope: scoped ? 'account' : 'public' } as never;
+      if (!pagination) return { products, cache_scope: scoped ? 'account' : 'public' } as never;
+      // Same page sizes as the sales tenant: 50 by default, at most 100.
+      const maxResults = Math.min(typeof pagination.max_results === 'number' && pagination.max_results >= 1 ? pagination.max_results : 50, 100);
+      const pageEnd = Math.min(offset + maxResults, products.length);
+      const hasMore = pageEnd < products.length;
+      return {
+        products: products.slice(offset, pageEnd),
+        cache_scope: scoped ? 'account' : 'public',
+        pagination: { has_more: hasMore, total_count: products.length, ...(hasMore && { cursor: encodeOffsetCursor('products', pageEnd) }) },
+      } as never;
     }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
