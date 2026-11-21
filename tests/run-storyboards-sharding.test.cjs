@@ -392,3 +392,44 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
     );
   }
 });
+
+// The matrix runs a copy of itself from a temporary repository root whose
+// build scripts are stubs: each writes the output a partial build leaves
+// behind, then exits with the status the case gives it. `npx` is stubbed so
+// a runner that ignored the failure would reach the tenants and fail fast.
+function runMatrixWithBuildStatus(t, { schemaStatus, complianceStatus }) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-matrix-build-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'scripts'));
+  fs.mkdirSync(path.join(root, 'bin'));
+  fs.copyFileSync(MATRIX_RUNNER, path.join(root, 'scripts', 'run-storyboards-matrix.sh'));
+  const stubBuild = (name, tree, status) => fs.writeFileSync(path.join(root, 'scripts', name), `
+const fs = require('node:fs');
+const path = require('node:path');
+const dir = path.join(__dirname, '..', 'dist', ${JSON.stringify(tree)}, 'latest');
+fs.mkdirSync(dir, { recursive: true });
+fs.writeFileSync(path.join(dir, 'index.json'), '{"adcp_version":"latest"}');
+process.exit(${status});
+`);
+  stubBuild('build-schemas.cjs', 'schemas', schemaStatus);
+  stubBuild('build-compliance.cjs', 'compliance', complianceStatus);
+  fs.writeFileSync(path.join(root, 'bin', 'npx'), '#!/bin/sh\nexit 1\n');
+  fs.chmodSync(path.join(root, 'bin', 'npx'), 0o755);
+  return spawnSync('bash', [path.join(root, 'scripts', 'run-storyboards-matrix.sh')], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}` },
+  });
+}
+
+test('storyboard matrix stops before any tenant when a build fails', (t) => {
+  const schemaFailure = runMatrixWithBuildStatus(t, { schemaStatus: 1, complianceStatus: 0 });
+  assert.equal(schemaFailure.status, 1, schemaFailure.stdout);
+  assert.match(schemaFailure.stdout, /::error::The schema build failed/);
+  assert.doesNotMatch(schemaFailure.stdout, /Storyboards · \//);
+
+  const complianceFailure = runMatrixWithBuildStatus(t, { schemaStatus: 0, complianceStatus: 1 });
+  assert.equal(complianceFailure.status, 1, complianceFailure.stdout);
+  assert.match(complianceFailure.stdout, /::error::The compliance build failed/);
+  assert.doesNotMatch(complianceFailure.stdout, /Storyboards · \//);
+});
