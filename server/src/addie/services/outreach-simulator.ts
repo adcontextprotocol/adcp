@@ -308,7 +308,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
     }
 
     // Apply shouldContact rules with simulated time
-    let shouldContact = true;
     let reason = 'eligible for proactive contact';
 
     // Rule -1: Negative sentiment blocks all contact
@@ -339,7 +338,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
     } else {
       // Rule 2: next_contact_after cooldown
       if (nextContactAfterDay !== null && day < nextContactAfterDay) {
-        shouldContact = false;
         reason = `cooldown — next contact after day ${nextContactAfterDay}`;
         events.push({ day, action: 'skipped', reason, stage, unrepliedCount });
         continue;
@@ -356,7 +354,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
           cooldown = Math.max(cooldown, STAGE_COOLDOWNS[nextStage]);
         }
         if (daysSinceLast < cooldown) {
-          shouldContact = false;
           reason = `stage cooldown — ${stage} requires ${cooldown}d, only ${daysSinceLast}d`;
           events.push({ day, action: 'skipped', reason, stage, unrepliedCount });
           continue;
@@ -368,8 +365,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
         reason = 'new prospect — welcome message';
       }
     }
-
-    if (!shouldContact) continue;
 
     // Contact!
     events.push({ day, action: 'contacted', reason, channel, stage, unrepliedCount });

@@ -629,6 +629,16 @@
       "pullRequestNo": 8931,
       "comment_id": 6804487152,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8931#issuecomment-6804487152"
+    },
+    {
+      "name": "yvassiliadis",
+      "id": 26386450,
+      "created_at": "2026-11-20T20:01:24Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 9142,
+      "comment_id": 7049338345,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/9142#issuecomment-7049338345"
     }
   ]
 }

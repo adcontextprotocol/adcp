@@ -43,14 +43,14 @@ Production stays on the 3.2 line and the packages above. For development and sta
 
 | SDK | Package | AdCP bundle | Roles and transports | Known limits |
 |---|---|---|---|---|
-| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.29` (npm `beta` dist-tag) | Signed `3.3.0-rc.0`; also bundles stable 3.2.8, 3.1.31 and 3.0.25. Earlier 3.3 betas require a matching external schema root | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. Use a Reliable Reporting storage release whose `@adcp/sdk` peer range matches this SDK. |
+| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.32` (npm `beta` dist-tag) | Signed `3.3.0-rc.0`; also bundles stable 3.2.8, 3.1.31 and 3.0.25. Earlier 3.3 betas require a matching external schema root | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. Use a Reliable Reporting storage release whose `@adcp/sdk` peer range matches this SDK. |
 | **`adcp`** (Python) | `10.0.0b20` (PyPI prerelease) | Signed `3.3.0-rc.0` | Buyer client and seller server, MCP and A2A | Negotiates only `3.3-rc.0`. Install the exact prerelease with `pip install --pre "adcp==10.0.0b20"`; for Reliable Reporting storage, use an `adcp-reporting-storage` prerelease whose `adcp` requirement matches this SDK. |
 | Go, Java | — | No 3.3 prerelease | — | Not supported for 3.3. Test from these languages through raw-wire calls against the signed bundle. |
 
-`@adcp/sdk` 17.0.0-beta.29 and Python `adcp` 10.0.0b20 bundle `3.3.0-rc.0`. Each negotiates only its own prerelease, so a buyer on rc.0 and a seller on beta.6 settle on a stable release.
+`@adcp/sdk` 17.0.0-beta.32 and Python `adcp` 10.0.0b20 bundle `3.3.0-rc.0`. Each negotiates only its own prerelease, so a buyer on rc.0 and a seller on beta.6 settle on a stable release.
 
 ```bash
-npm install @adcp/sdk@17.0.0-beta.29
+npm install @adcp/sdk@17.0.0-beta.32
 node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-rc.0
 ```
 
