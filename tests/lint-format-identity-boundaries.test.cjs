@@ -18,6 +18,7 @@ const LEGACY_FORMAT_BOUNDARIES = new Set([
   'server/src/routes/registry-api.ts',
   'server/src/shared/formats.ts',
   'server/src/training-agent/comply-test-controller.ts',
+  'server/src/training-agent/inventory-sim/creative-wire.ts',
   'server/src/training-agent/product-factory.ts',
   'server/src/training-agent/task-handlers.ts',
   'server/src/training-agent/types.ts',

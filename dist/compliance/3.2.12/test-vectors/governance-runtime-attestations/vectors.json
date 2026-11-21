@@ -1,0 +1,278 @@
+{
+  "schema_version": "1.0",
+  "evaluation_time": "2026-08-04T12:00:00Z",
+  "capability_response": {
+    "status": "completed",
+    "adcp": {
+      "major_versions": [3],
+      "idempotency": {
+        "supported": false
+      },
+      "attestations": {
+        "accepted_claim_types": [
+          "https://claims.example/audience/methodology-reviewed"
+        ],
+        "accepted_proof_formats": [
+          "https://formats.example/jcs-signed-json"
+        ],
+        "supported_delivery_methods": [
+          "credential_uri",
+          "issuer_credential_id",
+          "embedded"
+        ],
+        "accepted_issuers": [
+          {
+            "issuer": {
+              "type": "origin",
+              "origin": "https://credentials.example"
+            },
+            "credential_origins": [
+              "https://credentials.example"
+            ],
+            "resolvers": [
+              {
+                "resolver_id": "primary",
+                "url": "https://resolver.credentials.example/v1/credentials",
+                "authentication": "evaluator_managed"
+              }
+            ]
+          }
+        ],
+        "max_embedded_credential_bytes": 262144
+      }
+    },
+    "supported_protocols": [
+      "governance"
+    ],
+    "governance": {
+      "runtime_attestations": {
+        "signal_activation": {
+          "requirement": "required",
+          "claim_types": [
+            "https://claims.example/audience/methodology-reviewed"
+          ]
+        }
+      }
+    }
+  },
+  "base_request": {
+    "plan_id": "plan_nova_signal_launch",
+    "caller": "https://buying.pinnacle-agency.example",
+    "target_agent": "https://signals.meridian.example/adcp",
+    "purchase_type": "signal_activation",
+    "proposed_commitment": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "tool": "activate_signal",
+    "payload": {
+      "idempotency_key": "67da3ce4-f2aa-4b63-93a1-215106690f73",
+      "signal_agent_segment_id": "signal_urban_commuters",
+      "destinations": [
+        {
+          "type": "agent",
+          "agent_url": "https://sales.streamhaus.example"
+        }
+      ]
+    }
+  },
+  "known_agent_state": {
+    "signal_subjects_by_activation_id": {
+      "signal_urban_commuters": {
+        "type": "resource",
+        "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+        "namespace": "https://signals.meridian.example/adcp",
+        "id": "signal_urban_commuters"
+      }
+    }
+  },
+  "deactivation_request": {
+    "plan_id": "plan_nova_signal_launch",
+    "caller": "https://buying.pinnacle-agency.example",
+    "target_agent": "https://signals.meridian.example/adcp",
+    "purchase_type": "signal_activation",
+    "proposed_commitment": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "tool": "activate_signal",
+    "payload": {
+      "action": "deactivate",
+      "idempotency_key": "65e93cb1-27ea-48fc-863a-308cc73c406a",
+      "signal_agent_segment_id": "signal_urban_commuters",
+      "destinations": [
+        {
+          "type": "agent",
+          "agent_url": "https://sales.streamhaus.example"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "reference-resolution-approved",
+      "presentation_vector": "resolved-credential-verified",
+      "expected_outcome": "verified",
+      "expected_verdict": "approved",
+      "expected_network_requests": 1
+    },
+    {
+      "name": "embedded-proof-approved",
+      "presentation_vector": "embedded-credential-verified",
+      "expected_outcome": "verified",
+      "expected_verdict": "approved",
+      "expected_network_requests": 0
+    },
+    {
+      "name": "off-policy-issuer-denied-without-fetch",
+      "presentation_vector": "untrusted-issuer-no-fetch",
+      "expected_outcome": "untrusted_issuer",
+      "expected_verdict": "denied",
+      "expected_network_requests": 0
+    },
+    {
+      "name": "off-policy-resolver-denied-without-fetch",
+      "presentation_vector": "untrusted-resolver-no-fetch",
+      "expected_outcome": "untrusted_resolver",
+      "expected_verdict": "denied",
+      "expected_network_requests": 0
+    },
+    {
+      "name": "expired-credential-denied",
+      "presentation_vector": "expired-credential",
+      "expected_outcome": "expired",
+      "expected_verdict": "denied",
+      "expected_network_requests": 1
+    },
+    {
+      "name": "revoked-credential-denied",
+      "presentation_vector": "revoked-credential",
+      "expected_outcome": "revoked",
+      "expected_verdict": "denied",
+      "expected_network_requests": 1
+    },
+    {
+      "name": "signal-action-subject-mismatch-denied",
+      "presentation_vector": "resolved-credential-verified",
+      "subject_override": {
+        "type": "resource",
+        "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+        "namespace": "https://signals.other-source.example/adcp",
+        "id": "signal_urban_commuters"
+      },
+      "expected_outcome": "subject_mismatch",
+      "expected_verdict": "denied",
+      "expected_network_requests": 1
+    },
+    {
+      "name": "digest-mismatch-denied",
+      "presentation_vector": "content-digest-mismatch",
+      "expected_outcome": "digest_mismatch",
+      "expected_verdict": "denied",
+      "expected_network_requests": 1
+    },
+    {
+      "name": "resolution-failure-denied-when-required",
+      "presentation_vector": "allowed-resolution-failure",
+      "expected_outcome": "resolution_failed",
+      "expected_verdict": "denied",
+      "expected_network_requests": 1
+    }
+  ],
+  "binding_vector": {
+    "check_id": "check_signal_001",
+    "reference": {
+      "issuer": {
+        "type": "origin",
+        "origin": "https://credentials.example"
+      },
+      "claim_type": "https://claims.example/audience/methodology-reviewed",
+      "subject": {
+        "type": "resource",
+        "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+        "namespace": "https://signals.meridian.example/adcp",
+        "id": "signal_urban_commuters"
+      },
+      "locator": {
+        "type": "credential_uri",
+        "credential_uri": "https://credentials.example/credentials/cred_001"
+      }
+    },
+    "evaluation": {
+      "reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5",
+      "credential_digest": "sha256:cee39fac0bff75b76b0dd193c19e259d7bfed089dd9ae4a528a132d32ec7449a",
+      "proof_format": "https://formats.example/jcs-signed-json",
+      "outcome": "verified",
+      "confidence": 0.98,
+      "evaluated_at": "2026-08-04T12:00:00Z",
+      "evaluated_by": "https://governance.example/adcp",
+      "valid_until": "2026-08-04T13:00:00Z",
+      "action_binding": {
+        "action_type": "https://adcontextprotocol.org/actions/governance-check",
+        "action_id": "check_signal_001"
+      }
+    },
+    "findings": [
+      {
+        "category_id": "signal_quality",
+        "policy_id": "runtime_population_stability",
+        "source_plan_id": "plan_nova_signal_launch",
+        "severity": "warning",
+        "explanation": "Credential verified, but its remaining validity is shorter than the campaign flight.",
+        "details": {
+          "remaining_validity_seconds": 3600,
+          "campaign_end": "2026-08-10T00:00:00Z"
+        },
+        "confidence": 0.87,
+        "uncertainty_reason": "The issuer may publish a replacement credential before expiry.",
+        "attestation_reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5"
+      }
+    ],
+    "expected_jcs": "{\"evaluations\":[{\"action_binding\":{\"action_id\":\"check_signal_001\",\"action_type\":\"https://adcontextprotocol.org/actions/governance-check\"},\"confidence\":0.98,\"credential_digest\":\"sha256:cee39fac0bff75b76b0dd193c19e259d7bfed089dd9ae4a528a132d32ec7449a\",\"evaluated_at\":\"2026-08-04T12:00:00Z\",\"evaluated_by\":\"https://governance.example/adcp\",\"outcome\":\"verified\",\"proof_format\":\"https://formats.example/jcs-signed-json\",\"reference_digest\":\"sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5\",\"valid_until\":\"2026-08-04T13:00:00Z\"}],\"findings\":[{\"attestation_reference_digest\":\"sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5\",\"category_id\":\"signal_quality\",\"confidence\":0.87,\"details\":{\"campaign_end\":\"2026-08-10T00:00:00Z\",\"remaining_validity_seconds\":3600},\"explanation\":\"Credential verified, but its remaining validity is shorter than the campaign flight.\",\"policy_id\":\"runtime_population_stability\",\"severity\":\"warning\",\"source_plan_id\":\"plan_nova_signal_launch\",\"uncertainty_reason\":\"The issuer may publish a replacement credential before expiry.\"}]}" ,
+    "expected_binding_digest": "sha256:c3e8d6bb6dd30a277ae67c8c87ebf25b49f0d9fe708c2cf5f39a072492f816ae"
+  },
+  "cache_reuse_vectors": [
+    {
+      "name": "same-plan-and-action-may-reuse",
+      "previous": {
+        "reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5",
+        "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
+        "check_id": "check_signal_001"
+      },
+      "current": {
+        "reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5",
+        "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
+        "check_id": "check_signal_001"
+      },
+      "expected_reuse": true
+    },
+    {
+      "name": "changed-action-must-reevaluate",
+      "previous": {
+        "reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5",
+        "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
+        "check_id": "check_signal_001"
+      },
+      "current": {
+        "reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5",
+        "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
+        "check_id": "check_signal_002"
+      },
+      "expected_reuse": false
+    },
+    {
+      "name": "changed-plan-must-reevaluate",
+      "previous": {
+        "reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5",
+        "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
+        "check_id": "check_signal_001"
+      },
+      "current": {
+        "reference_digest": "sha256:1615872aea756cbeba3ced4a17111d72d2ed8e1c69aad8ac165e3a01a23af1a5",
+        "plan_hash": "NWjQCMCZhmEOs4Hc9Fip9QGnZq_T45fDB1GUT46w96c",
+        "check_id": "check_signal_001"
+      },
+      "expected_reuse": false
+    }
+  ]
+}
