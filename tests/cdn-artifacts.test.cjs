@@ -6,6 +6,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
+const { runnerPath } = require('./helpers/gnu-runner-tools.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const VERSIONS = ['3.2.0-rc.0', '3.2.0-rc.1', '3.2.0-rc.2', '3.2.0-rc.3'];
@@ -301,7 +302,7 @@ function publish(dir, flags = [], extraEnv = {}) {
     stdout = execFileSync('bash', [path.join(ROOT, 'scripts/backfill-cdn-artifacts.sh'),
     '--bucket', 'test-bucket', '--endpoint', 'https://r2.invalid', ...flags], {
     cwd: dir,
-    env: { PATH: `${dir}/bin:${process.env.PATH}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
+    env: { PATH: `${dir}/bin:${runnerPath()}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
       AWS_TEST_LOG: log, AWS_TEST_OBJECTS: path.join(dir, 'objects.json'), ...authority, ...extraEnv },
     encoding: 'utf8',
     });

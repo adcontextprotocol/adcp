@@ -3754,6 +3754,414 @@
       ]
     },
     {
+      "id": "match-metro-system-named",
+      "name": "metro system named in the selector",
+      "origin": "adcp",
+      "rule": "exact [package, metro] with dimension_systems.metro nielsen_dma picks the Nielsen DMA offering, not the lower-id UK ITL2 one.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/properties/selector/properties/dimension_systems",
+        "static/schemas/source/core/reporting-delivery-offering.json#/properties/dimension_systems",
+        "docs/protocol/sync_principal.mdx"
+      ],
+      "timezones": [],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"all_authorized_accounts": true},
+              "selector": {
+                "feed_purpose": "analytics",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "dimensions": ["package", "metro"],
+                "dimension_systems": {"metro": "nielsen_dma"}
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "America/New_York", "grants": [{"authorized_at": "2026-10-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-06T00:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_a_pkg_metro_itl2", "off_b_pkg_metro_dma"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg_metro_itl2",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg_metro_itl2",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg_metro_itl2.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package", "metro"],
+            "dimension_systems": {"metro": "uk_itl2"}
+          },
+          {
+            "offering_id": "off_b_pkg_metro_dma",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_b_pkg_metro_dma",
+            "report_definition_uri": "https://seller.example/report-definitions/off_b_pkg_metro_dma.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package", "metro"],
+            "dimension_systems": {"metro": "nielsen_dma"}
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z"
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_b_pkg_metro_dma",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_b_pkg_metro_dma",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_b_pkg_metro_dma",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_b_pkg_metro_dma",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_b_pkg_metro_dma",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_b_pkg_metro_dma",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        }
+      ]
+    },
+    {
+      "id": "match-metro-system-omitted",
+      "name": "metro system omitted from the selector",
+      "origin": "adcp",
+      "rule": "exact [package, metro] with no dimension_systems accepts any metro system, so the lowest offering_id wins.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/properties/selector/properties/dimension_systems",
+        "static/schemas/source/core/reporting-delivery-offering.json#/properties/dimension_systems",
+        "docs/protocol/sync_principal.mdx"
+      ],
+      "timezones": [],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"all_authorized_accounts": true},
+              "selector": {"feed_purpose": "analytics", "period_duration": "P1D", "required_finality": "official", "dimensions": ["package", "metro"]},
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "America/New_York", "grants": [{"authorized_at": "2026-10-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-06T00:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_a_pkg_metro_itl2", "off_b_pkg_metro_dma"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg_metro_itl2",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg_metro_itl2",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg_metro_itl2.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package", "metro"],
+            "dimension_systems": {"metro": "uk_itl2"}
+          },
+          {
+            "offering_id": "off_b_pkg_metro_dma",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_b_pkg_metro_dma",
+            "report_definition_uri": "https://seller.example/report-definitions/off_b_pkg_metro_dma.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package", "metro"],
+            "dimension_systems": {"metro": "nielsen_dma"}
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z"
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg_metro_itl2",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg_metro_itl2",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg_metro_itl2",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg_metro_itl2",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg_metro_itl2",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg_metro_itl2",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        }
+      ]
+    },
+    {
+      "id": "match-postal-systems-subset",
+      "name": "postal systems must include the selector entries",
+      "origin": "adcp",
+      "rule": "exact [package, postal_area] with US zip matches only the offering whose postal_area includes US zip.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/properties/selector/properties/dimension_systems",
+        "static/schemas/source/core/reporting-delivery-offering.json#/properties/dimension_systems",
+        "docs/protocol/sync_principal.mdx"
+      ],
+      "timezones": [],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"all_authorized_accounts": true},
+              "selector": {
+                "feed_purpose": "analytics",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "dimensions": ["package", "postal_area"],
+                "dimension_systems": {"postal_area": [{"country": "US", "system": "zip"}]}
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "America/New_York", "grants": [{"authorized_at": "2026-10-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-06T00:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_a_pkg_postal_gb", "off_c_pkg_postal_us_gb"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg_postal_gb",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg_postal_gb",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg_postal_gb.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package", "postal_area"],
+            "dimension_systems": {"postal_area": [{"country": "GB", "system": "outward"}]}
+          },
+          {
+            "offering_id": "off_c_pkg_postal_us_gb",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_c_pkg_postal_us_gb",
+            "report_definition_uri": "https://seller.example/report-definitions/off_c_pkg_postal_us_gb.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package", "postal_area"],
+            "dimension_systems": {"postal_area": [{"country": "US", "system": "zip"}, {"country": "GB", "system": "outward"}]}
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z"
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_c_pkg_postal_us_gb",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_c_pkg_postal_us_gb",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_c_pkg_postal_us_gb",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_c_pkg_postal_us_gb",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_c_pkg_postal_us_gb",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_c_pkg_postal_us_gb",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        }
+      ]
+    },
+    {
       "id": "match-exact-with-no-equal-offering",
       "name": "match exact with no equal offering",
       "origin": "adcp-client#3505",

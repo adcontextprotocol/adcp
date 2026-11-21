@@ -1,0 +1,151 @@
+id: wholesale_feed_products
+version: "1.0.0"
+title: "Wholesale product feed versioning"
+category: marketplace_catalog
+summary: "Validates get_products wholesale feed versioning: bootstrap responses carry wholesale_feed_version/cache_scope and matching if_wholesale_feed_version probes return unchanged without product rows."
+track: media_buy
+introduced_in: "3.1"
+
+requires_capability:
+  path: wholesale_feed_versioning.supported
+  equals: true
+
+required_tools:
+  - get_products
+
+narrative: |
+  Sellers that advertise wholesale feed versioning and expose `get_products`
+  must support the beta.4 conditional-fetch shape for wholesale product mirrors:
+  `wholesale_feed_version`, `if_wholesale_feed_version`, `cache_scope`, and
+  `unchanged: true`. This storyboard does not require the optional separate
+  `pricing_version` layer or account-specific cache overlays.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - wholesale_feed_versioning
+  examples:
+    - "Sales agents with a wholesale product feed"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The agent advertises `wholesale_feed_versioning.supported: true` and exposes
+    `get_products`.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: conditional_fetch
+    title: "Bootstrap and probe product feed"
+    steps:
+      - id: bootstrap_products
+        title: "Bootstrap product feed"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/tasks/get_products"
+        stateful: true
+        context_outputs:
+          - name: product_wholesale_feed_version
+            path: "wholesale_feed_version"
+        expected: |
+          Return product rows with wholesale feed metadata.
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "wholesale_feed_products--bootstrap"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Bootstrap returns product rows"
+          - check: field_present
+            path: "wholesale_feed_version"
+            description: "Bootstrap returns an opaque feed token"
+          - check: field_value
+            path: "cache_scope"
+            value: "public"
+            description: "Ordinary account reads may use the public cache layer"
+          - check: field_absent
+            path: "proposals[0].proposal_id"
+            description: "Wholesale mode returns raw feed rows, not curated proposals"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "wholesale_feed_products--bootstrap"
+            description: "Context correlation_id returned unchanged"
+
+      - id: unchanged_probe
+        title: "Probe unchanged product feed"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/tasks/get_products"
+        stateful: true
+        expected: |
+          Return unchanged without resending product rows when the feed token matches.
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          if_wholesale_feed_version: "$context.product_wholesale_feed_version"
+          context:
+            correlation_id: "wholesale_feed_products--unchanged"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "unchanged"
+            value: true
+            description: "Matching token produces the cheap unchanged response"
+          - check: field_equals_context
+            path: "wholesale_feed_version"
+            context_key: "product_wholesale_feed_version"
+            description: "Unchanged response echoes the current product feed token"
+          - check: field_value
+            path: "cache_scope"
+            value: "public"
+            description: "Unchanged response carries cache scope"
+          - check: field_absent
+            path: "products[0].product_id"
+            description: "Unchanged response omits product rows"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "wholesale_feed_products--unchanged"
+            description: "Context correlation_id returned unchanged"
+
+      - id: standalone_pricing_token_rejected
+        title: "Reject standalone product pricing token"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/tasks/get_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request_skip_schema: true
+        stateful: true
+        expected: |
+          Reject if_pricing_version when if_wholesale_feed_version is absent.
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          if_pricing_version: "stale-pricing-token"
+          context:
+            correlation_id: "wholesale_feed_products--standalone_pricing"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Standalone if_pricing_version is rejected"

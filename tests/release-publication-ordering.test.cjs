@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
+const { runnerPath } = require("./helpers/gnu-runner-tools.cjs");
 const root = path.resolve(__dirname, "..");
 const release = YAML.parse(
   fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8"),
@@ -114,7 +115,9 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
       `scripts/${script}`,
       fs.readFileSync(path.join(root, "scripts", script)),
     );
-  git("init", "-q");
+  // Start on master as git does on ubuntu-latest. Apple's git starts on main,
+  // which the manual recovery test creates as a separate branch.
+  git("init", "-q", "--initial-branch=master");
   git("config", "user.name", "Test");
   git("config", "user.email", "test@example.invalid");
   git("commit", "--allow-empty", "-qm", "Prior main");
@@ -235,7 +238,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   );
   executable("npm", common + `if(process.env.ADVANCE_BUILD) change();`);
   const env = {
-    PATH: `${dir}/bin:${process.env.PATH}`,
+    PATH: `${dir}/bin:${runnerPath()}`,
     TESTED_SHA: head,
     GITHUB_SHA: head,
     PUBLICATION_BRANCH: "main",
