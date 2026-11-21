@@ -5348,7 +5348,7 @@ export class HTTPServer {
             if (invoice.lines?.data && invoice.lines.data.length > 0) {
               const primaryLine = invoice.lines.data[0] as any;
               const productId = primaryLine.price?.product as string;
-              if (productId && stripe) {
+              if (productId) {
                 try {
                   const product = await stripe.products.retrieve(productId);
                   productName = product.name;
@@ -5700,7 +5700,7 @@ export class HTTPServer {
             if (invoice.lines?.data && invoice.lines.data.length > 0) {
               const primaryLine = invoice.lines.data[0] as any;
               const cachedProductId = primaryLine.price?.product as string;
-              if (cachedProductId && stripe) {
+              if (cachedProductId) {
                 try {
                   const product = await stripe.products.retrieve(cachedProductId);
                   cachedProductName = product.name;

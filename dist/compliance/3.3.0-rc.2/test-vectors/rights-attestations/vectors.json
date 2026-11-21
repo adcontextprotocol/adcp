@@ -1,0 +1,215 @@
+{
+  "$comment": "AdCP 3.2 rights-domain composition of the portable attestation model. All entities, credentials, and endpoints are fictional.",
+  "version": "3.2",
+  "evaluation_time": "2026-08-06T12:00:00Z",
+  "claim_type": "https://adcontextprotocol.org/claims/rights/grant",
+  "subject_resource_type": "https://adcontextprotocol.org/claims/subjects/rights-grant",
+  "action_type": "https://adcontextprotocol.org/actions/rights-grant-evaluation",
+  "proof_format": "https://formats.example/jcs-signed-json",
+  "capabilities": {
+    "accepted_claim_types": ["https://adcontextprotocol.org/claims/rights/grant"],
+    "accepted_proof_formats": ["https://formats.example/jcs-signed-json"],
+    "supported_delivery_methods": ["issuer_credential_id"],
+    "accepted_issuers": [
+      {
+        "issuer": {
+          "type": "brand",
+          "brand": { "domain": "novabrands.example", "brand_id": "nova_talent" }
+        },
+        "claim_types": ["https://adcontextprotocol.org/claims/rights/grant"],
+        "proof_formats": ["https://formats.example/jcs-signed-json"],
+        "resolvers": [
+          {
+            "resolver_id": "primary",
+            "url": "https://resolver.novabrands.example/credentials",
+            "authentication": "evaluator_managed"
+          }
+        ]
+      }
+    ]
+  },
+  "base_constraint": {
+    "rights_id": "rgt_nova_voice_2026",
+    "rights_agent": {
+      "url": "https://rights.novabrands.example/adcp",
+      "id": "nova_rights"
+    },
+    "rights_holder": {
+      "domain": "novabrands.example",
+      "brand_id": "nova_talent"
+    },
+    "valid_from": "2026-08-01T00:00:00Z",
+    "valid_until": "2026-12-31T23:59:59Z",
+    "uses": ["likeness", "voice"],
+    "countries": ["US"],
+    "impression_cap": 100000,
+    "right_type": "talent",
+    "approval_status": "approved",
+    "grant_status": "active",
+    "restrictions": [
+      "All generated creatives must be submitted for approval before distribution",
+      "No modification of talent likeness beyond approved AI generation parameters"
+    ],
+    "disclosure": {
+      "required": true,
+      "text": "Features AI-generated likeness of Nova Talent, used under license from Loti Entertainment"
+    },
+    "creative_approval_required": true,
+    "verification_url": "https://legacy.novabrands.example/rights/rgt_nova_voice_2026",
+    "content_digest": "sha256:65ba12084ede852cfd407d711321e783afcb1119694a4c4b853083ff4f32db9d",
+    "attestation_refs": [
+      {
+        "issuer": {
+          "type": "brand",
+          "brand": { "domain": "novabrands.example", "brand_id": "nova_talent" }
+        },
+        "claim_type": "https://adcontextprotocol.org/claims/rights/grant",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/rights-grant",
+          "namespace": "https://rights.novabrands.example/adcp",
+          "id": "rgt_nova_voice_2026",
+          "content_digest": "sha256:65ba12084ede852cfd407d711321e783afcb1119694a4c4b853083ff4f32db9d"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_nova_voice_2026_v1",
+          "resolver_id": "primary"
+        }
+      }
+    ]
+  },
+  "holder_authorization": {
+    "envelope": {
+      "agent_url": "https://rights.novabrands.example/adcp",
+      "agent_id": "nova_rights",
+      "kid": "nova-rights-key"
+    },
+    "brand_ref": { "domain": "novabrands.example", "brand_id": "nova_talent" },
+    "verified_jwk": {
+      "kid": "nova-rights-key",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+      "use": "sig",
+      "key_ops": ["verify"],
+      "adcp_use": "attestation-signing"
+    },
+    "brand_json": {
+      "house": { "domain": "novabrands.example", "name": "Nova Brands" },
+      "brands": [
+        {
+          "id": "nova_talent",
+          "url": "https://talent.novabrands.example",
+          "names": [{ "en": "Nova Talent" }],
+          "agents": [
+            {
+              "type": "rights",
+              "id": "nova_rights",
+              "url": "https://rights.novabrands.example/adcp",
+              "jwks_uri": "https://rights.novabrands.example/.well-known/jwks.json"
+            }
+          ]
+        },
+        {
+          "id": "nova_sibling",
+          "url": "https://sibling.novabrands.example",
+          "names": [{ "en": "Nova Sibling" }],
+          "agents": [
+            {
+              "type": "rights",
+              "id": "sibling_rights",
+              "url": "https://rights.sibling.novabrands.example/adcp"
+            }
+          ]
+        }
+      ]
+    },
+    "jwks_by_uri": {
+      "https://rights.novabrands.example/.well-known/jwks.json": {
+        "keys": [
+          {
+            "kid": "nova-rights-key",
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+            "use": "sig",
+            "key_ops": ["verify"],
+            "adcp_use": "attestation-signing"
+          },
+          {
+            "kid": "nova-status-key",
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            "use": "sig",
+            "key_ops": ["verify"],
+            "adcp_use": "attestation-signing"
+          }
+        ]
+      }
+    }
+  },
+  "resolver_result": {
+    "status": "ok",
+    "proof_format": "https://formats.example/jcs-signed-json",
+    "credential_bytes": "{\"claim_type\":\"https://adcontextprotocol.org/claims/rights/grant\",\"constraint_digest\":\"sha256:65ba12084ede852cfd407d711321e783afcb1119694a4c4b853083ff4f32db9d\",\"credential_id\":\"cred_nova_voice_2026_v1\",\"grant_version\":\"1\",\"issuer\":{\"brand\":{\"brand_id\":\"nova_talent\",\"domain\":\"novabrands.example\"},\"type\":\"brand\"},\"rights_agent\":{\"id\":\"nova_rights\",\"url\":\"https://rights.novabrands.example/adcp\"},\"rights_holder\":{\"brand_id\":\"nova_talent\",\"domain\":\"novabrands.example\"},\"subject\":{\"content_digest\":\"sha256:65ba12084ede852cfd407d711321e783afcb1119694a4c4b853083ff4f32db9d\",\"id\":\"rgt_nova_voice_2026\",\"namespace\":\"https://rights.novabrands.example/adcp\",\"resource_type\":\"https://adcontextprotocol.org/claims/subjects/rights-grant\",\"type\":\"resource\"},\"valid_from\":\"2026-08-01T00:00:00Z\",\"valid_until\":\"2026-12-31T23:59:59Z\"}",
+    "credential_signature_valid": true,
+    "credential_verified_jwk": {
+      "kid": "nova-rights-key",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+      "use": "sig",
+      "key_ops": ["verify"],
+      "adcp_use": "attestation-signing"
+    },
+    "revocation_bytes": "{\"checked_at\":\"2026-08-06T11:55:00Z\",\"constraint_digest\":\"sha256:65ba12084ede852cfd407d711321e783afcb1119694a4c4b853083ff4f32db9d\",\"credential_id\":\"cred_nova_voice_2026_v1\",\"grant_status\":\"active\",\"issuer\":{\"brand\":{\"brand_id\":\"nova_talent\",\"domain\":\"novabrands.example\"},\"type\":\"brand\"},\"rights_id\":\"rgt_nova_voice_2026\",\"valid_until\":\"2026-08-06T12:55:00Z\"}",
+    "revocation_signature_valid": true,
+    "revocation_verified_jwk": {
+      "kid": "nova-status-key",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "use": "sig",
+      "key_ops": ["verify"],
+      "adcp_use": "attestation-signing"
+    }
+  },
+  "cases": [
+    { "name": "verified-rights-grant", "mutation": "none", "expected": { "outcome": "verified", "network_requests": 3 } },
+    { "name": "forged-verification-url-alone-is-not-authorization", "mutation": "verification_url_only", "expected": { "outcome": "unverifiable", "network_requests": 0, "schema_valid": true } },
+    { "name": "private-verification-url-adds-no-request", "mutation": "private_verification_url", "expected": { "outcome": "verified", "network_requests": 3 } },
+    { "name": "missing-holder-cannot-be-attested", "mutation": "missing_holder", "expected": { "outcome": "unverifiable", "network_requests": 0, "schema_valid": false } },
+    { "name": "off-policy-holder-does-not-trigger-network", "mutation": "off_policy_holder", "expected": { "outcome": "untrusted_issuer", "network_requests": 0 } },
+    { "name": "private-ip-holder-does-not-trigger-network", "mutation": "private_ip_holder", "expected": { "outcome": "untrusted_issuer", "network_requests": 0 } },
+    { "name": "off-list-resolver-does-not-trigger-network", "mutation": "off_list_resolver", "expected": { "outcome": "untrusted_resolver", "network_requests": 0 } },
+    { "name": "off-list-verifier-does-not-trigger-network", "mutation": "off_list_verifier", "expected": { "outcome": "untrusted_resolver", "network_requests": 0 } },
+    { "name": "issuer-claim-scope-rejection-does-not-trigger-network", "mutation": "issuer_claim_scope_rejection", "expected": { "outcome": "unsupported", "network_requests": 0 } },
+    { "name": "issuer-proof-scope-rejection-stops-after-resolution", "mutation": "issuer_proof_scope_rejection", "expected": { "outcome": "unsupported", "network_requests": 1 } },
+    { "name": "presented-rights-id-mismatch-does-not-trigger-network", "mutation": "presentation_rights_id_mismatch", "expected": { "outcome": "subject_mismatch", "network_requests": 0 } },
+    { "name": "presented-agent-namespace-mismatch-does-not-trigger-network", "mutation": "presentation_namespace_mismatch", "expected": { "outcome": "subject_mismatch", "network_requests": 0 } },
+    { "name": "credential-constraint-digest-mismatch-is-invalid", "mutation": "credential_digest_mismatch", "expected": { "outcome": "invalid", "network_requests": 1 } },
+    { "name": "credential-claim-is-not-an-unsigned-sidecar", "mutation": "credential_claim_mismatch", "expected": { "outcome": "invalid", "network_requests": 1 } },
+    { "name": "omitted-enforceable-restriction-invalidates-the-grant", "mutation": "restriction_omitted", "expected": { "outcome": "subject_mismatch", "network_requests": 0 } },
+    { "name": "mutated-disclosure-invalidates-the-grant", "mutation": "disclosure_mutated", "expected": { "outcome": "subject_mismatch", "network_requests": 0 } },
+    { "name": "unauthorized-rights-agent-type-is-invalid", "mutation": "unauthorized_rights_agent", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "wrong-rights-agent-id-is-invalid", "mutation": "wrong_rights_agent_id", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "sibling-rights-agent-is-not-authority", "mutation": "sibling_rights_agent", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "ambiguous-rights-agent-is-invalid", "mutation": "ambiguous_rights_agent", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "response-signing-key-cannot-sign-rights", "mutation": "wrong_key_purpose", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "same-kid-different-key-is-invalid", "mutation": "key_material_mismatch", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "unknown-status-key-is-invalid", "mutation": "wrong_status_key", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "same-kid-different-status-key-is-invalid", "mutation": "status_key_material_mismatch", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "response-signing-key-cannot-sign-status", "mutation": "status_wrong_key_purpose", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "expired-rights-credential", "mutation": "expired_credential", "expected": { "outcome": "expired", "network_requests": 3 } },
+    { "name": "not-yet-valid-rights-credential", "mutation": "future_credential", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "malformed-rights-credential-time", "mutation": "malformed_credential_time", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "revoked-rights-credential", "mutation": "revoked_credential", "expected": { "outcome": "revoked", "network_requests": 3 } },
+    { "name": "paused-replacement-cannot-verify", "mutation": "paused_grant", "expected": { "outcome": "revoked", "network_requests": 3 } },
+    { "name": "stale-status-is-unverifiable", "mutation": "stale_status", "expected": { "outcome": "unverifiable", "network_requests": 3 } },
+    { "name": "missing-status-deadline-is-invalid", "mutation": "missing_status_deadline", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "swapped-status-record-is-invalid", "mutation": "swapped_status", "expected": { "outcome": "invalid", "network_requests": 3 } },
+    { "name": "resolver-failure-is-not-success", "mutation": "resolver_failure", "expected": { "outcome": "resolution_failed", "network_requests": 1 } }
+  ]
+}

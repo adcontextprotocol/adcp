@@ -7,8 +7,9 @@ const state = vi.hoisted(() => ({
   pools: [] as Array<{ timeout: number; end: ReturnType<typeof vi.fn>; query: () => Promise<void> }>,
   storage: vi.fn(),
   logError: vi.fn(),
+  logWarn: vi.fn(),
 }));
-vi.mock('../../src/logger.js', () => ({ createLogger: () => ({ error: state.logError }) }));
+vi.mock('../../src/logger.js', () => ({ createLogger: () => ({ error: state.logError, warn: state.logWarn }) }));
 vi.mock('../../src/config.js', () => ({ getDatabaseConfig: () => state.database }));
 vi.mock('../../src/training-agent/gcs-reporting-config.js', () => ({
   trainingGcsReportingConfig: () => state.enabled ? { bucket: 'private-canary', credentialsFile: '/run/gcp.json' } : undefined,
@@ -56,6 +57,7 @@ beforeEach(() => {
   state.pools.length = 0;
   state.storage.mockClear();
   state.logError.mockClear();
+  state.logWarn.mockClear();
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -97,6 +99,85 @@ describe('private GCS reporting startup connection budget', () => {
     for (const [details] of state.logError.mock.calls) expect(details.databaseCode).toBeUndefined();
   });
 
+  it('logs the underlying startup failure with its causes and no credentials', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const gcs = Object.assign(new Error(
+      'reporting@example.iam.gserviceaccount.com does not have storage.objects.create access; Authorization: Bearer ya29.a0secret-token',
+    ), { name: 'ApiError', code: 403 });
+    const credential = Object.assign(new Error(
+      'invalid_grant: {"private_key": "-----BEGIN PRIVATE KEY-----\\nMIIsecret\\n-----END PRIVATE KEY-----", "client_secret": "s3cr3t"} via https://user:pass@oauth2.example/token',
+    ), { cause: gcs });
+    vi.spyOn(module.TrainingGcsReporting, 'create').mockRejectedValue(new Error('Reporting object fence failed', { cause: credential }));
+    await expect(module.initializeTrainingGcsReporting([])).rejects.toThrow('Durable GCS reporting initialization failed');
+    expect(state.pools[0].end).toHaveBeenCalledOnce();
+
+    expect(state.logError).toHaveBeenCalledWith(expect.objectContaining({ failure: expect.objectContaining({
+      name: 'Error',
+      message: 'Reporting object fence failed',
+      at: expect.any(Array),
+      cause: expect.objectContaining({
+        message: expect.stringContaining('invalid_grant'),
+        cause: expect.objectContaining({ name: 'ApiError', code: 403, message: expect.stringContaining('storage.objects.create') }),
+      }),
+    }) }), 'Durable GCS reporting initialization failed');
+    const logged = JSON.stringify(state.logError.mock.calls);
+    for (const secret of ['ya29.a0secret-token', 'MIIsecret', 's3cr3t', 'user:pass']) expect(logged).not.toContain(secret);
+  });
+
+  it('describes cyclic, primitive and hostile startup failures without throwing', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const cyclic = new Error('cyclic');
+    cyclic.cause = cyclic;
+    expect(module.describeReportingInitFailure(cyclic)).toMatchObject({ message: 'cyclic', cause: '[cyclic cause]' });
+    expect(module.describeReportingInitFailure('token=abc123 failed')).toEqual({ message: 'token=[redacted] failed' });
+    const hostile = new Proxy({}, { get() { throw new Error('hostile'); }, getOwnPropertyDescriptor() { throw new Error('hostile'); } });
+    expect(module.describeReportingInitFailure(hostile)).toEqual({ message: '[undescribable error]' });
+  });
+
+  it('retries a failed startup with backoff on a fresh pool, and logs every attempt', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const create = vi.spyOn(module.TrainingGcsReporting, 'create')
+      .mockRejectedValueOnce(new Error('PostgresReportingManagedDeliveryStore database connection failed', {
+        cause: new Error('Connection terminated due to connection timeout'),
+      }))
+      .mockRejectedValueOnce(new Error('PostgresReportingManagedDeliveryStore database connection failed'))
+      .mockResolvedValue({ assertServing: vi.fn() } as unknown as typeof module.TrainingGcsReporting.prototype);
+    const initializing = module.initializeTrainingGcsReporting([1_000, 2_000, 4_000]);
+    const completed = expect(initializing).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await completed;
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(state.pools).toHaveLength(3);
+    expect(state.pools[0].end).toHaveBeenCalledOnce();
+    expect(state.pools[1].end).toHaveBeenCalledOnce();
+    expect(state.pools[2].end).not.toHaveBeenCalled();
+    expect(state.logError.mock.calls.map(([details]) => [details.attempt, details.attempts, details.retryInMs])).toEqual([[1, 4, 1_000], [2, 4, 2_000]]);
+    expect(state.logError.mock.calls[0][0].failure.cause).toMatchObject({ message: 'Connection terminated due to connection timeout' });
+    expect(state.logWarn).toHaveBeenCalledWith({ attempt: 3, attempts: 4 }, 'Durable GCS reporting initialized after a retry');
+    expect(module.getTrainingGcsReporting()).toBeDefined();
+  });
+
+  it('still fails the boot once every attempt has failed', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const create = vi.spyOn(module.TrainingGcsReporting, 'create').mockRejectedValue(new Error('database connection failed'));
+    const rejected = expect(module.initializeTrainingGcsReporting([1_000, 2_000])).rejects.toThrow('Durable GCS reporting initialization failed');
+    await vi.advanceTimersByTimeAsync(3_000);
+    await rejected;
+    expect(create).toHaveBeenCalledTimes(3);
+    for (const pool of state.pools) expect(pool.end).toHaveBeenCalledOnce();
+    expect(state.logError.mock.calls.at(-1)![0]).toMatchObject({ attempt: 3, attempts: 3 });
+    expect(state.logError.mock.calls.at(-1)![0].retryInMs).toBeUndefined();
+    expect(() => module.getTrainingGcsReporting()).toThrow();
+  });
+
+  it('waits about 90 seconds across six attempts by default', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const delays = module.TRAINING_REPORTING_INIT_RETRY_DELAYS_MS;
+    expect(delays).toHaveLength(5);
+    // Six 10 s connect budgets plus the waits between them.
+    expect(6 * 10_000 + delays.reduce((total, delay) => total + delay, 0)).toBeLessThanOrEqual(95_000);
+  });
+
   it('allows a cold primary connection longer than five seconds within the configured Fly budget', async () => {
     const module = await startup();
     const initializing = module.initializeTrainingGcsReporting();
@@ -112,7 +193,7 @@ describe('private GCS reporting startup connection budget', () => {
   it.each([undefined, 0])('retains a finite five-second fallback for timeout %s', async timeout => {
     state.database!.connectionTimeoutMillis = timeout;
     const module = await startup();
-    const rejected = expect(module.initializeTrainingGcsReporting()).rejects.toThrow('Durable GCS reporting initialization failed');
+    const rejected = expect(module.initializeTrainingGcsReporting([])).rejects.toThrow('Durable GCS reporting initialization failed');
     await vi.advanceTimersByTimeAsync(5000);
     await rejected;
     expect(state.pools[0].end).toHaveBeenCalledOnce();
@@ -122,7 +203,7 @@ describe('private GCS reporting startup connection budget', () => {
   it('honors a shorter configured budget and closes the failed pool', async () => {
     state.database!.connectionTimeoutMillis = 2000;
     const module = await startup();
-    const rejected = expect(module.initializeTrainingGcsReporting()).rejects.toThrow('Durable GCS reporting initialization failed');
+    const rejected = expect(module.initializeTrainingGcsReporting([])).rejects.toThrow('Durable GCS reporting initialization failed');
     await vi.advanceTimersByTimeAsync(2000);
     await rejected;
     expect(state.pools[0].end).toHaveBeenCalledOnce();
@@ -131,7 +212,7 @@ describe('private GCS reporting startup connection budget', () => {
   it('still refuses a connection that exceeds the configured ten-second deadline', async () => {
     state.connectDelayMs = 11000;
     const module = await startup();
-    const rejected = expect(module.initializeTrainingGcsReporting()).rejects.toThrow('Durable GCS reporting initialization failed');
+    const rejected = expect(module.initializeTrainingGcsReporting([])).rejects.toThrow('Durable GCS reporting initialization failed');
     await vi.advanceTimersByTimeAsync(10000);
     await rejected;
     expect(state.pools[0].end).toHaveBeenCalledOnce();
@@ -148,7 +229,7 @@ describe('private GCS reporting startup connection budget', () => {
   it('refuses missing primary configuration before opening connections', async () => {
     state.database = undefined;
     const module = await startup();
-    await expect(module.initializeTrainingGcsReporting()).rejects.toThrow('Reporting requires the application PostgreSQL primary');
+    await expect(module.initializeTrainingGcsReporting([])).rejects.toThrow('Reporting requires the application PostgreSQL primary');
     expect(state.pools).toHaveLength(0);
   });
 });

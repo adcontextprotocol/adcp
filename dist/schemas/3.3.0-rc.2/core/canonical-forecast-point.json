@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/canonical-forecast-point.json",
+  "title": "Canonical Forecast Point",
+  "description": "Compact forecast row with numeric ranges and identity-only measurement-vendor references.",
+  "type": "object",
+  "dependencies": {
+    "impression_basis_breakdown": {
+      "not": {
+        "required": [
+          "impression_basis"
+        ]
+      }
+    }
+  },
+  "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "budget": {
+      "type": "number",
+      "minimum": 0
+    },
+    "product_id": {
+      "type": "string",
+      "x-entity": "product"
+    },
+    "dimensions": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/forecast-point-dimensions.json"
+    },
+    "availability_status": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/enums/availability-status.json"
+    },
+    "impression_basis": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/enums/impression-estimation-basis.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). On a DOOH point that forecasts `impressions` from `plays`, the methodology tier the forecast uses, when it is the same for every expected play. When the point covers plays expected on different tiers, including the fallback plays a sensor-equipped screen is expected to estimate on `seller_modeled` while its sensor is not reporting, sellers MUST omit it, never substituting `hybrid` or the majority tier, and report `impression_basis_breakdown`; a point never carries both. Lets forecast and delivery reconcile on the same declaration. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
+    },
+    "audience_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). The planning multiplier of a single-tier DOOH point: `metrics.impressions.mid / metrics.plays.mid`, rounded. The impressions are authoritative: a receiver MUST NOT reject a multiplier that differs from that ratio only by rounding. A point that reports `impression_basis_breakdown` SHOULD omit it and give each entry's planning multiplier instead: a multiplier blended across tiers mixes different units and misleads. A declaration, not a forecastable metric, so it sits outside `metrics`."
+    },
+    "impression_basis_breakdown": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). For a DOOH point covering plays expected on different tiers, one entry per tier with the expected plays and impressions behind the point's midpoints: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to `metrics.plays.mid` and `metrics.impressions.mid`, which a point carrying a breakdown therefore carries. It SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting. A point never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier (and for `sensor_measured`, within the same metric), and plays and spend across tiers.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/impression-basis-breakdown-entry.json"
+      },
+      "minItems": 2
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "coverage_rate": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/forecast-rate-range.json"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/forecast-range.json"
+      }
+    },
+    "viewability": {
+      "type": "object",
+      "properties": {
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/brand-key.json"
+        },
+        "measurable_impressions": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/forecast-range.json"
+        },
+        "viewable_impressions": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/forecast-range.json"
+        },
+        "viewable_rate": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/forecast-rate-range.json"
+        },
+        "viewed_seconds": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/forecast-range.json"
+        },
+        "standard": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/enums/viewability-standard.json"
+        }
+      },
+      "additionalProperties": true,
+      "anyOf": [
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "measurable_impressions"
+                ]
+              },
+              {
+                "required": [
+                  "viewable_impressions"
+                ]
+              },
+              {
+                "required": [
+                  "viewable_rate"
+                ]
+              },
+              {
+                "required": [
+                  "viewed_seconds"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "standard"
+          ]
+        }
+      ]
+    },
+    "vendor_metric_values": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/canonical-forecast-vendor-metric-value.json"
+      }
+    }
+  },
+  "required": [
+    "metrics"
+  ],
+  "additionalProperties": true
+}

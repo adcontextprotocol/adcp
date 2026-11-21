@@ -6128,8 +6128,9 @@ function requestedCreativeWireMode(
   return 'unknown';
 }
 
-function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
+function formatProjectionCatalogs(extraDeclarations: readonly Record<string, unknown>[] = []): ProjectionCatalogSnapshot[] {
   const declarations = new Map<string, Record<string, unknown>>();
+  for (const declaration of extraDeclarations) declarations.set(JSON.stringify(declaration), declaration);
   for (const catalogProduct of getCatalog()) {
     for (const rawDeclaration of catalogProduct.product.format_options ?? []) {
       if (!isRecord(rawDeclaration)) continue;
@@ -6383,8 +6384,10 @@ type CreativeProjectionAdapters = {
   canonicalFormatLegacyResolver: ReturnType<typeof canonicalFormatLegacyResolverFromCatalogSnapshots>;
 };
 
-export function creativeProjectionAdapters(): CreativeProjectionAdapters {
-  const catalogs = formatProjectionCatalogs();
+/** `extraDeclarations` adds a tenant's own product format declarations (the
+ * inventory tenants') to the sales catalogue's. */
+export function creativeProjectionAdapters(extraDeclarations: readonly Record<string, unknown>[] = []): CreativeProjectionAdapters {
+  const catalogs = formatProjectionCatalogs(extraDeclarations);
   return {
     legacyFormatConverter: legacyFormatConverterFromCatalogSnapshots(catalogs),
     canonicalFormatLegacyResolver: canonicalFormatLegacyResolverFromCatalogSnapshots(
