@@ -873,6 +873,22 @@ describe('inventory tenants', () => {
       expectCanonical('create_media_buy', buy);
     });
 
+    it('sells a seeded product whose channel the season lacks entirely', async () => {
+      // The ad server has no audio or installment placements at all.
+      const tenant = 'inventory-adserver';
+      const audioFixture = {
+        delivery_type: 'non_guaranteed',
+        channels: ['streaming_audio'],
+        format_options: [{ format_option_id: 'seeded_audio_spot', format_kind: 'audio_hosted', params: {} }],
+      };
+      expect((await controller(tenant, 'seed_product', { product_id: 'seeded_audio', fixture: audioFixture })).success).toBe(true);
+      const offer = await products(tenant, SEED_TOKEN);
+      expectCanonical('get_products', offer);
+      const seeded = offer.products.find((product: Structured) => product.product_id === 'seeded_audio');
+      expect(seeded.channels).toEqual(['streaming_audio']);
+      expect(seeded.forecast.points[0].metrics.impressions.mid).toBeGreaterThan(0);
+    });
+
     it('rejects a seeded product that reuses one of the tenant\'s own ids', async () => {
       const refused = await controller('inventory-adserver', 'seed_product', { product_id: 'ros_display_guaranteed', fixture: displayFixture });
       expect(refused.success).toBe(false);

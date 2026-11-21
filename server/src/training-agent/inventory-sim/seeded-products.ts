@@ -9,7 +9,9 @@
  * video placements, an audio fixture on the audio ones, anything else on
  * display. A season without that channel uses the nearest installment
  * placement: creator video for video, the podcast for audio, the newsletter
- * otherwise. The product's wire shape is the fixture's own (name, channels,
+ * otherwise. A season with none of those (an audio fixture on the ad server)
+ * falls back to display, then pre-roll, then any placement it has, so every
+ * fixture sells somewhere. The product's wire shape is the fixture's own (name, channels,
  * formats, pricing), so a storyboard sees what it seeded.
  */
 import type { PlacementChannel, SeasonSeed, SeedPlacement, SeedProduct } from './engine/index.js';
@@ -40,6 +42,7 @@ const CHANNELS_FOR: Record<MediaKind, PlacementChannel[]> = {
   display: ['display', 'newsletter'],
 };
 const NEAREST: PlacementChannel[] = ['newsletter', 'creator_video', 'podcast'];
+const FALLBACK: PlacementChannel[] = ['display', 'olv'];
 
 const VIDEO_CHANNELS = new Set(['olv', 'ctv', 'linear_tv']);
 const AUDIO_CHANNELS = new Set(['streaming_audio', 'podcast', 'radio']);
@@ -77,7 +80,8 @@ function sizeLabels(fixture: Record<string, unknown>): Set<string> {
  * serves display. */
 function placementsFor(seed: SeasonSeed, fixture: Record<string, unknown>): SeedPlacement[] {
   const kind = mediaKind(fixture);
-  const channel = [...CHANNELS_FOR[kind], ...NEAREST].find(candidate => seed.placements.some(placement => placement.channel === candidate))!;
+  const channel = [...CHANNELS_FOR[kind], ...NEAREST, ...FALLBACK].find(candidate => seed.placements.some(placement => placement.channel === candidate))
+    ?? seed.placements[0].channel;
   let placements = seed.placements.filter(placement => placement.channel === channel);
   const exclusive = new Set(seed.products.filter(product => product.share_of_voice).flatMap(product => product.placement_ids));
   const shared = placements.filter(placement => !exclusive.has(placement.placement_id));
