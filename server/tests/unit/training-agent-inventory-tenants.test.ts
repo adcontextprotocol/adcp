@@ -196,6 +196,51 @@ describe('inventory tenants', () => {
       expect(reread.media_buys[0].packages[0].context).toEqual(replaced);
     });
 
+    it('echoes the media buy context unchanged on create and every read-back', async () => {
+      const context = { storefront_media_buy_id: 'sf_mb_0001', nested: { trace: ['a', 1, null], flag: false } };
+      const created = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-tenants-buy-context-01',
+        account: ACCOUNT,
+        brand: BRAND,
+        context,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 40_000 }],
+      });
+      expectCanonical('create_media_buy', created);
+      expect(created.context).toEqual(context);
+
+      const listed = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [created.media_buy_id] });
+      expectCanonical('get_media_buys', listed);
+      expect(listed.media_buys[0].context).toEqual(context);
+
+      // An update's context is its own operation's, echoed on its response;
+      // it never replaces the buy's.
+      const operation = { request_ref: 'update-0001' };
+      const updated = await call(tenant, 'update_media_buy', {
+        idempotency_key: 'inventory-tenants-buy-context-02',
+        account: ACCOUNT,
+        media_buy_id: created.media_buy_id,
+        context: operation,
+        paused: true,
+      });
+      expectCanonical('update_media_buy', updated);
+      expect(updated.context).toEqual(operation);
+      const reread = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [created.media_buy_id] });
+      expect(reread.media_buys[0].context).toEqual(context);
+
+      const plain = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-tenants-buy-context-03',
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 40_000 }],
+      });
+      const plainRead = await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [plain.media_buy_id] });
+      expect(plainRead.media_buys[0]).not.toHaveProperty('context');
+    });
+
     it('answers an account-less wholesale read with the public card', async () => {
       const filters = { start_date: day(start), end_date: day(new Date(end.getTime() - DAY_MS)), delivery_type: 'guaranteed' };
       const hero = (result: Structured) => result.products.find((product: Structured) => product.product_id === 'sports_hero_guaranteed')
