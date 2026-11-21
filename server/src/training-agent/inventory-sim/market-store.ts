@@ -9,12 +9,25 @@
  * session store, and every read catches the market up to the caller's
  * sandbox clock (`account-sandbox.ts`), so a day only runs once the clock
  * has passed it.
+ *
+ * A request reads the whole session and writes it back when it ends, so two
+ * concurrent requests from one caller would each write back the copy they
+ * read, and the later write would undo the earlier one: a canceled booking
+ * would come back and keep its flight sold. `withCallerMarkets` runs one
+ * market request per caller at a time and persists it before the next one
+ * reads.
  */
-import { loadSandbox, sandboxNowMs } from '../account-sandbox.js';
+import { createHash } from 'node:crypto';
+import { AdcpError } from '@adcp/sdk/server';
+import { loadSandbox, sandboxNowMs, sandboxSessionKey } from '../account-sandbox.js';
+import { getIdempotencyStore } from '../idempotency.js';
+import { evictSessionFromRequestCache, flushDirtySessions } from '../state.js';
 import { InventorySimulation, type SeasonSeed, type SimulationState } from './engine/index.js';
 import type { AssignmentRecord, CreativeRecord } from './creatives.js';
 
 const MARKET_DOC_PREFIX = 'inventory_market\u001f';
+const MARKET_LOCK_PRINCIPAL = 'inventory-market-mutex';
+const MARKET_LOCK_WAIT_MS = 10_000;
 
 export interface PackageRecord {
   /** Also the engine booking id. */
@@ -130,4 +143,51 @@ export async function advanceMarket(tenantId: string, seed: SeasonSeed, principa
 export async function resetMarket(tenantId: string, principal: string | undefined): Promise<void> {
   const sandbox = await loadSandbox(principal);
   sandbox.session.principalConfigurations.delete(marketKey(tenantId, principal));
+}
+
+const queues = new Map<string, Promise<unknown>>();
+
+/**
+ * Run `fn` as the caller's only market request, on every tenant, and persist
+ * what it wrote before the next one starts. An in-process queue orders this
+ * machine's requests; a claim in the shared idempotency store orders them
+ * across machines. Not reentrant: `fn` must not call it again.
+ */
+export async function withCallerMarkets<T>(principal: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const sessionKey = sandboxSessionKey(principal);
+  const previous = queues.get(sessionKey) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(() => withMarketClaim(sessionKey, fn));
+  const tail = run.catch(() => undefined);
+  queues.set(sessionKey, tail);
+  try {
+    return await run;
+  } finally {
+    if (queues.get(sessionKey) === tail) queues.delete(sessionKey);
+  }
+}
+
+async function withMarketClaim<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
+  const hash = createHash('sha256').update(sessionKey).digest('hex');
+  const key = `inventory-market:${hash}`;
+  const store = getIdempotencyStore();
+  const deadline = Date.now() + MARKET_LOCK_WAIT_MS;
+  let backoff = 10;
+  let claim = await store.check({ principal: MARKET_LOCK_PRINCIPAL, key, payload: { session: hash } });
+  while (claim.kind !== 'miss' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, backoff));
+    backoff = Math.min(backoff * 2, 250);
+    claim = await store.check({ principal: MARKET_LOCK_PRINCIPAL, key, payload: { session: hash } });
+  }
+  if (claim.kind !== 'miss') {
+    throw new AdcpError('CONFLICT', { recovery: 'transient', message: 'Another request is updating this sandbox market. Retry shortly.' });
+  }
+  try {
+    // Read what the previous holder persisted, not this request's cached copy.
+    evictSessionFromRequestCache(sessionKey);
+    const result = await fn();
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await store.release({ principal: MARKET_LOCK_PRINCIPAL, key, claimToken: claim.claimToken });
+  }
 }
