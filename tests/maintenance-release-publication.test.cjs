@@ -8,14 +8,11 @@ const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { isolateGitEnv } = require("./helpers/git-object-fixture.cjs");
-const { provideGnuTools } = require("./helpers/gnu-tools.cjs");
+const { runnerPath } = require("./helpers/gnu-runner-tools.cjs");
 
 // Fixture git (and every step spawned from process.env) must not see a hook's
 // GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
 isolateGitEnv({ identity: false });
-// The workflow steps and the publisher call GNU `timeout` and `stat -c`;
-// macOS gets shims (tests/helpers/gnu-tools.cjs).
-provideGnuTools();
 const root = path.resolve(__dirname, "..");
 const release = YAML.parse(
   fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8"),
@@ -113,7 +110,9 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   const common = `const fs=require('node:fs'),path=require('node:path');const args=process.argv.slice(2);const read=f=>fs.readFileSync(f,'utf8');const log=s=>fs.appendFileSync(path.join(__dirname,'..','calls'),s+'\\n');const change=()=>fs.writeFileSync('remote',process.env.ADVANCE_TO||'f'.repeat(40));`;
   // The publisher and its release fence call git for every object, so the
   // stub is a shell script that execs the real git; only the remote reads
-  // (ls-remote) and the injected faults are answered here.
+  // (ls-remote) and the injected faults are answered here. The caller's
+  // command line comes from ps, which Linux and macOS both have; -ww keeps
+  // it untruncated.
   write("bin/git", [
     "#!/bin/sh",
     'if [ -n "$ORIGINAL_TREE_ENUMERATION_ERROR" ]; then',
@@ -124,7 +123,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     "fi",
     'if [ "$1" = ls-remote ]; then',
     '  [ -n "$REMOTE_ERROR" ] && exit 1',
-    '  if [ -n "$REMOVE_SCHEMA_AFTER_PREFLIGHT" ] && ps -o args= -p "$PPID" | grep -q committed; then',
+    '  if [ -n "$REMOVE_SCHEMA_AFTER_PREFLIGHT" ] && ps -ww -o args= -p "$PPID" | grep -q committed; then',
     "    count=$(( $(cat committed-remote-count 2>/dev/null || echo 0) + 1 ))",
     '    printf %s "$count" > committed-remote-count',
     `    [ "$count" = 4 ] && rm -rf 'dist/schemas/${version}'`,
@@ -261,7 +260,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   write('private-temp/.keep', '');
   const env = {
     TMPDIR: path.join(dir,'private-temp'),
-    PATH: `${dir}/bin:${process.env.PATH}`,
+    PATH: `${dir}/bin:${runnerPath()}`,
     TESTED_SHA: head,
     GITHUB_SHA: head,
     PUBLICATION_BRANCH: "3.1.x",

@@ -6,14 +6,13 @@ const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { isolateGitEnv } = require("./helpers/git-object-fixture.cjs");
-const { provideGnuTools } = require("./helpers/gnu-tools.cjs");
+// The workflow steps and the publisher call GNU `timeout` and `stat -c`;
+// off Linux, runnerPath() supplies them on the fixture PATH.
+const { runnerPath } = require("./helpers/gnu-runner-tools.cjs");
 
 // Fixture git (and every step spawned from process.env) must not see a hook's
 // GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
 isolateGitEnv({ identity: false });
-// The workflow steps and the publisher call GNU `timeout` and `stat -c`;
-// macOS gets shims (tests/helpers/gnu-tools.cjs).
-provideGnuTools();
 const root = path.resolve(__dirname, "..");
 const release = YAML.parse(
   fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8"),
@@ -123,7 +122,9 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
       `scripts/${script}`,
       fs.readFileSync(path.join(root, "scripts", script)),
     );
-  git("init", "-q");
+  // Start on master as git does on ubuntu-latest. Apple's git starts on main,
+  // which the manual recovery test creates as a separate branch.
+  git("init", "-q", "--initial-branch=master");
   git("config", "user.name", "Test");
   git("config", "user.email", "test@example.invalid");
   git("commit", "--allow-empty", "-qm", "Prior main");
@@ -252,7 +253,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   );
   executable("npm", common + `if(process.env.ADVANCE_BUILD) change();`);
   const env = {
-    PATH: `${dir}/bin:${process.env.PATH}`,
+    PATH: `${dir}/bin:${runnerPath()}`,
     TESTED_SHA: head,
     GITHUB_SHA: head,
     PUBLICATION_BRANCH: "main",

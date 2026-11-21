@@ -927,6 +927,11 @@ the server unit suite, then its load-sensitive file alone.
   in order. Add a leaf to the read-only allowlist in
   `scripts/profile-precommit/plan.mjs` only if it writes nothing.
 
+`npm run verify:local` runs tests outside the hooks: by default the root and
+server unit tests affected by your changes since `origin/main` (vitest follows
+the import graph; `--since <ref>` changes the base), then `typecheck`.
+`npm run verify:local -- --full` runs the full root and server unit suites.
+
 The hook must pass on a clean checkout of `main` in any shell:
 
 - `server/tests/setup/revenue-tracking-env.ts` scrubs `DEV_USER_EMAIL`,

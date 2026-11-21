@@ -3,7 +3,8 @@
 
 // Pre-commit step for the server unit suite (`npm run precommit:server-unit`).
 //
-// Contract: no arguments. It plans from the staged files: a change to server
+// Contract: `--full` runs the full suite regardless of what is staged
+// (`npm run verify:local -- --full`). Without it, it plans from the staged files: a change to server
 // implementation, config, schemas or shared test helpers runs the full suite;
 // staged server unit test files alone run just those files; anything else
 // skips. It runs one vitest process and exits with vitest's exit code (0 on
@@ -194,7 +195,10 @@ function serverUnitFilter(env = process.env, listStaged = stagedFiles) {
   return (file) => files.has(file);
 }
 
-async function main() {
+async function main(argv = process.argv.slice(2)) {
+  // `npm run verify:local -- --full` runs the whole suite regardless of what
+  // is staged: the same run as ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full.
+  if (argv.includes('--full')) return runFullSuite();
   const plan = resolvePlan();
 
   if (plan.kind === 'skip') {

@@ -7,13 +7,12 @@ const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
 const { isolateGitEnv } = require('./helpers/git-object-fixture.cjs');
-const { provideGnuTools } = require('./helpers/gnu-tools.cjs');
+// The publisher calls GNU `stat -c`; off Linux, runnerPath() supplies it.
+const { runnerPath } = require('./helpers/gnu-runner-tools.cjs');
 
 // Fixture git (and every step spawned from process.env) must not see a hook's
 // GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
 isolateGitEnv({ identity: false });
-// The publisher calls GNU `stat -c`; macOS gets a shim (tests/helpers/gnu-tools.cjs).
-provideGnuTools();
 
 const ROOT = path.resolve(__dirname, '..');
 const VERSIONS = ['3.2.0-rc.0', '3.2.0-rc.1', '3.2.0-rc.2', '3.2.0-rc.3'];
@@ -321,7 +320,7 @@ function publish(dir, flags = [], extraEnv = {}) {
     stdout = execFileSync('bash', [path.join(ROOT, 'scripts/backfill-cdn-artifacts.sh'),
     '--bucket', 'test-bucket', '--endpoint', 'https://r2.invalid', ...flags], {
     cwd: dir,
-    env: { PATH: `${dir}/bin:${process.env.PATH}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
+    env: { PATH: `${dir}/bin:${runnerPath()}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
       AWS_TEST_LOG: log, AWS_TEST_OBJECTS: path.join(dir, 'objects.json'), ...authority, ...extraEnv },
     encoding: 'utf8',
     });

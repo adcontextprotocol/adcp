@@ -2,8 +2,9 @@
  * The media-buy surface of an inventory tenant (#9025 part B, #8993's
  * inventory role): get_products with forecasts, create_media_buy,
  * update_media_buy, get_media_buys and get_media_buy_delivery over a
- * simulated market (`market-store.ts`). No new tasks: AdCP shapes as they
- * are, filled from the delivery engine.
+ * simulated market (`market-store.ts`), plus the creative library a buyer or
+ * storefront traffics its buys with (`creatives.ts`). No new tasks: AdCP
+ * shapes as they are, filled from the delivery engine.
  */
 import { AdcpError, type AccountStore, type DecisioningPlatform, type SalesPlatform } from '@adcp/sdk/server';
 import { syncAccountsUpsert } from '../v6-account-helpers.js';
@@ -23,6 +24,20 @@ import {
   type SeedProduct,
 } from './engine/index.js';
 import { openMarket, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
+import {
+  CreativeRequestError,
+  assign,
+  assignmentError,
+  creativeApprovals,
+  listCreatives,
+  parseCreative,
+  syncCreatives,
+  upsertCreative,
+  type CreativeCatalog,
+  type CreativeError,
+} from './creatives.js';
+import { catalogIdOf, formatFilter, listSeedCreativeFormats, resolveCreativeFormat, seedFormatDeclarations, wireFormat, type FormatDeclaration } from './creative-wire.js';
+import type { TrainingContext } from '../types.js';
 
 export interface InventoryTenantProfile {
   tenantId: string;
@@ -67,6 +82,15 @@ function invalid(message: string, field?: string): AdcpError {
   return new AdcpError('INVALID_REQUEST', { recovery: 'correctable', message, ...(field && { field }) });
 }
 
+function isContext(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function creativeFailure(error: CreativeError): AdcpError {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new AdcpError(error.code as any, { recovery: 'correctable', message: error.message, ...(error.field && { field: error.field }) });
+}
+
 function fromEngine(error: unknown, field?: string): never {
   if (!(error instanceof EngineError)) throw error;
   switch (error.code) {
@@ -96,9 +120,26 @@ function parseDateStart(value: unknown, field: string): number {
 
 export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean }, InventoryMeta> {
   private readonly products: SeedProduct[];
+  private readonly declarations: FormatDeclaration[];
+  private readonly catalog: CreativeCatalog;
 
   constructor(private readonly profile: InventoryTenantProfile) {
     this.products = profile.seed.products;
+    this.declarations = seedFormatDeclarations(profile.seed.placements.flatMap(placement => placement.formats));
+    // Placements name formats by training catalogue id; the creative library
+    // keys them by format_option_id.
+    const optionIds = new Map(this.declarations.map(declaration => [catalogIdOf(declaration), declaration.format_option_id]));
+    const productFormats = new Map(this.products.map(product => [product.product_id, new Set(product.placement_ids.flatMap(id =>
+      (profile.seed.placements.find(placement => placement.placement_id === id)?.formats ?? []).map(label => optionIds.get(label)!)))]));
+    const labels = new Map(this.declarations.map(declaration => [declaration.format_option_id, catalogIdOf(declaration)]));
+    this.catalog = {
+      formats: new Set(optionIds.values()),
+      productFormats: productId => productFormats.get(productId) ?? new Set(),
+      label: formatOptionId => labels.get(formatOptionId) ?? formatOptionId,
+      resolve: (input, field, allowed) => resolveCreativeFormat(this.declarations, input, field, allowed),
+      wire: formatOptionId => wireFormat(this.declarations, formatOptionId),
+      filter: filters => formatFilter(this.declarations, filters),
+    };
   }
 
   get capabilities() {
@@ -121,6 +162,16 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       buyingModes: ['brief', 'wholesale'] as const,
       // A storefront calls with its own credential, not a per-buyer operator.
       requireOperatorAuth: false,
+      // Creatives are synced to a library, or uploaded inline on a package,
+      // and assigned to the packages that serve their format.
+      creative: {
+        hasCreativeLibrary: true,
+        supportsCompliance: false,
+        supportsGeneration: false,
+        supportsTransformation: false,
+        assignmentOperations: ['assign', 'unassign', 'replace'] as const,
+      },
+      features: { inlineCreativeManagement: true },
       // The router lists the scenarios (tenants/inventory.ts).
       compliance_testing: {},
       config: { strict: false },
@@ -278,6 +329,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     if (buy.canceled) return 'canceled';
     if (nowMs >= Date.parse(buy.end_time)) return 'completed';
     if (buy.paused) return 'paused';
+    // No live package has a creative, so none can begin delivery: the buyer
+    // has to act. The simulation still delivers the bookings as seeded.
+    const live = buy.packages.filter(pkg => !pkg.canceled);
+    if (live.length > 0 && live.every(pkg => !pkg.creative_assignments?.length)) return 'pending_creatives';
     if (nowMs < Date.parse(buy.start_time)) return 'pending_start';
     return 'active';
   }
@@ -296,7 +351,64 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       end_time: pkg.end_time,
       paused: pkg.paused,
       canceled: pkg.canceled,
+      // Opaque buyer correlation data: kept unchanged, never interpreted.
+      ...(pkg.context && { context: pkg.context }),
     };
+  }
+
+  /** This seed's formats as product format declarations, for the SDK's
+   * creative format projection (`tenants/inventory.ts`): canonical inline
+   * creatives in them then reach create_media_buy as these options. */
+  formatDeclarations(): Record<string, unknown>[] {
+    return this.declarations as unknown as Record<string, unknown>[];
+  }
+
+  /**
+   * A package's inline creatives and creative_assignments. Inline creatives
+   * join the caller's library; both must exist and be in a format the
+   * package's product serves. create_media_buy adds, update_media_buy
+   * replaces the package's assignments.
+   */
+  private applyPackageCreatives(market: OpenMarket, accountId: string, record: PackageRecord, pkg: Record<string, unknown>, field: string, replace: boolean): boolean {
+    const inline = Array.isArray(pkg.creatives) ? pkg.creatives as unknown[] : undefined;
+    const assignments = Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments as unknown[] : undefined;
+    if (!inline && !assignments) return false;
+    const weightOf = (value: unknown, at: string) => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'number' || !(value >= 0 && value <= 100)) throw invalid('weight must be a number from 0 to 100', at);
+      return value;
+    };
+    const wanted: Array<{ creative_id: string; weight?: number }> = [];
+    try {
+      inline?.forEach((input, index) => {
+        const at = `${field}.creatives[${index}]`;
+        // The SDK hands these over canonicalized (format_option_ref and
+        // format_kind); a kind matches only among the product's formats.
+        const parsed = parseCreative(input, at, this.catalog, this.catalog.productFormats(record.product_id));
+        if ('error' in parsed) throw creativeFailure(parsed.error);
+        upsertCreative(market.doc, accountId, parsed.creative, market.nowIso);
+        wanted.push({ creative_id: parsed.creative.creative_id, weight: weightOf((input as Record<string, unknown>).weight, `${at}.weight`) });
+      });
+    } catch (error) {
+      if (error instanceof CreativeRequestError) throw creativeFailure(error.errors[0]);
+      throw error;
+    }
+    assignments?.forEach((input, index) => {
+      const at = `${field}.creative_assignments[${index}]`;
+      const assignment = input as Record<string, unknown> | null;
+      if (typeof assignment !== 'object' || assignment === null || typeof assignment.creative_id !== 'string') throw invalid('Each creative assignment needs a creative_id', at);
+      if (assignment.placement_ids !== undefined || assignment.placement_refs !== undefined) {
+        throw new AdcpError('UNSUPPORTED_FEATURE', { recovery: 'correctable', message: 'Products here do not declare placements to route creatives to', field: `${at}.placement_ids` });
+      }
+      wanted.push({ creative_id: assignment.creative_id, weight: weightOf(assignment.weight, `${at}.weight`) });
+    });
+    for (const { creative_id } of wanted) {
+      const error = assignmentError(market.doc, accountId, this.catalog, creative_id, record, record.package_id, field);
+      if (error) throw creativeFailure(error);
+    }
+    if (replace) delete record.creative_assignments;
+    for (const { creative_id, weight } of wanted) assign(record, creative_id, weight, market.nowIso);
+    return true;
   }
 
   private requireBuy(market: OpenMarket, mediaBuyId: string, ctx: Ctx): MediaBuyRecord {
@@ -396,7 +508,9 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           end_time: new Date(endMs).toISOString(),
           paused: false,
           canceled: false,
+          ...(isContext(pkg.context) && { context: structuredClone(pkg.context) }),
         });
+        this.applyPackageCreatives(market, accountIdOf(ctx), records[records.length - 1], pkg, field, false);
       });
       const buy: MediaBuyRecord = {
         media_buy_id: mediaBuyId,
@@ -477,6 +591,11 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           pkg.canceled = true;
           apply(pkg, { status: 'canceled' }, `${field}.canceled`);
         }
+        if (this.applyPackageCreatives(market, accountIdOf(ctx), pkg, change, field, true)) affected.add(pkg.package_id);
+        if (isContext(change.context)) {
+          pkg.context = structuredClone(change.context);
+          affected.add(pkg.package_id);
+        }
       });
       if (typeof patch.paused === 'boolean') {
         buy.paused = patch.paused;
@@ -525,7 +644,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           created_at: buy.confirmed_at,
           updated_at: buy.updated_at,
           revision: buy.revision,
-          packages: buy.packages.map(pkg => this.wirePackage(pkg, buy.currency)),
+          packages: buy.packages.map(pkg => {
+            const approvals = creativeApprovals(pkg);
+            return { ...this.wirePackage(pkg, buy.currency), ...(approvals && { creative_approvals: approvals }) };
+          }),
         })),
         sandbox: true,
       } as never;
@@ -600,5 +722,37 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       } as never;
     },
   };
+
+  /**
+   * sync_creatives, list_creatives and list_creative_formats. They register as
+   * raw media-buy handlers because sync_creatives needs the whole request:
+   * the SDK hands `sales.syncCreatives` only the creatives, without the
+   * assignments.
+   */
+  creativeHandlers(storyboardCompat?: TrainingContext['storyboardCompat']) {
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      syncCreatives: async (req: any, ctx: Ctx) => {
+        const market = await this.market(ctx);
+        const { payload, persist } = syncCreatives(market.doc, accountIdOf(ctx), req, this.catalog, market.nowIso);
+        if (persist) market.save();
+        return payload as never;
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      listCreatives: async (req: any, ctx: Ctx) => {
+        const market = await this.market(ctx);
+        const payload = listCreatives(market.doc, accountIdOf(ctx), req, this.catalog);
+        market.save();
+        return payload as never;
+      },
+      // The training creative catalogue, limited to the formats this seed
+      // serves.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      listCreativeFormats: async (req: any, ctx: Ctx) => {
+        const training: TrainingContext = { mode: 'open', principal: principalOf(ctx) ?? 'anonymous', ...(storyboardCompat && { storyboardCompat }) };
+        return await listSeedCreativeFormats(this.declarations, req ?? {}, training) as never;
+      },
+    };
+  }
 }
 
