@@ -68,7 +68,7 @@ jobs:
     # it stays on ubuntu-latest. Unset it again if the larger runner is shut
     # down (e.g. by the Actions spending limit) so jobs never queue forever.
     runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout_minutes || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -120,6 +120,30 @@ jobs:
             tenant: si
             min_clean_storyboards: 42
             min_passing_steps: 50
+          # The simulated inventory tenants (#9025 part B) serve the current
+          # surface only, so they are not in the tenant list the 3.0-compat
+          # rows cross-join. Their controller serves reset_state and
+          # sandbox_clock but no seed_* scenario, so fixture-seeded media-buy
+          # storyboards skip as fixture_seed_unsupported rather than fail.
+          # They run isolated: a monolithic run stalled after signed_requests.
+          # Floors are the first CI result. Runs take 35-45 minutes, so the rows
+          # get 60: a timed-out row also blocks release-head reuse. Each
+          # tenant still fails media_buy_seller/unprovisioned_account_reference
+          # (it serves public products for an unprovisioned account reference).
+          # signed_requests is out of scope: it is graded on the /mcp-strict*
+          # routes, which these tenants do not mount.
+          - surface: current
+            tenant: inventory-adserver
+            isolated: true
+            timeout_minutes: 60
+            min_clean_storyboards: 178
+            min_passing_steps: 28
+          - surface: current
+            tenant: inventory-content
+            isolated: true
+            timeout_minutes: 60
+            min_clean_storyboards: 177
+            min_passing_steps: 28
           # Proposal-negotiation profile routes (/sales/profiles/<profile>)
           # serve the sales tenant with a deterministic seller policy. The
           # full sales suite is already graded by the isolated /sales
@@ -311,11 +335,12 @@ jobs:
           set -uo pipefail
           # Creative-builder retains a large generated-schema graph after its
           # result is complete on some Node/V8 builds. Run each storyboard in
-          # a bounded child so teardown cannot retain the whole job. Other
-          # matrix tenants remain monolithic; current /sales has its separate
-          # isolated aggregate jobs below.
+          # a bounded child so teardown cannot retain the whole job. Rows with
+          # `isolated: true` run the same way. Other matrix tenants remain
+          # monolithic; current /sales has its separate isolated aggregate
+          # jobs below.
           isolated_orchestrator_failure=0
-          if [ "${{ matrix.tenant }}" = "creative-builder" ]; then
+          if [ "${{ matrix.tenant }}" = "creative-builder" ] || [ "${{ matrix.isolated }}" = "true" ]; then
             bash scripts/run-storyboards-isolated-shards.sh \
               --shard-count 8 --max-parallel 4 2>&1 \
               | tee /tmp/storyboards.log || isolated_orchestrator_failure=1
@@ -369,7 +394,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${isolated_orchestrator_failure}" -ne 0 ]; then
-            echo "::error::One or more isolated creative-builder orchestrators failed. Counts above are diagnostic only."
+            echo "::error::One or more isolated /${{ matrix.tenant }} orchestrators failed. Counts above are diagnostic only."
             exit 1
           fi
 
