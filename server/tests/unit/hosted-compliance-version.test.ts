@@ -63,6 +63,9 @@ describe('resolveHostedComplianceVersion', () => {
 
     afterAll(() => {
       vi.restoreAllMocks();
+      // The fixture-built module stays in the worker's module registry; drop
+      // it so later files in a shared worker import the real resolver.
+      vi.resetModules();
       rmSync(fixtureRoot, { recursive: true, force: true });
     });
 
@@ -145,6 +148,9 @@ describe('hostedServedReleaseSchemaRoots', () => {
 
     afterAll(() => {
       vi.restoreAllMocks();
+      // The fixture-built module stays in the worker's module registry; drop
+      // it so later files in a shared worker import the real resolver.
+      vi.resetModules();
       rmSync(fixtureRoot, { recursive: true, force: true });
     });
 

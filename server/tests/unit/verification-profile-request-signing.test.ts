@@ -1,6 +1,4 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import {
   buildComplianceBundleResults,
   runStoryboard,
@@ -15,11 +13,11 @@ import { hostedComplianceOptions, hostedComplianceTarget } from '../../src/servi
 import { deriveVerificationProfileRoleAssessments } from '../../src/services/verification-profile-assessment.js';
 
 // The SDK projects raw storyboard results into track scenarios with a mapper it
-// does not export; resolve it from the public testing entry, as hosted runs do.
-const require = createRequire(import.meta.url);
-const { mapStoryboardResultsToTrackResult } = require(join(
-  dirname(require.resolve('@adcp/sdk/testing')), 'compliance/storyboard-tracks.js',
-)) as { mapStoryboardResultsToTrackResult: (track: string, results: StoryboardResult[], profile: unknown) => TrackResult };
+// does not export; load its ES module file next to the public testing entry, so
+// it shares the SDK build this file already imports.
+const { mapStoryboardResultsToTrackResult } = await import(
+  new URL('compliance/storyboard-tracks.mjs', import.meta.resolve('@adcp/sdk/testing')).href
+) as { mapStoryboardResultsToTrackResult: (track: string, results: StoryboardResult[], profile: unknown) => TrackResult };
 
 // #8534: hosted heartbeat on the 3.1.29 bundle for a media-buy 3.1 seller. The
 // SDK grades declined capability gates not applicable from 3.2 and, since

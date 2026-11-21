@@ -16,8 +16,9 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import YAML from 'yaml';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
+import { listenOnLoopback } from '../../testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../index.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 const TENANTS = ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'] as const;
 /** Per-tenant routes plus the legacy single-URL `/mcp` monolith. */
@@ -221,7 +222,6 @@ async function clearTrainingState(): Promise<void> {
 
 beforeAll(async () => {
   loadStoryboardSamples(path.resolve('static/compliance/source'));
-  const { createTrainingAgentRouter } = await import('../index.js');
   await clearTrainingState();
   const app = express();
   app.use(express.json({
@@ -232,7 +232,7 @@ beforeAll(async () => {
   }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
   const server = http.createServer(app);
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
+  await listenOnLoopback(server);
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/training-agent`;
   closeServer = () => new Promise(resolve => server.close(() => resolve()));
 }, 60_000);

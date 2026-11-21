@@ -34,7 +34,12 @@ import {
   githubIssueReceiptFromHandlerResult,
   githubIssueReceiptFromStoredValue,
 } from "../github-issue-receipt.js";
-import { assertPlainJson } from "../model-providers/capabilities.js";
+import {
+  assertPlainJson,
+  isDeepFrozenJsonData,
+  isKnownDeepFrozenJsonData,
+} from "../model-providers/capabilities.js";
+import { jsonSha256 } from "../model-providers/json-sha256.js";
 import type {
   JsonObject,
   ModelMessageContent,
@@ -430,6 +435,9 @@ const hash = (x: unknown) =>
   createHash("sha256").update(JSON.stringify(x), "utf8").digest("hex");
 const frozen = <T>(x: T): T => {
   if (!x || typeof x !== "object") return x;
+  // Already proven deep-frozen JSON data: nothing below can be unfrozen and
+  // no getter exists to run, so walking it again would change nothing.
+  if (isKnownDeepFrozenJsonData(x)) return x;
   for (const value of Object.values(x as Record<string, unknown>))
     frozen(value);
   return Object.isFrozen(x) ? x : Object.freeze(x);
@@ -687,7 +695,9 @@ function request(
       // evidence injected into the current user turn.
       { role: "user", content: [{ type: "text", text: a.trace.prompt }] },
     ],
-    tools: [...tools],
+    // The surface's own frozen tool array: the same JSON as a copy, and it
+    // lets the provider projection and the commitment hash reuse their work.
+    tools: tools as ModelRequest["tools"],
     ...(d.reasoningEffort === "provider_default"
       ? {}
       : { reasoning: { effort: d.reasoningEffort as never } }),
@@ -1771,6 +1781,18 @@ export async function createAddieMatchedV4PaidAuthority(
       apiKey: googleApiKey,
       httpOptions: { retryOptions: { attempts: 1 } },
     });
+    // Commitments of requests proven deep-frozen JSON data, keyed by the
+    // request object. request() and continuationRequest() build exactly such
+    // requests, so a repeated commitment of one (a continuation is committed
+    // before and again inside its dispatch) and its OpenAI send reuse the
+    // hashed projection. A request that fails the proof is committed afresh
+    // every time and never retained. The wire projection is a pure function
+    // of the request (Gemini's thought signature is set once when the
+    // response that issued it is normalized, before any continuation exists).
+    const commitments = new WeakMap<
+      object,
+      Readonly<{ sha256: string; wire: unknown }>
+    >();
     const providers: Record<Provider, any> = {
       anthropic: new AnthropicModelProvider(anthropicApiKey, undefined, {
         transportMaxRetries: 0,
@@ -1781,8 +1803,11 @@ export async function createAddieMatchedV4PaidAuthority(
       openai: {
         id: "openai",
         async respond(request: Readonly<ModelRequest>, signal: AbortSignal) {
+          // Send exactly the wire request whose hash the ledger intent
+          // recorded; project it again only if none was retained.
           const raw = await openaiClient.responses.create(
-            prepareOpenAIResponsesEvaluationRequest(request) as never,
+            (commitments.get(request)?.wire ??
+              prepareOpenAIResponsesEvaluationRequest(request)) as never,
             { maxRetries: 0, signal },
           );
           const response = normalizeOpenAIResponse(raw);
@@ -1818,6 +1843,8 @@ export async function createAddieMatchedV4PaidAuthority(
     const transport: AddieMatchedV4ExecutionTransport = Object.freeze({
       kind: "provider_transport" as const,
       requestCommitment(request: Readonly<ModelRequest>) {
+        const committed = commitments.get(request);
+        if (committed) return committed.sha256;
         const provider = providerForModel(request.model);
         // Gemini keeps a tool-call thought signature in adapter-private custody.
         // Project it before intent recording so a continuation commitment covers
@@ -1828,7 +1855,19 @@ export async function createAddieMatchedV4PaidAuthority(
             : provider === "google"
               ? prepareGoogleGenerateContentEvaluationRequest(request)
               : request;
-        return hash({ provider, canonicalRequest: request, wireRequest: wire });
+        // Byte-identical to hash({ provider, canonicalRequest, wireRequest });
+        // jsonSha256 only avoids re-encoding the frozen tool catalog and
+        // prompt that every dispatch repeats.
+        const sha256 = jsonSha256(
+          Object.freeze({
+            provider,
+            canonicalRequest: request,
+            wireRequest: wire,
+          }),
+        );
+        if (isDeepFrozenJsonData(request))
+          commitments.set(request, Object.freeze({ sha256, wire }));
+        return sha256;
       },
       async respond(
         request: Readonly<ModelRequest>,

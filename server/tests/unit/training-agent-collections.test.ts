@@ -16,18 +16,19 @@
  * Stable callers never see any of it; tenants/served-release-shape.test.ts
  * proves that for the full read flow.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'collections-test-public-token';
 
 import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearCollectionCardState } from '../../src/training-agent/collections/card-catalog.js';
 import { bulkThreshold } from '../../src/training-agent/collections/seed-collection.js';
 import { monotonicUuidV7 } from '../../src/training-agent/collections/card-webhooks.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const grader = createRequire(import.meta.url)('../../../tests/helpers/collection-copies-grader.cjs') as {
   CATALOG_FEATURE: string;
@@ -107,7 +108,7 @@ describe('experimental 3.3 collections on the training agent', () => {
     account: { brand: { domain: 'collections-buyer.example' }, operator: 'collections-buyer.example', sandbox: true },
     params,
   });
-  /** The grader's seller declaration for this agent. */
+  /** The grader's seller declaration for this agent, read in beforeAll. */
   const SELLER = { experimental_features: [] as string[], wholesale_feed_webhook_event_types: [] as string[] };
 
   beforeAll(async () => {
@@ -127,23 +128,33 @@ describe('experimental 3.3 collections on the training agent', () => {
         res.end();
       });
     });
-    await new Promise<void>(resolve => receiver.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(receiver);
     const hookAddress = receiver.address();
     if (!hookAddress || typeof hookAddress === 'string') throw new Error('Missing receiver address');
     hookUrl = `http://127.0.0.1:${hookAddress.port}/hooks/collection-cards`;
 
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ limit: '5mb', verify: (req, _res, body) => {
       (req as unknown as { rawBody: string }).rawBody = body.toString('utf8');
     } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;
+
+    const capabilities = await preview('get_adcp_capabilities');
+    SELLER.experimental_features = capabilities.experimental_features ?? [];
+    SELLER.wholesale_feed_webhook_event_types = capabilities.wholesale_feed_webhooks?.event_types ?? [];
   }, 60_000);
+
+  // Each test starts from the seeded catalog with no card changes and an
+  // empty receiver, whatever ran before it.
+  beforeEach(() => {
+    clearCollectionCardState();
+    received.length = 0;
+  });
 
   afterAll(async () => {
     clearCollectionCardState();
@@ -161,8 +172,10 @@ describe('experimental 3.3 collections on the training agent', () => {
     expect(sales.experimental_features).toEqual(expect.arrayContaining([grader.CARDS_FEATURE, grader.CATALOG_FEATURE]));
     expect(sales.wholesale_feed_webhooks.event_types).toEqual(expect.arrayContaining(CARD_EVENTS));
     expect(sales.media_buy.lifecycle_tools ?? []).not.toContain('list_collections');
-    SELLER.experimental_features = sales.experimental_features;
-    SELLER.wholesale_feed_webhook_event_types = sales.wholesale_feed_webhooks.event_types;
+    expect(SELLER).toEqual({
+      experimental_features: sales.experimental_features,
+      wholesale_feed_webhook_event_types: sales.wholesale_feed_webhooks.event_types,
+    });
     const brand = await preview('get_adcp_capabilities', {}, '/brand/mcp');
     expect(brand.experimental_features).toContain('brand.collection_links');
 

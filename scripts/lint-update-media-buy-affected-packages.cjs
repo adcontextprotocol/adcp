@@ -21,7 +21,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
@@ -165,7 +165,7 @@ function lint(sourceDir = SOURCE_DIR) {
     if (!isStoryboardYaml(rel)) return;
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
+      doc = loadYamlFile(filePath);
     } catch {
       return;
     }
@@ -193,7 +193,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ update_media_buy affected_packages lint: package updates assert affected package identity and state');
-    return;
+    return 0;
   }
 
   console.error(`✗ update_media_buy affected_packages lint: ${violations.length} violation(s)\n`);
@@ -203,12 +203,13 @@ function main() {
     console.error(`    ${msg}`);
     console.error('');
   }
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   RULE_MESSAGES,
   hasAffectedPackagesPath,
   isAffectedPackageStateAssertion,

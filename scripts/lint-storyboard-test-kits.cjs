@@ -30,7 +30,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const TEST_KITS_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source', 'test-kits');
 
@@ -88,7 +88,7 @@ function lint(dir = TEST_KITS_DIR) {
     const full = path.join(dir, entry.name);
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(full, 'utf8'));
+      doc = loadYamlFile(full);
     } catch {
       continue;
     }
@@ -107,7 +107,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ storyboard test-kits lint: every kit carries auth.api_key, auth.basic, or applies_to');
-    return;
+    return 0;
   }
   console.error(`✗ storyboard test-kits lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -116,9 +116,9 @@ function main() {
     console.error(`    ${msg}`);
     console.error('');
   }
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
-module.exports = { RULE_MESSAGES, classify, lint };
+module.exports = { main, RULE_MESSAGES, classify, lint };

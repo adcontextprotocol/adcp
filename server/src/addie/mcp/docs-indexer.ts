@@ -1335,11 +1335,23 @@ export function searchHeadings(
   if (!selectedVersion) return [];
   const queryLower = query.toLowerCase();
   const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
+  const parentDocs = docsByIdFor(docsIndex);
+  // One pattern per query word, built at its first use (so an invalid word
+  // throws where it always has), instead of one per heading.
+  const wordPatterns = new Map<string, RegExp>();
+  const wordPattern = (word: string): RegExp => {
+    let pattern = wordPatterns.get(word);
+    if (!pattern) {
+      pattern = new RegExp(word, 'g');
+      wordPatterns.set(word, pattern);
+    }
+    return pattern;
+  };
 
   // Score each heading
   const scored = headingsIndex
     .filter((heading) => {
-      const parentDoc = docsIndex.find((doc) => doc.id === heading.doc_id);
+      const parentDoc = parentDocs.get(heading.doc_id);
       if (parentDoc?.version && parentDoc.version !== selectedVersion.version) {
         return false;
       }
@@ -1376,7 +1388,7 @@ export function searchHeadings(
           score += 25;
         }
         // Count occurrences in content (limited to avoid huge scores)
-        const occurrences = Math.min((contentLower.match(new RegExp(word, 'g')) || []).length, 5);
+        const occurrences = Math.min((contentLower.match(wordPattern(word)) || []).length, 5);
         score += occurrences * 2;
       }
 
@@ -1388,6 +1400,22 @@ export function searchHeadings(
     .map(({ heading }) => heading);
 
   return scored;
+}
+
+// The first doc with each ID (what docsIndex.find returns), per docsIndex
+// array. docsIndex is only ever replaced, never changed in place, so a map
+// keyed by the array cannot go stale, and a replaced array's map is collected
+// with it.
+const docsByIdCache = new WeakMap<IndexedDoc[], Map<string, IndexedDoc>>();
+
+function docsByIdFor(index: IndexedDoc[]): Map<string, IndexedDoc> {
+  let byId = docsByIdCache.get(index);
+  if (!byId) {
+    byId = new Map();
+    for (const doc of index) if (!byId.has(doc.id)) byId.set(doc.id, doc);
+    docsByIdCache.set(index, byId);
+  }
+  return byId;
 }
 
 /**

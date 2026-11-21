@@ -1,6 +1,5 @@
 'use strict';
 
-const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
@@ -20,7 +19,7 @@ const files = [
   'protocols/media-buy/scenarios/dependency_impairment_audience.yaml',
 ];
 
-test('literal auction buys reach pricing admission over official MCP without discovery context', async t => {
+test('literal auction buys reach pricing admission over official MCP without discovery context', async ({ onTestFinished }) => {
   const server = new McpServer({ name: 'auction-bid-admission', version: '1' });
   const receipts = [];
   let prices = [];
@@ -46,7 +45,7 @@ test('literal auction buys reach pricing admission over official MCP without dis
   await server.connect(serverTransport);
   const mcp = new Client({ name: 'storyboard-bid-buyer', version: '1' });
   await mcp.connect(clientTransport);
-  t.after(async () => { await mcp.close(); await server.close(); });
+  onTestFinished(async () => { await mcp.close(); await server.close(); });
   const buyer = AgentClient.fromMCPClient(mcp, {
     validateFeatures: false,
     validation: { requests: 'off', responses: 'off' },

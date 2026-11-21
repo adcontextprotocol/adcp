@@ -1503,6 +1503,47 @@ describe("matched-v4 sealed private authority", () => {
       1584,
     );
   });
+  it("commits every recoverable dispatch to the exact {provider, canonicalRequest, wireRequest} preimage", async () => {
+    const a = await authority();
+    const result = await a.execute("screening");
+    expect(result).toMatchObject({ status: "completed" });
+    // Anthropic sends the canonical request itself; the Google projection is
+    // the identity under this file's adapter seam, and the SDK call adds only
+    // config.abortSignal. OpenAI's canonical request is not observable here.
+    const recomputed = testRuntime.requests.map((sent) => {
+      const anthropic = sent.model.startsWith("claude-");
+      let canonical = sent;
+      if (!anthropic) {
+        const { config, ...request } = sent;
+        expect(Object.keys(config)).toEqual(["abortSignal"]);
+        canonical = request;
+      }
+      const provider = anthropic ? "anthropic" : "google";
+      return createHash("sha256")
+        .update(
+          JSON.stringify({
+            provider,
+            canonicalRequest: canonical,
+            wireRequest: canonical,
+          }),
+          "utf8",
+        )
+        .digest("hex");
+    });
+    const providers = new Set(
+      testRuntime.requests.map((sent) => sent.model.slice(0, 7)),
+    );
+    expect(providers).toEqual(new Set(["claude-", "gemini-"]));
+    expect(recomputed.length + testRuntime.openaiRequests.length).toBe(
+      testRuntime.intents.length,
+    );
+    const recomputedSet = new Set(recomputed);
+    expect(
+      testRuntime.intents
+        .map((intent) => intent.requestSha256)
+        .filter((requestSha256) => recomputedSet.has(requestSha256)),
+    ).toEqual(recomputed);
+  });
   it("rejects irrelevant prose instead of treating a nonempty response as a pass", async () => {
     const a = await authority("semantic_irrelevant");
     const result = await a.execute("screening");

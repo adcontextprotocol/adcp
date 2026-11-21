@@ -28,6 +28,7 @@ import {
   liveModeTestKitRoute,
 } from '../../src/compliance/hosted-route-storyboard.js';
 import type { TestKit } from '../../src/services/storyboards.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const REPO = resolve(__dirname, '../../..');
 const SOURCE = resolve(REPO, 'static/compliance/source');
@@ -177,11 +178,7 @@ async function startGatedSeller(): Promise<{ url: string; seen: Seen[]; server: 
     }
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }));
   });
-  // SDK schema initialization can block this shared event loop longer than
-  // Node's default idle-socket lifetime; retain fixture connections for the
-  // entire bounded compliance run instead of racing a pooled-socket reset.
-  server.keepAliveTimeout = 90_000;
-  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  await listenOnLoopback(server);
   const { port } = server.address() as AddressInfo;
   return { url: `http://127.0.0.1:${port}/mcp`, seen, server };
 }

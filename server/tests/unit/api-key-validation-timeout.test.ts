@@ -38,9 +38,12 @@ function request(token: string): Request {
 function response(): Response {
   return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as unknown as Response;
 }
-beforeEach(() => { vi.useFakeTimers(); fetchMock.mockReset(); snapshotMock.mockReset(); });
+// The hoisted stub is the fetch the WorkOS client captures at import;
+// unstubGlobals (server/vitest.config.ts) restores the global before every
+// test, so each test re-installs it for code that reads fetch lazily.
+beforeEach(() => { vi.useFakeTimers(); fetchMock.mockReset(); snapshotMock.mockReset(); vi.stubGlobal('fetch', fetchMock); });
 afterEach(() => vi.useRealTimers());
-afterAll(() => { stopAuthTimers(); vi.unstubAllGlobals(); });
+afterAll(() => { stopAuthTimers(); });
 
 describe('actual WorkOS client API-key request budget', () => {
   it('aborts at five seconds without SDK retries and permits a fresh request', async () => {

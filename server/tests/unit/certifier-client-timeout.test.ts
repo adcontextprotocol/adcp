@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.hoisted(() => {
-  process.env.CERTIFIER_API_TOKEN = 'certifier_test_token';
+  vi.stubEnv('CERTIFIER_API_TOKEN', 'certifier_test_token');
 });
 
 vi.mock('axios', () => ({
@@ -18,6 +18,12 @@ import {
   createCredentialDraft,
   isDefinitiveCertifierNonDelivery,
 } from '../../src/services/certifier-client.js';
+
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('CERTIFIER_API_TOKEN', 'certifier_test_token');
+});
 
 describe('Certifier client timeout', () => {
   beforeEach(() => {

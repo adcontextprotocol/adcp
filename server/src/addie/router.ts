@@ -22,8 +22,8 @@ const logger = createLogger("addie-router");
 import { ModelConfig } from "../config/models.js";
 import type { MemberContext } from "./member-context.js";
 import type { AddieTool } from "./types.js";
-import { KNOWLEDGE_TOOLS } from "./mcp/knowledge-search.js";
-import { MEMBER_TOOLS } from "./mcp/member-tools.js";
+import { KNOWLEDGE_TOOLS } from "./mcp/knowledge-search-tool-definitions.js";
+import { MEMBER_TOOLS } from "./mcp/member-tool-definitions.js";
 import { trackApiCall, ApiPurpose } from "./services/api-tracker.js";
 import {
   collectModelResponse,

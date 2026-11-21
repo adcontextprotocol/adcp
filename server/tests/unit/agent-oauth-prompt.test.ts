@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { AuthenticationRequiredError } from '@adcp/sdk';
+import { AuthenticationRequiredError } from '@adcp/sdk/errors';
 import {
   buildAgentOAuthAuthorizeUrl,
   isOAuthRequiredError,

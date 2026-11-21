@@ -46,7 +46,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
@@ -126,7 +126,7 @@ function lint(sourceDir = SOURCE_DIR) {
     if (!isStoryboardYaml(rel)) return;
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(p, 'utf8'));
+      doc = loadYamlFile(p);
     } catch {
       return;
     }
@@ -168,7 +168,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ storyboard raw-mode-required lint: every attestation_mode_required:raw declares a payload_must_contain clause');
-    return;
+    return 0;
   }
   console.error(`✗ storyboard raw-mode-required lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -177,12 +177,13 @@ function main() {
     console.error(`    ${msg}`);
     console.error('');
   }
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   RULE_MESSAGES,
   MODE_AGNOSTIC_FIELDS,
   presentModeAgnosticAssertions,

@@ -18,7 +18,7 @@ import {
 import { buildWgDigestContent, getDigestEligibleGroups, truncateAtWord } from './wg-digest-builder.js';
 import { getPendingSuggestions } from '../../db/newsletter-suggestions-db.js';
 import { generateDateFlavor } from '../../newsletters/cover.js';
-import DOMPurify from 'isomorphic-dompurify';
+import { getDOMPurify } from '../../utils/deferred-modules.js';
 import type { Event } from '../../types.js';
 
 const logger = createLogger('digest-builder');
@@ -124,7 +124,7 @@ async function buildWhatToWatch(): Promise<{ items: DigestNewsItem[]; officialBo
   const eventRecapItems: DigestNewsItem[] = eventRecaps.slice(0, 2).map((e) => {
     const eventDate = new Date(e.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const excerpt = e.recap_html
-      ? DOMPurify.sanitize(e.recap_html, { ALLOWED_TAGS: [] }).substring(0, 200).trim()
+      ? getDOMPurify().sanitize(e.recap_html, { ALLOWED_TAGS: [] }).substring(0, 200).trim()
       : '';
     return {
       title: `${e.title} Recap`,

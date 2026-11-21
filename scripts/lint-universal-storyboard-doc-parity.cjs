@@ -36,7 +36,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static/compliance/source');
@@ -65,7 +65,7 @@ function discoverGradedUniversal(sourceDir) {
       const slug = f.replace(/\.yaml$/, '');
       let doc = null;
       try {
-        doc = yaml.load(fs.readFileSync(path.join(universalDir, f), 'utf8'));
+        doc = loadYamlFile(path.join(universalDir, f));
       } catch {
         // Malformed YAML is caught by other lints; skip it here so doc parity
         // doesn't double-error on the same file.

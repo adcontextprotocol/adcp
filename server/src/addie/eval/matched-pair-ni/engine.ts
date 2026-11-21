@@ -11,6 +11,7 @@ import type { ExactInferenceCertificate, IndeterminateCertificate } from './cert
 import { MATCHED_PAIR_NI_ADMISSION, type MatchedPairNiAdmission } from './admission.js';
 import { canonicalPolynomial, constant, degree, derivative, divideWithRemainder, evaluate, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialNegate, polynomialPow, polynomialScale, type RationalPolynomial } from './polynomial.js';
 import { add, canonicalRational, choose, compare, decimal, divide, equal, multiply, negate, pow, rational, rationalBitLength, subtract, type Rational, ONE, TWO, validateExternalRational, ZERO } from './rational.js';
+import { MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS, WorkBudget } from './work-budget.js';
 
 const MATCHED_PAIR_NI_MAX_N = 25;
 // 24 exact dyadic subdivisions give a < 2^-24 nuisance interval while
@@ -32,9 +33,10 @@ const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE = 16;
 const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE = 16;
 /** Aggregate deterministic E-step comparison-work budget, checked before and during exhaustive work. */
 const MATCHED_PAIR_NI_MAX_WORK_UNITS = 1_500_000;
-/** Diagnostic CPU deadline checked at deterministic E-step work boundaries. */
-const MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS = 12_000;
+/** Default per-worker wall-clock kill, from launch to reply. */
 const MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS = 20_000;
+/** The largest delay setTimeout honors; Node clamps larger values to 1 ms. */
+const MAX_TIMER_MILLISECONDS = 2_147_483_647;
 /** At most two isolated computations may consume process memory concurrently. */
 const MATCHED_PAIR_NI_MAX_CONCURRENT_WORKERS = 2;
 /** This is V8 old-space only, not a total RSS/cgroup assertion. */
@@ -135,21 +137,41 @@ export function matchedPairNiSupport(
       : estimate > MATCHED_PAIR_NI_MAX_WORK_UNITS ? 'aggregate_work_ceiling' : 'supported';
   return Object.freeze({ operation, supported: reason === 'supported', reason, estimatedWorkUnits: estimate });
 }
-class WorkBudget {
-  private used = 0;
-  private readonly deadline = Date.now() + MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS;
-  private readonly limit: number;
-  constructor(limit: number) { this.limit = limit; }
-  charge(units = 1): void {
-    this.used += units;
-    if (this.used > this.limit || Date.now() > this.deadline) throw new RangeError('Exact E+M aggregate work ceiling exceeded');
-  }
+/**
+ * Wall-clock limits on the isolated computation. Omitted fields keep the
+ * defaults: a 12 s compute deadline checked at work-budget charges, and a
+ * 20 s kill per worker from launch. `null` removes a limit, so the result
+ * depends only on the deterministic work budget; with `workerMilliseconds:
+ * null` a hung worker also keeps its two concurrency slots.
+ */
+export interface MatchedPairNiWallClockLimits {
+  readonly computeMilliseconds?: number | null;
+  readonly workerMilliseconds?: number | null;
+}
+interface WallClockLimits { readonly computeMilliseconds: number | null; readonly workerMilliseconds: number | null }
+const DEFAULT_WALL_CLOCK_LIMITS: WallClockLimits = Object.freeze({
+  computeMilliseconds: MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS, workerMilliseconds: MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS,
+});
+function wallClockLimit(value: unknown, fallback: number, max: number, name: string): number | null {
+  if (value === undefined) return fallback;
+  if (value === null) return null;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > max) throw new RangeError(`${name} must be null or an integer in [0, ${max}]`);
+  return value;
+}
+function snapshotWallClockLimits(value: MatchedPairNiWallClockLimits | undefined): WallClockLimits {
+  if (value === undefined) return DEFAULT_WALL_CLOCK_LIMITS;
+  const copy = inertRecordWithOptional(value, 'Matched-pair NI wall-clock limits', [], ['computeMilliseconds', 'workerMilliseconds']);
+  return Object.freeze({
+    computeMilliseconds: wallClockLimit(copy.computeMilliseconds, MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS, Number.MAX_SAFE_INTEGER, 'computeMilliseconds'),
+    workerMilliseconds: wallClockLimit(copy.workerMilliseconds, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS, MAX_TIMER_MILLISECONDS, 'workerMilliseconds'),
+  });
 }
 /* This isolation path is deliberately module-private. A caller-created
  * worker can reproduce this module's dispatch marker, so the marker/port is
  * orchestration rather than authority: every activation is protected first by
  * the same joint input preflight and intrinsic root-operation caps below.
- * The managed launcher additionally supplies its worker termination boundary.
+ * The managed launcher additionally supplies its worker termination boundary,
+ * unless the caller passes `workerMilliseconds: null`.
  */
 function engineIntegerGcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left; let b = right < 0n ? -right : right;
@@ -255,9 +277,9 @@ function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, 
   visit(lowerBound, upperBound, 0);
   return Object.freeze({ exact: Object.freeze(exact), intervals: Object.freeze(intervals), unresolved });
 }
-function workBudgetFor(n: number, margin: Rational, _alpha: Rational, exhaustiveSize: boolean): WorkBudget | null {
+function workBudgetFor(n: number, margin: Rational, _alpha: Rational, exhaustiveSize: boolean, computeMilliseconds: number | null): WorkBudget | null {
   const support = matchedPairNiSupport(exhaustiveSize ? 'null_boundary_size' : 'inference', n, margin);
-  return support.supported ? new WorkBudget(MATCHED_PAIR_NI_MAX_WORK_UNITS) : null;
+  return support.supported ? new WorkBudget(MATCHED_PAIR_NI_MAX_WORK_UNITS, computeMilliseconds) : null;
 }
 
 function inertRecord(value: unknown, name: string, fields: readonly string[]): Record<string, unknown> {
@@ -540,7 +562,7 @@ function workerResponse(value: unknown): Readonly<{ ok: boolean; value?: unknown
   return copy as Readonly<{ ok: boolean; value?: unknown }>;
 }
 let activeWorkers = 0;
-function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value: unknown) => T): Promise<T | null> {
+function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value: unknown) => T, limits: WallClockLimits): Promise<T | null> {
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     let resultSettled = false;
@@ -566,7 +588,7 @@ function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (v
     let worker: Worker | undefined;
     try {
       worker = new Worker(workerUrl(), {
-        workerData: { exactMatchedPairNiWorker: true, task, payload, authorizationPort: channel.port2 }, transferList: [channel.port2], resourceLimits: { maxOldGenerationSizeMb: MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB },
+        workerData: { exactMatchedPairNiWorker: true, task, payload, authorizationPort: channel.port2, computeMilliseconds: limits.computeMilliseconds }, transferList: [channel.port2], resourceLimits: { maxOldGenerationSizeMb: MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB },
         execArgv: import.meta.url.endsWith('.ts') ? ['--import', 'tsx'] : undefined,
       });
     } catch {
@@ -584,7 +606,7 @@ function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (v
       if (message !== 'exact_matched_pair_ni_ready') terminate();
     });
     channel.port1.once('messageerror', () => terminate());
-    timer = setTimeout(() => { terminate(); settleResult(null); }, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS);
+    if (limits.workerMilliseconds !== null) timer = setTimeout(() => { terminate(); settleResult(null); }, limits.workerMilliseconds);
     worker.once('message', (message: unknown) => {
       try { const response = workerResponse(message); reply = response.ok ? hydrate(response.value) : null; }
       catch { reply = null; }
@@ -597,13 +619,13 @@ function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (v
     worker.once('exit', () => { releaseHandle(); settleResult(reply); });
   });
 }
-function runBoundedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value: unknown) => T, equalResult: (left: T, right: T) => boolean, fallback: () => T): Promise<T> {
+function runBoundedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value: unknown) => T, equalResult: (left: T, right: T) => boolean, fallback: () => T, limits: WallClockLimits): Promise<T> {
   // A complete proof is accepted only when two isolated computations of the
   // same captured request agree exactly. There is deliberately no queue.
   if (activeWorkers + 2 > MATCHED_PAIR_NI_MAX_CONCURRENT_WORKERS) return Promise.resolve(fallback());
   activeWorkers += 2;
-  const left = launchVerifiedWorker(task, payload, hydrate);
-  const right = launchVerifiedWorker(task, payload, hydrate);
+  const left = launchVerifiedWorker(task, payload, hydrate, limits);
+  const right = launchVerifiedWorker(task, payload, hydrate, limits);
   return left.then((leftValue) => right.then((rightValue) => leftValue !== null && rightValue !== null && equalResult(leftValue, rightValue) ? leftValue : fallback()))
     .catch(() => fallback());
 }
@@ -850,15 +872,16 @@ export function conditionalMcNemarPValue(state: ReducedMatchedPairState): Ration
   return numerator;
 }
 
-export function restrictedScoreEM(input: MatchedPairNiInput): Promise<MatchedPairNiResult> {
+export function restrictedScoreEM(input: MatchedPairNiInput, wallClock?: MatchedPairNiWallClockLimits): Promise<MatchedPairNiResult> {
   const normalized = snapshotInput(input);
+  const limits = snapshotWallClockLimits(wallClock);
   if (!matchedPairNiSupport('inference', reduceMatchedPairCounts(normalized.counts).n, normalized.margin).supported) {
     return Promise.resolve(indeterminate('complexity_ceiling'));
   }
-  return runBoundedWorker('restricted_score', normalized, (value) => hydrateMatchedPairNiResult(value, normalized), matchedResultEqual, () => indeterminate('complexity_ceiling'));
+  return runBoundedWorker('restricted_score', normalized, (value) => hydrateMatchedPairNiResult(value, normalized), matchedResultEqual, () => indeterminate('complexity_ceiling'), limits);
 }
 /** Runs only inside the bounded worker; not a runtime/admission API. */
-function restrictedScoreEMWorker(input: MatchedPairNiInput): MatchedPairNiResult {
+function restrictedScoreEMWorker(input: MatchedPairNiInput, computeMilliseconds: number | null): MatchedPairNiResult {
   if (isMainThread) throw new RangeError('Exact E+M core is worker-only');
   const normalizedInput = snapshotInput(input);
   const observed = reduceMatchedPairCounts(normalizedInput.counts);
@@ -868,7 +891,7 @@ function restrictedScoreEMWorker(input: MatchedPairNiInput): MatchedPairNiResult
     return Object.freeze({ mode: 'conditional_mcnemar_zero_margin', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(p, normalized.alpha) <= 0, alphaDecision: compare(p, normalized.alpha) <= 0 ? 'reject_certified' : 'nonreject_certified', pValue: Object.freeze({ lower: p, upper: p }) }) });
   }
   if (!matchedPairNiSupport('inference', normalized.state.n, normalized.margin).supported) return indeterminate('complexity_ceiling');
-  const budget = workBudgetFor(normalized.state.n, normalized.margin, normalized.alpha, false);
+  const budget = workBudgetFor(normalized.state.n, normalized.margin, normalized.alpha, false, computeMilliseconds);
   if (!budget) return indeterminate('complexity_ceiling');
   try {
     const states = enumerateReducedStates(normalized.state.n);
@@ -943,16 +966,17 @@ function sizeComplexityEnvelope(n: number, margin: Rational, alpha: Rational, st
  * Certified null-boundary size envelope. Any unresolved p-value is included
  * in the upper polynomial, never silently discarded from a claimed exact size.
  */
-export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rational): Promise<NullBoundarySizeEnvelope> {
+export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rational, wallClock?: MatchedPairNiWallClockLimits): Promise<NullBoundarySizeEnvelope> {
   const normalized = validate({ n, x: 0, t: 0 }, margin, alpha);
+  const limits = snapshotWallClockLimits(wallClock);
   if (equal(normalized.margin, ZERO)) throw new RangeError('Zero margin has conditional McNemar size, not an E+M polynomial');
   const states = enumerateReducedStates(normalized.state.n);
   const fallback = (): NullBoundarySizeEnvelope => sizeComplexityEnvelope(normalized.state.n, normalized.margin, normalized.alpha, states);
   if (!matchedPairNiSupport('null_boundary_size', normalized.state.n, normalized.margin).supported) return Promise.resolve(fallback());
-  return runBoundedWorker('null_size', Object.freeze({ n: normalized.state.n, margin: normalized.margin, alpha: normalized.alpha }), (value) => hydrateSizeEnvelope(value, normalized.state.n, normalized.margin, normalized.alpha), sizeEnvelopeEqual, fallback);
+  return runBoundedWorker('null_size', Object.freeze({ n: normalized.state.n, margin: normalized.margin, alpha: normalized.alpha }), (value) => hydrateSizeEnvelope(value, normalized.state.n, normalized.margin, normalized.alpha), sizeEnvelopeEqual, fallback, limits);
 }
 /** Runs only inside the bounded worker; not a runtime/admission API. */
-function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rational): NullBoundarySizeEnvelope {
+function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rational, computeMilliseconds: number | null): NullBoundarySizeEnvelope {
   if (isMainThread) throw new RangeError('Exact E+M core is worker-only');
   const normalized = validate({ n, x: 0, t: 0 }, margin, alpha);
   if (equal(normalized.margin, ZERO)) throw new RangeError('Zero margin has conditional McNemar size, not an E+M polynomial');
@@ -960,7 +984,7 @@ function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rati
   if (!matchedPairNiSupport('null_boundary_size', normalized.state.n, normalized.margin).supported) {
     return sizeComplexityEnvelope(normalized.state.n, normalized.margin, normalized.alpha, states);
   }
-  const budget = workBudgetFor(normalized.state.n, normalized.margin, normalized.alpha, true);
+  const budget = workBudgetFor(normalized.state.n, normalized.margin, normalized.alpha, true, computeMilliseconds);
   if (!budget || normalized.state.n > MATCHED_PAIR_NI_MAX_SIZE_N) {
     return sizeComplexityEnvelope(normalized.state.n, normalized.margin, normalized.alpha, states);
   }
@@ -1015,8 +1039,8 @@ export const parseMatchedPairNiDecimal = decimal;
 
 /* The only route to the unexported complete-computation cores. The parent
  * always supplies Worker resource limits and terminates at the wall-clock
- * ceiling; importing this module in another worker exposes only the public,
- * bounded API. */
+ * ceiling unless the caller passes `workerMilliseconds: null`; importing this
+ * module in another worker exposes only the public, bounded API. */
 interface EngineWorkerRequest {
   readonly exactMatchedPairNiWorker: true;
   readonly task: WorkerTask;
@@ -1024,6 +1048,15 @@ interface EngineWorkerRequest {
   readonly authorizationPort: MessagePort;
   /** Test-only phase telemetry; never a capability or a policy input. */
   readonly trace?: true;
+  /** The compute deadline; absent or invalid means the 12 s default, null none. */
+  readonly computeMilliseconds?: number | null;
+}
+/** Own property only, so a poisoned Object.prototype cannot supply it. */
+function requestComputeMilliseconds(request: EngineWorkerRequest): number | null {
+  if (!Object.hasOwn(request, 'computeMilliseconds')) return MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS;
+  const value = request.computeMilliseconds;
+  if (value === null) return null;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS;
 }
 function isEngineWorkerRequest(value: unknown): value is EngineWorkerRequest {
   return Boolean(value && typeof value === 'object' && (value as { exactMatchedPairNiWorker?: unknown }).exactMatchedPairNiWorker === true && (value as { authorizationPort?: unknown }).authorizationPort instanceof MessagePort);
@@ -1035,7 +1068,8 @@ if (!isMainThread && isEngineWorkerRequest(workerData)) {
   // arbitrary worker realm can poison Array.prototype before import, and
   // Node listener delivery is outside this module's control. Running the
   // intrinsically bounded core directly makes recreated activation harmless;
-  // the parent launcher still enforces the worker wall/resource boundary.
+  // the parent launcher still enforces the worker resource boundary, and its
+  // wall-clock kill unless the caller removed it.
   // Deferral lets a source-test entry install poison after ESM linking but
   // before the imported module's computation closure runs. It is a native
   // microtask boundary, not a caller-provided port/event callback.
@@ -1046,12 +1080,14 @@ if (!isMainThread && isEngineWorkerRequest(workerData)) {
     }
     if (request.trace === true) request.authorizationPort.postMessage('core_start');
     try {
+      const computeMilliseconds = requestComputeMilliseconds(request);
       const value = request.task === 'restricted_score'
-        ? restrictedScoreEMWorker(request.payload as MatchedPairNiInput)
+        ? restrictedScoreEMWorker(request.payload as MatchedPairNiInput, computeMilliseconds)
         : nullBoundarySizeEnvelopeWorker(
           (request.payload as { n: number }).n,
           (request.payload as { margin: Rational }).margin,
           (request.payload as { alpha: Rational }).alpha,
+          computeMilliseconds,
         );
       if (request.trace === true) request.authorizationPort.postMessage('core_complete');
       request.authorizationPort.close(); parentPort?.postMessage({ ok: true, value });

@@ -1,8 +1,20 @@
 #!/usr/bin/env node
 'use strict';
 
-const { execFileSync, spawn, spawnSync } = require('node:child_process');
-const { existsSync, mkdtempSync, readFileSync, rmSync } = require('node:fs');
+// Pre-commit step for the server unit suite (`npm run precommit:server-unit`).
+//
+// Contract: `--full` runs the full suite regardless of what is staged
+// (`npm run verify:local -- --full`). Without it, it plans from the staged files: a change to server
+// implementation, config, schemas or shared test helpers runs the full suite;
+// staged server unit test files alone run just those files; anything else
+// skips. It runs one vitest process and exits with vitest's exit code (0 on
+// skip). Environment: ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full|skip|auto forces
+// the plan, ADCP_PRECOMMIT_SERVER_UNIT_WORKERS=N sets the worker count
+// (default: CPU count minus two, capped by memory), ADCP_PRECOMMIT_REPORT_DIR=DIR keeps the
+// vitest JSON report and per-file timings there.
+
+const { execFileSync, spawnSync } = require('node:child_process');
+const { existsSync, mkdirSync } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -19,6 +31,10 @@ const FULL_SERVER_UNIT_PATTERNS = [
   /^static\/compliance\/source\//,
   /^static\/registry\//,
   /^server\/vitest\.config\.ts$/,
+  /^server\/vitest\.projects\.ts$/,
+  /^scripts\/server-unit-workers\.cjs$/,
+  /^scripts\/sdk-validator-cache\.cjs$/,
+  /^scripts\/node-compile-cache\.cjs$/,
   /^server\/tsconfig\.json$/,
   /^vitest\.config\.ts$/,
   /^package\.json$/,
@@ -59,6 +75,7 @@ function stagedFiles() {
   // Node's default 1 MB maxBuffer overflows (ENOBUFS) on the -z listing.
   const output = execFileSync('git', ['diff', '--cached', '--name-status', '--diff-filter=ACMRD', '-z'], {
     maxBuffer: 64 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
   return pathsFromNameStatus(output);
 }
@@ -92,102 +109,97 @@ function run(command, args) {
   return result.status ?? 1;
 }
 
-// The full suite runs one file at a time per process (server/vitest.config.ts
-// sets fileParallelism: false), so a single run no longer fits the hook
-// budget. Run it as parallel shards, the same split CI uses. Set
-// ADCP_PRECOMMIT_SERVER_UNIT_SHARDS=1 to keep the old serial run.
-const SHARDS_ENV = 'ADCP_PRECOMMIT_SERVER_UNIT_SHARDS';
-const MAX_DEFAULT_SHARDS = 4;
-const SERVER_DIR = path.resolve(__dirname, '..', 'server');
+// The full suite is one vitest run. server/vitest.config.ts reuses worker
+// processes across unit test files (`isolate: false`) and keeps a fresh
+// process only for the files it lists as isolated; vitest schedules both
+// projects over the same workers, longest files first from its duration
+// cache. ADCP_PRECOMMIT_SERVER_UNIT_WORKERS=N sets the worker count.
+const { WORKERS_ENV, resolveWorkerCount: resolveServerUnitWorkers } = require('./server-unit-workers.cjs');
 
-function resolveShardCount(env = process.env, cpus = os.availableParallelism?.() ?? os.cpus().length) {
-  const raw = env[SHARDS_ENV];
-  if (raw !== undefined && raw !== '') {
-    if (/^[1-9][0-9]*$/.test(raw)) return Number(raw);
-    console.warn(`Ignoring invalid ${SHARDS_ENV}=${raw}; expected a positive integer.`);
-  }
-  return Math.max(1, Math.min(MAX_DEFAULT_SHARDS, Math.floor(cpus / 2)));
+// Workers default to the CPU count minus two (one core for the vitest main
+// process, one for the rest of the machine), capped by memory: see
+// scripts/server-unit-workers.cjs.
+function resolveWorkerCount(env = process.env, cpus, totalmem) {
+  return resolveServerUnitWorkers({ env, cpus, totalmem, reservedCpus: 2 });
 }
 
-// Server-root-relative files that failed in a vitest JSON report, or null
-// when the report is missing or unreadable (a crashed shard must not pass).
-function failedFilesFromReport(reportPath, serverDir = SERVER_DIR) {
-  let report;
-  try {
-    report = JSON.parse(readFileSync(reportPath, 'utf8'));
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(report.testResults)) return null;
-  return report.testResults
-    .filter((result) => result.status === 'failed')
-    .map((result) => path.relative(serverDir, result.name).replace(/\\/g, '/'))
-    .sort();
+// ADCP_PRECOMMIT_REPORT_DIR keeps the vitest JSON report and per-file phase
+// timings (the profiler's vitest reporter) in that directory, so
+// scripts/profile-precommit.mjs can rank files after the run.
+const REPORT_DIR_ENV = 'ADCP_PRECOMMIT_REPORT_DIR';
+const TIMING_REPORTER = path.resolve(__dirname, 'profile-precommit', 'vitest-timing-reporter.mjs');
+
+function keptReportArgs(name, env = process.env) {
+  const dir = env[REPORT_DIR_ENV];
+  if (!dir) return [];
+  mkdirSync(dir, { recursive: true });
+  env.ADCP_VITEST_TIMING_DIR ||= dir;
+  const imports = env.ADCP_VITEST_IMPORT_DURATIONS;
+  // Forked workers do not inherit --cpu-prof/--heap-prof from NODE_OPTIONS;
+  // vitest's --execArgv passes them to every worker process.
+  const profile = [
+    ...(env.ADCP_VITEST_CPU_PROF_DIR ? ['--execArgv=--cpu-prof', `--execArgv=--cpu-prof-dir=${env.ADCP_VITEST_CPU_PROF_DIR}`] : []),
+    ...(env.ADCP_VITEST_HEAP_PROF_DIR ? ['--execArgv=--heap-prof', `--execArgv=--heap-prof-dir=${env.ADCP_VITEST_HEAP_PROF_DIR}`] : []),
+  ];
+  return [
+    '--reporter=default', '--reporter=json', `--outputFile.json=${path.join(dir, name)}`,
+    `--reporter=${TIMING_REPORTER}`,
+    ...(/^[1-9]\d*$/.test(imports ?? '') ? [`--experimental.importDurations.limit=${imports}`] : []),
+    ...profile,
+  ];
 }
 
-function runShard(index, total, reportPath) {
-  return new Promise((resolve) => {
-    const child = spawn('npm', [
-      'run', '--silent', 'test:server-unit', '--',
-      `--shard=${index}/${total}`,
-      '--reporter=default', '--reporter=json', `--outputFile.json=${reportPath}`,
-    ], { stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' });
-    const prefix = `[shard ${index}/${total}] `;
-    for (const [stream, sink] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) {
-      let pending = '';
-      stream.on('data', (chunk) => {
-        const lines = (pending + chunk.toString('utf8')).split('\n');
-        pending = lines.pop();
-        for (const line of lines) sink.write(prefix + line + '\n');
-      });
-      stream.on('end', () => { if (pending) sink.write(prefix + pending + '\n'); });
-    }
-    child.on('error', (error) => { console.error(prefix + error.message); resolve(1); });
-    child.on('close', (code) => resolve(code ?? 1));
-  });
+function runFullSuite() {
+  const workers = resolveWorkerCount();
+  console.log(`Running the full server unit suite with ${workers} workers (${WORKERS_ENV}=N to change).`);
+  return run('npm', ['run', 'test:server-unit', '--', `--maxWorkers=${workers}`, ...keptReportArgs('all.json')]);
 }
 
-async function runFullSuite() {
-  const shards = resolveShardCount();
-  if (shards === 1) return run('npm', ['run', 'test:server-unit']);
+// ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full|skip forces the plan regardless of what
+// is staged, so a profiling run can reproduce the full path without staging
+// anything. Unset (or "auto") keeps the staged-file plan.
+const PLAN_ENV = 'ADCP_PRECOMMIT_SERVER_UNIT_PLAN';
 
-  console.log(`Running the full server unit suite as ${shards} parallel shards (${SHARDS_ENV}=1 for a serial run).`);
-  const reportDir = mkdtempSync(path.join(os.tmpdir(), 'precommit-server-unit-'));
-  try {
-    const reports = Array.from({ length: shards }, (_, i) => path.join(reportDir, `shard-${i + 1}.json`));
-    const codes = await Promise.all(reports.map((report, i) => runShard(i + 1, shards, report)));
-    if (codes.every((code) => code === 0)) return 0;
+function resolvePlan(env = process.env) {
+  const forced = env[PLAN_ENV];
+  if (forced === 'full' || forced === 'skip') return { kind: forced, files: [] };
+  if (forced && forced !== 'auto') console.warn(`Ignoring invalid ${PLAN_ENV}=${forced}; expected full, skip or auto.`);
+  return planServerUnitRun(stagedFiles(), existsSync);
+}
 
-    const failed = [];
-    for (const [i, code] of codes.entries()) {
-      if (code === 0) continue;
-      const files = failedFilesFromReport(reports[i]);
-      if (!files || files.length === 0) {
-        console.error(`Shard ${i + 1}/${shards} exited ${code} without a readable list of failed test files.`);
-        return code || 1;
-      }
-      failed.push(...files);
+/**
+ * The server-relative unit files (tests/unit/..., src/...) the root config's
+ * precommit:server-* projects keep, by the same plan as main(): every file
+ * (full), none (skip), or the staged server unit test files. A git call that
+ * fails (no repository, a broken GIT_DIR) means the full plan, with a
+ * warning: a hook must not skip the suite because it could not tell.
+ */
+function serverUnitFilter(env = process.env, listStaged = stagedFiles) {
+  let plan;
+  const forced = env[PLAN_ENV];
+  if (forced === 'full' || forced === 'skip') {
+    plan = { kind: forced, files: [] };
+  } else {
+    if (forced && forced !== 'auto') console.warn(`Ignoring invalid ${PLAN_ENV}=${forced}; expected full, skip or auto.`);
+    try {
+      plan = planServerUnitRun(listStaged(), existsSync);
+    } catch (error) {
+      const reason = String(error?.stderr || error?.message || error).trim().split('\n')[0];
+      console.warn(`The staged-file plan for the server unit suite failed (git: ${reason}); running the full suite.`);
+      plan = { kind: 'full', files: [] };
     }
-
-    // Some suites have wall-clock budgets that parallel shards can exceed.
-    // Re-run only the failed files once, serially; the hook passes only if
-    // they pass in isolation, and it names them either way.
-    console.warn(`Re-running ${failed.length} file(s) that failed under parallel load, serially: ${failed.join(', ')}`);
-    const rerun = run('npm', ['exec', '--', 'vitest', 'run', '--config', 'server/vitest.config.ts', ...failed]);
-    if (rerun === 0) {
-      console.warn(`Passed on isolated re-run (likely load-sensitive): ${failed.join(', ')}`);
-    }
-    return rerun;
-  } finally {
-    rmSync(reportDir, { recursive: true, force: true });
   }
+  if (plan.kind === 'full') return () => true;
+  if (plan.kind === 'skip') return () => false;
+  const files = new Set(plan.files.map((file) => file.replace(/^server\//, '')));
+  return (file) => files.has(file);
 }
 
 async function main(argv = process.argv.slice(2)) {
   // `npm run verify:local -- --full` runs the whole suite regardless of what
-  // is staged.
+  // is staged: the same run as ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full.
   if (argv.includes('--full')) return runFullSuite();
-  const plan = planServerUnitRun(stagedFiles(), existsSync);
+  const plan = resolvePlan();
 
   if (plan.kind === 'skip') {
     console.log('No staged server unit changes; skipping server unit precommit check.');
@@ -200,7 +212,7 @@ async function main(argv = process.argv.slice(2)) {
   }
 
   console.log(`Running ${plan.files.length} changed server unit test file(s).`);
-  return run('npm', ['exec', '--', 'vitest', 'run', '--config', 'server/vitest.config.ts', ...plan.files]);
+  return run('npm', ['exec', '--', 'vitest', 'run', '--config', 'server/vitest.config.ts', ...keptReportArgs('files.json'), ...plan.files]);
 }
 
 if (require.main === module) {
@@ -211,9 +223,9 @@ if (require.main === module) {
 }
 
 module.exports = {
-  failedFilesFromReport,
   planServerUnitRun,
-  resolveShardCount,
+  serverUnitFilter,
+  resolveWorkerCount,
   pathsFromNameStatus,
   SERVER_UNIT_TEST_RE,
   FULL_SERVER_UNIT_PATTERNS,

@@ -47,8 +47,11 @@ vi.mock('@adcp/sdk/testing', async () => {
   return actual;
 });
 
-// Stub global fetch so the A2A well-known check returns a non-OK response.
-vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+// Stub global fetch so the A2A well-known check returns a non-OK response;
+// unstubGlobals (server/vitest.config.ts) restores it before every test.
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+});
 
 // The A2A agent card probe goes through sdkSafeFetch. Each test sets what the
 // card URL answers; the SDK transport wrapper stays real.

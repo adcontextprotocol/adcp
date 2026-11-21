@@ -11,7 +11,6 @@ import express from 'express';
 import http from 'node:http';
 import { ADCP_VERSION as SDK_ADCP_VERSION, SingleAgentClient, closeMCPConnections } from '@adcp/sdk';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'preview-version-test-token';
 
 import {
   TRAINING_AGENT_HOSTED_PREVIEW,
@@ -26,9 +25,11 @@ import {
   TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
 } from '../../src/training-agent/types.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
-const TOKEN = 'preview-version-test-token';
+const TOKEN = 'test-token';
 
 type Structured = Record<string, any>;
 
@@ -118,14 +119,13 @@ describe('hosted 3.3 preview negotiation over MCP', () => {
   };
 
   beforeAll(async () => {
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ limit: '5mb', verify: (req, _res, body) => {
       (req as unknown as { rawBody: string }).rawBody = body.toString('utf8');
     } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;

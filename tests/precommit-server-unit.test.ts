@@ -1,13 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { failedFilesFromReport, pathsFromNameStatus, planServerUnitRun, resolveShardCount } = require('../scripts/precommit-server-unit.cjs') as {
-  failedFilesFromReport(reportPath: string, serverDir?: string): string[] | null;
-  resolveShardCount(env?: Record<string, string | undefined>, cpus?: number): number;
+const { pathsFromNameStatus, planServerUnitRun, resolveWorkerCount, serverUnitFilter } = require('../scripts/precommit-server-unit.cjs') as {
+  serverUnitFilter(env?: Record<string, string | undefined>, listStaged?: () => string[]): (file: string) => boolean;
+  resolveWorkerCount(env?: Record<string, string | undefined>, cpus?: number, totalmem?: number): number;
   pathsFromNameStatus(output: Buffer): string[];
   planServerUnitRun(
     files: string[],
@@ -100,6 +97,20 @@ describe('precommit server unit planner', () => {
     });
   });
 
+  it('runs the full server unit suite for the SDK validator cache helper the vitest configs require', () => {
+    expect(planServerUnitRun(['scripts/sdk-validator-cache.cjs'])).toEqual({
+      kind: 'full',
+      files: [],
+    });
+  });
+
+  it('runs the full server unit suite for the compile cache helper server/vitest.config.ts requires', () => {
+    expect(planServerUnitRun(['scripts/node-compile-cache.cjs'])).toEqual({
+      kind: 'full',
+      files: [],
+    });
+  });
+
   it('runs the full server unit suite for C2PA cert generation helper changes', () => {
     expect(planServerUnitRun(['scripts/generate-c2pa-cert.sh'])).toEqual({
       kind: 'full',
@@ -141,40 +152,58 @@ describe('precommit server unit planner', () => {
   });
 });
 
-describe('precommit server unit sharding', () => {
-  it('defaults to half the CPUs, capped at four shards and never below one', () => {
-    expect(resolveShardCount({}, 16)).toBe(4);
-    expect(resolveShardCount({}, 8)).toBe(4);
-    expect(resolveShardCount({}, 6)).toBe(3);
-    expect(resolveShardCount({}, 2)).toBe(1);
-    expect(resolveShardCount({}, 1)).toBe(1);
+const { resolveWorkerCount: resolveServerUnitWorkers } = require('../scripts/server-unit-workers.cjs') as {
+  resolveWorkerCount(options: { env?: Record<string, string | undefined>; cpus?: number; totalmem?: number; reservedCpus?: number }): number;
+};
+const GB = 1024 ** 3;
+
+describe('precommit server unit parallelism', () => {
+  it('defaults to the CPU count minus two workers, never below one', () => {
+    expect(resolveWorkerCount({}, 14, 64 * GB)).toBe(12);
+    expect(resolveWorkerCount({}, 8, 64 * GB)).toBe(6);
+    expect(resolveWorkerCount({}, 3, 64 * GB)).toBe(1);
+    expect(resolveWorkerCount({}, 1, 64 * GB)).toBe(1);
   });
 
-  it('honors an explicit shard count and ignores invalid values', () => {
-    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: '1' }, 16)).toBe(1);
-    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: '6' }, 4)).toBe(6);
-    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: '0' }, 8)).toBe(4);
-    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: 'two' }, 8)).toBe(4);
+  it('caps workers at half of memory, 2 GiB per worker', () => {
+    expect(resolveWorkerCount({}, 10, 16 * GB)).toBe(4);
+    expect(resolveWorkerCount({}, 14, 48 * GB)).toBe(12);
+    expect(resolveWorkerCount({}, 8, 8 * GB)).toBe(2);
+    expect(resolveWorkerCount({}, 8, 2 * GB)).toBe(1);
   });
 
-  it('lists failed files relative to the server root and refuses unreadable reports', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'precommit-report-'));
-    try {
-      const serverDir = join(dir, 'server');
-      const report = join(dir, 'shard.json');
-      writeFileSync(report, JSON.stringify({
-        testResults: [
-          { name: join(serverDir, 'tests/unit/b.test.ts'), status: 'failed' },
-          { name: join(serverDir, 'tests/unit/ok.test.ts'), status: 'passed' },
-          { name: join(serverDir, 'src/a.test.ts'), status: 'failed' },
-        ],
-      }));
-      expect(failedFilesFromReport(report, serverDir)).toEqual(['src/a.test.ts', 'tests/unit/b.test.ts']);
-      expect(failedFilesFromReport(join(dir, 'missing.json'), serverDir)).toBeNull();
-      writeFileSync(report, '{"not":"a report"}');
-      expect(failedFilesFromReport(report, serverDir)).toBeNull();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it('caps the vitest config default, which reserves one CPU, the same way', () => {
+    expect(resolveServerUnitWorkers({ env: {}, cpus: 4, totalmem: 16 * GB, reservedCpus: 1 })).toBe(3);
+    expect(resolveServerUnitWorkers({ env: {}, cpus: 10, totalmem: 16 * GB, reservedCpus: 1 })).toBe(4);
+  });
+
+  it('honors an explicit worker count over both caps and ignores invalid values', () => {
+    expect(resolveWorkerCount({ ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: '1' }, 16, 64 * GB)).toBe(1);
+    expect(resolveWorkerCount({ ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: '20' }, 4, 8 * GB)).toBe(20);
+    expect(resolveWorkerCount({ ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: '0' }, 8, 64 * GB)).toBe(6);
+    expect(resolveWorkerCount({ ADCP_PRECOMMIT_SERVER_UNIT_WORKERS: 'two' }, 8, 64 * GB)).toBe(6);
+  });
+});
+
+// The root vitest config's precommit:server-* projects keep the files this
+// filter accepts (server-relative paths, as the server projects list them).
+describe('precommit server unit filter (the root config\'s server projects)', () => {
+  const staged = (...files: string[]) => () => files;
+
+  it('keeps only the staged server unit test files, by their server-relative path', () => {
+    const keep = serverUnitFilter({}, staged('server/tests/unit/slack-escape.test.ts', 'tests/lint-test-builds.test.cjs'));
+    expect(keep('tests/unit/slack-escape.test.ts')).toBe(true);
+    expect(keep('tests/unit/addie/router.spec.ts')).toBe(false);
+  });
+
+  it('keeps every file for a broad server change and none for an unrelated one', () => {
+    expect(serverUnitFilter({}, staged('server/vitest.projects.ts'))('src/x.test.ts')).toBe(true);
+    expect(serverUnitFilter({}, staged('mintlify-docs/reference/media-buys.mdx'))('src/x.test.ts')).toBe(false);
+  });
+
+  it('honors ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full|skip without reading the index', () => {
+    const unreadable = () => { throw new Error('the index must not be read'); };
+    expect(serverUnitFilter({ ADCP_PRECOMMIT_SERVER_UNIT_PLAN: 'full' }, unreadable)('src/x.test.ts')).toBe(true);
+    expect(serverUnitFilter({ ADCP_PRECOMMIT_SERVER_UNIT_PLAN: 'skip' }, unreadable)('src/x.test.ts')).toBe(false);
   });
 });

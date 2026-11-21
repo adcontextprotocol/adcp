@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import type { ReportingLedgerConfigurationV1 } from '@adcp/sdk/reporting/ledger';
 import type { ReportingPgPool } from '@adcp/reporting-storage';
 import { ReportingSourceNotReadyError, buildReportingSourceManifestV1, completedReportingSourceResponseV1, reportingSourceCapabilitiesV1, type InlineReportingDeliveryFetchV1, type ReportingSourceOfferingV1, type ReportingSourceSliceRequestV1 } from '@adcp/sdk/reporting/source';

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
-import { SCHEMA_TOOLS } from './mcp/schema-tools.js';
-import { URL_TOOLS } from './mcp/url-tools.js';
+import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search-tool-definitions.js';
+import { SCHEMA_TOOLS } from './mcp/schema-tool-definitions.js';
+import { URL_TOOLS } from './mcp/url-tool-definitions.js';
 import type { ToolHandler } from './model-providers/tool-orchestration.js';
 import { getSafeReadOnlyFallbackTools, SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
 import type { AddieTool } from './types.js';

@@ -4,7 +4,7 @@
 
 import crypto from 'crypto';
 import { fileTypeFromBuffer } from 'file-type';
-import DOMPurify from 'isomorphic-dompurify';
+import { getDOMPurify } from '../utils/deferred-modules.js';
 import sharp from 'sharp';
 import { BrandLogoDatabase, type BrandLogoSummary, type InsertBrandLogoInput } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
@@ -242,7 +242,7 @@ interface SanitizedSvgElement {
 
 /** Sanitise SVG markup and return the DOMPurify body holding it. */
 function sanitizeSvgToBody(raw: string): SanitizedSvgElement {
-  const body = DOMPurify.sanitize(raw, { ...SVG_PURIFY_CONFIG, RETURN_DOM: true }) as unknown as SanitizedSvgElement;
+  const body = getDOMPurify().sanitize(raw, { ...SVG_PURIFY_CONFIG, RETURN_DOM: true }) as unknown as SanitizedSvgElement;
   for (const element of Array.from(body.querySelectorAll('*'))) {
     for (const attr of Array.from(element.attributes)) {
       const value = neutralizeCssResources(attr.value);

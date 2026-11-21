@@ -884,46 +884,140 @@ Apply this pattern when restructuring protocol sections.
 
 ## Local Hooks
 
-The commit hooks run only fast checks. CI runs every suite and is the gate,
-so a hook never re-runs a whole suite on a shared, loaded machine.
+`.husky/pre-commit` runs `npm run precommit`, which is one vitest run:
+`vitest run --project 'precommit:*'`, through
+`node scripts/profile-precommit.mjs hook` (the run directory, the hook budget
+and the process supervision). The root `vitest.config.ts` defines the hook's projects:
 
-`.husky/pre-commit` runs `scripts/check-image-quality.sh` and
-`npm run precommit`: the dynamic-import, format-identity and callApi
-state-change guards, then `typecheck`. It takes well under a minute.
+- `precommit:root`, the root suite (`vitest run --project precommit:root`
+  runs it alone);
+- `precommit:node-tests`, the node:test files the hook runs
+  (`scripts/vitest-node-test-files.cjs`), CommonJS with vitest's globals;
+- `precommit:checks`, `npm run typecheck`, the governance JWS vector check
+  and the advisory image check (`tests/hook-checks/`);
+- `precommit:server-shared`, `-first`, `-fresh` and `-isolated`, the
+  staged-file-scoped server unit suite, built from the same
+  `server/vitest.projects.ts` as `server/vitest.config.ts`. `-first` holds
+  the longest files, so they start first in the shared pool.
 
-`.husky/pre-push` checks version sync, the changeset policy, and, when docs
-changed, schema links and Mintlify navigation.
+vitest runs the projects in groups, one after another: the light checks, then
+the server unit suite.
 
-To run tests before pushing, use `npm run verify:local`:
+- A group reports every failure in it; a failed group skips the later ones
+  (`scripts/vitest-hook-reporter.mjs`). `ADCP_PRECOMMIT_KEEP_GOING=1` runs
+  every group.
+- The terminal shows one line per step and the output of each failed step.
+  Every step's full log and `report.json` are in `.hook-runs/<stamp>-hook/`;
+  the newest 20 runs of each hook are kept (`ADCP_HOOK_RUNS_KEEP`).
+- `ADCP_PRECOMMIT_PROFILE=1` runs the same phases with profiling data.
+- Each hook has one wall-clock budget for all of its steps: 120 s for
+  pre-commit and 180 s for pre-push. On a 14-core M4 Pro, pre-commit with the
+  full server unit suite takes about 64-74 s (up to 99 s with other work on
+  the machine), and pre-push with every conditional step about 134-142 s. When the budget runs out, the hook stops every
+  step and every process the steps started, prints a `⏰ TIMEOUT` block that
+  names the steps still running and how long each ran, and exits 124. That
+  means budget, not a failing test.
+- On a slower machine, a sandbox or CI, raise the budget in seconds:
+  `ADCP_HOOK_BUDGET_S` for both hooks, or `ADCP_PRECOMMIT_BUDGET_S` and
+  `ADCP_PREPUSH_BUDGET_S` for one. Called directly, the runner also takes
+  `--budget-s` (`node scripts/profile-precommit.mjs hook --budget-s 600`).
+  `ADCP_TIMEOUT_SCALE` does not apply to the hooks. Steps don't carry budgets
+  of their own: the runner rejects a `scripts/with-timeout.sh` wrapper in the
+  `precommit` chain.
+- A leaf that is not a test, type check, or known read-only check runs alone,
+  in order. Add a leaf to the read-only allowlist in
+  `scripts/profile-precommit/plan.mjs` only if it writes nothing.
 
-- By default it runs the root and server unit tests affected by your changes
-  since `origin/main` (vitest follows the import graph), then `typecheck`.
-  `--since <ref>` changes the base.
-- `npm run verify:local -- --full` runs the full root and server unit suites.
-  The server suite runs as parallel shards and re-runs any file that failed
-  under load serially, once.
+`npm run verify:local` runs tests outside the hooks: by default the root and
+server unit tests affected by your changes since `origin/main` (vitest follows
+the import graph; `--since <ref>` changes the base), then `typecheck`.
+`npm run verify:local -- --full` runs the full root and server unit suites.
+
+The hook must pass on a clean checkout of `main` in any shell:
+
 - `server/tests/setup/revenue-tracking-env.ts` scrubs `DEV_USER_EMAIL`,
   `DEV_USER_ID`, `ALLOW_DEV_MODE_IN_PROD`, `ADMIN_API_KEY`, and `ADMIN_EMAILS`
-  before every server unit file. Conductor's `.env.local` exports these, and
-  the auth middleware reads them at module load, so without the scrub the
-  auth boundary tests pass in CI and fail locally. Tests that exercise those
-  boundaries set the variables explicitly in `vi.hoisted()`.
+  before every server unit file. Conductor's `.env.local` exports these, and the auth middleware reads
+  them at module load, so without the scrub the auth boundary tests pass in
+  CI and fail locally. Tests that exercise those boundaries set the variables
+  explicitly in `vi.hoisted()`.
+- Staging anything under `docs/`, `static/schemas/source/`, `.agents/`, or
+  `server/src/` runs the **full** server unit suite (see
+  `FULL_SERVER_UNIT_PATTERNS` in `scripts/precommit-server-unit.cjs`;
+  `ADCP_PRECOMMIT_SERVER_UNIT_PLAN=full|skip` forces the plan).
 - Live-model router scenarios in `server/tests/unit/addie-router.test.ts`
   are opt-in: `ADDIE_ROUTER_LIVE_TESTS=1` plus `ANTHROPIC_API_KEY`. Having the
   key in your shell is not enough on its own; they are an eval, not a gate.
 
-The storyboard matrix (`scripts/run-storyboards-matrix.sh`) is opt-in
-locally. The `training-agent-storyboards.yml` workflow runs it on every PR
-and is the gate. Run it with `ADCP_RUN_STORYBOARD_MATRIX=1 git push`, or run
-the script directly.
+`.husky/pre-push` runs under the same runner, as its single step
+(`node scripts/profile-precommit.mjs hook --name pre-push -- sh .husky/pre-push`),
+with logs in `.hook-runs/<stamp>-pre-push-hook/`. It runs the storyboard matrices
+(`scripts/run-storyboards-prepush.sh`: the current-source matrix
+`scripts/run-storyboards-matrix.sh` and the 3.0 compatibility matrix
+`scripts/run-storyboards-3-0-compat.sh` together) when training-agent,
+compliance or storyboard-script sources changed. Treat the local run as
+**advisory**: the `training-agent-storyboards.yml` workflow is the
+authoritative gate.
 
 - The matrix grades the working tree, not the pushed ref. The hook skips it
   when tracked files have uncommitted changes and says so; commit or stash to
-  run it against HEAD.
-- The matrix snapshots the freshly built `dist/schemas/latest` into a
+  run it against HEAD, or run the script directly.
+- `ADCP_SKIP_STORYBOARD_MATRIX=1 git push` skips it explicitly.
+- Every training-agent process of both surfaces (each single-process tenant,
+  and each discovery and storyboard worker of current `/sales` and
+  `/creative-builder`) runs from one queue, `scripts/run-storyboards-queue.mjs`.
+  Those two tenants keep a timeout, RSS, output and envelope check per
+  storyboard, and run in workers of fixed batches of
+  `STORYBOARD_STORYBOARDS_PER_PROCESS` consecutive storyboards (default 12);
+  any failure ends the worker, and the rest of the batch runs in a fresh one.
+  `STORYBOARD_STORYBOARDS_PER_PROCESS=1` gives every storyboard its own fresh
+  process, CI's model. `ADCP_STORYBOARD_JOBS`
+  sets how many run at once. The default fills the physical cores (macOS
+  performance cores; elsewhere all CPUs but two, halved for SMT) at 1.35
+  cores per process, with at most one process per 3 GiB of memory: 14 on a
+  40-CPU Linux machine, 7 on a laptop with 10 performance cores; `ADCP_STORYBOARD_JOBS=1` runs them one
+  after another. Tenants are graded in order from their logs, which carry the
+  same text a serial run writes; the 3.0 output follows the current one.
+- Every tenant log is kept, passing or failing, at
+  `test-results/storyboards/<floor set>/<tenant>.log` (`ADCP_STORYBOARD_LOG_DIR`
+  moves the directory). Each run overwrites its floor set's logs, so two runs
+  can be compared storyboard by storyboard.
+- The matrix builds `dist/schemas/latest` and `dist/compliance/latest`
+  only when their inputs changed: `node scripts/built-schemas.cjs ensure
+  schemas compliance` compares a digest of every file each build reads with
+  the stamp the last build left, and prints one `build-cache:` line per tree.
+  A build that fails stops the matrix. `ADCP_BUILD_CACHE=0` forces the builds;
+  a linked dependency in `node_modules` (`npm link`, `file:`) always does.
+  Running `scripts/build-*.cjs` directly always builds.
+- The matrix sets `ADCP_VALIDATOR_CACHE_DIR` to
+  `node_modules/.cache/adcp-sdk-validators` unless it is already set, and the
+  queue passes it to every training-agent process. With an @adcp/sdk release
+  that reads it (the on-disk validator cache), only the first process
+  compiles each validator; an SDK without that cache ignores the variable.
+  Set it to an empty string to turn the cache off.
+- The server unit suite and `test:unit` use the same cache:
+  `server/vitest.config.ts` and `vitest.config.ts` default
+  `ADCP_VALIDATOR_CACHE_DIR` to the same path through `test.env`
+  (`scripts/sdk-validator-cache.cjs`), with the same unset and empty-string
+  rule. They set no default in CI (`CI` set to anything other than `''`,
+  `false` or `0`), so CI compiles every validator live. To rule the cache out
+  of a failure that only happens locally, rerun with
+  `ADCP_VALIDATOR_CACHE_DIR=''`.
+- The current surface's schema and compliance builds finish before any
+  training agent starts, because every training agent reads
+  `dist/schemas/latest`. The matrix snapshots `dist/schemas/latest` into a
   temporary directory before running tenants, so a concurrent
   `npm run build:schemas` in the same tree cannot fail the SDK's schema-root
   version check mid-run.
+- The pre-push hook and the server unit suite's vitest config
+  (`server/vitest.config.ts`, through `scripts/node-compile-cache.cjs`) set
+  `NODE_COMPILE_CACHE` to `node_modules/.cache/node-compile-cache` unless it
+  is already set, so storyboard processes and server-suite workers reuse
+  compiled code across processes and runs. `NODE_COMPILE_CACHE=''` or
+  `NODE_DISABLE_COMPILE_CACHE=1` turns it off; CI keeps it on, because Node
+  checks every entry against its module's source. In vitest workers it covers
+  modules Node loads natively (the SDK and other externalized packages), not
+  repository source, which vitest's module runner evaluates.
 
 ## PR Preparation Checklist
 

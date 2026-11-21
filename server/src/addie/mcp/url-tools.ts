@@ -15,6 +15,7 @@ import { validateFetchUrl, validateRedirectTarget } from '../../utils/url-securi
 import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { createSchemaToolHandlers } from './schema-tools.js';
+import { URL_TOOLS } from './url-tool-definitions.js';
 
 // Maximum content size to prevent memory issues (500KB for text, 20MB for images/PDFs)
 const MAX_CONTENT_SIZE = 500 * 1024;
@@ -96,52 +97,7 @@ async function readBinaryWithSizeLimit(
   return combined.buffer;
 }
 
-/**
- * Tool definitions for URL/file fetching
- */
-export const URL_TOOLS: AddieTool[] = [
-  {
-    name: 'fetch_url',
-    description:
-      'Fetch and read the content of a web URL. Use this when a user shares a link and asks about it, or when you need to read external content. Returns the text content of the page. Note: Does not work for pages requiring authentication.',
-    usage_hints: 'use when user shares a link and asks "what is this?", "can you read this?", "summarize this article"',
-    input_schema: {
-      type: 'object',
-      properties: {
-        url: {
-          type: 'string',
-          description: 'The URL to fetch (must be http:// or https://)',
-        },
-        extract_type: {
-          type: 'string',
-          enum: ['text', 'html', 'markdown'],
-          description: 'How to extract content: text (plain text), html (raw HTML), markdown (converted to markdown). Default: text',
-        },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'read_slack_file',
-    description:
-      'Download and read a file that was shared in Slack. PROACTIVELY use this whenever a user shares a file (PDF, document, text file, image, etc.) - don\'t wait to be asked. Users expect you to see what they shared. Provide the file URL from the shared file info.',
-    usage_hints: 'use IMMEDIATELY when you see "[Shared files]" in a message - read the file proactively',
-    input_schema: {
-      type: 'object',
-      properties: {
-        file_url: {
-          type: 'string',
-          description: 'The url_private or permalink from the Slack file share',
-        },
-        file_name: {
-          type: 'string',
-          description: 'The file name (helps with parsing)',
-        },
-      },
-      required: ['file_url'],
-    },
-  },
-];
+export { URL_TOOLS };
 
 /**
  * Fetch content from a URL

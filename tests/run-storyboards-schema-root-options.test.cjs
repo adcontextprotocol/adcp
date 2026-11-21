@@ -83,24 +83,31 @@ test('candidate-bundle capability discovery registers the external schema root',
   );
 });
 
-test('candidate schema root is entered in the SDK CommonJS loader as well as ESM', () => {
-  // The SDK's ESM build reads response schemas through its CommonJS loader
-  // for envelope-status shaping. A candidate that leads the published SDK is
-  // only resolvable there if the runner enters the root in that instance too.
+test("candidate schema root is entered once, in the SDK's ESM loader", () => {
+  // The SDK's ESM build binds its own schema loader for envelope-status
+  // shaping (bindEnvelopeSchemaLoader, adcp-client#3519), so the root entered
+  // through the ESM withExternalSchemaRoot is the one every response sees. A
+  // CommonJS mirror would load a second SDK build and repeat the work.
+  // tests/run-storyboards-sdk-single-build.test.cjs checks the loaded graph.
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
-  assert.match(
+  assert.doesNotMatch(
     source,
-    /createRequire\(import\.meta\.url\)[\s\S]*requireFromHere\.resolve\('@adcp\/sdk'\)[\s\S]*'validation', 'schema-loader\.js'/,
-    'resolve the CommonJS schema loader from the package entry the SDK itself loads',
+    /createRequire\([^)]*\)\(\s*['"]@adcp\/sdk|\.resolve\(\s*['"]@adcp\/sdk(?!\/package\.json['"])|schema-loader\.js|dist\/lib\//,
+    'reach the SDK through its ESM entry points; never its CommonJS build or a deep dist/lib path',
   );
+  assert.doesNotMatch(source, /sdkCommonJsSchemaRootScope/);
+  const wrapper = /function withCandidateSchemaRoot\b[\s\S]*?\n\}/.exec(source);
+  if (wrapper) {
+    assert.match(
+      wrapper[0],
+      /^function withCandidateSchemaRoot<T>\([^)]*\)[^{]*\{\s*return withExternalSchemaRoot\(version, root, fn\);\s*\}$/,
+      'withCandidateSchemaRoot, if kept, only enters the ESM schema root',
+    );
+  }
   assert.match(
     source,
-    /function withCandidateSchemaRoot[\s\S]*sdkCommonJsSchemaRootScope\(version, root, fn\)[\s\S]*return withExternalSchemaRoot\(version, root, scoped\);/,
-  );
-  assert.match(
-    source,
-    /const run = complianceOptions\.schemaRoot && releasedComplianceVersion\s*\? \(\) => withCandidateSchemaRoot\(releasedComplianceVersion, complianceOptions\.schemaRoot!, main\)/,
-    'the whole run, including tenant construction and request handling, must see the candidate root in both SDK builds',
+    /const run = complianceOptions\.schemaRoot && releasedComplianceVersion\s*\? \(\) => with(?:External|Candidate)SchemaRoot\(releasedComplianceVersion, complianceOptions\.schemaRoot!, main\)/,
+    'the whole run, including tenant construction and request handling, must see the candidate root',
   );
 });
 

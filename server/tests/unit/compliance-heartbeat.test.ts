@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LIBRARY_VERSION } from '@adcp/sdk';
+import { LIBRARY_VERSION } from '@adcp/sdk/version';
 
 const mocks = vi.hoisted(() => ({
   getAgentsDueForCheck: vi.fn(),
@@ -21,7 +21,9 @@ const mocks = vi.hoisted(() => ({
   presentCapabilityResolutionError: vi.fn(),
   badgeEligibleVersionsForTargetSelection: vi.fn(),
   selectComplianceTargetForAgentSelection: vi.fn(),
-  hostedComplianceTarget: vi.fn(),
+  // compliance-heartbeat.ts calls this once at import, from whichever test
+  // imports it first, so it needs a value before any beforeEach sets one.
+  hostedComplianceTarget: vi.fn(() => ({ requested: '3.1', version: '3.1.0' })),
   badgeEligibleVersionsForHostedComplianceTarget: vi.fn(),
   agentAdvertisesBadgeEligibleHostedComplianceTarget: vi.fn(),
   deriveVerificationStatus: vi.fn(),

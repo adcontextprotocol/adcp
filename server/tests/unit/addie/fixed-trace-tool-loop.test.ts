@@ -1,8 +1,10 @@
 import type { GenerateContentResponse } from '@google/genai';
+import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
+  validateFixedTraceToolLoopFixtures,
 } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
   FIXED_TRACE_SUITE,
@@ -50,6 +52,34 @@ function tool(name: string, required: string[] = []): AddieTool {
       additionalProperties: false,
     },
   };
+}
+
+function withInputSchema(definition: AddieTool, inputSchema: Record<string, unknown>): AddieTool {
+  return { ...definition, input_schema: inputSchema as AddieTool['input_schema'] };
+}
+
+function withSchemaId(definition: AddieTool, id: string): AddieTool {
+  return withInputSchema(definition, { $id: id, ...definition.input_schema });
+}
+
+/** Registration outcome through the public preflight: null when accepted,
+ * otherwise the boundary reason. */
+function registrationReason(selected: FixedTraceCase, definitions: readonly AddieTool[]): string | null {
+  try {
+    validateFixedTraceToolLoopFixtures(selected, definitions);
+    return null;
+  } catch (error) {
+    expect(error).toBeInstanceOf(FixedTraceToolLoopBoundaryError);
+    return (error as FixedTraceToolLoopBoundaryError).reason;
+  }
+}
+
+function unusedAnthropicProvider() {
+  const create = vi.fn();
+  const provider = new AnthropicModelProvider('unused', {
+    beta: { messages: { create } },
+  } as unknown as AnthropicMessagesTransport);
+  return { create, provider };
 }
 
 function anthropicResponse(
@@ -445,5 +475,114 @@ describe('executeFixedTraceToolLoop', () => {
       trace('knowledge-task-model'),
       [tool('search_docs')],
     )).rejects.toEqual(new FixedTraceToolLoopBoundaryError('fixture_definition_mismatch'));
+  });
+});
+
+/* Guards for tp-jyw.6: a cross-registration validator cache must keep Ajv's
+ * per-registration identity semantics ($id, cross-tool $ref) and must never
+ * serve a non-JSON schema (undefined or RegExp values) from a JSON-text key. */
+describe('fixed-trace tool schema registration semantics', () => {
+  const knowledgeTrace = () => trace('knowledge-task-model');
+
+  it.each([
+    ['byte-identical', () => [tool('search_docs'), tool('get_doc')]],
+    ['differing', () => [tool('search_docs', ['query']), tool('get_doc')]],
+  ] as const)('keeps two %s schemas sharing one $id tool_schema_invalid on a cold and a warmed cache', async (_label, definitions) => {
+    const sharedId = `https://example.invalid/addie/fixed-trace/shared-${_label}`;
+    const withSharedId = definitions().map((definition) => withSchemaId(definition, sharedId));
+
+    expect(registrationReason(knowledgeTrace(), withSharedId)).toBe('tool_schema_invalid');
+    const cold = unusedAnthropicProvider();
+    await expect(executeFixedTraceToolLoop(
+      cold.provider,
+      request('claude-test'),
+      knowledgeTrace(),
+      withSharedId,
+    )).rejects.toMatchObject({ reason: 'tool_schema_invalid' });
+    expect(cold.create).not.toHaveBeenCalled();
+
+    // Warm every validator for the same schemas minus $id.
+    expect(registrationReason(knowledgeTrace(), definitions())).toBeNull();
+    expect(registrationReason(knowledgeTrace(), definitions())).toBeNull();
+
+    expect(registrationReason(knowledgeTrace(), withSharedId)).toBe('tool_schema_invalid');
+    const warm = unusedAnthropicProvider();
+    await expect(executeFixedTraceToolLoop(
+      warm.provider,
+      request('claude-test'),
+      knowledgeTrace(),
+      withSharedId,
+    )).rejects.toMatchObject({ reason: 'tool_schema_invalid' });
+    expect(warm.create).not.toHaveBeenCalled();
+  });
+
+  it('resolves a cross-tool $ref only in registration order, as one shared registration does', async () => {
+    const referencedId = 'https://example.invalid/addie/fixed-trace/referenced-search-input';
+    const referenced = withSchemaId(tool('search_docs', ['query']), referencedId);
+    const referencing = withInputSchema(tool('get_doc'), {
+      type: 'object',
+      properties: { inner: { $ref: referencedId } },
+      required: ['inner'],
+      additionalProperties: false,
+    });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(registrationReason(knowledgeTrace(), [referenced, referencing])).toBeNull();
+      expect(registrationReason(knowledgeTrace(), [referencing, referenced])).toBe('tool_schema_invalid');
+    }
+
+    // The accepted registration validates through the cross-tool reference.
+    const create = vi.fn().mockResolvedValue(anthropicResponse([{
+      type: 'tool_use', id: 'tool_1', name: 'get_doc', input: { inner: { query: 7 } },
+    }], 'tool_use', 'msg_1'));
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create } },
+    } as AnthropicMessagesTransport);
+    await expect(executeFixedTraceToolLoop(
+      provider,
+      request('claude-test'),
+      knowledgeTrace(),
+      [referenced, referencing],
+    )).rejects.toMatchObject({
+      reason: 'tool_input_invalid',
+      checkpoint: { tools: [], rejectedToolCalls: [{ name: 'get_doc', reason: 'tool_input_invalid' }] },
+    });
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an undefined-valued schema invalid after its JSON-equal schema was accepted', () => {
+    const jsonEqual = withInputSchema(tool('search_docs'), { type: 'object', properties: {} });
+    const undefinedValued = withInputSchema(tool('search_docs'), {
+      type: 'object',
+      properties: { query: undefined },
+    });
+    expect(JSON.stringify(undefinedValued.input_schema)).toBe(JSON.stringify(jsonEqual.input_schema));
+
+    expect(registrationReason(knowledgeTrace(), [jsonEqual, tool('get_doc')])).toBeNull();
+    expect(registrationReason(knowledgeTrace(), [undefinedValued, tool('get_doc')])).toBe('tool_schema_invalid');
+    expect(registrationReason(knowledgeTrace(), [jsonEqual, tool('get_doc')])).toBeNull();
+    expect(registrationReason(knowledgeTrace(), [undefinedValued, tool('get_doc')])).toBe('tool_schema_invalid');
+  });
+
+  it('compiles a RegExp-bearing registration afresh every time, even after its JSON-equal schema was cached', () => {
+    const jsonEqual = withInputSchema(tool('search_docs'), { type: 'object', properties: { query: {} } });
+    const regExpValued = withInputSchema(tool('search_docs'), {
+      type: 'object',
+      properties: { query: /^synthetic$/u },
+    });
+    expect(JSON.stringify(regExpValued.input_schema)).toBe(JSON.stringify(jsonEqual.input_schema));
+    expect(registrationReason(knowledgeTrace(), [jsonEqual, tool('get_doc')])).toBeNull();
+
+    const compile = vi.spyOn(Ajv.prototype, 'compile');
+    try {
+      expect(registrationReason(knowledgeTrace(), [regExpValued, tool('get_doc')])).toBeNull();
+      // One registration with a non-JSON schema keeps today's path: a fresh
+      // compile of every schema in that registration, nothing served from cache.
+      expect(compile).toHaveBeenCalledTimes(2);
+      expect(registrationReason(knowledgeTrace(), [regExpValued, tool('get_doc')])).toBeNull();
+      expect(compile).toHaveBeenCalledTimes(4);
+    } finally {
+      compile.mockRestore();
+    }
   });
 });

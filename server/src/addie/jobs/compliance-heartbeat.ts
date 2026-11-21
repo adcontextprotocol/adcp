@@ -13,7 +13,7 @@ import {
  * Updates compliance status and triggers notifications on status transitions.
  */
 
-import { LIBRARY_VERSION } from '@adcp/sdk';
+import { LIBRARY_VERSION } from '@adcp/sdk/version';
 import {
   comply,
   complianceResultToDbInput,

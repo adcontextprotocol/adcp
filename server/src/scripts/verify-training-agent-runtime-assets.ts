@@ -9,7 +9,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveAdcpVersion } from '@adcp/sdk';
+import { resolveAdcpVersion } from '@adcp/sdk/version';
 import {
   ensurePreviewSchemaBundle,
   ensureTrainingAgentSchemaBundle,

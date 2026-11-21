@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepFrozenJsonData } from '../model-providers/capabilities.js';
 import { CODE_VERSION } from '../config-version.js';
 import {
   buildAddieScopedToolReference,
@@ -1142,7 +1143,27 @@ function resolveTraceDefinitions(
   });
 }
 
+// Tool-schema fingerprints for (suite, definitions) pairs that are both
+// proven deep-frozen JSON data, keyed by the two arrays. Neither can change,
+// so the fingerprint cannot go stale; any other pair is hashed afresh.
+const frozenToolSchemaSha256 = new WeakMap<object, WeakMap<object, string>>();
+
 export function fixedTraceToolSchemaSha256(
+  traceSuite: readonly FixedTraceCase[],
+  definitions: readonly AddieTool[],
+): string {
+  const known = frozenToolSchemaSha256.get(traceSuite)?.get(definitions);
+  if (known !== undefined) return known;
+  const digest = computeFixedTraceToolSchemaSha256(traceSuite, definitions);
+  if (isDeepFrozenJsonData(traceSuite) && isDeepFrozenJsonData(definitions)) {
+    let byDefinitions = frozenToolSchemaSha256.get(traceSuite);
+    if (!byDefinitions) frozenToolSchemaSha256.set(traceSuite, byDefinitions = new WeakMap());
+    byDefinitions.set(definitions, digest);
+  }
+  return digest;
+}
+
+function computeFixedTraceToolSchemaSha256(
   traceSuite: readonly FixedTraceCase[],
   definitions: readonly AddieTool[],
 ): string {

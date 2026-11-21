@@ -32,7 +32,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 
@@ -108,7 +108,7 @@ function lint(dir = SOURCE_DIR) {
   for (const file of files) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -132,7 +132,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ storyboard auth-shape lint: no authoring antipatterns');
-    return;
+    return 0;
   }
   console.error(`✗ storyboard auth-shape lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -141,9 +141,9 @@ function main() {
     console.error(`    ${msg}`);
     console.error('');
   }
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
-module.exports = { RULE_MESSAGES, iterSteps, checkStep, lint };
+module.exports = { main, RULE_MESSAGES, iterSteps, checkStep, lint };

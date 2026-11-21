@@ -24,13 +24,15 @@ const mocks = vi.hoisted(() => ({
   reportingProbe: vi.fn(),
 }));
 
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.WORKOS_API_KEY = 'sk_test_native_http_wiring';
-  process.env.WORKOS_CLIENT_ID = 'client_test_native_http_wiring';
-  process.env.WORKOS_COOKIE_PASSWORD = 'test-cookie-password-at-least-32-characters';
-  process.env.WORKOS_REDIRECT_URI = 'https://agenticadvertising.org/auth/callback';
-  delete process.env.DEV_USER_EMAIL;
-  delete process.env.DEV_USER_ID;
+  vi.stubEnv('WORKOS_API_KEY', 'sk_test_native_http_wiring');
+  vi.stubEnv('WORKOS_CLIENT_ID', 'client_test_native_http_wiring');
+  vi.stubEnv('WORKOS_COOKIE_PASSWORD', 'test-cookie-password-at-least-32-characters');
+  vi.stubEnv('WORKOS_REDIRECT_URI', 'https://agenticadvertising.org/auth/callback');
+  vi.stubEnv('DEV_USER_EMAIL', undefined);
+  vi.stubEnv('DEV_USER_ID', undefined);
 });
 
 vi.mock('@workos-inc/node', () => ({

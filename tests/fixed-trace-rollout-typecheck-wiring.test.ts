@@ -16,7 +16,10 @@ function assertRequiredRolloutTypecheckWiring(scripts: RootScripts): void {
     scripts.typecheck.indexOf("npm run typecheck:fixed-trace-rollout-tests"),
   );
   expect(scripts.test.split(/\s+&&\s+/)).toContain("npm run typecheck");
-  expect(scripts.precommit.split(/\s+&&\s+/)).toContain("npm run typecheck");
+  // The pre-commit hook is one vitest run over the precommit:* projects; its
+  // precommit:checks project expands and runs `npm run typecheck`.
+  expect(scripts.precommit.split(/\s+&&\s+/)).toContain("vitest run --project 'precommit:*'");
+  expect(readFileSync(resolve(root, "tests/hook-checks/typecheck.test.ts"), "utf8")).toContain("roots: [{ line: 'npm run typecheck' }]");
 }
 
 describe("fixed-trace rollout test-aware typecheck wiring", () => {
@@ -40,6 +43,7 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
     // This is deliberately the production compiler command, without the root
     // script wrapper. It succeeds for the current source, which demonstrates
     // why the independent root manifest assertion is necessary.
+    // lint-allow-test-spawn-tooling: the production compiler run is what this check demonstrates
     const compiler = spawnSync(
       process.platform === "win32" ? "npx.cmd" : "npx",
       ["tsc", "--project", "server/tsconfig.json", "--noEmit", "--pretty", "false"],

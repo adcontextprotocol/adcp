@@ -2,7 +2,6 @@
 // seller whose selected format option is a display tag or VAST format. The
 // canonical dependency-impairment storyboards skip every creative phase when
 // the first product's first format option is not an image format.
-const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');

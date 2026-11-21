@@ -67,6 +67,7 @@ import {
   validateReportingConfigurations,
   type ReportingMediaBuyCandidate,
 } from './reporting-reliability.js';
+import { ACCOUNT_REF_SCHEMA } from './account-ref-schema.js';
 
 const logger = createLogger('training-agent-accounts');
 
@@ -1613,51 +1614,6 @@ function getComplianceAccounts(): AccountWireShape[] {
 }
 
 // ── Tool definitions ─────────────────────────────────────────────
-
-export const ACCOUNT_REF_SCHEMA = {
-  type: 'object',
-  oneOf: [
-    {
-      properties: { account_id: { type: 'string' } },
-      required: ['account_id'],
-      additionalProperties: false,
-    },
-    {
-      properties: {
-        brand: {
-          type: 'object',
-          properties: {
-            domain: { type: 'string' },
-            brand_id: { type: 'string' },
-            countries: {
-              type: 'array',
-              items: { type: 'string', pattern: '^[A-Z]{2}$' },
-              minItems: 1,
-              uniqueItems: true,
-            },
-          },
-          required: ['domain'],
-          additionalProperties: false,
-        },
-        operator: { type: 'string' },
-        operator_unit: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]*$' },
-            name: { type: 'string', minLength: 1, maxLength: 200 },
-          },
-          required: ['id'],
-          additionalProperties: false,
-        },
-        currency: { type: 'string', pattern: '^[A-Z]{3}$' },
-        timezone: { type: 'string', minLength: 1 },
-        sandbox: { type: 'boolean' },
-      },
-      required: ['brand', 'operator'],
-      additionalProperties: false,
-    },
-  ],
-};
 
 export const ACCOUNT_TOOLS = [
   {

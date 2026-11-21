@@ -15,6 +15,8 @@ process.env.PUBLIC_TEST_AGENT_TOKEN ??= PUBLIC_BEARER;
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
 import { TRAINING_CREATIVE_FEATURES } from '../../src/training-agent/task-handlers.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const ROOT_ENVELOPE_KEYS = new Set(['adcp_version', 'status', 'replayed']);
 
@@ -29,12 +31,11 @@ let closeServer: () => Promise<void> = async () => {};
 let rpcId = 0;
 
 beforeAll(async () => {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
   const srv = http.createServer(app);
-  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  await listenOnLoopback(srv);
   closeServer = () => new Promise(done => srv.close(() => done()));
   governanceUrl = `http://127.0.0.1:${(srv.address() as { port: number }).port}/api/training-agent/governance/mcp`;
 });

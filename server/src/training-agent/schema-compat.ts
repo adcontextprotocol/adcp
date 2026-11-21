@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -109,13 +108,6 @@ export function ensureTrainingAgentSchemaBundle(): Promise<void> {
       const built = JSON.parse(readFileSync(path.join(root, 'index.json'), 'utf8')) as { adcp_version?: unknown };
       if (built.adcp_version !== CANDIDATE_SCHEMA_BUNDLE) return;
       registerExternalSchemaRoot(CANDIDATE_SCHEMA_BUNDLE, root);
-      // The SDK's ESM status rule reads schemas through its CommonJS schema
-      // loader (envelope-status-compat.mjs requires ../validation/schema-loader),
-      // a separate module instance with its own external roots
-      // (adcontextprotocol/adcp-client#3519, still so in 17.0.0-beta.6).
-      // Register there too, or the rule reads the published bundle and drops
-      // `status`. Remove with #3519's fix.
-      cjsRegisterExternalSchemaRoot(CANDIDATE_SCHEMA_BUNDLE, root);
     }
   });
   return registration;
@@ -126,11 +118,10 @@ let previewRegistration: Promise<void> | undefined;
 /**
  * Register the hosted preview's published bundle (PREVIEW_SCHEMA_BUNDLE) with
  * the SDK. Lazy: registering a full bundle costs seconds, so only the preview
- * registry and preview-pinned requests on the v5 route pay it. The ESM loader
- * is enough: the published bundle composes the envelope the way the SDK's
- * status rule expects, so preview responses keep `status` without the
- * CommonJS registration the candidate needs (served-release-shape.test.ts
- * grades it). A no-op when the preview is off.
+ * registry and preview-pinned requests on the v5 route pay it. The published
+ * bundle composes the envelope the way the SDK's status rule expects, so
+ * preview responses keep `status` (served-release-shape.test.ts grades it).
+ * A no-op when the preview is off.
  */
 export function ensurePreviewSchemaBundle(): Promise<void> {
   if (!PREVIEW_SCHEMA_BUNDLE) return Promise.resolve();
@@ -139,11 +130,4 @@ export function ensurePreviewSchemaBundle(): Promise<void> {
     registerExternalSchemaRoot(bundle, resolveRetainedSchemaRoot(undefined, undefined, bundle));
   });
   return previewRegistration;
-}
-
-function cjsRegisterExternalSchemaRoot(version: string, schemaRoot: string): void {
-  const cjsTesting = createRequire(import.meta.url)('@adcp/sdk/testing') as {
-    registerExternalSchemaRoot: (version: string, schemaRoot: string) => void;
-  };
-  cjsTesting.registerExternalSchemaRoot(version, schemaRoot);
 }

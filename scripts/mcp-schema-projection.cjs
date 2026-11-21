@@ -120,8 +120,49 @@ const REF_VALIDATION_SIBLINGS = new Set([
   'uniqueItems',
 ]);
 
+/**
+ * A deep copy, equal to structuredClone(value) for schema data. Primitives
+ * are returned as is. Plain objects and arrays are copied in JavaScript,
+ * which avoids structuredClone's serialize-and-deserialize round trip on
+ * every small enum or examples array. Like structuredClone, the copy keeps
+ * key order, array holes, own `__proto__` keys and shared references (an
+ * object reached twice is copied once). Any other object goes to
+ * structuredClone.
+ */
 function clone(value) {
-  return structuredClone(value);
+  if (value === null || typeof value !== 'object') return value;
+  return copySchemaData(value, new Map());
+}
+
+function copySchemaData(value, copies) {
+  if (value === null || typeof value !== 'object') return value;
+  const existing = copies.get(value);
+  if (existing !== undefined) return existing;
+  const prototype = Object.getPrototypeOf(value);
+  if (Array.isArray(value) && prototype === Array.prototype) {
+    const copy = new Array(value.length);
+    copies.set(value, copy);
+    for (let index = 0; index < value.length; index++) {
+      if (index in value) copy[index] = copySchemaData(value[index], copies);
+    }
+    return copy;
+  }
+  if (prototype === Object.prototype) {
+    const copy = {};
+    copies.set(value, copy);
+    for (const key of Object.keys(value)) {
+      const entry = copySchemaData(value[key], copies);
+      if (key === '__proto__') {
+        Object.defineProperty(copy, key, { value: entry, enumerable: true, writable: true, configurable: true });
+      } else {
+        copy[key] = entry;
+      }
+    }
+    return copy;
+  }
+  const copy = structuredClone(value);
+  copies.set(value, copy);
+  return copy;
 }
 
 function mergeSchemaMap(target, key, additions) {
@@ -140,34 +181,36 @@ function mergeSchemaMap(target, key, additions) {
   target[key] = merged;
 }
 
-function forEachChildSchema(node, visit) {
+// visit(child, segments): segments is the child's pointer path from node, or
+// undefined when withSegments is false.
+function forEachChildSchema(node, visit, withSegments = true) {
   if (typeof node === 'boolean' || !node || typeof node !== 'object' || Array.isArray(node)) return;
 
   for (const [key, value] of Object.entries(node)) {
     if (key === 'items') {
       if (Array.isArray(value)) {
-        for (const [index, item] of value.entries()) visit(item, ['items', String(index)]);
+        for (const [index, item] of value.entries()) visit(item, withSegments ? ['items', String(index)] : undefined);
       } else if (typeof value === 'boolean' || (value && typeof value === 'object')) {
-        visit(value, ['items']);
+        visit(value, withSegments ? ['items'] : undefined);
       }
       continue;
     }
     if (key === 'dependencies' && value && typeof value === 'object' && !Array.isArray(value)) {
       for (const [name, dependency] of Object.entries(value)) {
-        if (!Array.isArray(dependency)) visit(dependency, ['dependencies', name]);
+        if (!Array.isArray(dependency)) visit(dependency, withSegments ? ['dependencies', name] : undefined);
       }
       continue;
     }
     if (SINGLE_SCHEMA_KEYWORDS.has(key) && (typeof value === 'boolean' || (value && typeof value === 'object'))) {
-      visit(value, [key]);
+      visit(value, withSegments ? [key] : undefined);
       continue;
     }
     if (SCHEMA_ARRAY_KEYWORDS.has(key) && Array.isArray(value)) {
-      for (const [index, schema] of value.entries()) visit(schema, [key, String(index)]);
+      for (const [index, schema] of value.entries()) visit(schema, withSegments ? [key, String(index)] : undefined);
       continue;
     }
     if (SCHEMA_MAP_KEYWORDS.has(key) && value && typeof value === 'object' && !Array.isArray(value)) {
-      for (const [name, schema] of Object.entries(value)) visit(schema, [key, name]);
+      for (const [name, schema] of Object.entries(value)) visit(schema, withSegments ? [key, name] : undefined);
     }
   }
 }
@@ -181,6 +224,12 @@ function walkSchema(root, visit, depth = 1, pointer = '') {
   forEachChildSchema(root, (child, segments) => {
     walkSchema(child, visit, depth + 1, appendPointer(pointer, segments));
   });
+}
+
+/** walkSchema for visitors that read only the node: no depths or pointers are built. */
+function walkSchemaNodes(root, visit) {
+  visit(root);
+  forEachChildSchema(root, child => walkSchemaNodes(child, visit), false);
 }
 
 function assertDraft07SourceSchema(schema, label) {
@@ -356,6 +405,7 @@ function projectDraft07Node(node, legacyDefinitionPointers = collectLegacyDefini
 }
 
 function pointerSegment(value) {
+  if (!value.includes('~') && !value.includes('/')) return value;
   return value.replace(/~/g, '~0').replace(/\//g, '~1');
 }
 
@@ -364,7 +414,38 @@ function definitionKey(sourceDir, filename) {
   return `external:${relative}`;
 }
 
-function parseExternalRef(ref, currentFile, sourceDir) {
+/**
+ * The source schemas one build reads, keyed by absolute path. Each file is
+ * checked for existence, read, parsed and dialect-checked at most once. The
+ * cached documents are never mutated: a caller that changes one copies it
+ * first. A failed read, parse or check is not cached, so it fails again the
+ * same way. Scope a cache to one build; tests reuse paths across trees.
+ */
+function createSourceCache() {
+  const existing = new Map();
+  const parsed = new Map();
+  const checked = new Set();
+  return {
+    exists(file) {
+      if (!existing.has(file)) existing.set(file, fs.existsSync(file));
+      return existing.get(file);
+    },
+    json(file) {
+      if (!parsed.has(file)) parsed.set(file, JSON.parse(fs.readFileSync(file, 'utf8')));
+      return parsed.get(file);
+    },
+    draft07Document(file) {
+      const document = this.json(file);
+      if (!checked.has(file)) {
+        assertDraft07SourceSchema(document, file);
+        checked.add(file);
+      }
+      return document;
+    },
+  };
+}
+
+function parseExternalRef(ref, currentFile, sourceDir, sourceCache = createSourceCache()) {
   const hashIndex = ref.indexOf('#');
   const resource = hashIndex === -1 ? ref : ref.slice(0, hashIndex);
   const fragment = hashIndex === -1 ? '' : ref.slice(hashIndex + 1);
@@ -388,13 +469,13 @@ function parseExternalRef(ref, currentFile, sourceDir) {
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`Schema reference escapes source root: ${JSON.stringify(ref)}`);
   }
-  if (!fs.existsSync(resolved)) {
+  if (!sourceCache.exists(resolved)) {
     throw new Error(`Referenced schema does not exist: ${JSON.stringify(ref)} from ${currentFile}`);
   }
   return { resolved, fragment };
 }
 
-function compactDraft07Schema(rootSchema, rootFile, sourceDir, { rootId } = {}) {
+function compactDraft07Schema(rootSchema, rootFile, sourceDir, { rootId, sourceCache = createSourceCache() } = {}) {
   assertDraft07SourceSchema(rootSchema, rootFile);
   if (rootId !== undefined && (typeof rootId !== 'string' || rootId.length === 0)) {
     throw new Error('rootId must be a non-empty string');
@@ -416,7 +497,7 @@ function compactDraft07Schema(rootSchema, rootFile, sourceDir, { rootId } = {}) 
   function rewriteRef(ref, currentFile, currentKey) {
     if (ref.startsWith('#')) return localRef(ref.slice(1), currentKey);
 
-    const { resolved, fragment } = parseExternalRef(ref, currentFile, sourceDir);
+    const { resolved, fragment } = parseExternalRef(ref, currentFile, sourceDir, sourceCache);
     if (resolved === rootFile) return `${currentKey && rootId ? rootId : ''}#${fragment}`;
     if (resolved === currentFile) return localRef(fragment, currentKey);
 
@@ -424,8 +505,9 @@ function compactDraft07Schema(rootSchema, rootFile, sourceDir, { rootId } = {}) 
     if (!bundledFiles.has(resolved)) {
       bundledFiles.set(resolved, key);
       externalDefinitions[key] = true;
-      const referenced = JSON.parse(fs.readFileSync(resolved, 'utf8'));
-      assertDraft07SourceSchema(referenced, resolved);
+      // A shallow copy keeps the cached document intact: rewriteNode builds
+      // new objects and never writes to its input.
+      const referenced = { ...sourceCache.draft07Document(resolved) };
       if (!rootId) delete referenced.$id;
       delete referenced.$schema;
       externalDefinitions[key] = rewriteNode(referenced, resolved, key);
@@ -495,13 +577,13 @@ function compactDraft07Schema(rootSchema, rootFile, sourceDir, { rootId } = {}) 
 
 function collectExternalRefs(schema) {
   const documentIds = new Set();
-  walkSchema(schema, node => {
+  walkSchemaNodes(schema, node => {
     if (typeof node === 'object' && node !== null && typeof node.$id === 'string') {
       documentIds.add(node.$id.split('#', 1)[0]);
     }
   });
   const refs = [];
-  walkSchema(schema, node => {
+  walkSchemaNodes(schema, node => {
     if (typeof node !== 'object' || node === null) return;
     for (const keyword of ['$ref', '$dynamicRef', '$recursiveRef']) {
       const value = node[keyword];
@@ -759,13 +841,13 @@ function projectMcpDiscoveryInputSchema(schema) {
 
 function assertLocalRefsResolve(schema) {
   const resources = new Map();
-  walkSchema(schema, node => {
+  walkSchemaNodes(schema, node => {
     if (typeof node === 'object' && node !== null && typeof node.$id === 'string') {
       resources.set(node.$id.split('#', 1)[0], node);
     }
   });
   let count = 0;
-  walkSchema(schema, node => {
+  walkSchemaNodes(schema, node => {
     if (typeof node !== 'object' || node === null || typeof node.$ref !== 'string') return;
     const hashIndex = node.$ref.indexOf('#');
     const resourceId = hashIndex === -1 ? node.$ref : node.$ref.slice(0, hashIndex);
@@ -806,7 +888,7 @@ function measureSchema(schema) {
  */
 function stripPresentationAnnotations(schema) {
   const stripped = clone(schema);
-  walkSchema(stripped, node => {
+  walkSchemaNodes(stripped, node => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     for (const annotation of PRESENTATION_ANNOTATIONS) delete node[annotation];
   });
@@ -824,7 +906,7 @@ function isNamedRejection(not) {
 
 function stripModelContextAnnotations(schema) {
   const stripped = stripPresentationAnnotations(schema);
-  walkSchema(stripped, node => {
+  walkSchemaNodes(stripped, node => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     for (const keyword of MODEL_CONTEXT_OMISSIONS) delete node[keyword];
     // Arbitrary implementation extensions are not safe model-authored input.
@@ -891,7 +973,6 @@ const MODEL_CONTEXT_INLINE_MARKER = 'x-adcp-model-context-inline';
 function inlineMarkedModelContextDefinitions(schema) {
   const inlined = clone(schema);
   const marked = new Map();
-  const pointerSegment = value => value.replace(/~/g, '~0').replace(/\//g, '~1');
 
   function collect(node, pointer = '') {
     if (!node || typeof node !== 'object') return;
@@ -1023,7 +1104,7 @@ function rewriteEmbeddedResourceRefs(projected, rootId) {
   // Count every absolute (fragment-free) $id occurrence in the whole schema
   // to detect duplicates and root collisions.
   const idCount = new Map();
-  walkSchema(projected, node => {
+  walkSchemaNodes(projected, node => {
     if (typeof node === 'object' && node !== null && typeof node.$id === 'string'
       && !node.$id.includes('#')) {
       const url = node.$id;
@@ -1048,7 +1129,7 @@ function rewriteEmbeddedResourceRefs(projected, rootId) {
   if (defIdMap.size === 0) return;
 
   const refPrefix = `${rootId}#/$defs/`;
-  walkSchema(projected, node => {
+  walkSchemaNodes(projected, node => {
     if (typeof node !== 'object' || node === null || typeof node.$ref !== 'string') return;
     const ref = node.$ref;
     if (!ref.startsWith(refPrefix)) return;
@@ -1090,6 +1171,34 @@ function projectSourceSchema(
   schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
   discoveryInput = false,
   rewriteEmbeddedRefs = false,
+  sourceCache = createSourceCache(),
+) {
+  return projectSourceSchemaMeasured(
+    schema,
+    rootFile,
+    sourceDir,
+    urlVersion,
+    relativePath,
+    annotationMode,
+    schemaUrlPrefix,
+    discoveryInput,
+    rewriteEmbeddedRefs,
+    sourceCache,
+  ).schema;
+}
+
+/** projectSourceSchema, also returning the schema's measureSchema metrics. */
+function projectSourceSchemaMeasured(
+  schema,
+  rootFile,
+  sourceDir,
+  urlVersion,
+  relativePath,
+  annotationMode,
+  schemaUrlPrefix,
+  discoveryInput,
+  rewriteEmbeddedRefs,
+  sourceCache,
 ) {
   const projectionId = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
   // Prompt-only model-context views intentionally omit document metadata and
@@ -1100,7 +1209,7 @@ function projectSourceSchema(
     schema,
     rootFile,
     sourceDir,
-    preserveDocumentIdentities ? { rootId: projectionId } : undefined,
+    preserveDocumentIdentities ? { rootId: projectionId, sourceCache } : { sourceCache },
   );
   let projected = projectDraft07Node(compact);
   if (preserveDocumentIdentities) projected.$id = projectionId;
@@ -1126,7 +1235,7 @@ function projectSourceSchema(
     if (typeof discoveryRootDescription === 'string') projected.description = discoveryRootDescription;
   }
   projected.$schema = JSON_SCHEMA_2020_12;
-  walkSchema(projected, node => {
+  walkSchemaNodes(projected, node => {
     if (
       typeof node === 'object'
       && node !== null
@@ -1153,8 +1262,8 @@ function projectSourceSchema(
     throw new Error(`MCP projection is not self-contained; external references remain: ${externalRefs.join(', ')}`);
   }
   assertLocalRefsResolve(projected);
-  enforceSchemaBounds(projected, relativePath);
-  return projected;
+  const metrics = enforceSchemaBounds(projected, relativePath);
+  return { schema: projected, metrics };
 }
 
 function writeJson(filename, value) {
@@ -1274,6 +1383,9 @@ function generateMcpSchemaProjection({
   manifestMetadata = {},
   schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
   schemaRewriteEmbeddedRefs = () => false,
+  // Share one cache (createSourceCache) across the projections of one build
+  // so each source file is read and checked once.
+  sourceCache = createSourceCache(),
 }) {
   const supportedSchemaFields = new Set(['inputSchema', 'outputSchema']);
   if (
@@ -1296,7 +1408,7 @@ function generateMcpSchemaProjection({
 
   function projectSchema(relativePath, label = relativePath, discoveryInput = false, rewriteEmbeddedRefs = false) {
     const sourcePath = path.join(sourceDir, relativePath);
-    if (!fs.existsSync(sourcePath)) {
+    if (!sourceCache.exists(sourcePath)) {
       throw new Error(`Missing source schema for ${label}: ${relativePath}`);
     }
     if (generated.has(relativePath)) {
@@ -1308,10 +1420,12 @@ function generateMcpSchemaProjection({
       return;
     }
 
-    const sourceSchema = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
-    let projectedSchema;
+    // The projection reads the root schema and never writes to it, so the
+    // cached document is passed as is.
+    const sourceSchema = sourceCache.json(sourcePath);
+    let projected;
     try {
-      projectedSchema = projectSourceSchema(
+      projected = projectSourceSchemaMeasured(
         sourceSchema,
         sourcePath,
         sourceDir,
@@ -1321,12 +1435,14 @@ function generateMcpSchemaProjection({
         schemaUrlPrefix,
         discoveryInput,
         rewriteEmbeddedRefs,
+        sourceCache,
       );
     } catch (error) {
       throw new Error(`${relativePath}: ${error.message}`);
     }
+    const projectedSchema = projected.schema;
     writeJson(path.join(targetDir, relativePath), projectedSchema);
-    const bytes = Buffer.byteLength(JSON.stringify(projectedSchema));
+    const { bytes } = projected.metrics;
     totalBytes += bytes;
     largestSchemaBytes = Math.max(largestSchemaBytes, bytes);
     schemaCount++;
@@ -1399,8 +1515,10 @@ module.exports = {
   assertDraft07SourceSchema,
   assertLocalRefsResolve,
   buildRuntimeToolsList,
+  clonePlainData: clone,
   collectExternalRefs,
   compactDraft07Schema,
+  createSourceCache,
   enforceSchemaBounds,
   generateMcpSchemaProjection,
   inlineMarkedModelContextDefinitions,

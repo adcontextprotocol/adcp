@@ -13,7 +13,7 @@
 
 import { Readability } from '@mozilla/readability';
 import { isLLMConfigured, complete } from '../../utils/llm.js';
-import { parseHTML } from 'linkedom';
+import { getLinkedom } from '../../utils/deferred-modules.js';
 import { createLogger } from '../../logger.js';
 import { safeFetchAxiosLike } from '../../utils/url-security.js';
 
@@ -58,7 +58,7 @@ export async function fetchUrlContent(url: string): Promise<string> {
 
   // Use Mozilla Readability to extract article content
   // This removes nav, ads, footers, sidebars, etc. automatically
-  const { document } = parseHTML(html) as unknown as { document: ConstructorParameters<typeof Readability>[0] };
+  const { document } = getLinkedom().parseHTML(html) as unknown as { document: ConstructorParameters<typeof Readability>[0] };
   const reader = new Readability(document);
   const article = reader.parse();
 

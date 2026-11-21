@@ -10,7 +10,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import { describe, expect, it } from 'vitest';
 import { computePlanHash, stripBookkeeping } from '../../src/training-agent/plan-hash.js';
 

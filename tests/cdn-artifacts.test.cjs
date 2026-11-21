@@ -6,7 +6,13 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
+const { isolateGitEnv } = require('./helpers/git-object-fixture.cjs');
+// The publisher calls GNU `stat -c`; off Linux, runnerPath() supplies it.
 const { runnerPath } = require('./helpers/gnu-runner-tools.cjs');
+
+// Fixture git (and every step spawned from process.env) must not see a hook's
+// GIT_DIR/GIT_INDEX_FILE or the caller's git config; the fixtures set their own identity.
+isolateGitEnv({ identity: false });
 
 const ROOT = path.resolve(__dirname, '..');
 const VERSIONS = ['3.2.0-rc.0', '3.2.0-rc.1', '3.2.0-rc.2', '3.2.0-rc.3'];
@@ -165,20 +171,30 @@ function awsStub() {
 }
 
 // Fake only remote authority; local tracked-file and tuple comparisons use git.
-function gitStub() {
+// The publisher and its release fence call git for every object, so the
+// pass-through is a shell exec of the real git, not a Node process per call;
+// only ls-remote runs the Node stub below.
+const GIT_PASSTHROUGH = ['diff', 'ls-files', 'cat-file', 'rev-parse', 'rev-list', 'merge-base', 'ls-tree', 'show'];
+function gitShim(lsRemoteStub) {
+  return [
+    '#!/bin/sh',
+    'case "$1" in',
+    `  ls-remote) exec ${JSON.stringify(process.execPath)} ${JSON.stringify(lsRemoteStub)} "$@" ;;`,
+    `  ${GIT_PASSTHROUGH.join('|')}) exec "$TEST_REAL_GIT" "$@" ;;`,
+    '  *) echo "Unexpected git command: $*" >&2; exit 1 ;;',
+    'esac',
+    '',
+  ].join('\n');
+}
+
+function gitLsRemoteStub() {
   const args = process.argv.slice(2);
-  if (args[0] === 'ls-remote') {
-    const ref = args.find(arg => arg.startsWith('refs/heads/') || arg.startsWith('refs/tags/'));
-    const targets = JSON.parse(process.env.TEST_RELEASE_TARGETS);
-    const version = Object.keys(targets).find(version => ref === `refs/tags/v${version}`);
-    const target = ref === 'refs/heads/main' ? process.env.TESTED_SHA : targets[version];
-    if (!target) throw Error(`Unexpected remote ref: ${ref}`);
-    console.log(`${target}\t${ref}`);
-    return;
-  }
-  if (!['diff', 'ls-files', 'cat-file', 'rev-parse', 'rev-list', 'merge-base', 'ls-tree', 'show'].includes(args[0])) throw Error(`Unexpected git command: ${args}`);
-  const result = require('node:child_process').spawnSync(process.env.TEST_REAL_GIT, args, { stdio: 'inherit' });
-  process.exit(result.status ?? 1);
+  const ref = args.find(arg => arg.startsWith('refs/heads/') || arg.startsWith('refs/tags/'));
+  const targets = JSON.parse(process.env.TEST_RELEASE_TARGETS);
+  const version = Object.keys(targets).find(version => ref === `refs/tags/v${version}`);
+  const target = ref === 'refs/heads/main' ? process.env.TESTED_SHA : targets[version];
+  if (!target) throw Error(`Unexpected remote ref: ${ref}`);
+  console.log(`${target}\t${ref}`);
 }
 
 function ghStub() {
@@ -274,7 +290,9 @@ function fixture(t) {
     commit('Later tested main with mutable artifacts');
     authority = { testedSha: git(['rev-parse', 'HEAD']), targets };
     write('authority.json', JSON.stringify(authority));
-    executable('git', gitStub);
+    write('bin/git-ls-remote.cjs', `(${gitLsRemoteStub.toString()})();\n`);
+    write('bin/git', gitShim(path.join(dir, 'bin', 'git-ls-remote.cjs')));
+    fs.chmodSync(path.join(dir, 'bin', 'git'), 0o755);
     executable('gh', ghStub);
     // Untracked files are now tested as a refusal, separately from valid writes.
   }
@@ -313,123 +331,186 @@ function publish(dir, flags = [], extraEnv = {}) {
   return { stdout, calls, uploads: calls.flatMap(call => call.uploads) };
 }
 
-for (const skipLatest of [false, true]) {
-  test(`publishes every compliance extension with exact bytes and cache policy (skip latest: ${skipLatest})`, t => {
+// What a `--version VERSION` publication writes: every committed file of that
+// release, at its key, with the release's content type and the immutable
+// cache policy. Built from the fixture's dist files, never from observed
+// uploads; the per-version publication test pins it to the publisher's writes.
+const PROTOCOL_TYPES = {
+  '': 'application/gzip',
+  '.sha256': 'text/plain; charset=utf-8',
+  '.sig': 'application/octet-stream',
+  '.crt': 'application/x-pem-file',
+};
+function versionObjects(dir, version) {
+  const object = (key, file, contentType) => [`s3://test-bucket/${key}`, { key: `s3://test-bucket/${key}`,
+    body: fs.readFileSync(path.join(dir, file)).toString('base64'), contentType, cacheControl: IMMUTABLE }];
+  const tree = (root) => fs.readdirSync(path.join(dir, root), { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => path.relative(path.join(dir, root), path.join(entry.parentPath, entry.name)).split(path.sep).join('/'));
+  return Object.fromEntries([
+    ...tree(`dist/schemas/${version}`).map(file => object(`schemas/${version}/${file}`, `dist/schemas/${version}/${file}`, TYPES.json)),
+    ...tree(`dist/compliance/${version}`).map(file => object(`compliance/${version}/${file}`,
+      `dist/compliance/${version}/${file}`, TYPES[path.extname(file).slice(1)])),
+    ...Object.entries(PROTOCOL_TYPES).map(([suffix, contentType]) => object(`protocol/${version}.tgz${suffix}`,
+      `dist/protocol/${version}.tgz${suffix}`, contentType)),
+  ]);
+}
+
+/** The bucket as published releases left it: the fixture's objects plus each version's. */
+function seedBucket(dir, versions, change = objects => objects) {
+  const objects = change({ ...JSON.parse(fs.readFileSync(path.join(dir, 'objects.json'), 'utf8')),
+    ...Object.assign({}, ...versions.map(version => versionObjects(dir, version))) });
+  fs.writeFileSync(path.join(dir, 'objects.json'), JSON.stringify(objects));
+  return objects;
+}
+
+function readObjects(dir) {
+  return JSON.parse(fs.readFileSync(path.join(dir, 'objects.json'), 'utf8'));
+}
+
+// Invariants of every AWS call and compliance upload, whatever the publication.
+function assertPublicationShape(dir, { calls, uploads }) {
+  for (const call of calls) {
+    assert.ok(!call.args.includes('--delete'));
+    if (call.args[1] === 'sync') assert.ok(call.args.includes('--size-only'));
+    if (call.args.includes('--recursive')) assert.ok(!call.args.includes('--size-only'));
+    if (call.args[0] === 's3' && call.uploads.length) assert.ok(call.args.includes('--no-guess-mime-type'));
+    if (call.args[1] === 'put-object') assert.equal(call.args[call.args.indexOf('--if-none-match') + 1], '*');
+  }
+  for (const upload of uploads.filter(upload => upload.key.includes('/compliance/'))) {
+    const key = upload.key.replace('s3://test-bucket/', '');
+    assert.equal(upload.contentType, TYPES[path.extname(key).slice(1)], key);
+    assert.equal(upload.cacheControl, key.startsWith('compliance/latest/') ? REVALIDATE : IMMUTABLE, key);
+    assert.deepEqual(Buffer.from(upload.body, 'base64'), fs.readFileSync(path.join(dir, 'dist', key)), key);
+  }
+  // Existing schema pointers and protocol tuple semantics must stay intact.
+  for (const upload of uploads.filter(upload => !upload.key.includes('/compliance/'))) {
+    const key = upload.key.replace('s3://test-bucket/', '');
+    const immutable = VERSIONS.some(version => key.startsWith(`schemas/${version}/`)
+      || (FENCED_PUBLICATION ? key.startsWith(`protocol/${version}.`) : key === `protocol/${version}.tgz`));
+    assert.equal(upload.cacheControl, immutable ? IMMUTABLE : REVALIDATE, key);
+  }
+}
+
+// Each release is published on its own, into a bucket that already holds the
+// releases before it, as the release workflow does one version at a time.
+for (const [index, version] of VERSIONS.entries()) {
+  test(`publishes ${version} with exact bytes and cache policy, and nothing mutable`, { skip: !FENCED_PUBLICATION }, t => {
     const { dir } = fixture(t);
-    const results = FENCED_PUBLICATION
-      ? [...VERSIONS.map(version => publish(dir, ['--version', version, '--skip-latest'])),
-        ...(skipLatest ? [] : [publish(dir, ['--latest-only'])])]
-      : [publish(dir, skipLatest ? ['--skip-latest'] : [])];
-    const calls = results.flatMap(result => result.calls);
-    const uploads = results.flatMap(result => result.uploads);
-    if (FENCED_PUBLICATION) {
-      for (const [i, result] of results.entries()) {
-        const prefix = i < VERSIONS.length ? VERSIONS[i] : 'latest';
-        assert.ok(result.uploads.length > 0);
-        assert.ok(result.uploads.every(upload => upload.key.includes(`/${prefix}/`)
-          || upload.key.includes(`/${prefix}.`)
-          // Routine deployment also refreshes the root discovery pointer.
-          || (prefix === 'latest' && upload.key === 's3://test-bucket/schemas/index.json')));
-      }
-      const ghCalls = fs.readFileSync(path.join(dir, 'gh.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
-      for (const version of VERSIONS) {
-        assert.equal(ghCalls.filter(args => args[1] === 'view' && args[2] === `v${version}`).length, 1);
-        assert.equal(ghCalls.filter(args => args[1] === 'download' && args[2] === `v${version}`).length, 4);
-      }
-    }
-    const compliance = uploads.filter(upload => upload.key.includes('/compliance/'));
-    for (const version of VERSIONS) {
-      const row = compliance.filter(upload => upload.key === `s3://test-bucket/compliance/${version}/${ROWS}`);
-      assert.equal(row.length, 1, version);
-      assert.equal(sha256(Buffer.from(row[0].body, 'base64')), ROWS_SHA);
-    }
-    assert.equal(compliance.length, (skipLatest ? 4 : 5) * 8);
-    for (const upload of compliance) {
-      const key = upload.key.replace('s3://test-bucket/', '');
-      assert.equal(upload.contentType, TYPES[path.extname(key).slice(1)], key);
-      assert.equal(upload.cacheControl, key.startsWith('compliance/latest/') ? REVALIDATE : IMMUTABLE, key);
-      assert.deepEqual(Buffer.from(upload.body, 'base64'), fs.readFileSync(path.join(dir, 'dist', key)), key);
-    }
-    for (const call of calls) {
-      assert.ok(!call.args.includes('--delete'));
-      if (call.args[1] === 'sync') assert.ok(call.args.includes('--size-only'));
-      if (call.args.includes('--recursive')) assert.ok(!call.args.includes('--size-only'));
-      if (call.args[0] === 's3' && call.uploads.length) assert.ok(call.args.includes('--no-guess-mime-type'));
-      if (call.args[1] === 'put-object') assert.equal(call.args[call.args.indexOf('--if-none-match') + 1], '*');
-    }
-    // Existing schema pointers and protocol tuple semantics must stay intact.
-    for (const upload of uploads.filter(upload => !upload.key.includes('/compliance/'))) {
-      const key = upload.key.replace('s3://test-bucket/', '');
-      const immutable = VERSIONS.some(version => key.startsWith(`schemas/${version}/`)
-        || (FENCED_PUBLICATION ? key.startsWith(`protocol/${version}.`) : key === `protocol/${version}.tgz`));
-      assert.equal(upload.cacheControl, immutable ? IMMUTABLE : REVALIDATE, key);
-    }
-    assert.equal(uploads.some(upload => upload.key.includes('/latest')), !skipLatest);
-    // #8318: routine deployment is the only step that runs on every main
-    // merge, so it must republish the root pointers or they freeze forever.
-    const pointer = uploads.filter(upload => upload.key === 's3://test-bucket/schemas/index.json');
-    assert.equal(pointer.length, skipLatest ? 0 : 1);
-    if (!skipLatest) {
-      const published = JSON.parse(Buffer.from(pointer[0].body, 'base64').toString('utf8'));
-      assert.equal(pointer[0].cacheControl, REVALIDATE);
-      // Aliases advance to the newest release the bucket actually serves, and
-      // never to 3.1.2, which is released in-repo but absent from the CDN.
-      assert.equal(published.latest_stable, '3.1.1');
-      assert.deepEqual(published.aliases, { v3: '3.1.1', 'v3.1': '3.1.1', 'v3.0': '3.0.9' });
-      assert.deepEqual(published.latest_by_minor, { '3.1': '3.1.1', '3.0': '3.0.9' });
-      assert.ok(!published.versions.some(entry => entry.version === '3.1.2'));
-      // Prereleases published by this same run stay listed.
-      assert.ok(VERSIONS.every(version => published.versions.some(entry => entry.version === version)));
-      const latestPointer = uploads.filter(upload => upload.key === 's3://test-bucket/schemas/latest.json');
-      assert.equal(latestPointer.length, 1);
-      assert.deepEqual(JSON.parse(Buffer.from(latestPointer[0].body, 'base64').toString('utf8')), {
-        latest: '3.1.1', latest_stable: '3.1.1', channel: 'stable',
-        path: '/schemas/3.1.1/', index: '/schemas/3.1.1/index.json',
-      });
-      assert.equal(uploads.filter(upload => upload.key === `s3://test-bucket/compliance/latest/${ROWS}`).length, 1);
-    }
+    const before = seedBucket(dir, VERSIONS.slice(0, index));
+    const result = publish(dir, ['--version', version, '--skip-latest']);
+    assert.ok(result.uploads.length > 0);
+    assert.ok(result.uploads.every(upload => upload.key.includes(`/${version}/`) || upload.key.includes(`/${version}.`)));
+    const ghCalls = fs.readFileSync(path.join(dir, 'gh.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+    assert.ok(ghCalls.every(args => args[2] === `v${version}`), JSON.stringify(ghCalls));
+    assert.equal(ghCalls.filter(args => args[1] === 'view').length, 1);
+    assert.equal(ghCalls.filter(args => args[1] === 'download').length, 4);
+    const compliance = result.uploads.filter(upload => upload.key.includes('/compliance/'));
+    const row = compliance.filter(upload => upload.key === `s3://test-bucket/compliance/${version}/${ROWS}`);
+    assert.equal(row.length, 1, version);
+    assert.equal(sha256(Buffer.from(row[0].body, 'base64')), ROWS_SHA);
+    assert.equal(compliance.length, 8);
+    assertPublicationShape(dir, result);
+    assert.ok(!result.uploads.some(upload => upload.key.includes('/latest')));
+    assert.ok(!result.uploads.some(upload => upload.key === 's3://test-bucket/schemas/index.json'));
+    // The bucket gains exactly this release's objects, so later tests can seed it.
+    assert.deepEqual(readObjects(dir), { ...before, ...versionObjects(dir, version) });
   });
 }
 
+test('routine deployment publishes latest and the root pointers from the published releases', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir } = fixture(t);
+  seedBucket(dir, VERSIONS);
+  const result = publish(dir, ['--latest-only']);
+  const { uploads } = result;
+  assert.ok(uploads.length > 0);
+  assert.ok(uploads.every(upload => upload.key.includes('/latest/') || upload.key.includes('/latest.')
+    // Routine deployment also refreshes the root discovery pointer.
+    || upload.key === 's3://test-bucket/schemas/index.json'));
+  assertPublicationShape(dir, result);
+  const latest = uploads.filter(upload => upload.key.includes('/compliance/latest/'));
+  assert.equal(latest.length, 8);
+  assert.equal(uploads.filter(upload => upload.key === `s3://test-bucket/compliance/latest/${ROWS}`).length, 1);
+  // #8318: routine deployment is the only step that runs on every main
+  // merge, so it must republish the root pointers or they freeze forever.
+  const pointer = uploads.filter(upload => upload.key === 's3://test-bucket/schemas/index.json');
+  assert.equal(pointer.length, 1);
+  const published = JSON.parse(Buffer.from(pointer[0].body, 'base64').toString('utf8'));
+  assert.equal(pointer[0].cacheControl, REVALIDATE);
+  // Aliases advance to the newest release the bucket actually serves, and
+  // never to 3.1.2, which is released in-repo but absent from the CDN.
+  assert.equal(published.latest_stable, '3.1.1');
+  assert.deepEqual(published.aliases, { v3: '3.1.1', 'v3.1': '3.1.1', 'v3.0': '3.0.9' });
+  assert.deepEqual(published.latest_by_minor, { '3.1': '3.1.1', '3.0': '3.0.9' });
+  assert.ok(!published.versions.some(entry => entry.version === '3.1.2'));
+  // Prereleases the bucket already serves stay listed.
+  assert.ok(VERSIONS.every(version => published.versions.some(entry => entry.version === version)));
+  const latestPointer = uploads.filter(upload => upload.key === 's3://test-bucket/schemas/latest.json');
+  assert.equal(latestPointer.length, 1);
+  assert.deepEqual(JSON.parse(Buffer.from(latestPointer[0].body, 'base64').toString('utf8')), {
+    latest: '3.1.1', latest_stable: '3.1.1', channel: 'stable',
+    path: '/schemas/3.1.1/', index: '/schemas/3.1.1/index.json',
+  });
+});
+
+// A retry of one release, one publication per test, from the bucket states a
+// retry meets: a refused wrong target, one object missing, all present, and
+// an object whose bytes differ.
 for (const version of VERSIONS) {
-  test(`current tested ${version} retry creates only the missing JSONL and preserves existing bytes`, { skip: !FENCED_PUBLICATION }, t => {
+  const flags = ['--version', version, '--skip-latest'];
+  const key = `s3://test-bucket/compliance/${version}/${ROWS}`;
+
+  test(`current tested ${version} publication with a wrong historical target stops before AWS`, { skip: !FENCED_PUBLICATION }, t => {
     const { dir, authority } = fixture(t);
-    const flags = ['--version', version, '--skip-latest'];
     assert.equal(new Set(Object.values(authority.targets)).size, VERSIONS.length);
     assert.ok(Object.values(authority.targets).every(target => target !== authority.testedSha));
     assert.throws(() => publish(dir, flags, { RELEASE_SHA: authority.testedSha }), /merge-base|Publication version/);
     assert.equal(fs.readFileSync(path.join(dir, 'aws.jsonl'), 'utf8'), '', 'wrong historical target must stop before AWS');
-    publish(dir, flags);
-    const objectsFile = path.join(dir, 'objects.json');
-    const complete = JSON.parse(fs.readFileSync(objectsFile, 'utf8'));
-    const key = `s3://test-bucket/compliance/${version}/${ROWS}`;
-    const missing = { ...complete };
-    delete missing[key];
-    fs.writeFileSync(objectsFile, JSON.stringify(missing));
+  });
+
+  test(`current tested ${version} retry creates only the missing JSONL`, { skip: !FENCED_PUBLICATION }, t => {
+    const { dir } = fixture(t);
+    let complete;
+    seedBucket(dir, [version], objects => {
+      complete = objects;
+      const missing = { ...objects };
+      delete missing[key];
+      return missing;
+    });
     const recovered = publish(dir, flags);
     assert.deepEqual(recovered.uploads, [complete[key]]);
     assert.equal(sha256(Buffer.from(recovered.uploads[0].body, 'base64')), ROWS_SHA);
-    assert.deepEqual(JSON.parse(fs.readFileSync(objectsFile, 'utf8')), complete);
+    assert.deepEqual(readObjects(dir), complete);
+  });
+
+  test(`current tested ${version} retry of a complete release creates nothing`, { skip: !FENCED_PUBLICATION }, t => {
+    const { dir } = fixture(t);
+    const complete = seedBucket(dir, [version]);
     const repeated = publish(dir, flags);
     assert.equal(repeated.uploads.length, 0);
     assert.ok(repeated.calls.some(call => call.args[2]?.endsWith(ROWS)));
-    complete[key].body = Buffer.from('existing divergent bytes').toString('base64');
-    fs.writeFileSync(objectsFile, JSON.stringify(complete));
+    assert.deepEqual(readObjects(dir), complete);
+  });
+
+  test(`current tested ${version} retry refuses an existing object with different bytes`, { skip: !FENCED_PUBLICATION }, t => {
+    const { dir } = fixture(t);
+    const divergent = seedBucket(dir, [version], objects => ({ ...objects,
+      [key]: { ...objects[key], body: Buffer.from('existing divergent bytes').toString('base64') } }));
     assert.throws(() => publish(dir, flags), /Immutable object differs/);
-    assert.deepEqual(JSON.parse(fs.readFileSync(objectsFile, 'utf8')), complete);
+    assert.deepEqual(readObjects(dir), divergent);
   });
 }
 
-test('both dry-run modes enumerate JSONL without uploading', t => {
-  for (const flag of ['--dry-run', '--aws-dry-run']) {
+for (const flag of ['--dry-run', '--aws-dry-run']) {
+  test(`${flag} enumerates JSONL without uploading`, t => {
     const { dir } = fixture(t);
     const result = publish(dir, [flag]);
     assert.match(result.stdout, /x-ndjson/);
     assert.match(result.stdout, /jsonl/);
     assert.equal(result.uploads.length, 0);
     assert.equal(result.calls.length > 0, flag === '--aws-dry-run');
-  }
-});
+  });
+}
 
 test('all committed semver compliance extensions are supported, including every historical JSONL', () => {
   const files = execFileSync('git', ['ls-files', 'dist/compliance'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })

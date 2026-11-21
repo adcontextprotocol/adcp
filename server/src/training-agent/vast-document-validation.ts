@@ -10,7 +10,7 @@
  * buyer-supplied URLs.
  */
 
-import { DOMParser } from 'linkedom';
+import { getLinkedom } from '../utils/deferred-modules.js';
 import { SaxesParser } from 'saxes';
 
 export const TRAINING_SELLER_VAST_VERSIONS = ['2.0', '3.0', '4.0', '4.1', '4.2', '4.3'] as const;
@@ -153,7 +153,9 @@ export function validateInlineVastDocument(args: {
     };
   }
 
-  let document: ReturnType<DOMParser['parseFromString']>;
+  // Loaded outside the try: a failure to load linkedom is not invalid XML.
+  const { DOMParser } = getLinkedom();
+  let document: ReturnType<InstanceType<typeof DOMParser>['parseFromString']>;
   try {
     document = new DOMParser().parseFromString(trimmed, 'text/xml');
   } catch {

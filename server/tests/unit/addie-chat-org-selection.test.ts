@@ -124,26 +124,40 @@ import { DIRECTORY_TOOLS } from '../../src/addie/mcp/directory-tools.js';
 import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from '../../src/mcp/chat-tool.js';
 import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
 
-describe('prepareRequestWithMemberTools organization selection', () => {
-  beforeEach(() => {
-    adminMocks.check.mockReset().mockResolvedValue(false);
-    adminMocks.ledGroups.mockReset().mockResolvedValue([]);
-    memberContextMocks.getWebMemberContext.mockReset();
-    memberContextMocks.getWebMemberContext.mockResolvedValue({
-      is_mapped: false,
-      is_member: false,
-      slack_linked: false,
-    });
-    memberContextMocks.formatMemberContextForPrompt.mockReset();
-    memberContextMocks.formatMemberContextForPrompt.mockReturnValue(null);
-    siMocks.retrieve.mockReset();
-    siMocks.retrieve.mockResolvedValue({ agents: [], retrieval_time_ms: 0 });
-    siMocks.formatContext.mockReset();
-    siHostMocks.hasCachedSiSession.mockReset();
-    siHostMocks.hasCachedSiSession.mockReturnValue(false);
-    directoryMocks.createHandlers.mockClear();
-  });
+const PAID_MEMBER_CONTEXT = {
+  is_mapped: true,
+  is_member: true,
+  organization: {
+    workos_organization_id: 'org_paid',
+    name: 'Paid Org',
+    subscription_status: 'active',
+    is_personal: false,
+    membership_tier: 'company_standard',
+  },
+};
 
+// Every test starts from the same mock behavior, whatever ran before it in
+// this file (vitest --sequence.shuffle reorders tests and describes).
+beforeEach(() => {
+  adminMocks.check.mockReset().mockResolvedValue(false);
+  adminMocks.ledGroups.mockReset().mockResolvedValue([]);
+  memberContextMocks.getWebMemberContext.mockReset();
+  memberContextMocks.getWebMemberContext.mockResolvedValue({
+    is_mapped: false,
+    is_member: false,
+    slack_linked: false,
+  });
+  memberContextMocks.formatMemberContextForPrompt.mockReset();
+  memberContextMocks.formatMemberContextForPrompt.mockReturnValue(null);
+  siMocks.retrieve.mockReset();
+  siMocks.retrieve.mockResolvedValue({ agents: [], retrieval_time_ms: 0 });
+  siMocks.formatContext.mockReset();
+  siHostMocks.hasCachedSiSession.mockReset();
+  siHostMocks.hasCachedSiSession.mockReturnValue(false);
+  directoryMocks.createHandlers.mockClear();
+});
+
+describe('prepareRequestWithMemberTools organization selection', () => {
   it('passes the selected organization id into web member context resolution', async () => {
     const prepared = await prepareRequestWithMemberTools(
       'Save this agent',
@@ -204,17 +218,7 @@ describe('prepareRequestWithMemberTools organization selection', () => {
   });
 
   it('overrides the anonymous directory handler with the authenticated member context', async () => {
-    const paidContext = {
-      is_mapped: true,
-      is_member: true,
-      organization: {
-        workos_organization_id: 'org_paid',
-        name: 'Paid Org',
-        subscription_status: 'active',
-        is_personal: false,
-        membership_tier: 'company_standard',
-      },
-    };
+    const paidContext = PAID_MEMBER_CONTEXT;
     memberContextMocks.getWebMemberContext.mockResolvedValue(paidContext);
 
     const prepared = await prepareRequestWithMemberTools(
@@ -272,9 +276,11 @@ describe('mounted Addie web-thread ownership', () => {
   }
 
   beforeEach(() => {
+    // Authenticated requests on these routes resolve a paid member.
+    memberContextMocks.getWebMemberContext.mockResolvedValue(PAID_MEMBER_CONTEXT);
     threadMocks.getThreadByExternalId.mockReset();
     // These assertions exercise router selection during operator rollback.
-    process.env.ADDIE_RESPONSE_PROVIDER = 'sonnet';
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
     threadMocks.getOrCreateThread.mockReset().mockResolvedValue({
       thread_id: 'thread-anonymous-created',
       user_type: 'anonymous',
@@ -428,6 +434,7 @@ describe('mounted Addie web-thread ownership', () => {
     const streamTools = chatClient.processMessageStream.mock.calls[0]?.[2]?.tools.map((tool: { name: string }) => tool.name);
     const streamOptions = chatClient.processMessageStream.mock.calls[0]?.[3];
 
+    expect(jsonTools?.length).toBeGreaterThan(0);
     expect(jsonTools).toEqual(streamTools);
     expect(jsonOptions.selectedToolSetNames).toEqual(['agent_publisher_directory']);
     expect(streamOptions.selectedToolSetNames).toEqual(jsonOptions.selectedToolSetNames);

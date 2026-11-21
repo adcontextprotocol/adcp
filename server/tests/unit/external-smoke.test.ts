@@ -42,14 +42,23 @@ describe('external smoke discovery', () => {
       expect(opts.transport?.requestTimeoutMs).toBe(2000);
       return testCapabilityDiscovery(endpoint, opts);
     });
-    const start = performance.now();
+    const failures: unknown[] = [];
     for (let attempt = 0; attempt < 2; attempt++) {
-      await expect(boundedDiscovery(url, options, {
+      const attemptSignals = signals.length;
+      const failure = await boundedDiscovery(url, options, {
         discover, fetchFn, attemptTimeoutMs: 250, requestTimeoutMs: 2000,
-      })).rejects.toMatchObject({ kind: 'transient' });
+      }).then(() => undefined, (error: unknown) => error);
+      // The 250 ms attempt budget, not the 2000 ms SDK request timeout, ends
+      // the attempt: the rejection is that attempt's own SmokeFailure, and it
+      // is the reason on every request the attempt opened.
+      expect(failure).toBeInstanceOf(SmokeFailure);
+      expect(failure).toMatchObject({ kind: 'transient', message: 'Discovery attempt timed out after 250ms' });
+      expect(signals.length).toBeGreaterThan(attemptSignals);
+      expect(signals.slice(attemptSignals).every(signal => signal.reason === failure)).toBe(true);
       expect(active).toBe(0);
+      failures.push(failure);
     }
-    expect(performance.now() - start).toBeLessThan(2000);
+    expect(failures[0]).not.toBe(failures[1]);
     expect(fetchFn).toHaveBeenCalled();
     expect(unscopedFetch).not.toHaveBeenCalled();
     expect(signals.every(signal => signal.aborted)).toBe(true);
@@ -65,16 +74,26 @@ describe('external smoke discovery', () => {
 
   it('the real SDK consumes the explicit request timeout before the longer attempt budget', async () => {
     let active = 0;
+    const reasons: unknown[] = [];
     const fetchFn = vi.fn<typeof fetch>((_input, init) => new Promise((_resolve, reject) => {
       active++;
-      const abort = () => { active--; reject(init!.signal!.reason); };
+      const abort = () => { active--; reasons.push(init!.signal!.reason); reject(init!.signal!.reason); };
       if (init!.signal!.aborted) abort();
       else init!.signal!.addEventListener('abort', abort, { once: true });
     }));
-    const start = performance.now();
-    const result = await boundedDiscovery(url, options, { fetchFn, attemptTimeoutMs: 2000, requestTimeoutMs: 50 });
-    expect(result.steps.some(step => !step.passed)).toBe(true);
-    expect(performance.now() - start).toBeLessThan(1500);
+    // The 2000 ms attempt timer would reject. Resolving with a failed step
+    // whose error names the 50 ms request timeout means the SDK request
+    // timeout ended the request first.
+    const discovery = boundedDiscovery(url, options, { fetchFn, attemptTimeoutMs: 2000, requestTimeoutMs: 50 });
+    await expect(discovery).resolves.toBeDefined();
+    const result = await discovery;
+    const failed = result.steps.filter(step => !step.passed);
+    expect(failed).not.toHaveLength(0);
+    expect(failed.every(step => /timed out after 50 ?ms/.test(step.error ?? ''))).toBe(true);
+    // The SDK aborted each request it opened; the attempt budget aborted none.
+    expect(reasons).not.toHaveLength(0);
+    expect(reasons.some(reason => reason instanceof SmokeFailure)).toBe(false);
+    expect(reasons.some(reason => /Discovery attempt timed out/.test(String(reason)))).toBe(false);
     expect(active).toBe(0);
     await expect(checkProbe(url, options, {}, false, { discover: async () => result }))
       .rejects.toMatchObject({ kind: 'transient' });

@@ -49,7 +49,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static/compliance/source');
@@ -78,7 +78,7 @@ function loadStoryboards(sourceDir) {
     for (const file of walkYaml(path.join(sourceDir, sub))) {
       let doc;
       try {
-        doc = yaml.load(fs.readFileSync(file, 'utf8'));
+        doc = loadYamlFile(file);
       } catch {
         continue; // malformed YAML is reported by other lints
       }
@@ -230,7 +230,7 @@ function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT, schemaDir 
   const errors = [];
   const registryPath = path.join(sourceDir, REGISTRY_REL);
   if (!fs.existsSync(registryPath)) return [`registry_shape: ${REGISTRY_REL} is missing`];
-  const registry = yaml.load(fs.readFileSync(registryPath, 'utf8'));
+  const registry = loadYamlFile(registryPath);
   if (!registry || !Array.isArray(registry.checks)) return [`registry_shape: ${REGISTRY_REL} must declare checks[]`];
 
   registry.checks.forEach((entry, i) => checkShape(entry, i, errors));
@@ -294,7 +294,7 @@ function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT, schemaDir 
   }
 
   // Notice parity against the runner-output contract's canonical codes.
-  const contract = yaml.load(fs.readFileSync(path.join(sourceDir, CONTRACT_REL), 'utf8'));
+  const contract = loadYamlFile(path.join(sourceDir, CONTRACT_REL));
   const codes = (contract && contract.notice && contract.notice.canonical_codes) || {};
   const v4Codes = new Set(
     Object.entries(codes)

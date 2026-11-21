@@ -6,6 +6,7 @@
  *   TRAINING_AGENT_PORT=4444 npx tsx server/tests/manual/run-storyboards.ts --filter governance --verbose
  *   TENANT_PATH=sales npx tsx server/tests/manual/run-storyboards.ts --shard-index 0 --shard-count 4
  *   TENANT_PATH=sales node scripts/run-storyboards-isolated.mjs
+ *   TENANT_PATH=sales node scripts/run-storyboards-isolated.mjs --storyboards-per-process 12
  *
  * Expects a training agent already running at `http://127.0.0.1:${PORT}/api/training-agent/mcp`.
  * Start one in a separate terminal with:
@@ -18,8 +19,8 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { Socket } from 'node:net';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { createRequire } from 'node:module';
+import { join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
@@ -66,11 +67,17 @@ const filter = args.includes('--filter') ? args[args.indexOf('--filter') + 1] : 
 const storyboardId = args.includes('--storyboard-id') ? args[args.indexOf('--storyboard-id') + 1] : undefined;
 const listApplicableJson = args.includes('--list-applicable-json');
 const emitResultEnvelope = args.includes('--emit-result-envelope');
+const storyboardWorker = args.includes('--storyboard-worker');
 if (args.includes('--storyboard-id') && !storyboardId) {
   throw new Error('--storyboard-id requires a value');
 }
-if (emitResultEnvelope && !storyboardId) {
-  throw new Error('--emit-result-envelope requires --storyboard-id');
+if (emitResultEnvelope && !storyboardId && !storyboardWorker) {
+  throw new Error('--emit-result-envelope requires --storyboard-id or --storyboard-worker');
+}
+if (storyboardWorker && (
+  !emitResultEnvelope || storyboardId || listApplicableJson || args.includes('--shard-index')
+)) {
+  throw new Error('--storyboard-worker requires --emit-result-envelope and takes no --storyboard-id, --list-applicable-json or shard');
 }
 
 function optionalIntegerArg(name: string): number | undefined {
@@ -236,6 +243,9 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
     // production throttling is outside this exhaustive functional matrix and
     // must not turn it into an order-dependent request-count test.
     disableRateLimit: true,
+    // A server boot, like http.ts: the registries build while the harness
+    // starts, as they did before router construction stopped prewarming.
+    prewarmTenantRegistries: true,
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
@@ -907,277 +917,140 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
   return base;
 }
 
-async function main() {
-  const everything = listAllComplianceStoryboards(complianceOptions);
-  const { url: agentUrl, baseUrl: localAgentBaseUrl, close } = await startLocalAgent();
-  const selection = await selectStoryboardsForTenant(agentUrl, everything);
-  const { applicable } = selection;
-  if (storyboardId && applicable.length !== 1) {
-    const state = selection.notApplicable.some(sb => sb.id === storyboardId)
-      ? 'outside the tenant\'s declared capability scope'
-      : selection.quarantined.some(sb => sb.id === storyboardId)
-        ? 'on the known-failing quarantine list'
-        : 'missing or filtered out';
-    await close();
-    throw new Error(`Storyboard ${storyboardId} is ${state}`);
-  }
-  if (listApplicableJson) {
-    // The long-lived orchestrator parses this envelope but never imports the
-    // SDK itself. Flush before exiting so discovery is deterministic even if
-    // the SDK has installed background handles during module initialization.
-    console.log(`ADCP_STORYBOARD_LIST ${JSON.stringify({
-      version: 1,
-      storyboard_ids: applicable.map(sb => sb.id),
-      selection: {
-        corpus: selection.corpusSize,
-        applicable: applicable.length,
-        not_applicable: selection.notApplicable.length,
-        quarantined: selection.quarantined.length,
-      },
-    })}`);
-    await close();
-    await new Promise<void>(resolve => process.stdout.write('', resolve));
-    process.exit(0);
-  }
+interface StoryboardRunContext {
+  agentUrl: string;
+  localAgentBaseUrl: string;
+  jwksResolver: StaticJwksResolver;
+}
 
-  // eslint-disable-next-line no-console
-  console.log(`\nTraining agent running at ${agentUrl}`);
-  // eslint-disable-next-line no-console
-  console.log(`Filter: ${filter ?? '(all storyboards)'}\n`);
-  // eslint-disable-next-line no-console
-  console.log(
-    `Declared scope: ${(selection.profile.supported_protocols ?? []).join(', ') || '(universal only)'}`
-    + ` | specialisms: ${(selection.profile.specialisms ?? []).join(', ') || '(none)'}`,
-  );
-  // eslint-disable-next-line no-console
-  console.log(
-    `Selection: ${applicable.length} applicable | ${selection.notApplicable.length} not applicable`
-    + ` | ${selection.quarantined.length} quarantined (${selection.corpusSize} corpus)\n`,
-  );
-
-  // Shard only after all applicability decisions so every unsharded run and
-  // every union of shards execute the same storyboard set. The compliance
-  // index has stable ordering. Balanced contiguous ranges preserve the
-  // runner's established execution order (including schema/cache warmups)
-  // while bounding retained process memory.
-  const shardStart = shard ? Math.floor(applicable.length * shard.index / shard.count) : 0;
-  const shardEnd = shard ? Math.floor(applicable.length * (shard.index + 1) / shard.count) : applicable.length;
-  const all = applicable.slice(shardStart, shardEnd);
-  if (shard) {
-    // eslint-disable-next-line no-console
-    console.log(`Shard: ${shard.index + 1}/${shard.count} (${all.length} of ${applicable.length} applicable storyboards)\n`);
-  }
-  const skippedKnownFailing = selection.quarantined;
-  if (skippedKnownFailing.length > 0) {
-    // eslint-disable-next-line no-console
-    console.log('Skipping storyboards on the known-failing list:');
-    for (const sb of skippedKnownFailing) {
-      // eslint-disable-next-line no-console
-      console.log(`  - ${sb.id}: ${knownFailingReason(sb.id)}`);
-    }
-    // eslint-disable-next-line no-console
-    console.log('');
-  }
-  const relevantKnownFailingSteps = storyboardId
-    ? [...KNOWN_FAILING_STEPS].filter(([key]) => key.startsWith(`${storyboardId}/`))
-    : [...KNOWN_FAILING_STEPS];
-  if (relevantKnownFailingSteps.length > 0) {
-    // eslint-disable-next-line no-console
-    console.log('Skipping individual steps on the known-failing list:');
-    for (const [key, reason] of relevantKnownFailingSteps) {
-      // eslint-disable-next-line no-console
-      console.log(`  - ${key}: ${reason}`);
-    }
-    // eslint-disable-next-line no-console
-    console.log('');
-  }
+/**
+ * Runs one storyboard against the embedded agent: the per-storyboard reset,
+ * test kit, auth, routing and environment, then its summary rows (several
+ * for signed_requests, one per strict route variant). The monolithic loop,
+ * the single-storyboard child and the worker all run storyboards through it.
+ */
+async function runStoryboardEntry(
+  sb: Storyboard,
+  { agentUrl, localAgentBaseUrl, jwksResolver }: StoryboardRunContext,
+): Promise<Summary[]> {
   const results: Summary[] = [];
+  const storyboard = patchStoryboardForLocalRunner(sb);
+  // Isolate storyboards from each other: a previous storyboard may have
+  // seeded governance plans, media buys, creatives, etc. into a session
+  // keyed by the same brand domain. Without this reset the next
+  // storyboard inherits that state and e.g. a $10K governance plan
+  // from `media_buy_seller/governance_denied` silently intercepts a
+  // $50K buy in `sales_guaranteed`.
+  await clearSessions();
+  // clearSessions() only resets the framework's per-session map. The training
+  // agent also keeps several module-level pools that are not session-scoped
+  // (account catalogue, comply-controller seed/forced-completion pools,
+  // catalog/event-source stores). Without these resets, e.g. a creative
+  // format seeded by sales_catalog_driven leaks into creative_template's
+  // discover_formats step and shadows the static catalogue, missing
+  // `formats[0].assets`.
+  clearAccountStore();
+  clearSeededCreativeFormats();
+  clearForcedTaskCompletions();
+  clearCatalogEventStores();
+  const kit = loadTestKit(storyboard);
+  const brand = brandFromKit(kit, storyboard.id);
+  const testKit = testKitOptionsFromKit(kit);
+  const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
+  const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
+  // `requires: [multi_agent]` storyboards route each agent key to its
+  // sibling tenant in this same embedded process; the storyboard's
+  // default_agent stays on the tenant under test. Like webhook_emission,
+  // they run with the embedded agent's canonical base pinned to its actual
+  // local origin, so the governance issuer and the governed tenant's
+  // audience are this deployment's values. Everything else keeps the
+  // single-tenant positional URL and default canonical base.
+  const routesMultiAgent = storyboard.requires?.includes('multi_agent') === true;
+  const swapsCanonicalBase = storyboard.id === 'webhook_emission' || routesMultiAgent;
+  if (swapsCanonicalBase) {
+    process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
+  }
+  // Multi-agent runs never fetch brand.json, but the http loopback would
+  // make the advertised identity.brand_json_url schema-invalid (3.2+ needs
+  // https), and SDK 16.5+ fails discovery for capability-gated storyboards on
+  // invalid capabilities. Advertise the public https identity, as runs
+  // without the swap already do. webhook_emission keeps the loopback identity
+  // because it resolves the agent's webhook keys through it.
+  const previousIdentityUrl = process.env.TRAINING_AGENT_IDENTITY_URL;
+  if (routesMultiAgent) {
+    process.env.TRAINING_AGENT_IDENTITY_URL = TRAINING_AGENT_PUBLIC_URL;
+  }
 
-  const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
-
-  for (const sb of all) {
-    const storyboard = patchStoryboardForLocalRunner(sb);
-    // Isolate storyboards from each other: a previous storyboard may have
-    // seeded governance plans, media buys, creatives, etc. into a session
-    // keyed by the same brand domain. Without this reset the next
-    // storyboard inherits that state and e.g. a $10K governance plan
-    // from `media_buy_seller/governance_denied` silently intercepts a
-    // $50K buy in `sales_guaranteed`.
-    await clearSessions();
-    // clearSessions() only resets the framework's per-session map. The training
-    // agent also keeps several module-level pools that are not session-scoped
-    // (account catalogue, comply-controller seed/forced-completion pools,
-    // catalog/event-source stores). Without these resets, e.g. a creative
-    // format seeded by sales_catalog_driven leaks into creative_template's
-    // discover_formats step and shadows the static catalogue, missing
-    // `formats[0].assets`.
-    clearAccountStore();
-    clearSeededCreativeFormats();
-    clearForcedTaskCompletions();
-    clearCatalogEventStores();
-    const kit = loadTestKit(storyboard);
-    const brand = brandFromKit(kit, storyboard.id);
-    const testKit = testKitOptionsFromKit(kit);
-    const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
-    const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
-    // `requires: [multi_agent]` storyboards route each agent key to its
-    // sibling tenant in this same embedded process; the storyboard's
-    // default_agent stays on the tenant under test. Like webhook_emission,
-    // they run with the embedded agent's canonical base pinned to its actual
-    // local origin, so the governance issuer and the governed tenant's
-    // audience are this deployment's values. Everything else keeps the
-    // single-tenant positional URL and default canonical base.
-    const routesMultiAgent = storyboard.requires?.includes('multi_agent') === true;
-    const swapsCanonicalBase = storyboard.id === 'webhook_emission' || routesMultiAgent;
-    if (swapsCanonicalBase) {
-      process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
-    }
-    // Multi-agent runs never fetch brand.json, but the http loopback would
-    // make the advertised identity.brand_json_url schema-invalid (3.2+ needs
-    // https), and SDK 16.5+ fails discovery for capability-gated storyboards on
-    // invalid capabilities. Advertise the public https identity, as runs
-    // without the swap already do. webhook_emission keeps the loopback identity
-    // because it resolves the agent's webhook keys through it.
-    const previousIdentityUrl = process.env.TRAINING_AGENT_IDENTITY_URL;
-    if (routesMultiAgent) {
-      process.env.TRAINING_AGENT_IDENTITY_URL = TRAINING_AGENT_PUBLIC_URL;
-    }
-
-    if (storyboard.id === 'signed_requests') {
-      // Run the signed_requests storyboard once per strict route variant.
-      // Each route advertises a different covers_content_digest profile so
-      // the grader runs vectors that were previously skipped as
-      // capability-incompatible against the matching route.
-      //
-      // `/mcp-strict` (either): baseline run — skip 007/018 which target
-      //   specific digest profiles, skip 025 (SDK-internal JWK test).
-      // `/mcp-strict-required` (required, 3.2 signing profile): current
-      //   runs only; the verifier rejects Base64URL sf-binary at step 1.
-      // `/mcp-strict-required-legacy` (required, 3.0/3.1 signing profile):
-      //   frozen 3.0 runs; 007 fires here.
-      // `/mcp-strict-forbidden` (forbidden): 018 fires here; skip 007/025.
-      const strictVariants: Array<{ routeSuffix: string; skipVectors: string[] }> = isThreeZeroCompatRun
-        ? [
-            {
-              routeSuffix: '/mcp-strict',
-              skipVectors: ['007-missing-content-digest', '018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
-            },
-            {
-              // The frozen 3.0.x vectors are Base64URL-signed, which the
-              // 3.2-pinned `/mcp-strict-required` verifier MUST reject; the
-              // legacy route applies the same required-digest policy under
-              // the 3.0/3.1 signing profile.
-              routeSuffix: '/mcp-strict-required-legacy',
-              // The frozen 3.0.x vector set predates per-route digest-profile
-              // fixtures. Keep required-profile coverage by running only the
-              // digest-bearing positive and digest-policy negatives here.
-              skipVectors: skipThreeZeroSignedVectorsExcept([
-                '002-post-with-content-digest',
-                '007-missing-content-digest',
-                '010-content-digest-mismatch',
-              ]),
-            },
-            {
-              routeSuffix: '/mcp-strict-forbidden',
-              skipVectors: [
-                '002-post-with-content-digest',
-                '007-missing-content-digest',
-                '010-content-digest-mismatch',
-                '025-jwk-alg-crv-mismatch',
-              ],
-            },
-          ]
-        : [{
-            // AdCP 3.2 permits only required content-digest coverage. The
-            // frozen 3.0 matrix above retains the legacy either/forbidden
-            // verifier-profile coverage.
-            routeSuffix: '/mcp-strict-required',
-            // The current black-box vector bundle remains 3.1-compatible;
-            // omit only vectors whose bodies intentionally lack the
-            // content-digest coverage that every 3.2 signature requires.
+  if (storyboard.id === 'signed_requests') {
+    // Run the signed_requests storyboard once per strict route variant.
+    // Each route advertises a different covers_content_digest profile so
+    // the grader runs vectors that were previously skipped as
+    // capability-incompatible against the matching route.
+    //
+    // `/mcp-strict` (either): baseline run — skip 007/018 which target
+    //   specific digest profiles, skip 025 (SDK-internal JWK test).
+    // `/mcp-strict-required` (required, 3.2 signing profile): current
+    //   runs only; the verifier rejects Base64URL sf-binary at step 1.
+    // `/mcp-strict-required-legacy` (required, 3.0/3.1 signing profile):
+    //   frozen 3.0 runs; 007 fires here.
+    // `/mcp-strict-forbidden` (forbidden): 018 fires here; skip 007/025.
+    const strictVariants: Array<{ routeSuffix: string; skipVectors: string[] }> = isThreeZeroCompatRun
+      ? [
+          {
+            routeSuffix: '/mcp-strict',
+            skipVectors: ['007-missing-content-digest', '018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
+          },
+          {
+            // The frozen 3.0.x vectors are Base64URL-signed, which the
+            // 3.2-pinned `/mcp-strict-required` verifier MUST reject; the
+            // legacy route applies the same required-digest policy under
+            // the 3.0/3.1 signing profile.
+            routeSuffix: '/mcp-strict-required-legacy',
+            // The frozen 3.0.x vector set predates per-route digest-profile
+            // fixtures. Keep required-profile coverage by running only the
+            // digest-bearing positive and digest-policy negatives here.
+            skipVectors: skipThreeZeroSignedVectorsExcept([
+              '002-post-with-content-digest',
+              '007-missing-content-digest',
+              '010-content-digest-mismatch',
+            ]),
+          },
+          {
+            routeSuffix: '/mcp-strict-forbidden',
             skipVectors: [
-              '001-basic-post',
-              '003-es256-post',
-              '004-multiple-signature-labels',
-              '008-unknown-keyid',
-              '009-key-ops-missing-verify',
-              '015-signature-invalid',
-              '016-replayed-nonce',
-              '017-key-revoked',
-              '018-digest-covered-when-forbidden',
+              '002-post-with-content-digest',
+              '007-missing-content-digest',
+              '010-content-digest-mismatch',
               '025-jwk-alg-crv-mismatch',
             ],
-          }];
-      for (const variant of strictVariants) {
-        const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
-        try {
-          const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
-          const result = await inServedLineScope(() => runStoryboard(targetUrl, storyboard, {
-            ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
-            ...(wireAdcpVersion && { wireAdcpVersion }),
-            ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
-            ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
-            auth,
-            allow_http: true,
-            contracts: ['webhook_receiver_runner'],
-            webhook_receiver: { mode: 'loopback_mock' },
-            webhook_signing: {
-              jwks: jwksResolver,
-              replayStore: new InMemoryReplayStore(),
-              revocationStore: new InMemoryRevocationStore(),
-            },
-            request_signing: {
-              transport: 'mcp',
-              // Vector 020 (rate-abuse) sends cap+1 requests per run and is
-              // opt-in anyway. Vector 025 grades SDK internals (inline
-              // malformed JWK), not our agent — skipped on all three routes.
-              // Vectors 007/018 are digest-profile-specific and run only on
-              // the route whose advertised profile matches (see comments above).
-              skipVectors: variant.skipVectors,
-              skipRateAbuse: true,
-            },
-            ...(brand && { brand }),
-            ...(testKit && { test_kit: testKit }),
-          }));
-          for (const gap of result.coverage_gaps ?? []) {
-            // Keep unexercised native support visible without changing floor counts.
-            console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
-          }
-          applyStepSkipList(storyboard.id, result);
-          const summary = { ...summarize(storyboard, result), id: variantLabel };
-          results.push(summary);
-          const pill = summary.failed === 0
-            ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
-            : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
-          // eslint-disable-next-line no-console
-          console.log(`  ${variantLabel.padEnd(40)} ${pill}`);
-        } catch (err) {
-          const summary = { ...summarize(storyboard, { error: err instanceof Error ? err.message : String(err) }), id: variantLabel };
-          results.push(summary);
-          // eslint-disable-next-line no-console
-          console.log(`  ${variantLabel.padEnd(40)} ⚠ ${summary.error}`);
-        }
-      }
-    } else {
+          },
+        ]
+      : [{
+          // AdCP 3.2 permits only required content-digest coverage. The
+          // frozen 3.0 matrix above retains the legacy either/forbidden
+          // verifier-profile coverage.
+          routeSuffix: '/mcp-strict-required',
+          // The current black-box vector bundle remains 3.1-compatible;
+          // omit only vectors whose bodies intentionally lack the
+          // content-digest coverage that every 3.2 signature requires.
+          skipVectors: [
+            '001-basic-post',
+            '003-es256-post',
+            '004-multiple-signature-labels',
+            '008-unknown-keyid',
+            '009-key-ops-missing-verify',
+            '015-signature-invalid',
+            '016-replayed-nonce',
+            '017-key-revoked',
+            '018-digest-covered-when-forbidden',
+            '025-jwk-alg-crv-mismatch',
+          ],
+        }];
+    for (const variant of strictVariants) {
+      const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
       try {
-        // The default `/mcp` route is the public bearer-authenticated sandbox
-        // with no request-signing advertisement or enforcement. Every storyboard
-        // other than `signed_requests` stays on `/mcp` so bearer-authed unsigned
-        // calls keep working.
-        const routing = multiAgentRoutingForStoryboard({
-          storyboard,
-          tenantPath: process.env.TENANT_PATH ?? '',
-          tenantAgentUrl: agentUrl,
-          trainingAgentBaseUrl: localAgentBaseUrl,
-          serviceIdentityBase: getCanonicalBase(),
-          auth,
-        });
-        if (routing.kind === 'routed' && verbose) {
-          // eslint-disable-next-line no-console
-          console.log(`    [multi-agent] ${storyboard.id} routes ${Object.entries(routing.agents)
-            .map(([key, entry]) => `${key}=${entry.url}`).join(', ')} (default_agent=${routing.default_agent}; context ${JSON.stringify(routing.context)})`);
-        }
-        const result = await inServedLineScope(() => runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
+        const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
+        const result = await inServedLineScope(() => runStoryboard(targetUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           ...(wireAdcpVersion && { wireAdcpVersion }),
           ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
@@ -1191,50 +1064,185 @@ async function main() {
             replayStore: new InMemoryReplayStore(),
             revocationStore: new InMemoryRevocationStore(),
           },
+          request_signing: {
+            transport: 'mcp',
+            // Vector 020 (rate-abuse) sends cap+1 requests per run and is
+            // opt-in anyway. Vector 025 grades SDK internals (inline
+            // malformed JWK), not our agent — skipped on all three routes.
+            // Vectors 007/018 are digest-profile-specific and run only on
+            // the route whose advertised profile matches (see comments above).
+            skipVectors: variant.skipVectors,
+            skipRateAbuse: true,
+          },
           ...(brand && { brand }),
           ...(testKit && { test_kit: testKit }),
-          ...(routing.kind === 'routed' && {
-            agents: routing.agents,
-            default_agent: routing.default_agent,
-            context: routing.context,
-          }),
         }));
         for (const gap of result.coverage_gaps ?? []) {
-          // Keep unexercised native support visible even when prepared-state
-          // reuse produces no authored step rows. Do not change floor counts.
+          // Keep unexercised native support visible without changing floor counts.
           console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
         }
         applyStepSkipList(storyboard.id, result);
-        const summary = summarize(storyboard, result);
+        const summary = { ...summarize(storyboard, result), id: variantLabel };
         results.push(summary);
         const pill = summary.failed === 0
           ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
           : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
         // eslint-disable-next-line no-console
-        console.log(`  ${storyboard.id.padEnd(40)} ${pill}`);
+        console.log(`  ${variantLabel.padEnd(40)} ${pill}`);
       } catch (err) {
-        const summary = summarize(storyboard, { error: err instanceof Error ? err.message : String(err) });
+        const summary = { ...summarize(storyboard, { error: err instanceof Error ? err.message : String(err) }), id: variantLabel };
         results.push(summary);
         // eslint-disable-next-line no-console
-        console.log(`  ${storyboard.id.padEnd(40)} ⚠ ${summary.error}`);
+        console.log(`  ${variantLabel.padEnd(40)} ⚠ ${summary.error}`);
       }
     }
-    if (swapsCanonicalBase) {
-      if (previousTrainingAgentUrl === undefined) {
-        delete process.env.TRAINING_AGENT_URL;
-      } else {
-        process.env.TRAINING_AGENT_URL = previousTrainingAgentUrl;
+  } else {
+    try {
+      // The default `/mcp` route is the public bearer-authenticated sandbox
+      // with no request-signing advertisement or enforcement. Every storyboard
+      // other than `signed_requests` stays on `/mcp` so bearer-authed unsigned
+      // calls keep working.
+      const routing = multiAgentRoutingForStoryboard({
+        storyboard,
+        tenantPath: process.env.TENANT_PATH ?? '',
+        tenantAgentUrl: agentUrl,
+        trainingAgentBaseUrl: localAgentBaseUrl,
+        serviceIdentityBase: getCanonicalBase(),
+        auth,
+      });
+      if (routing.kind === 'routed' && verbose) {
+        // eslint-disable-next-line no-console
+        console.log(`    [multi-agent] ${storyboard.id} routes ${Object.entries(routing.agents)
+          .map(([key, entry]) => `${key}=${entry.url}`).join(', ')} (default_agent=${routing.default_agent}; context ${JSON.stringify(routing.context)})`);
       }
-    }
-    if (routesMultiAgent) {
-      if (previousIdentityUrl === undefined) {
-        delete process.env.TRAINING_AGENT_IDENTITY_URL;
-      } else {
-        process.env.TRAINING_AGENT_IDENTITY_URL = previousIdentityUrl;
+      const result = await inServedLineScope(() => runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
+        ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
+        ...(wireAdcpVersion && { wireAdcpVersion }),
+        ...(wireVersionEnvelope && { versionEnvelope: wireVersionEnvelope }),
+        ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
+        auth,
+        allow_http: true,
+        contracts: ['webhook_receiver_runner'],
+        webhook_receiver: { mode: 'loopback_mock' },
+        webhook_signing: {
+          jwks: jwksResolver,
+          replayStore: new InMemoryReplayStore(),
+          revocationStore: new InMemoryRevocationStore(),
+        },
+        ...(brand && { brand }),
+        ...(testKit && { test_kit: testKit }),
+        ...(routing.kind === 'routed' && {
+          agents: routing.agents,
+          default_agent: routing.default_agent,
+          context: routing.context,
+        }),
+      }));
+      for (const gap of result.coverage_gaps ?? []) {
+        // Keep unexercised native support visible even when prepared-state
+        // reuse produces no authored step rows. Do not change floor counts.
+        console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
       }
+      applyStepSkipList(storyboard.id, result);
+      const summary = summarize(storyboard, result);
+      results.push(summary);
+      const pill = summary.failed === 0
+        ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
+        : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
+      // eslint-disable-next-line no-console
+      console.log(`  ${storyboard.id.padEnd(40)} ${pill}`);
+    } catch (err) {
+      const summary = summarize(storyboard, { error: err instanceof Error ? err.message : String(err) });
+      results.push(summary);
+      // eslint-disable-next-line no-console
+      console.log(`  ${storyboard.id.padEnd(40)} ⚠ ${summary.error}`);
     }
   }
+  if (swapsCanonicalBase) {
+    if (previousTrainingAgentUrl === undefined) {
+      delete process.env.TRAINING_AGENT_URL;
+    } else {
+      process.env.TRAINING_AGENT_URL = previousTrainingAgentUrl;
+    }
+  }
+  if (routesMultiAgent) {
+    if (previousIdentityUrl === undefined) {
+      delete process.env.TRAINING_AGENT_IDENTITY_URL;
+    } else {
+      process.env.TRAINING_AGENT_IDENTITY_URL = previousIdentityUrl;
+    }
+  }
+  return results;
+}
 
+function unselectedState(id: string, selection: StoryboardSelection): string {
+  return selection.notApplicable.some(sb => sb.id === id)
+    ? 'outside the tenant\'s declared capability scope'
+    : selection.quarantined.some(sb => sb.id === id)
+      ? 'on the known-failing quarantine list'
+      : 'missing or filtered out';
+}
+
+/**
+ * The run header: agent, filter, declared scope, selection, shard and the
+ * known-failing lists. `stepsFor` narrows the known-failing steps to one
+ * storyboard, as a single-storyboard run prints them.
+ */
+function printRunHeader(
+  agentUrl: string,
+  selection: StoryboardSelection,
+  { stepsFor, shardLine }: { stepsFor?: string; shardLine?: string } = {},
+): void {
+  // eslint-disable-next-line no-console
+  console.log(`\nTraining agent running at ${agentUrl}`);
+  // eslint-disable-next-line no-console
+  console.log(`Filter: ${filter ?? '(all storyboards)'}\n`);
+  // eslint-disable-next-line no-console
+  console.log(
+    `Declared scope: ${(selection.profile.supported_protocols ?? []).join(', ') || '(universal only)'}`
+    + ` | specialisms: ${(selection.profile.specialisms ?? []).join(', ') || '(none)'}`,
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    `Selection: ${selection.applicable.length} applicable | ${selection.notApplicable.length} not applicable`
+    + ` | ${selection.quarantined.length} quarantined (${selection.corpusSize} corpus)\n`,
+  );
+  if (shardLine) {
+    // eslint-disable-next-line no-console
+    console.log(shardLine);
+  }
+  const skippedKnownFailing = selection.quarantined;
+  if (skippedKnownFailing.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log('Skipping storyboards on the known-failing list:');
+    for (const sb of skippedKnownFailing) {
+      // eslint-disable-next-line no-console
+      console.log(`  - ${sb.id}: ${knownFailingReason(sb.id)}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log('');
+  }
+  const relevantKnownFailingSteps = stepsFor
+    ? [...KNOWN_FAILING_STEPS].filter(([key]) => key.startsWith(`${stepsFor}/`))
+    : [...KNOWN_FAILING_STEPS];
+  if (relevantKnownFailingSteps.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log('Skipping individual steps on the known-failing list:');
+    for (const [key, reason] of relevantKnownFailingSteps) {
+      // eslint-disable-next-line no-console
+      console.log(`  - ${key}: ${reason}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log('');
+  }
+}
+
+interface RunReport {
+  failing: Summary[];
+  totals: { passed: number; failed: number; skipped: number; not_applicable: number };
+}
+
+/** The failures, skips (verbose) and totals blocks after the rows. */
+function printRunReport(results: Summary[], selection: StoryboardSelection): RunReport {
   // eslint-disable-next-line no-console
   console.log('\n--- Failures ---');
   const failing = results.filter(r => r.failed > 0 || r.error);
@@ -1283,39 +1291,160 @@ async function main() {
   console.log(`  storyboards: ${results.length - failing.length}/${results.length} clean`);
   // eslint-disable-next-line no-console
   console.log(
-    `  selection: ${applicable.length} applicable | ${selection.notApplicable.length} not applicable`
+    `  selection: ${selection.applicable.length} applicable | ${selection.notApplicable.length} not applicable`
     + ` | ${selection.quarantined.length} quarantined | ${selection.corpusSize} corpus`,
   );
   // eslint-disable-next-line no-console
   console.log(`  steps: ${totals.passed} passed | ${totals.failed} failed | ${totals.skipped} skipped | ${totals.not_applicable} not applicable`);
+  return { failing, totals };
+}
 
-  if (emitResultEnvelope) {
-    // The parent persists this complete envelope before terminating our
-    // process group, so correctness never depends on graceful SDK/V8 disposal.
-    console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify({
+/**
+ * The orchestrator's result envelope. The parent persists it before it
+ * terminates our process group (or, for a worker, sends the next storyboard),
+ * so correctness never depends on graceful SDK/V8 disposal.
+ */
+function printResultEnvelope(id: string, results: Summary[], { failing, totals }: RunReport): void {
+  console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify({
+    version: 1,
+    storyboard_id: id,
+    // Persist counts and status only. Full validation details can contain
+    // synthetic request/response values and belong in the bounded CI log,
+    // not the longer-lived machine-readable result artifact.
+    summaries: results.map(result => ({
+      id: result.id,
+      passed: result.passed,
+      failed: result.failed,
+      skipped: result.skipped,
+      not_applicable: result.not_applicable,
+      has_error: result.error !== undefined,
+    })),
+    totals: {
+      clean: results.length - failing.length,
+      total: results.length,
+      ...totals,
+    },
+  })}`);
+}
+
+const flushStdout = () => new Promise<void>(resolve => process.stdout.write('', resolve));
+
+/**
+ * --storyboard-worker: run the storyboard ids read from stdin, one per line,
+ * one after another in this process (scripts/run-storyboards-isolated.mjs
+ * --storyboards-per-process). Each prints exactly what a --storyboard-id run
+ * of it prints, framed by BEGIN on stdout and, after its envelope, END on
+ * stderr. Before each storyboard the worker clears every process-local store
+ * that a fresh process starts without and that the mounted server does not
+ * hold by reference; runStoryboardEntry's own reset runs as well. The
+ * idempotency store and the SDK tenants' task registries are left alone: the
+ * server captured those instances when it was built, and replacing them would
+ * split one store between the server and the handlers.
+ */
+async function runWorker(
+  agentUrl: string,
+  selection: StoryboardSelection,
+  runContext: StoryboardRunContext,
+): Promise<void> {
+  const { clearTaskStore } = await import('../../src/training-agent/task-handlers.js');
+  const { clearAudienceStore } = await import('../../src/training-agent/audience-handlers.js');
+  const { clearGovernanceTokenReplayRegistry } = await import('../../src/training-agent/governance-verify.js');
+  const { clearSiSessions } = await import('../../src/training-agent/si-handlers.js');
+  const { clearCollectionCardState } = await import('../../src/training-agent/collections/card-catalog.js');
+  const ids = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  for await (const line of ids) {
+    const id = line.trim();
+    if (!id) continue;
+    // eslint-disable-next-line no-console
+    console.log(`ADCP_STORYBOARD_BEGIN ${JSON.stringify({ version: 1, storyboard_id: id })}`);
+    const sb = selection.applicable.find(candidate => candidate.id === id);
+    if (!sb) throw new Error(`Storyboard ${id} is ${unselectedState(id, selection)}`);
+    clearTaskStore();
+    clearAudienceStore();
+    clearGovernanceTokenReplayRegistry();
+    clearSiSessions();
+    clearCollectionCardState();
+    const single: StoryboardSelection = {
+      ...selection,
+      applicable: [sb],
+      notApplicable: [],
+      quarantined: [],
+      corpusSize: 1,
+    };
+    printRunHeader(agentUrl, single, { stepsFor: id });
+    const results = await runStoryboardEntry(sb, runContext);
+    printResultEnvelope(id, results, printRunReport(results, single));
+    await flushStdout();
+    process.stderr.write(`ADCP_STORYBOARD_END ${JSON.stringify({
       version: 1,
-      storyboard_id: storyboardId,
-      // Persist counts and status only. Full validation details can contain
-      // synthetic request/response values and belong in the bounded CI log,
-      // not the longer-lived machine-readable result artifact.
-      summaries: results.map(result => ({
-        id: result.id,
-        passed: result.passed,
-        failed: result.failed,
-        skipped: result.skipped,
-        not_applicable: result.not_applicable,
-        has_error: result.error !== undefined,
-      })),
-      totals: {
-        clean: results.length - failing.length,
-        total: results.length,
-        ...totals,
+      storyboard_id: id,
+      heap_used_bytes: process.memoryUsage().heapUsed,
+    })}\n`);
+  }
+}
+
+async function main() {
+  const everything = listAllComplianceStoryboards(complianceOptions);
+  const { url: agentUrl, baseUrl: localAgentBaseUrl, close } = await startLocalAgent();
+  const selection = await selectStoryboardsForTenant(agentUrl, everything);
+  const { applicable } = selection;
+  if (storyboardId && applicable.length !== 1) {
+    await close();
+    throw new Error(`Storyboard ${storyboardId} is ${unselectedState(storyboardId, selection)}`);
+  }
+  if (listApplicableJson) {
+    // The long-lived orchestrator parses this envelope but never imports the
+    // SDK itself. Flush before exiting so discovery is deterministic even if
+    // the SDK has installed background handles during module initialization.
+    console.log(`ADCP_STORYBOARD_LIST ${JSON.stringify({
+      version: 1,
+      storyboard_ids: applicable.map(sb => sb.id),
+      selection: {
+        corpus: selection.corpusSize,
+        applicable: applicable.length,
+        not_applicable: selection.notApplicable.length,
+        quarantined: selection.quarantined.length,
       },
     })}`);
+    await close();
+    await flushStdout();
+    process.exit(0);
   }
 
+  const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
+  const runContext: StoryboardRunContext = { agentUrl, localAgentBaseUrl, jwksResolver };
+  if (storyboardWorker) {
+    await runWorker(agentUrl, selection, runContext);
+    // stdin closed: the orchestrator has no more storyboards for us. It kills
+    // our process group after the last one anyway.
+    await close();
+    await flushStdout();
+    process.exit(0);
+  }
+
+  // Shard only after all applicability decisions so every unsharded run and
+  // every union of shards execute the same storyboard set. The compliance
+  // index has stable ordering. Balanced contiguous ranges preserve the
+  // runner's established execution order (including schema/cache warmups)
+  // while bounding retained process memory.
+  const shardStart = shard ? Math.floor(applicable.length * shard.index / shard.count) : 0;
+  const shardEnd = shard ? Math.floor(applicable.length * (shard.index + 1) / shard.count) : applicable.length;
+  const all = applicable.slice(shardStart, shardEnd);
+  printRunHeader(agentUrl, selection, {
+    stepsFor: storyboardId,
+    shardLine: shard
+      ? `Shard: ${shard.index + 1}/${shard.count} (${all.length} of ${applicable.length} applicable storyboards)\n`
+      : undefined,
+  });
+  const results: Summary[] = [];
+  for (const sb of all) {
+    results.push(...await runStoryboardEntry(sb, runContext));
+  }
+  const report = printRunReport(results, selection);
+  if (emitResultEnvelope && storyboardId) printResultEnvelope(storyboardId, results, report);
+
   await close();
-  const exitCode = totals.failed > 0 || failing.some(r => r.error) ? 1 : 0;
+  const exitCode = report.totals.failed > 0 || report.failing.some(r => r.error) ? 1 : 0;
   if (shard) {
     // Shard wrappers grade the complete totals block above, not this process
     // status. Large SDK runs can stall inside Node/V8 platform disposal after
@@ -1324,44 +1453,16 @@ async function main() {
     // the pipe, then terminate the already-complete shard without running that
     // redundant shutdown path. Non-sharded/manual runs retain their normal
     // success/failure exit status.
-    await new Promise<void>(resolve => process.stdout.write('', resolve));
+    await flushStdout();
     process.kill(process.pid, 'SIGKILL');
   }
   process.exit(exitCode);
 }
 
-// The SDK's ESM build reaches its CommonJS schema loader through
-// createRequire for some response shaping (envelope-status-compat.mjs decides
-// whether decline_proposals / list_products omit the envelope `status` by
-// reading the served version's response schema). That CommonJS instance keeps
-// its own external-root scope, so a root entered only through the ESM import
-// above is invisible to it. While the published SDK packages the candidate
-// bundle that is harmless; once a Version Packages bundle leads the SDK by a
-// candidate, the CommonJS lookup misses, the SDK assumes an envelope schema,
-// and it stamps `status: "completed"` onto responses whose candidate schema
-// forbids it. Enter the same root in that instance too. The path is resolved
-// from the package's own CommonJS entry, so it is the module the SDK loads.
-type SchemaRootScope = <T>(version: string, root: string, fn: () => Promise<T>) => Promise<T>;
-const sdkCommonJsSchemaRootScope = ((): SchemaRootScope | undefined => {
-  const requireFromHere = createRequire(import.meta.url);
-  const loaderPath = join(dirname(requireFromHere.resolve('@adcp/sdk')), 'validation', 'schema-loader.js');
-  if (!existsSync(loaderPath)) return undefined;
-  const loader = requireFromHere(loaderPath) as { withExternalSchemaRoot?: unknown };
-  return typeof loader.withExternalSchemaRoot === 'function'
-    ? loader.withExternalSchemaRoot as SchemaRootScope
-    : undefined;
-})();
-function withCandidateSchemaRoot<T>(version: string, root: string, fn: () => Promise<T>): Promise<T> {
-  const scoped = sdkCommonJsSchemaRootScope
-    ? () => sdkCommonJsSchemaRootScope(version, root, fn)
-    : fn;
-  return withExternalSchemaRoot(version, root, scoped);
-}
-
 // Tenant registries initialize eagerly when mounted. Keep the candidate root
 // registered for their construction as well as discovery and storyboard calls.
 const run = complianceOptions.schemaRoot && releasedComplianceVersion
-  ? () => withCandidateSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
+  ? () => withExternalSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
   : main;
 run().catch(err => {
   // eslint-disable-next-line no-console

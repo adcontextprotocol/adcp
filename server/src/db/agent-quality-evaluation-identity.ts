@@ -22,3 +22,8 @@ export function agentQualityEvaluationFingerprint(domain: EvaluationIdentityDoma
     .update(JSON.stringify([domain, value]))
     .digest('hex');
 }
+
+/** Forget the derived key so the next fingerprint derives it again. Tests only. */
+export function resetAgentQualityEvaluationIdentityForTests(): void {
+  identityKey = undefined;
+}

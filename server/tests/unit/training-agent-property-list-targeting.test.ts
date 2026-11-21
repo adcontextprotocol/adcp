@@ -30,6 +30,7 @@ import {
   STORYBOARD_PROPERTY_LISTS,
 } from '../../src/training-agent/property-list-fixtures.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -102,7 +103,7 @@ async function startListAgent(reply: (listId: string) => StubReply) {
       await transport.handleRequest(req, res, body);
     });
   });
-  await new Promise<void>(resolve => httpServer.listen(0, '127.0.0.1', resolve));
+  await listenOnLoopback(httpServer);
   const { port } = httpServer.address() as { port: number };
   setPropertyListFetchTestOverride(LIST_AGENT_URL, {
     fetch: (_input, init) => fetch(`http://127.0.0.1:${port}/mcp`, init),

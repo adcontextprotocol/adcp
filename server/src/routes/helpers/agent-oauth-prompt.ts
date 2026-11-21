@@ -1,4 +1,4 @@
-import { AuthenticationRequiredError } from '@adcp/sdk';
+import { AuthenticationRequiredError } from '@adcp/sdk/errors';
 import { OAuthError } from '@adcp/sdk/auth';
 import type { AgentContextDatabase } from '../../db/agent-context-db.js';
 import { isOAuthOwnerReauthorizationError, isOAuthRequiredErrorMessage } from './oauth-error-detection.js';

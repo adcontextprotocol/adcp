@@ -3,16 +3,17 @@
  * carry engine forecasts, buys book into the caller's simulated market, and
  * every response matches the canonical AdCP schema for its task.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'inventory-tenants-test-public-token';
 
 import { flushDirtySessions, runWithSessionContext, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { setSandboxWallClockForTesting } from '../../src/training-agent/account-sandbox.js';
 import { resetReportingSubscriptionProbe } from '../../src/training-agent/subscription-probe.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 import { getAgentUrl } from '../../src/training-agent/config.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -62,12 +63,11 @@ describe('inventory tenants', () => {
   };
 
   beforeAll(async () => {
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ limit: '5mb' }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;
@@ -350,6 +350,12 @@ describe('inventory tenants', () => {
       call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, CLOCK_TOKEN);
     const flight = { start_time: '2027-01-01T00:00:00Z', end_time: '2027-01-31T00:00:00Z' };
 
+    // Each test starts on the unpinned clock with no markets.
+    beforeEach(async () => {
+      const reset = await call(tenant, 'comply_test_controller', { scenario: 'reset_state', account: ACCOUNT }, CLOCK_TOKEN);
+      expect(reset.success, JSON.stringify(reset).slice(0, 500)).toBe(true);
+    });
+
     it('is listed and discoverable', async () => {
       const listed = await call(tenant, 'comply_test_controller', { scenario: 'list_scenarios', account: ACCOUNT }, CLOCK_TOKEN);
       expect(listed.scenarios).toEqual(expect.arrayContaining(['sandbox_clock', 'reset_state']));
@@ -418,6 +424,15 @@ describe('inventory tenants', () => {
     });
 
     it('only moves forward, and reset_state unpins it', async () => {
+      await controller({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
+      await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-clock-forward-only-001', account: ACCOUNT, brand: BRAND, ...flight,
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 50_000 }],
+      }, CLOCK_TOKEN);
+      const pinned = await controller({ operation: 'advance_time', by: 'P31D' });
+      expect(pinned.simulated.simulated_now).toBe('2027-01-31T12:00:00.000Z');
+      expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, CLOCK_TOKEN)).media_buys).toHaveLength(1);
+
       const backwards = await controller({ operation: 'advance_time', to: '2027-01-01T00:00:00Z' });
       expect(backwards.success).toBe(false);
       expect(backwards.error).toBe('INVALID_TRANSITION');
@@ -685,6 +700,12 @@ describe('inventory tenants', () => {
     const products = (startDate: string, endDate: string) => call(tenant, 'get_products', {
       buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: { start_date: startDate, end_date: endDate },
     }, CONTENT_TOKEN);
+
+    // Each test starts on the unpinned clock with no markets on either tenant.
+    beforeEach(async () => {
+      const reset = await call(tenant, 'comply_test_controller', { scenario: 'reset_state', account: ACCOUNT }, CONTENT_TOKEN);
+      expect(reset.success, JSON.stringify(reset).slice(0, 500)).toBe(true);
+    });
     const episode = (result: Structured, id: string) => result.products
       .find((product: Structured) => product.product_id === 'morning_brief_midroll')
       .installments.find((installment: Structured) => installment.installment_id === id);

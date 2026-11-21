@@ -18,19 +18,15 @@
  * under the token `iss`, and points at a governance-only JWKS on its own
  * origin.
  */
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import express from 'express';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.hoisted(() => {
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-hosted-grader-credential';
-  process.env.TRAINING_GOVERNANCE_CREDENTIAL_SECRET = require('node:crypto').randomBytes(32).toString('hex') as string;
-});
 
 import {
   GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS,
@@ -50,14 +46,22 @@ import {
 } from '../../src/training-agent/hosted-grader.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const SELLER = 'https://seller.hosted-grader-7758.example/mcp';
+// Generated per run so no key material lives in the repository. The key is
+// derived on every mint and verify (governance-agent-credentials.ts), so a
+// stub before each test is enough; unstubEnvs undoes it after the file.
+const CREDENTIAL_SECRET = randomBytes(32).toString('hex');
+beforeEach(() => {
+  vi.stubEnv('TRAINING_GOVERNANCE_CREDENTIAL_SECRET', CREDENTIAL_SECRET);
+});
 
 let base = '';
 let close: () => Promise<void> = async () => {};
 
 beforeAll(async () => {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -67,7 +71,7 @@ beforeAll(async () => {
   }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
   const srv = http.createServer(app);
-  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  await listenOnLoopback(srv);
   base = `http://127.0.0.1:${(srv.address() as { port: number }).port}/api/training-agent`;
   process.env.TRAINING_AGENT_URL = base;
   close = () => new Promise(done => srv.close(() => done()));
@@ -293,7 +297,7 @@ describe('hosted-grader governance credential (adcp#7758)', () => {
       expect(verifyHostedGraderCredential(grader)).toBeNull();
       expect(() => mintHostedGraderCredential({ nonce })).toThrow(/not configured/);
     } finally {
-      vi.unstubAllEnvs();
+      vi.stubEnv('TRAINING_GOVERNANCE_CREDENTIAL_SECRET', CREDENTIAL_SECRET);
     }
   });
 });
@@ -303,7 +307,7 @@ describe('hosted-grader brand host (adcp#7758)', () => {
     const app = express();
     app.use(createHostedGraderHostRouter());
     const srv = http.createServer(app);
-    await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+    await listenOnLoopback(srv);
     const origin = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
     return { origin, close: () => new Promise<void>(done => srv.close(() => done())) };
   }
