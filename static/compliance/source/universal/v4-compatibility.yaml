@@ -531,8 +531,9 @@ schema_removals_not_checked:
     reason: >-
       Both forms are valid through 3.x, so a 3.x run cannot grade which one a
       party sends. Status filters and creative asset maps are buyer-sent; the
-      response sites are not graded yet. brand.json color_value is marked for
-      5.0, not 4.0, because brand.json is read without version negotiation.
+      response sites are not graded yet. brand.json#/definitions/color_value/oneOf/0
+      is marked x-removed-in "5.0.0", not 4.0, because brand.json is read without
+      version negotiation, so it is outside this 4.0 registry by design.
     sites:
       - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/primary/oneOf/0"
       - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/secondary/oneOf/0"
