@@ -935,6 +935,19 @@ describe('inventory tenants', () => {
       expect(after.cache_scope).toBe('account');
     });
 
+    it('reports the reporting_capabilities a seeded product declares, over the tenant defaults', async () => {
+      const tenant = 'inventory-adserver';
+      const declared = ['impressions', 'spend', 'clicks', 'viewability'];
+      expect((await controller(tenant, 'seed_product', {
+        product_id: 'seeded_reporting', fixture: { ...displayFixture, reporting_capabilities: { available_metrics: declared } },
+      })).success).toBe(true);
+      const offer = await products(tenant, SEED_TOKEN);
+      expectCanonical('get_products', offer);
+      const seeded = offer.products.find((product: Structured) => product.product_id === 'seeded_reporting');
+      expect(seeded.reporting_capabilities.available_metrics).toEqual(declared);
+      expect(seeded.reporting_capabilities.available_reporting_frequencies).toEqual(['daily']);
+    });
+
     it('rejects a seeded product that reuses one of the tenant\'s own ids', async () => {
       const refused = await controller('inventory-adserver', 'seed_product', { product_id: 'ros_display_guaranteed', fixture: displayFixture });
       expect(refused.success).toBe(false);
