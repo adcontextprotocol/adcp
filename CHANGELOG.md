@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.0-rc.2
+
+### Patch Changes
+
+- 859ea91: Keep the unpublishable 3.3.0-rc.1 bundle out of release aliases and advance through a freshly reviewed release candidate. The 3.3.0-rc.1 release head was generated before the training-agent governance fix (#9080) merged, so its merge did not match the reviewed head. The new candidate carries that fix.
+
 ## 3.3.0-rc.1
 
 ### Minor Changes
@@ -1201,6 +1207,21 @@
   
   Directory scenarios in `scenarios.json` can carry `requests`, which a harness signs with a named key and verifies against that directory. D03 and D11 use them: a request signed with a key that has no valid directory signature gets `403`. D15 adds malformed extra Ed25519 keys, one with no `x` and one with a 31-byte `x`, which a verifier ignores.
 
+## 3.2.12
+
+### Patch Changes
+
+- 2d7e736: Campaign governance errata: make the task pages, audit-trail, safety-model and overview pages agree with the specification and schemas (adcp#8733, PR 1 of 3; 3.2.x backport of #8931 without the aggregation-key change, which ships in 3.3). No wire field, enum member or schema validation outcome changes.
+  
+  - Governance mode is described as governance agent configuration, not a plan field set through `sync_plans`. An agent that reports `mode` records the mode in force on each check entry.
+  - The safety model no longer promises budget reservation. Budget checks are point-in-time, as the specification already says. Where the pages said an intent or governance "reserves" an amount, they now say the ledger commits it when the outcome is reported.
+  - The `get_plan_audit_logs` field table names `plans[].entries[].verdict` instead of `status`, and the `delivery` outcome example is buyer-called.
+  - A plan re-sync is no longer described as re-evaluating active campaigns. Active buys are evaluated against the updated plan on their next `check_governance` call.
+  - Drift metrics use the schema vocabulary throughout: `escalations[]`, `escalation_rate`, `escalation_rate_trend`, `thresholds.escalation_rate_min` and `escalation_rate_max`. The `human_review_rate*` and `human_reviews[]` names never existed in a schema.
+  - Geo findings in the examples use `geo_compliance`, matching `categories_evaluated` on the same page.
+  - The legacy `check_governance` response branch (responses without `check_type`) is described as the legacy compatibility shape accepted during 3.x migration.
+- dd9ce2f: Stop the `webhook_emission` storyboard from failing sellers whose `create_media_buy` completes synchronously. When the primary trigger returns the media buy inline, the storyboard now checks that no task webhook arrives for it and skips the emitted-webhook phases. It still grades the webhook-signing JWKS of a synchronous seller that declares `webhook_signing.supported: true`. Triggers that return `submitted`, or `working` without a `media_buy_id`, are still graded on signed webhook delivery. A `working` response that carries `media_buy_id` is classified as synchronous, and its completion webhook fails `synchronous_trigger_silence`, until the runner reads the task status (adcontextprotocol/adcp-client#3682).
+
 ## 3.2.11
 
 ### Patch Changes
@@ -2345,6 +2366,12 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 0547bde: Seed fixture accounts in package_correlation_legacy_fallback storyboard so account-scoped requests resolve before attribution is checked.
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
+
+## 3.1.34
+
+### Patch Changes
+
+- 46a0ba9: Stop the `webhook_emission` storyboard from failing sellers whose `create_media_buy` completes synchronously. When the primary trigger returns the media buy inline, the storyboard now checks that no task webhook arrives for it and skips the emitted-webhook phases. It still grades the webhook-signing JWKS of a synchronous seller that declares `webhook_signing.supported: true`. Triggers that return `submitted`, or `working` without a `media_buy_id`, are still graded on signed webhook delivery. A `working` response that carries `media_buy_id` is classified as synchronous, and its completion webhook fails `synchronous_trigger_silence`, until the runner reads the task status (adcontextprotocol/adcp-client#3682).
 
 ## 3.1.33
 

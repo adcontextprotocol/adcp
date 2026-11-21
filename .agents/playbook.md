@@ -885,37 +885,42 @@ Apply this pattern when restructuring protocol sections.
 
 ## Local Hooks
 
-`.husky/pre-commit` runs `npm run precommit` (root unit tests, dynamic-import
-and format-identity guards, the staged-file-scoped server unit suite, and
-`typecheck`). It must pass on a clean checkout of `main` in any shell:
+The commit hooks run only fast checks. CI runs every suite and is the gate,
+so a hook never re-runs a whole suite on a shared, loaded machine.
 
+`.husky/pre-commit` runs `scripts/check-image-quality.sh` and
+`npm run precommit`: the dynamic-import, format-identity and callApi
+state-change guards, then `typecheck`. It takes well under a minute.
+
+`.husky/pre-push` checks version sync, the changeset policy, and, when docs
+changed, schema links and Mintlify navigation.
+
+To run tests before pushing, use `npm run verify:local`:
+
+- By default it runs the root and server unit tests affected by your changes
+  since `origin/main` (vitest follows the import graph), then `typecheck`.
+  `--since <ref>` changes the base.
+- `npm run verify:local -- --full` runs the full root and server unit suites.
+  The server suite runs as parallel shards and re-runs any file that failed
+  under load serially, once.
 - `server/tests/setup/revenue-tracking-env.ts` scrubs `DEV_USER_EMAIL`,
   `DEV_USER_ID`, `ALLOW_DEV_MODE_IN_PROD`, `ADMIN_API_KEY`, and `ADMIN_EMAILS`
-  before every server unit file. Conductor's `.env.local` exports these, and the auth middleware reads
-  them at module load, so without the scrub the auth boundary tests pass in
-  CI and fail locally. Tests that exercise those boundaries set the variables
-  explicitly in `vi.hoisted()`.
-- Staging anything under `docs/`, `static/schemas/source/`, `.agents/`, or
-  `server/src/` runs the **full** server unit suite (see
-  `FULL_SERVER_UNIT_PATTERNS` in `scripts/precommit-server-unit.cjs`). The
-  suite is sequential by design (`fileParallelism: false`) and took ~1020s
-  for 612 files on an idle Vercel sandbox, so the `with-timeout` budget in
-  the `precommit` script is 1500s (raised from 600s in #7478, as #6644 raised
-  it from 240s). A `⏰ TIMEOUT` marker means budget, not a failing test.
+  before every server unit file. Conductor's `.env.local` exports these, and
+  the auth middleware reads them at module load, so without the scrub the
+  auth boundary tests pass in CI and fail locally. Tests that exercise those
+  boundaries set the variables explicitly in `vi.hoisted()`.
 - Live-model router scenarios in `server/tests/unit/addie-router.test.ts`
   are opt-in: `ADDIE_ROUTER_LIVE_TESTS=1` plus `ANTHROPIC_API_KEY`. Having the
   key in your shell is not enough on its own; they are an eval, not a gate.
 
-`.husky/pre-push` runs the storyboard matrix
-(`scripts/run-storyboards-matrix.sh`) when training-agent or compliance
-source changed. Treat the local run as **advisory**: the
-`training-agent-storyboards.yml` workflow is the authoritative gate.
+The storyboard matrix (`scripts/run-storyboards-matrix.sh`) is opt-in
+locally. The `training-agent-storyboards.yml` workflow runs it on every PR
+and is the gate. Run it with `ADCP_RUN_STORYBOARD_MATRIX=1 git push`, or run
+the script directly.
 
 - The matrix grades the working tree, not the pushed ref. The hook skips it
   when tracked files have uncommitted changes and says so; commit or stash to
-  run it against HEAD, or run the script directly.
-- `ADCP_SKIP_STORYBOARD_MATRIX=1 git push` skips it explicitly (for example
-  on a loaded sandbox where the ~3 minute run stretches to tens of minutes).
+  run it against HEAD.
 - The matrix snapshots the freshly built `dist/schemas/latest` into a
   temporary directory before running tenants, so a concurrent
   `npm run build:schemas` in the same tree cannot fail the SDK's schema-root

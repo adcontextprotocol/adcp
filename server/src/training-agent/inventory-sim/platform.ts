@@ -2,19 +2,23 @@
  * The media-buy surface of an inventory tenant (#9025 part B, #8993's
  * inventory role): get_products with forecasts, create_media_buy,
  * update_media_buy, get_media_buys and get_media_buy_delivery over a
- * simulated market (`market-store.ts`). No new tasks: AdCP shapes as they
- * are, filled from the delivery engine.
+ * simulated market (`market-store.ts`), plus the creative library a buyer or
+ * storefront traffics its buys with (`creatives.ts`). No new tasks: AdCP
+ * shapes as they are, filled from the delivery engine.
  */
 import { AdcpError, type AccountStore, type DecisioningPlatform, type SalesPlatform } from '@adcp/sdk/server';
-import { syncAccountsUpsert } from '../v6-account-helpers.js';
+import { assertDiscoveryAccountProvisioned, syncAccountsUpsert } from '../v6-account-helpers.js';
+import { canonicalizeAccountRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { getAgentUrl } from '../config.js';
+import { decodeOffsetCursor, encodeOffsetCursor } from '../pagination.js';
 import { formatOptionsForTrainingFormats } from '../product-factory.js';
 import {
   DAY_MS,
   EngineError,
   audienceCurve,
   toAdcpForecast,
+  trafficFor,
   type BookingTargeting,
   type ForecastResult,
   type Installment,
@@ -22,7 +26,23 @@ import {
   type SeasonSeed,
   type SeedProduct,
 } from './engine/index.js';
-import { openMarket, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
+import { openMarket, withCallerMarkets, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
+import { TestControllerError } from '@adcp/sdk/testing';
+import {
+  CreativeRequestError,
+  assign,
+  assignmentError,
+  creativeApprovals,
+  listCreatives,
+  parseCreative,
+  syncCreatives,
+  upsertCreative,
+  type CreativeCatalog,
+  type CreativeError,
+} from './creatives.js';
+import { catalogIdOf, formatFilter, listSeedCreativeFormats, resolveCreativeFormat, seedFormatDeclarations, wireFormat, type FormatDeclaration } from './creative-wire.js';
+import { engineProducts, floorPrice, seededPricing, wireOverrides, wirePricing, type SeededCatalog, type SeededPricingRecord, type SeededProductRecord } from './seeded-products.js';
+import type { TrainingContext } from '../types.js';
 
 export interface InventoryTenantProfile {
   tenantId: string;
@@ -67,6 +87,15 @@ function invalid(message: string, field?: string): AdcpError {
   return new AdcpError('INVALID_REQUEST', { recovery: 'correctable', message, ...(field && { field }) });
 }
 
+function isContext(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function creativeFailure(error: CreativeError): AdcpError {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new AdcpError(error.code as any, { recovery: 'correctable', message: error.message, ...(error.field && { field: error.field }) });
+}
+
 function fromEngine(error: unknown, field?: string): never {
   if (!(error instanceof EngineError)) throw error;
   switch (error.code) {
@@ -88,6 +117,17 @@ function parseInstant(value: unknown, field: string, nowMs: number): number {
   return ms;
 }
 
+type FormatOptionRef = { scope?: unknown; format_option_id?: unknown; publisher_domain?: unknown };
+
+/** Whether a wire product has a format option that `filters.format_option_refs`
+ * names: a product-scoped ref by its id, a publisher-scoped one by id and
+ * publisher domain. */
+function servesFormatOptionRef(product: { format_options?: unknown }, refs: readonly FormatOptionRef[]): boolean {
+  const options = Array.isArray(product.format_options) ? product.format_options as FormatOptionRef[] : [];
+  return refs.some(ref => options.some(option => option.format_option_id === ref.format_option_id
+    && (ref.scope !== 'publisher' || option.publisher_domain === ref.publisher_domain)));
+}
+
 function parseDateStart(value: unknown, field: string): number {
   const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : Number.NaN;
   if (!Number.isFinite(ms)) throw invalid(`${field} must be a YYYY-MM-DD date`, field);
@@ -96,9 +136,28 @@ function parseDateStart(value: unknown, field: string): number {
 
 export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean }, InventoryMeta> {
   private readonly products: SeedProduct[];
+  private readonly declarations: FormatDeclaration[];
+  private readonly catalog: CreativeCatalog;
+  /** format_option_id for each training catalogue format a placement names. */
+  private readonly formatOptionIds: Map<string, string>;
 
   constructor(private readonly profile: InventoryTenantProfile) {
     this.products = profile.seed.products;
+    this.declarations = seedFormatDeclarations(profile.seed.placements.flatMap(placement => placement.formats));
+    // Placements name formats by training catalogue id; the creative library
+    // keys them by format_option_id.
+    const optionIds = new Map(this.declarations.map(declaration => [catalogIdOf(declaration), declaration.format_option_id]));
+    this.formatOptionIds = optionIds;
+    const productFormats = new Map(this.products.map(product => [product.product_id, this.formatsOf(product)]));
+    const labels = new Map(this.declarations.map(declaration => [declaration.format_option_id, catalogIdOf(declaration)]));
+    this.catalog = {
+      formats: new Set(optionIds.values()),
+      productFormats: productId => productFormats.get(productId) ?? new Set(),
+      label: formatOptionId => labels.get(formatOptionId) ?? formatOptionId,
+      resolve: (input, field, allowed) => resolveCreativeFormat(this.declarations, input, field, allowed),
+      wire: formatOptionId => wireFormat(this.declarations, formatOptionId),
+      filter: filters => formatFilter(this.declarations, filters),
+    };
   }
 
   get capabilities() {
@@ -121,6 +180,16 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       buyingModes: ['brief', 'wholesale'] as const,
       // A storefront calls with its own credential, not a per-buyer operator.
       requireOperatorAuth: false,
+      // Creatives are synced to a library, or uploaded inline on a package,
+      // and assigned to the packages that serve their format.
+      creative: {
+        hasCreativeLibrary: true,
+        supportsCompliance: false,
+        supportsGeneration: false,
+        supportsTransformation: false,
+        assignmentOperations: ['assign', 'unassign', 'replace'] as const,
+      },
+      features: { inlineCreativeManagement: true },
       // The router lists the scenarios (tenants/inventory.ts).
       compliance_testing: {},
       config: { strict: false },
@@ -133,11 +202,19 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
   accounts: AccountStore<InventoryMeta> = {
     resolution: 'explicit',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolve: async (ref: any, ctx?: { authInfo?: { clientId?: string } }) => {
+    resolve: async (ref: any, ctx?: { authInfo?: { clientId?: string }; toolName?: string }) => {
       const principal = ctx?.authInfo?.clientId;
       const authInfo = principal ? { kind: 'api_key' as const, principal } : { kind: 'public' as const };
       if (ref == null) {
         return { id: 'public_sandbox', name: 'Public Sandbox', status: 'active', mode: 'sandbox', ctx_metadata: {}, sandbox: true, authInfo };
+      }
+      // get_products, the one discovery task these tenants serve, takes only
+      // a natural key already provisioned with sync_accounts:
+      // ACCOUNT_NOT_FOUND, never the public card. Other tasks keep resolving
+      // any reference.
+      const toolName = ctx?.toolName;
+      if (toolName === 'get_products') {
+        await assertDiscoveryAccountProvisioned(canonicalizeAccountRef(ref), toolName, principal);
       }
       const brandDomain = typeof ref.brand?.domain === 'string' ? (ref.brand.domain as string) : undefined;
       const id = typeof ref.account_id === 'string' ? (ref.account_id as string) : `synthetic_${brandDomain ?? 'anon'}`;
@@ -159,8 +236,92 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     return openMarket(this.profile.tenantId, this.profile.seed, principalOf(ctx));
   }
 
+  /**
+   * comply_test_controller `seed_product`: sell the fixture in the caller's
+   * market on this tenant (`seeded-products.ts`). A replay stores the same
+   * fixture again; the SDK refuses a divergent one.
+   */
+  seedProduct(principal: string | undefined, productId: string, fixture: Record<string, unknown>): Promise<void> {
+    if (this.products.some(product => product.product_id === productId)) {
+      throw new TestControllerError('INVALID_PARAMS', `${productId} is one of this tenant's own products`);
+    }
+    return this.seed(principal, seeded => {
+      seeded.products = [...(seeded.products ?? []).filter(record => record.product_id !== productId), { product_id: productId, fixture: structuredClone(fixture) }];
+    });
+  }
+
+  /** comply_test_controller `seed_pricing_option`: price a seeded product. */
+  seedPricingOption(principal: string | undefined, productId: string, pricingOptionId: string, fixture: Record<string, unknown>): Promise<void> {
+    return this.seed(principal, seeded => {
+      const others = (seeded.pricing_options ?? []).filter(record => record.product_id !== productId || record.pricing_option_id !== pricingOptionId);
+      seeded.pricing_options = [...others, { product_id: productId, pricing_option_id: pricingOptionId, fixture: structuredClone(fixture) }];
+    });
+  }
+
+  private seed(principal: string | undefined, change: (seeded: SeededCatalog) => void): Promise<void> {
+    return withCallerMarkets(principal, async () => {
+      const market = await openMarket(this.profile.tenantId, this.profile.seed, principal);
+      const seeded = structuredClone(market.doc.seeded ?? {});
+      change(seeded);
+      try {
+        trafficFor(this.profile.seed).withProducts(engineProducts(this.profile.seed, seeded));
+      } catch (error) {
+        throw new TestControllerError('INVALID_PARAMS', error instanceof Error ? error.message : String(error));
+      }
+      market.doc.seeded = seeded;
+      market.save();
+    });
+  }
+
+  /** Run a market handler as the caller's only market request
+   * (`withCallerMarkets`). Every handler takes its context last. */
+  private serialized<A extends unknown[], R>(handler: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+    return (...args: A) => withCallerMarkets(principalOf((args[args.length - 1] ?? {}) as Ctx), () => handler(...args));
+  }
+
   private pricingOptionId(product: SeedProduct): string {
     return `${product.product_id}_cpm`;
+  }
+
+  /** The format_option_ids a product's placements serve. */
+  private formatsOf(product: SeedProduct): Set<string> {
+    return new Set(product.placement_ids.flatMap(id =>
+      (this.profile.seed.placements.find(placement => placement.placement_id === id)?.formats ?? []).map(label => this.formatOptionIds.get(label)!)));
+  }
+
+  /** What the caller seeded for a product, if it is a seeded one. */
+  private seededProduct(market: OpenMarket, productId: string): { record: SeededProductRecord; pricing: SeededPricingRecord[] } | undefined {
+    const record = market.doc.seeded?.products?.find(candidate => candidate.product_id === productId);
+    return record && { record, pricing: seededPricing(market.doc.seeded!, productId) };
+  }
+
+  /** The pricing option ids a product sells under: a seeded product's
+   * seeded ones, when it has any, otherwise its CPM. */
+  private pricingOptionIds(market: OpenMarket, product: SeedProduct): string[] {
+    const seeded = this.seededProduct(market, product.product_id)?.pricing ?? [];
+    return seeded.length > 0 ? seeded.map(option => option.pricing_option_id) : [this.pricingOptionId(product)];
+  }
+
+  /** The AdCP channels a product sells: a seeded product's own, when its
+   * fixture names them, otherwise its placements'. */
+  private channelsOf(market: OpenMarket, product: SeedProduct): string[] {
+    const channels = this.seededProduct(market, product.product_id)?.record.fixture.channels;
+    if (Array.isArray(channels)) return channels.map(String);
+    return product.placement_ids.map(id => ADCP_CHANNEL[this.profile.seed.placements.find(placement => placement.placement_id === id)!.channel]);
+  }
+
+  /** The creative catalogue for a caller's market, which also serves the
+   * formats of the products it seeded. */
+  private catalogFor(market: OpenMarket): CreativeCatalog {
+    if (!market.doc.seeded?.products?.length) return this.catalog;
+    return {
+      ...this.catalog,
+      productFormats: productId => {
+        const own = this.catalog.productFormats(productId);
+        if (own.size > 0 || !market.sim.traffic.products.has(productId)) return own;
+        return this.formatsOf(market.sim.traffic.requireProduct(productId));
+      },
+    };
   }
 
   private targetingFrom(overlay: unknown, field: string): BookingTargeting {
@@ -210,7 +371,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     });
   }
 
-  private wireProduct(product: SeedProduct, sim: InventorySimulation, nowMs: number, flight: { startMs: number; endMs: number }, targeting: BookingTargeting, budget?: number) {
+  private wireProduct(product: SeedProduct, sim: InventorySimulation, nowMs: number, flight: { startMs: number; endMs: number }, targeting: BookingTargeting, budget?: number, seeded?: { record: SeededProductRecord; pricing: SeededPricingRecord[] }) {
     const seed = this.profile.seed;
     const installments = product.collection_ids ? this.installmentsIn(product, sim, flight.startMs, flight.endMs) : undefined;
     const placements = product.placement_ids.map(id => seed.placements.find(placement => placement.placement_id === id)!);
@@ -218,7 +379,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     const properties = seed.properties.filter(property => propertyIds.has(property.property_id));
     const lag = Math.max(...placements.map(placement => placement.reporting_lag_days));
     const guaranteed = product.delivery_type === 'guaranteed';
-    const floor = Math.min(...placements.map(placement => placement.floor_cpm));
+    const floor = seeded?.pricing.map(floorPrice).find(value => value !== undefined)
+      ?? Math.min(...placements.map(placement => placement.floor_cpm));
     const forecast: ForecastResult = installments?.length === 0
       ? { ...sim.forecast({ product_id: product.product_id, flight_start_ms: flight.startMs, flight_end_ms: flight.endMs }, nowMs), available: 0, impressions: 0, low: 0, high: 0, spend: 0, clicks: 0, viewable_impressions: 0, completed_views: 0, conversions: 0 }
       : sim.forecast({
@@ -240,7 +402,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       format_options: formatOptionsForTrainingFormats([...new Set(placements.flatMap(placement => placement.formats))], agentUrl),
       delivery_type: product.delivery_type,
       ...(product.share_of_voice && { exclusivity: product.share_of_voice >= 1 ? 'exclusive' : 'non_exclusive' }),
-      pricing_options: [{
+      pricing_options: seeded?.pricing.length ? seeded.pricing.map(option => wirePricing(option, seed.currency)) : [{
         pricing_option_id: this.pricingOptionId(product),
         pricing_model: 'cpm' as const,
         currency: seed.currency,
@@ -261,6 +423,9 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           ? [...REPORTED_METRICS, 'completed_views', 'completion_rate']
           : REPORTED_METRICS,
         date_range_support: 'date_range' as const,
+        // A seeded product reports what its fixture declares (its metrics,
+        // say) over these defaults, which fill the fields the schema requires.
+        ...(seeded && isContext(seeded.record.fixture.reporting_capabilities) && structuredClone(seeded.record.fixture.reporting_capabilities)),
       },
       overlay_support: { geo_countries: true },
       ...(installments && {
@@ -271,6 +436,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         }),
         installments: this.wireInstallments(product, installments, sim, nowMs),
       }),
+      ...(seeded && wireOverrides(seeded.record)),
     };
   }
 
@@ -278,6 +444,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     if (buy.canceled) return 'canceled';
     if (nowMs >= Date.parse(buy.end_time)) return 'completed';
     if (buy.paused) return 'paused';
+    // No live package has a creative, so none can begin delivery: the buyer
+    // has to act. The simulation still delivers the bookings as seeded.
+    const live = buy.packages.filter(pkg => !pkg.canceled);
+    if (live.length > 0 && live.every(pkg => !pkg.creative_assignments?.length)) return 'pending_creatives';
     if (nowMs < Date.parse(buy.start_time)) return 'pending_start';
     return 'active';
   }
@@ -296,7 +466,65 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       end_time: pkg.end_time,
       paused: pkg.paused,
       canceled: pkg.canceled,
+      // Opaque buyer correlation data: kept unchanged, never interpreted.
+      ...(pkg.context && { context: pkg.context }),
     };
+  }
+
+  /** This seed's formats as product format declarations, for the SDK's
+   * creative format projection (`tenants/inventory.ts`): canonical inline
+   * creatives in them then reach create_media_buy as these options. */
+  formatDeclarations(): Record<string, unknown>[] {
+    return this.declarations as unknown as Record<string, unknown>[];
+  }
+
+  /**
+   * A package's inline creatives and creative_assignments. Inline creatives
+   * join the caller's library; both must exist and be in a format the
+   * package's product serves. create_media_buy adds, update_media_buy
+   * replaces the package's assignments.
+   */
+  private applyPackageCreatives(market: OpenMarket, accountId: string, record: PackageRecord, pkg: Record<string, unknown>, field: string, replace: boolean): boolean {
+    const inline = Array.isArray(pkg.creatives) ? pkg.creatives as unknown[] : undefined;
+    const assignments = Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments as unknown[] : undefined;
+    if (!inline && !assignments) return false;
+    const catalog = this.catalogFor(market);
+    const weightOf = (value: unknown, at: string) => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'number' || !(value >= 0 && value <= 100)) throw invalid('weight must be a number from 0 to 100', at);
+      return value;
+    };
+    const wanted: Array<{ creative_id: string; weight?: number }> = [];
+    try {
+      inline?.forEach((input, index) => {
+        const at = `${field}.creatives[${index}]`;
+        // The SDK hands these over canonicalized (format_option_ref and
+        // format_kind); a kind matches only among the product's formats.
+        const parsed = parseCreative(input, at, catalog, catalog.productFormats(record.product_id));
+        if ('error' in parsed) throw creativeFailure(parsed.error);
+        upsertCreative(market.doc, accountId, parsed.creative, market.nowIso);
+        wanted.push({ creative_id: parsed.creative.creative_id, weight: weightOf((input as Record<string, unknown>).weight, `${at}.weight`) });
+      });
+    } catch (error) {
+      if (error instanceof CreativeRequestError) throw creativeFailure(error.errors[0]);
+      throw error;
+    }
+    assignments?.forEach((input, index) => {
+      const at = `${field}.creative_assignments[${index}]`;
+      const assignment = input as Record<string, unknown> | null;
+      if (typeof assignment !== 'object' || assignment === null || typeof assignment.creative_id !== 'string') throw invalid('Each creative assignment needs a creative_id', at);
+      if (assignment.placement_ids !== undefined || assignment.placement_refs !== undefined) {
+        throw new AdcpError('UNSUPPORTED_FEATURE', { recovery: 'correctable', message: 'Products here do not declare placements to route creatives to', field: `${at}.placement_ids` });
+      }
+      wanted.push({ creative_id: assignment.creative_id, weight: weightOf(assignment.weight, `${at}.weight`) });
+    });
+    for (const { creative_id } of wanted) {
+      const error = assignmentError(market.doc, accountId, catalog, creative_id, record, record.package_id, field);
+      if (error) throw creativeFailure(error);
+    }
+    if (replace) delete record.creative_assignments;
+    for (const { creative_id, weight } of wanted) assign(record, creative_id, weight, market.nowIso);
+    return true;
   }
 
   private requireBuy(market: OpenMarket, mediaBuyId: string, ctx: Ctx): MediaBuyRecord {
@@ -307,7 +535,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
 
   sales: SalesPlatform<InventoryMeta> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getProducts: async (req: any, ctx) => {
+    getProducts: this.serialized(async (req: any, ctx) => {
       const market = await this.market(ctx);
       const filters = (req.filters ?? {}) as Record<string, unknown>;
       const startMs = filters.start_date !== undefined ? parseDateStart(filters.start_date, 'filters.start_date') : market.nowMs;
@@ -321,21 +549,40 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const budget = typeof budgetMax === 'number' && budgetMax > 0 ? budgetMax : undefined;
       const channels = Array.isArray(filters.channels) ? new Set(filters.channels as string[]) : undefined;
       // With an account, forecasts net out the caller's own bookings, an
-      // account-specific overlay. Without one the seller MUST answer with the
-      // public card, so forecast against an empty market: the same for every
-      // caller at the same simulated time.
+      // account-specific overlay, and the catalogue carries the caller's
+      // seeded products. Without one the seller MUST answer with the public
+      // card: the season's products against an empty market, the same for
+      // every caller at the same simulated time.
       const scoped = req.account !== undefined && req.account !== null;
       const sim = scoped ? market.sim : InventorySimulation.create(this.profile.seed, market.nowMs);
-      const products = this.products
+      const pagination = req.pagination as { max_results?: unknown; cursor?: string } | undefined;
+      const offset = pagination ? decodeOffsetCursor('products', pagination.cursor) : 0;
+      if (offset === null) throw invalid('pagination.cursor is malformed', 'pagination.cursor');
+      const formatRefs = Array.isArray(filters.format_option_refs) ? filters.format_option_refs as FormatOptionRef[] : undefined;
+      // A caller's seeded products come first: a storyboard that seeds the
+      // products it pages through reads them before the season's.
+      const seededIds = new Set((market.doc.seeded?.products ?? []).map(record => record.product_id));
+      const catalogue = [...sim.traffic.products.values()];
+      const products = [...catalogue.filter(product => seededIds.has(product.product_id)), ...catalogue.filter(product => !seededIds.has(product.product_id))]
         .filter(product => filters.delivery_type === undefined || product.delivery_type === filters.delivery_type)
-        .filter(product => !channels || product.placement_ids.some(id => channels.has(ADCP_CHANNEL[this.profile.seed.placements.find(p => p.placement_id === id)!.channel])))
-        .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget));
+        .filter(product => !channels || this.channelsOf(market, product).some(channel => channels.has(channel)))
+        .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget, this.seededProduct(market, product.product_id)))
+        .filter(product => !formatRefs || servesFormatOptionRef(product, formatRefs));
       market.save();
-      return { products, cache_scope: scoped ? 'account' : 'public' } as never;
-    },
+      if (!pagination) return { products, cache_scope: scoped ? 'account' : 'public' } as never;
+      // Same page sizes as the sales tenant: 50 by default, at most 100.
+      const maxResults = Math.min(typeof pagination.max_results === 'number' && pagination.max_results >= 1 ? pagination.max_results : 50, 100);
+      const pageEnd = Math.min(offset + maxResults, products.length);
+      const hasMore = pageEnd < products.length;
+      return {
+        products: products.slice(offset, pageEnd),
+        cache_scope: scoped ? 'account' : 'public',
+        pagination: { has_more: hasMore, total_count: products.length, ...(hasMore && { cursor: encodeOffsetCursor('products', pageEnd) }) },
+      } as never;
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    createMediaBuy: async (req: any, ctx) => {
+    createMediaBuy: this.serialized(async (req: any, ctx) => {
       const market = await this.market(ctx);
       const packages = Array.isArray(req.packages) ? req.packages : [];
       if (packages.length === 0) throw invalid('create_media_buy needs at least one package', 'packages');
@@ -346,13 +593,19 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const records: PackageRecord[] = [];
       packages.forEach((pkg: Record<string, unknown>, index: number) => {
         const field = `packages[${index}]`;
-        const product = this.products.find(candidate => candidate.product_id === pkg.product_id);
-        if (!product) throw new AdcpError('PRODUCT_NOT_FOUND', { recovery: 'correctable', message: `Unknown product ${String(pkg.product_id)}`, field: `${field}.product_id` });
-        if (pkg.pricing_option_id !== this.pricingOptionId(product)) {
-          throw new AdcpError('INVALID_PRICING_OPTION', { recovery: 'correctable', message: `Product ${product.product_id} is priced by ${this.pricingOptionId(product)}`, field: `${field}.pricing_option_id` });
-        }
+        // A request that can never be valid is rejected before any lookup, so
+        // a negative budget reads as one whatever product it names.
         const budget = typeof pkg.budget === 'number' ? pkg.budget : Number.NaN;
         if (!(budget > 0)) throw invalid('Each package needs a positive budget', `${field}.budget`);
+        const product = typeof pkg.product_id === 'string' ? market.sim.traffic.products.get(pkg.product_id) : undefined;
+        if (!product) throw new AdcpError('PRODUCT_NOT_FOUND', { recovery: 'correctable', message: `Unknown product ${String(pkg.product_id)}`, field: `${field}.product_id` });
+        const pricingIds = this.pricingOptionIds(market, product);
+        if (typeof pkg.pricing_option_id !== 'string' || !pricingIds.includes(pkg.pricing_option_id)) {
+          throw new AdcpError('INVALID_PRICING_OPTION', { recovery: 'correctable', message: `Product ${product.product_id} is priced by ${pricingIds.join(', ')}`, field: `${field}.pricing_option_id` });
+        }
+        const pricingOptionId = pkg.pricing_option_id;
+        const seededOption = this.seededProduct(market, product.product_id)?.pricing
+          .find(option => option.pricing_option_id === pricingOptionId);
         const startMs = pkg.start_time !== undefined ? parseInstant(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
         const endMs = pkg.end_time !== undefined ? parseInstant(pkg.end_time, `${field}.end_time`, market.nowMs) : buyEnd;
         const targeting = this.targetingFrom(pkg.targeting_overlay, `${field}.targeting_overlay`);
@@ -377,7 +630,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             flight_end_ms: bookingEndMs,
             budget,
             ...(impressions !== undefined && { impression_goal: impressions }),
-            ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
+            ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? (seededOption && floorPrice(seededOption)) ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
           }, market.nowMs);
         } catch (error) {
           fromEngine(error, field);
@@ -386,7 +639,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         records.push({
           package_id: packageId,
           product_id: product.product_id,
-          pricing_option_id: this.pricingOptionId(product),
+          pricing_option_id: pricingOptionId,
           budget,
           ...(booking.impression_goal !== undefined && { impressions: booking.impression_goal }),
           ...(booking.kind === 'auction' && { bid_price: booking.cpm }),
@@ -396,7 +649,9 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           end_time: new Date(endMs).toISOString(),
           paused: false,
           canceled: false,
+          ...(isContext(pkg.context) && { context: structuredClone(pkg.context) }),
         });
+        this.applyPackageCreatives(market, accountIdOf(ctx), records[records.length - 1], pkg, field, false);
       });
       const buy: MediaBuyRecord = {
         media_buy_id: mediaBuyId,
@@ -411,6 +666,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         paused: false,
         canceled: false,
         packages: records,
+        ...(isContext(req.context) && { context: structuredClone(req.context) }),
       };
       market.doc.media_buys.push(buy);
       market.save();
@@ -424,13 +680,17 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         packages: records.map(pkg => this.wirePackage(pkg, buy.currency)),
         sandbox: true,
       } as never;
-    },
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    updateMediaBuy: async (buyId: string, patch: any, ctx) => {
+    updateMediaBuy: this.serialized(async (buyId: string, patch: any, ctx) => {
       const market = await this.market(ctx);
       const buy = this.requireBuy(market, buyId, ctx);
-      if (buy.canceled) throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Media buy ${buyId} is canceled` });
+      if (buy.canceled) {
+        // Cancelling again is its own refusal; any other change is an invalid state.
+        if (patch.canceled === true) throw new AdcpError('NOT_CANCELLABLE', { recovery: 'terminal', message: `Media buy ${buyId} is already canceled`, field: 'canceled' });
+        throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Media buy ${buyId} is canceled` });
+      }
       if (typeof patch.revision === 'number' && patch.revision !== buy.revision) {
         throw new AdcpError('CONFLICT', { recovery: 'correctable', message: `Media buy ${buyId} is at revision ${buy.revision}`, field: 'revision' });
       }
@@ -456,7 +716,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         const field = `packages[${index}]`;
         const pkg = buy.packages.find(candidate => candidate.package_id === change.package_id);
         if (!pkg) throw new AdcpError('PACKAGE_NOT_FOUND', { recovery: 'correctable', message: `Unknown package ${String(change.package_id)}`, field: `${field}.package_id` });
-        if (pkg.canceled) throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Package ${pkg.package_id} is canceled`, field });
+        if (pkg.canceled) {
+          if (change.canceled === true) throw new AdcpError('NOT_CANCELLABLE', { recovery: 'terminal', message: `Package ${pkg.package_id} is already canceled`, field: `${field}.canceled` });
+          throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Package ${pkg.package_id} is canceled`, field });
+        }
         if (typeof change.budget === 'number') {
           pkg.budget = change.budget;
           apply(pkg, { budget: change.budget }, `${field}.budget`);
@@ -476,6 +739,11 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         if (change.canceled === true) {
           pkg.canceled = true;
           apply(pkg, { status: 'canceled' }, `${field}.canceled`);
+        }
+        if (this.applyPackageCreatives(market, accountIdOf(ctx), pkg, change, field, true)) affected.add(pkg.package_id);
+        if (isContext(change.context)) {
+          pkg.context = structuredClone(change.context);
+          affected.add(pkg.package_id);
         }
       });
       if (typeof patch.paused === 'boolean') {
@@ -504,10 +772,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         affected_packages: buy.packages.filter(pkg => affected.has(pkg.package_id)).map(pkg => this.wirePackage(pkg, buy.currency)),
         sandbox: true,
       } as never;
-    },
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getMediaBuys: async (req: any, ctx) => {
+    getMediaBuys: this.serialized(async (req: any, ctx) => {
       const market = await this.market(ctx);
       const ids = Array.isArray(req.media_buy_ids) ? new Set(req.media_buy_ids as string[]) : undefined;
       const buys = market.doc.media_buys.filter(buy => buy.account_id === accountIdOf(ctx) && (!ids || ids.has(buy.media_buy_id)));
@@ -525,14 +793,18 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           created_at: buy.confirmed_at,
           updated_at: buy.updated_at,
           revision: buy.revision,
-          packages: buy.packages.map(pkg => this.wirePackage(pkg, buy.currency)),
+          ...(buy.context && { context: buy.context }),
+          packages: buy.packages.map(pkg => {
+            const approvals = creativeApprovals(pkg);
+            return { ...this.wirePackage(pkg, buy.currency), ...(approvals && { creative_approvals: approvals }) };
+          }),
         })),
         sandbox: true,
       } as never;
-    },
+    }),
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getMediaBuyDelivery: async (filter: any, ctx) => {
+    getMediaBuyDelivery: this.serialized(async (filter: any, ctx) => {
       const market = await this.market(ctx);
       const ids = Array.isArray(filter.media_buy_ids) ? new Set(filter.media_buy_ids as string[]) : undefined;
       const buys = market.doc.media_buys.filter(buy => buy.account_id === accountIdOf(ctx) && (!ids || ids.has(buy.media_buy_id)));
@@ -598,7 +870,39 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         media_buy_deliveries: deliveries,
         sandbox: true,
       } as never;
-    },
+    }),
   };
+
+  /**
+   * sync_creatives, list_creatives and list_creative_formats. They register as
+   * raw media-buy handlers because sync_creatives needs the whole request:
+   * the SDK hands `sales.syncCreatives` only the creatives, without the
+   * assignments.
+   */
+  creativeHandlers(storyboardCompat?: TrainingContext['storyboardCompat']) {
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      syncCreatives: this.serialized(async (req: any, ctx: Ctx) => {
+        const market = await this.market(ctx);
+        const { payload, persist } = syncCreatives(market.doc, accountIdOf(ctx), req, this.catalogFor(market), market.nowIso);
+        if (persist) market.save();
+        return payload as never;
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      listCreatives: this.serialized(async (req: any, ctx: Ctx) => {
+        const market = await this.market(ctx);
+        const payload = listCreatives(market.doc, accountIdOf(ctx), req, this.catalogFor(market));
+        market.save();
+        return payload as never;
+      }),
+      // The training creative catalogue, limited to the formats this seed
+      // serves.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      listCreativeFormats: async (req: any, ctx: Ctx) => {
+        const training: TrainingContext = { mode: 'open', principal: principalOf(ctx) ?? 'anonymous', ...(storyboardCompat && { storyboardCompat }) };
+        return await listSeedCreativeFormats(this.declarations, req ?? {}, training) as never;
+      },
+    };
+  }
 }
 

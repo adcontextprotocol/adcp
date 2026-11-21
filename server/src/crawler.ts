@@ -625,65 +625,65 @@ export class CrawlerService {
       this.crawling = true;
       coordinating = false;
 
-    // Filter out agents whose owners have paused monitoring
-    const pausedUrls = await this.getPausedAgentUrls();
-    const activeAgents = agents.filter(a => !pausedUrls.has(a.url));
-    if (activeAgents.length < agents.length) {
-      log.info({ paused: agents.length - activeAgents.length, active: activeAgents.length }, 'Skipping paused agents');
-    }
-    log.info({ agentCount: activeAgents.length }, 'Starting crawl');
+      // Filter out agents whose owners have paused monitoring
+      const pausedUrls = await this.getPausedAgentUrls();
+      const activeAgents = agents.filter(a => !pausedUrls.has(a.url));
+      if (activeAgents.length < agents.length) {
+        log.info({ paused: agents.length - activeAgents.length, active: activeAgents.length }, 'Skipping paused agents');
+      }
+      log.info({ agentCount: activeAgents.length }, 'Starting crawl');
 
-    // Convert our Agent type to AgentInfo for the crawler, starting with config-seeded agents
-    const seenAgentUrls = new Set<string>(activeAgents.map(a => a.url));
-    const agentInfos: AgentInfo[] = activeAgents.map((agent) => ({
-      agent_url: agent.url,
-      protocol: agent.protocol || "mcp",
-    }));
+      // Convert our Agent type to AgentInfo for the crawler, starting with config-seeded agents
+      const seenAgentUrls = new Set<string>(activeAgents.map(a => a.url));
+      const agentInfos: AgentInfo[] = activeAgents.map((agent) => ({
+        agent_url: agent.url,
+        protocol: agent.protocol || "mcp",
+      }));
 
-    // Merge in DB-discovered sales agents from prior crawl cycles so their
-    // list_authorized_properties is called by the PropertyCrawler and their
-    // publisher claims enter the PropertyIndex for step 2 (adcp#4849).
-    try {
-      const discoveredSales = await this.federatedIndex.listDiscoveredAgents('sales');
-      let added = 0;
-      for (const da of discoveredSales) {
-        if (seenAgentUrls.has(da.agent_url) || pausedUrls.has(da.agent_url)) continue;
-        seenAgentUrls.add(da.agent_url);
-        agentInfos.push({
-          agent_url: da.agent_url,
-          protocol: (da.protocol as 'mcp' | 'a2a') || 'mcp',
-        });
-        added++;
+      // Merge in DB-discovered sales agents from prior crawl cycles so their
+      // list_authorized_properties is called by the PropertyCrawler and their
+      // publisher claims enter the PropertyIndex for step 2 (adcp#4849).
+      try {
+        const discoveredSales = await this.federatedIndex.listDiscoveredAgents('sales');
+        let added = 0;
+        for (const da of discoveredSales) {
+          if (seenAgentUrls.has(da.agent_url) || pausedUrls.has(da.agent_url)) continue;
+          seenAgentUrls.add(da.agent_url);
+          agentInfos.push({
+            agent_url: da.agent_url,
+            protocol: (da.protocol as 'mcp' | 'a2a') || 'mcp',
+          });
+          added++;
+        }
+        if (added > 0) {
+          log.debug({ count: added }, 'Including discovered sales agents in PropertyCrawler pass');
+        }
+      } catch (err) {
+        log.warn({ err }, 'Failed to fetch discovered sales agents; proceeding with config agents only');
       }
-      if (added > 0) {
-        log.debug({ count: added }, 'Including discovered sales agents in PropertyCrawler pass');
-      }
-    } catch (err) {
-      log.warn({ err }, 'Failed to fetch discovered sales agents; proceeding with config agents only');
-    }
 
-    // Fetch sales_candidate agents discovered via publisher_properties fan-out.
-    // These get included in the same crawlAgents call so the SDK probes their
-    // list_authorized_properties alongside registered and confirmed sales agents.
-    let salesCandidates: DiscoveredAgent[] = [];
-    try {
-      salesCandidates = await this.federatedIndex.getSalesCandidatesForProbe();
-      let added = 0;
-      for (const candidate of salesCandidates) {
-        if (seenAgentUrls.has(candidate.agent_url) || pausedUrls.has(candidate.agent_url)) continue;
-        seenAgentUrls.add(candidate.agent_url);
-        agentInfos.push({
-          agent_url: candidate.agent_url,
-          protocol: (candidate.protocol as 'mcp' | 'a2a') || 'mcp',
-        });
-        added++;
+      // Fetch sales_candidate agents discovered via publisher_properties fan-out.
+      // These get included in the same crawlAgents call so the SDK probes their
+      // list_authorized_properties alongside registered and confirmed sales agents.
+      let salesCandidates: DiscoveredAgent[] = [];
+      try {
+        salesCandidates = await this.federatedIndex.getSalesCandidatesForProbe();
+        let added = 0;
+        for (const candidate of salesCandidates) {
+          if (seenAgentUrls.has(candidate.agent_url) || pausedUrls.has(candidate.agent_url)) continue;
+          seenAgentUrls.add(candidate.agent_url);
+          agentInfos.push({
+            agent_url: candidate.agent_url,
+            protocol: (candidate.protocol as 'mcp' | 'a2a') || 'mcp',
+          });
+          added++;
+        }
+        if (added > 0) {
+          log.debug({ count: added }, 'Including sales_candidate agents in PropertyCrawler pass');
+        }
+      } catch (err) {
+        log.warn({ err }, 'Failed to fetch sales_candidate agents; proceeding without candidate probes');
       }
-      if (added > 0) {
-        log.debug({ count: added }, 'Including sales_candidate agents in PropertyCrawler pass');
-      }
-    } catch (err) {
-      log.warn({ err }, 'Failed to fetch sales_candidate agents; proceeding without candidate probes');
-    }
 
       const result = await this.crawler.crawlAgents(agentInfos);
       assertExecutionLock();
