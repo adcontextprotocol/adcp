@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/planning-budget-mode.json",
+  "title": "Planning Budget Mode",
+  "description": "Whether the buyer fixes the budget of a plan or asks the seller to suggest one. Distinct from budget_allocation.mode, which says how an executed total budget is split across packages (fixed or seller_optimized); budget_mode says where the total comes from. When absent, a request with a budget_range means set and one without means suggest.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": ["set", "suggest"],
+  "enumDescriptions": {
+    "set": "The buyer states the budget (criteria.offer_filters.budget_range; a range with min equal to max is an exact budget). The seller plans within it and reports, per goal, whether the plan meets it. Requires a budget_range; a request without one is rejected with INVALID_REQUEST naming criteria.planning_goals.budget_mode.",
+    "suggest": "The seller sizes the budget to the other planning goals (a delivery_target, a cost_ceiling, an objective, a max_frequency) and states it in commercial_terms.total_budget and total_budget_guidance. A budget_range, when present, is a hard envelope, not a starting point and never ignored: the suggested total_budget MUST fall within its min and max. When the goals cannot be met inside the envelope the seller plans at the bound that serves them and reports the goals it misses in goal_results. A budget stated only in the brief prose is not a budget_range; a buyer who wants it to bound the suggestion sends it structured."
+  }
+}

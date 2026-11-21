@@ -44,6 +44,13 @@
       "x-adcp-schema-uri": "/schemas/media-buy/outcome-target.json",
       "description": "Reverse-forecast planning input for sellers declaring media_buy.outcome_target: a metric, event, or vendor_metric goal plus a volume, a cost target, or both, answered on proposals. Inert on list_products for every seller. See outcome-target.json."
     },
+    "planning_goals": {
+      "allOf": [{ "$ref": "/schemas/core/planning-goals.json" }],
+      "x-adcp-schema-uri": "/schemas/core/planning-goals.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.planning_goals). Structured goals for a scheduled-media plan: whether the budget is set or suggested, an objective, a fixed delivery target with a cost ceiling, a frequency ceiling, scheduling rules, and stations, markets and programming formats to include or exclude. Inert on list_products for every seller, like outcome_target. On request_proposals and proposal refinement, sellers that do not list media_buy.planning_goals in experimental_features MUST reject the field with UNSUPPORTED_FEATURE rather than silently ignore it; sellers that list it plan toward each goal and answer with goal_results on every proposal, reporting a goal they cannot plan against as not_supported. On a revise refinement the field replaces the source proposal's planning_goals as a whole. See planning-goals.json."
+    },
     "acceptance_context": {
       "$ref": "/schemas/media-buy/acceptance-context.json",
       "x-adcp-schema-uri": "/schemas/media-buy/acceptance-context.json",

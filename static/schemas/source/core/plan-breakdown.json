@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-breakdown.json",
+  "title": "Plan Breakdown",
+  "description": "How a scheduled-media plan is built, in the terms radio, linear TV and out-of-home buyers plan in: headline totals, and allocations along named dimensions (market, station, programming format, daypart, week, spot length). It is a view of the proposal, not a second source of terms: commercial_terms stays authoritative for what is bought, and the proposal's forecast stays authoritative for any metric both state. A seller that reports it for a proposal reports it for every version of that negotiation, so figures compare across versions. Each dimension appears at most once, and `custom` at most once per custom_dimension. Its figures are the seller's point estimates for the plan priced at the proposal's total budget: where the proposal's forecast has a point at that budget they equal its mid values, and the forecast stays authoritative. audience_basis states the units every reach, audience and GRP figure is read in; when it is omitted, the proposal forecast's demographic, measurement_source and reach_unit apply.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency of every monetary figure in the breakdown."
+    },
+    "cost_basis": {
+      "type": "string",
+      "enum": ["gross", "net"],
+      "description": "Whether budget, CPP and CPM are gross or net of agency commission. Absent means the seller's quoting convention."
+    },
+    "audience_basis": {
+      "$ref": "/schemas/core/plan-audience-basis.json"
+    },
+    "totals": {
+      "$ref": "/schemas/core/plan-totals.json"
+    },
+    "breakdowns": {
+      "type": "array",
+      "description": "Allocations by dimension. Dimensions MUST be unique, except custom, which MUST be unique by custom_dimension. A seller that reports a dimension reports it complete or marks it truncated.",
+      "items": { "$ref": "/schemas/core/plan-dimension-breakdown.json" },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["currency", "totals"],
+  "additionalProperties": true
+}

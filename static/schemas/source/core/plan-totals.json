@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-totals.json",
+  "title": "Plan Totals",
+  "description": "Headline figures for the whole plan: the strip a planner reads before any breakdown. Counts and sums that a breakdown also reports MUST agree with it, within the rounding of the figures shown.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "budget": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total spend of the plan, in the breakdown currency."
+    },
+    "market_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of markets in the plan."
+    },
+    "station_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of stations or networks in the plan."
+    },
+    "market_audience": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Target-audience persons in the plan's markets, in audience_basis.reach_unit."
+    },
+    "estimated_audience": {
+      "type": "number",
+      "minimum": 0,
+      "description": "The plan's estimated audience: the persons in the target audience the plan is expected to reach. Where the seller computes it as the campaign window's reach, it equals that reach_frequency point."
+    },
+    "average_index": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Average of the market-slice indexes weighted by each slice's target_persons, relative to audience_basis.index_baseline."
+    },
+    "spots": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Spots scheduled in the plan."
+    },
+    "impressions": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated impressions in the plan's target audience (audience_basis), not total audience."
+    },
+    "grps": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Gross rating points of the plan, rated against audience_basis.universe."
+    },
+    "cpp": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Plan cost per point: budget / grps, in the breakdown currency."
+    },
+    "cpm": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Plan cost per thousand impressions: budget / impressions * 1000, in the breakdown currency."
+    },
+    "reach_frequency": {
+      "type": "array",
+      "description": "Reach and frequency by window. Windows MUST be unique.",
+      "items": { "$ref": "/schemas/core/plan-reach-frequency-point.json" },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

@@ -333,6 +333,42 @@
           "$ref": "/schemas/core/impression-basis-breakdown-entry.json",
           "description": "Experimental. The plays of a DOOH row or forecast point estimated on one impression basis tier, and the impressions they produced"
         },
+        "planning-goals": {
+          "$ref": "/schemas/core/planning-goals.json",
+          "description": "Experimental. Structured goals for a scheduled-media plan: budget mode, objective, delivery target, frequency ceiling, scheduling rules, inclusions and exclusions"
+        },
+        "plan-scope-selector": {
+          "$ref": "/schemas/core/plan-scope-selector.json",
+          "description": "Experimental. Stations, markets and programming formats a plan must include or exclude"
+        },
+        "plan-audience-basis": {
+          "$ref": "/schemas/core/plan-audience-basis.json",
+          "description": "Experimental. The provider, demographic and universe a plan's figures are measured against"
+        },
+        "plan-breakdown": {
+          "$ref": "/schemas/core/plan-breakdown.json",
+          "description": "Experimental. A plan's totals and its allocations by market, station, programming format, daypart, week and spot length"
+        },
+        "plan-totals": {
+          "$ref": "/schemas/core/plan-totals.json",
+          "description": "Experimental. Headline figures for a whole plan"
+        },
+        "plan-dimension-breakdown": {
+          "$ref": "/schemas/core/plan-dimension-breakdown.json",
+          "description": "Experimental. A plan's allocations along one dimension"
+        },
+        "plan-allocation": {
+          "$ref": "/schemas/core/plan-allocation.json",
+          "description": "Experimental. One slice of a plan with its budget, spots, impressions, GRPs, CPP, CPM, composition rate and index"
+        },
+        "plan-reach-frequency-point": {
+          "$ref": "/schemas/core/plan-reach-frequency-point.json",
+          "description": "Experimental. Cumulative reach and average frequency of a plan over a window"
+        },
+        "goal-result": {
+          "$ref": "/schemas/core/goal-result.json",
+          "description": "Experimental. A proposal version's evaluation of one planning goal: met, missed or not supported"
+        },
         "delivery-metric-aggregate": {
           "$ref": "/schemas/core/delivery-metric-aggregate.json",
           "description": "Cross-buy delivery aggregate partitioned by metric scope and qualifier"
@@ -1625,6 +1661,26 @@
         "impression-estimation-basis": {
           "$ref": "/schemas/enums/impression-estimation-basis.json",
           "description": "Methodology tier of a DOOH audience figure (currency_measured, seller_modeled, sensor_measured, hybrid)"
+        },
+        "planning-budget-mode": {
+          "$ref": "/schemas/enums/planning-budget-mode.json",
+          "description": "Experimental. Whether the buyer sets the budget of a plan or asks the seller to suggest one"
+        },
+        "planning-objective": {
+          "$ref": "/schemas/enums/planning-objective.json",
+          "description": "Experimental. What a plan optimizes for: max_reach or max_efficiency"
+        },
+        "planning-goal-key": {
+          "$ref": "/schemas/enums/planning-goal-key.json",
+          "description": "Experimental. The planning goals a seller evaluates and reports on"
+        },
+        "planning-goal-status": {
+          "$ref": "/schemas/enums/planning-goal-status.json",
+          "description": "Experimental. Whether a proposal met, missed or could not evaluate a planning goal"
+        },
+        "plan-breakdown-dimension": {
+          "$ref": "/schemas/enums/plan-breakdown-dimension.json",
+          "description": "Experimental. Axis of a plan breakdown: market, station, programming_format, daypart, week, spot_length or custom"
         },
         "forecast-method": {
           "$ref": "/schemas/enums/forecast-method.json",
