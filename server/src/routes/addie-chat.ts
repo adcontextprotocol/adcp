@@ -2355,21 +2355,19 @@ export function createAddieChatRouter(options?: {
           {
             threadId: thread.thread_id,
             toolsUsed,
-            toolExecutions: response?.tool_executions?.length ?? 0,
+            toolExecutions: response.tool_executions?.length ?? 0,
           },
           "Addie Chat Stream: Empty assistant response replaced with fallback"
         );
         if (!fullText.trim()) {
           sendEvent("text", { text: normalizedStream.text });
         }
-        if (response) {
-          response.flagged = true;
-          response.flag_reason = response.flag_reason || 'Empty assistant response';
-          response.model_execution = classifyLocalModelExecution(
-            response.model_execution,
-            'no_provider_response',
-          );
-        }
+        response.flagged = true;
+        response.flag_reason = response.flag_reason || 'Empty assistant response';
+        response.model_execution = classifyLocalModelExecution(
+          response.model_execution,
+          'no_provider_response',
+        );
       }
       fullText = normalizedStream.text;
 

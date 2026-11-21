@@ -5,6 +5,7 @@ const path = require("node:path");
 const os = require("node:os");
 const { execFileSync, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
+const { runnerPath } = require("./helpers/gnu-runner-tools.cjs");
 const root = path.resolve(__dirname, "..");
 const workflow = YAML.parse(
   fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8"),
@@ -329,7 +330,7 @@ function fixture(t, existing = true, pre = { mode: "pre", tag: "rc" }) {
   const wrapper = path.join(temporary, "release-hooks");
   const env = {
     ...process.env,
-    PATH: `${dir}/bin:${process.env.PATH}`,
+    PATH: `${dir}/bin:${runnerPath()}`,
     RUNNER_TEMP: temporary,
     GITHUB_PATH: path.join(dir, "github-path"),
     GITHUB_STEP_SUMMARY: path.join(dir, "summary"),

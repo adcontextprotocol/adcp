@@ -215,6 +215,7 @@ function resolvePackage(pkg, version, offeringsById, at) {
       continue;
     }
     if (!canProduceTimezone(schedule, selector.period_timezone)) continue;
+    if (!systemsMatch(selector.dimension_systems, offering.dimension_systems)) continue;
     if (!Array.isArray(offering.standard_dimensions)) {
       // sync_principal: "Sellers advertising subscriptions MUST publish standard_dimensions on every offering."
       throw new CoverageInputError('missing_standard_dimensions', `${id} does not publish standard_dimensions`);
@@ -239,6 +240,24 @@ function resolvePackage(pkg, version, offeringsById, at) {
   if (match === 'all') return including.map(offering => offering.offering_id);
   const most = Math.max(-1, ...including.map(offering => mapped(offering).size));
   return including.filter(offering => mapped(offering).size === most).slice(0, 1).map(offering => offering.offering_id);
+}
+
+/**
+ * Whether an offering reports in the systems the selector names
+ * (reporting-subscription.json selector dimension_systems): "an offering
+ * matches only when its dimension_systems.metro equals this metro, and its
+ * dimension_systems.postal_area includes every entry here". A key the
+ * selector omits accepts any system.
+ */
+function systemsMatch(wanted, offered) {
+  if (wanted === undefined) return true;
+  if (wanted.metro !== undefined && offered?.metro !== wanted.metro) return false;
+  if (wanted.postal_area !== undefined) {
+    const has = offered?.postal_area ?? [];
+    const ok = wanted.postal_area.every(entry => has.some(o => o.country === entry.country && o.system === entry.system));
+    if (!ok) return false;
+  }
+  return true;
 }
 
 /**
