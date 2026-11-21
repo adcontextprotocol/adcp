@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
+const { runnerPath } = require("./helpers/gnu-runner-tools.cjs");
 const root = path.resolve(__dirname, "..");
 const release = YAML.parse(
   fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8"),
@@ -106,10 +107,12 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     "git",
     common +
       `
+    // The caller's command line; macOS has no /proc, so ask ps there.
+    const parentCommand=()=>process.platform==='linux'?read('/proc/'+process.ppid+'/cmdline'):require('node:child_process').execFileSync('ps',['-ww','-o','command=','-p',String(process.ppid)],{encoding:'utf8'});
     if(process.env.ORIGINAL_TREE_ENUMERATION_ERROR && (args[0]==='ls-files'||(args[0]==='ls-tree'&&args.includes('--name-only')))) process.exit(1);
     if(args[0]==='ls-remote') {
       if(process.env.REMOTE_ERROR) process.exit(1);
-      if(process.env.REMOVE_SCHEMA_AFTER_PREFLIGHT && fs.readFileSync('/proc/'+process.ppid+'/cmdline','utf8').includes('committed')) {
+      if(process.env.REMOVE_SCHEMA_AFTER_PREFLIGHT && parentCommand().includes('committed')) {
         const counter='committed-remote-count',count=(fs.existsSync(counter)?Number(read(counter)):0)+1;fs.writeFileSync(counter,String(count));
         if(count===4) fs.rmSync('dist/schemas/${version}',{recursive:true});
       }
@@ -238,7 +241,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   write('private-temp/.keep', '');
   const env = {
     TMPDIR: path.join(dir,'private-temp'),
-    PATH: `${dir}/bin:${process.env.PATH}`,
+    PATH: `${dir}/bin:${runnerPath()}`,
     TESTED_SHA: head,
     GITHUB_SHA: head,
     PUBLICATION_BRANCH: "3.1.x",

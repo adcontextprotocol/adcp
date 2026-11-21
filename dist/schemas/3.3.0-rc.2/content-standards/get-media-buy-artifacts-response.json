@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/content-standards/get-media-buy-artifacts-response.json",
+  "title": "Get Media Buy Artifacts Response",
+  "description": "Response containing content artifacts from a media buy for validation",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response with artifacts",
+      "properties": {
+        "media_buy_id": {
+          "type": "string",
+          "description": "Media buy these artifacts belong to"
+        },
+        "artifacts": {
+          "type": "array",
+          "description": "Delivery records with full artifact content",
+          "items": {
+            "type": "object",
+            "properties": {
+              "record_id": {
+                "type": "string",
+                "description": "Unique identifier for this delivery record"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the delivery occurred"
+              },
+              "package_id": {
+                "type": "string",
+                "description": "Which package this delivery belongs to"
+              },
+              "artifact": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/content-standards/artifact.json",
+                "description": "Full artifact with content assets"
+              },
+              "country": {
+                "type": "string",
+                "description": "ISO 3166-1 alpha-2 country code where delivery occurred"
+              },
+              "channel": {
+                "type": "string",
+                "description": "Channel type (e.g., display, video, audio, social)"
+              },
+              "brand_context": {
+                "type": "object",
+                "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers.",
+                "properties": {
+                  "brand_id": {
+                    "type": "string",
+                    "description": "Brand identifier"
+                  },
+                  "sku_id": {
+                    "type": "string",
+                    "description": "Product/SKU identifier if applicable"
+                  }
+                }
+              },
+              "local_verdict": {
+                "type": "string",
+                "x-deprecated-enum-values": [
+                  "pass"
+                ],
+                "x-deprecated-enum-values-doc": "Deprecated in 3.3 and removed in 4.0 (#8791): `pass` is a Python keyword, so generated SDKs must rename it. Use `passed`. Receivers accept both values through 3.x. Send the replacement only when the release served is 3.3 or later; a 3.2 receiver treats it as an unknown value. A published file, such as `adagents.json`, keeps the original through 3.x.",
+                "enum": [
+                  "pass",
+                  "fail",
+                  "unevaluated",
+                  "passed"
+                ],
+                "description": "Seller's local model verdict for this artifact. `passed` replaces `pass`, which is deprecated in 3.3 and removed in 4.0; buyers treat the two as the same verdict.",
+                "enumMetadata": {
+                  "pass": {
+                    "deprecated": true,
+                    "x-deprecated-in": "3.3.0",
+                    "x-removed-in": "4.0.0",
+                    "x-superseded-by": "passed"
+                  }
+                }
+              }
+            },
+            "required": [
+              "record_id",
+              "artifact"
+            ]
+          }
+        },
+        "collection_info": {
+          "type": "object",
+          "description": "Information about artifact collection for this media buy. Sampling is configured at buy creation time — this reports what was actually collected.",
+          "properties": {
+            "total_deliveries": {
+              "type": "integer",
+              "description": "Total deliveries in the requested time range"
+            },
+            "total_collected": {
+              "type": "integer",
+              "description": "Total artifacts collected (per the buy's sampling configuration)"
+            },
+            "returned_count": {
+              "type": "integer",
+              "description": "Number of artifacts in this response (may be less than total_collected due to pagination or filters)"
+            },
+            "effective_rate": {
+              "type": "number",
+              "description": "Actual collection rate achieved (total_collected / total_deliveries)"
+            }
+          }
+        },
+        "pagination": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/pagination-response.json"
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/ext.json"
+        }
+      },
+      "required": [
+        "media_buy_id",
+        "artifacts"
+      ]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ]
+    }
+  ],
+  "properties": {}
+}

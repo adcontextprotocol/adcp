@@ -1,0 +1,80 @@
+#!/usr/bin/env node
+// GNU coreutils `timeout`, limited to the forms release.yml and the scripts
+// it runs use: `timeout [--kill-after=DURATION] DURATION COMMAND [ARG]...`.
+// Tests put this on PATH only off Linux, where the ubuntu-latest runner's
+// binary is missing. Any other option fails with status 125.
+import { spawn } from "node:child_process";
+import os from "node:os";
+
+const fail = (message, status = 125) => {
+  process.stderr.write(`timeout: ${message}\n`);
+  process.exit(status);
+};
+
+// GNU accepts a floating-point number with an optional s, m, h or d suffix.
+const duration = (text) => {
+  const match = /^(\d+(?:\.\d*)?|\.\d+)([smhd]?)$/.exec(text);
+  if (!match) fail(`invalid time interval '${text}'`);
+  const scale = { "": 1, s: 1, m: 60, h: 3600, d: 86400 }[match[2]];
+  const ms = Number(match[1]) * scale * 1000;
+  if (ms > 2 ** 31 - 1) fail(`unsupported time interval '${text}'`);
+  return ms;
+};
+
+const args = process.argv.slice(2);
+let killAfter = 0;
+while (args.length && args[0].startsWith("-") && args[0] !== "-") {
+  const option = args.shift();
+  if (option === "--") break;
+  const match = /^--kill-after=(.*)$/.exec(option);
+  if (!match) fail(`unsupported option '${option}'`);
+  killAfter = duration(match[1]);
+}
+if (args.length < 2) fail("missing operand");
+const limit = duration(args.shift());
+const [command, ...commandArgs] = args;
+
+// GNU runs the command in a new process group and signals the whole group.
+const child = spawn(command, commandArgs, { stdio: "inherit", detached: true });
+const signal = (name) => {
+  for (const target of [child.pid, -child.pid]) {
+    try {
+      process.kill(target, name);
+    } catch {}
+  }
+};
+
+let timedOut = false;
+let killTimer;
+const timer =
+  limit > 0 &&
+  setTimeout(() => {
+    timedOut = true;
+    signal("SIGTERM");
+    signal("SIGCONT");
+    if (killAfter > 0) killTimer = setTimeout(() => signal("SIGKILL"), killAfter);
+  }, limit);
+
+for (const name of ["SIGTERM", "SIGINT", "SIGHUP"])
+  process.on(name, () => signal(name));
+
+child.on("error", (error) => {
+  const status = error.code === "ENOENT" ? 127 : 126;
+  fail(`failed to run command '${command}': ${error.message}`, status);
+});
+
+child.on("exit", (code, childSignal) => {
+  clearTimeout(timer);
+  clearTimeout(killTimer);
+  // A command killed after the timeout yields 137 (128+9), else 124. GNU
+  // without --foreground also kills itself, which a shell reports as 137 too;
+  // uutils, the runner's coreutils since Ubuntu 26.04, exits 137.
+  if (timedOut) process.exit(childSignal === "SIGKILL" ? 137 : 124);
+  if (childSignal) {
+    // GNU re-raises the signal that ended the command.
+    process.removeAllListeners(childSignal);
+    process.kill(process.pid, childSignal);
+    process.exit(128 + os.constants.signals[childSignal]);
+  }
+  process.exit(code);
+});
