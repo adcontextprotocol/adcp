@@ -74,7 +74,10 @@
             "oneOf": [
               {
                 "type": "object",
-                "description": "URL reference - specific page to fetch and evaluate",
+                "description": "URL reference - specific page to fetch and evaluate. An entry that is also a valid artifact is the artifact.",
+                "not": {
+                  "$ref": "/schemas/content-standards/artifact.json"
+                },
                 "properties": {
                   "type": {
                     "type": "string",
@@ -110,7 +113,10 @@
             "oneOf": [
               {
                 "type": "object",
-                "description": "URL reference - specific page to fetch and evaluate",
+                "description": "URL reference - specific page to fetch and evaluate. An entry that is also a valid artifact is the artifact.",
+                "not": {
+                  "$ref": "/schemas/content-standards/artifact.json"
+                },
                 "properties": {
                   "type": {
                     "type": "string",
