@@ -1,0 +1,70 @@
+{
+  "feature": "media_buy.reporting_delivery",
+  "status": "experimental",
+  "description": "Reference verdicts for the report-definition package_id dimension (#8971). Each case applies its overrides, replacing whole top-level members, to a fresh copy of the base definition, validates the result against core/reporting-report-definition.json, and grades it with the advisory rule. expected.schema_valid is the schema verdict. expected.violations lists the rules a schema-invalid case breaks. expected.advisories lists advisory findings, which never fail a definition.",
+  "base": "report-definition-1-2.json",
+  "rule": "At contract_version 1.2, a definition whose dimensions include media_buy_id MUST include package_id. A definition without media_buy_id, whose rows aggregate across media buys, is exempt at every version. 1.2 keeps every 1.1 rule, including restatement_policy.official_correction_mode. A 1.0 or 1.1 definition that includes media_buy_id but not package_id stays valid and is reported as an advisory finding.",
+  "violation_codes": {
+    "package_id_dimension_missing": "A contract_version 1.2 definition includes media_buy_id in dimensions but not package_id.",
+    "official_correction_mode_missing": "A contract_version 1.1 or 1.2 definition omits restatement_policy.official_correction_mode."
+  },
+  "advisory_codes": {
+    "package_id_dimension_missing": "A contract_version 1.0 or 1.1 definition includes media_buy_id in dimensions but not package_id. Rows cannot be split back into packages; publish a 1.2 definition with package_id."
+  },
+  "cases": [
+    {
+      "id": "v1_2_media_buy_with_package",
+      "description": "The base 1.2 media-buy definition carries package_id.",
+      "overrides": {},
+      "expected": { "schema_valid": true, "violations": [], "advisories": [] }
+    },
+    {
+      "id": "v1_2_media_buy_without_package",
+      "description": "A 1.2 media-buy definition without package_id fails.",
+      "overrides": { "dimensions": ["date", "media_buy_id"] },
+      "expected": { "schema_valid": false, "violations": ["package_id_dimension_missing"], "advisories": [] }
+    },
+    {
+      "id": "v1_2_account_level_summary",
+      "description": "A 1.2 definition whose rows aggregate across media buys has no media_buy_id and is exempt.",
+      "overrides": { "dimensions": ["date"] },
+      "expected": { "schema_valid": true, "violations": [], "advisories": [] }
+    },
+    {
+      "id": "v1_2_account_level_no_dimensions",
+      "description": "A 1.2 account-level total with no dimensions is exempt.",
+      "overrides": { "dimensions": [] },
+      "expected": { "schema_valid": true, "violations": [], "advisories": [] }
+    },
+    {
+      "id": "v1_2_package_without_media_buy",
+      "description": "The rule keys on media_buy_id: a 1.2 definition with package_id and no media_buy_id is valid.",
+      "overrides": { "dimensions": ["date", "package_id"] },
+      "expected": { "schema_valid": true, "violations": [], "advisories": [] }
+    },
+    {
+      "id": "v1_2_without_official_correction_mode",
+      "description": "1.2 keeps the 1.1 rule that requires official_correction_mode.",
+      "overrides": { "restatement_policy": { "source_requery_duration": "P7D", "emit_only_on_content_change": true } },
+      "expected": { "schema_valid": false, "violations": ["official_correction_mode_missing"], "advisories": [] }
+    },
+    {
+      "id": "v1_1_media_buy_without_package",
+      "description": "A 1.1 media-buy definition without package_id stays valid and draws the advisory. The reporting-reconciliation reference fixture has this shape.",
+      "overrides": { "contract_version": "1.1", "dimensions": ["date", "media_buy_id"] },
+      "expected": { "schema_valid": true, "violations": [], "advisories": ["package_id_dimension_missing"] }
+    },
+    {
+      "id": "v1_0_media_buy_without_package",
+      "description": "A 1.0 media-buy definition without package_id stays valid and draws the advisory.",
+      "overrides": { "contract_version": "1.0", "dimensions": ["date", "media_buy_id"] },
+      "expected": { "schema_valid": true, "violations": [], "advisories": ["package_id_dimension_missing"] }
+    },
+    {
+      "id": "v1_1_media_buy_with_package",
+      "description": "A 1.1 definition may already carry package_id; it draws no advisory.",
+      "overrides": { "contract_version": "1.1" },
+      "expected": { "schema_valid": true, "violations": [], "advisories": [] }
+    }
+  ]
+}
