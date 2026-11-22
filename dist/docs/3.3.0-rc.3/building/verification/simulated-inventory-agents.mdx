@@ -1,0 +1,120 @@
+---
+title: Test against simulated inventory agents
+sidebarTitle: Simulated Inventory Agents
+description: "Two inventory agents on the public test agent that forecast, book and deliver over simulated time, with a sandbox clock you can move."
+"og:title": "AdCP — Simulated inventory agents and the sandbox clock"
+---
+
+<Note>
+**Non-normative.** These are sandbox tenants of the public test agent, built for testing buyer and storefront agents over the life of a buy. The `sandbox_clock` controller scenario is proposed in [#9025](https://github.com/adcontextprotocol/adcp/issues/9025) and is served only by these two tenants for now. Their behaviour is a simulation, not a model of any real ad server.
+</Note>
+
+Most test agents answer each call correctly but hold fixed data. Nothing forecasts from traffic, serves a booking day by day, or delivers differently from what was forecast. The two inventory agents on the test agent do all three, driven by a seeded simulation and a clock you can move. You can test what your agent does over a 30-day flight in a few calls: when a guarantee falls behind, when actual traffic differs from the forecast, or when an episode is cancelled.
+
+Both play the *inventory* role from [#8993](https://github.com/adcontextprotocol/adcp/issues/8993): they hold the catalogue and avails, execute media buys and report delivery. A storefront agent can book through both, as their buyer, over AdCP.
+
+## Connect
+
+| Tenant | URL | Sells |
+|--------|-----|-------|
+| Ad server | `https://test-agent.adcontextprotocol.org/inventory-adserver/mcp` | Display, pre-roll video and a homepage takeover on two sites, guaranteed and in a first-price auction |
+| Content platform | `https://test-agent.adcontextprotocol.org/inventory-content/mcp` | Exclusive sponsorships of a weekly podcast, a weekly newsletter and a fortnightly creator series |
+
+Authenticate with the same bearer tokens as the rest of the test agent; see the [quickstart](/dist/docs/3.3.0-rc.3/quickstart). Each tenant serves the media buy and creative tasks as they are, with no new tasks:
+
+- [`get_products`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/get_products) returns each product with a `forecast` for the flight in `filters.start_date` and `filters.end_date` (30 days from now when omitted). `filters.countries` narrows the forecast. `filters.delivery_type` and `filters.channels` filter the products. Both `brief` and `wholesale` buying modes are served, so a storefront can read either tenant as a wholesale catalogue.
+- [`create_media_buy`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/create_media_buy) books each package:
+  - Guaranteed packages take `impressions` as their goal. Without it, the goal is what the budget buys at the fixed price.
+  - The takeover and the sponsorships take every impression of what they cover, whatever the budget. So one live booking sells the takeover for each day of its flight, and a sponsorship for each installment in it. Another booking of those days or installments fails with [`PRODUCT_UNAVAILABLE`](/dist/docs/3.3.0-rc.3/building/verification/compliance-catalog#error-code-product-unavailable) until that one is cancelled, which frees them. Your token's buys under every account share one market, so they compete with each other.
+  - Auction packages bid `bid_price`, first-price, above the floor.
+  - `targeting_overlay.geo_countries` (`US`, `CA`) narrows a package.
+  - A package's `creatives` (uploaded inline) and `creative_assignments` (from your library) are assigned to it.
+- [`update_media_buy`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/update_media_buy) pauses, resumes and cancels a buy or a package, and changes a package's `budget`, `impressions` or `bid_price`, or the buy's `end_time`. A package's `creatives` or `creative_assignments` replace its assignments.
+- [`get_media_buys`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/get_media_buys) and [`get_media_buy_delivery`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/get_media_buy_delivery) report what was booked and what was delivered. They include `by_package`, `daily_breakdown` and `pacing_index` for guaranteed packages. In `get_media_buys`, each package lists its `creative_approvals`.
+- [`sync_creatives`](/dist/docs/3.3.0-rc.3/creative/task-reference/sync_creatives), [`list_creatives`](/dist/docs/3.3.0-rc.3/creative/task-reference/list_creatives) and [`list_creative_formats`](/dist/docs/3.3.0-rc.3/creative/task-reference/list_creative_formats) manage the creatives you traffic your buys with. See [Creatives](#creatives).
+
+Everything you book is private to your credential. All the accounts you use with one credential book into the same simulated market on each tenant, so your own buys compete for inventory. A `get_products` call that names an `account` returns `cache_scope: "account"`, with forecasts net of your bookings. Provision that account with [`sync_accounts`](/dist/docs/3.3.0-rc.3/accounts/tasks/sync_accounts) first: an account reference the tenant never provisioned fails with [`ACCOUNT_NOT_FOUND`](/dist/docs/3.3.0-rc.3/building/verification/compliance-catalog#error-code-account-not-found). One without an `account` returns the public card, `cache_scope: "public"`, with forecasts against an empty market.
+
+Neither tenant requires operator authentication, so a storefront can call them with its own credential. The publishers use `.example` domains, so a registry or DNS check of their properties fails. That is expected in this sandbox.
+
+## Creatives
+
+Both tenants keep a creative library for each account. Sync creatives to it with [`sync_creatives`](/dist/docs/3.3.0-rc.3/creative/task-reference/sync_creatives), or upload them inline on a package, and assign them to the packages you have bought.
+
+- **Formats.** [`list_creative_formats`](/dist/docs/3.3.0-rc.3/creative/task-reference/list_creative_formats) returns only the formats the tenant serves: display, pre-roll video and the takeover image on the ad server; the podcast spot, newsletter sponsorship and creator brief on the content platform. Name a creative's format canonically, with `format_kind` and the `params` of one of the product's `format_options` (or its `format_option_ref`); the size of the creative's image or video picks the format when `params` is omitted. A named `format_id` copied from `format_options` also works. A request whose format still matches more than one option is refused, naming them. A creative can only be assigned to a package whose product serves its format. Otherwise the request fails with [`FORMAT_NOT_SUPPORTED`](/dist/docs/3.3.0-rc.3/building/verification/compliance-catalog#error-code-format-not-supported).
+- **Assignments.** `assignment_operations` supports `assign`, `unassign` and `replace`. A request's operations apply together or not at all. The deprecated `assignments` field still works, and reports each failed assignment in the creative's `assignment_errors`. Merges, assignment-level trackers and landing pages, installment scoping and placement routing are rejected with [`UNSUPPORTED_FEATURE`](/dist/docs/3.3.0-rc.3/building/verification/compliance-catalog#error-code-unsupported-feature).
+- **Review and delivery.** Every creative is approved as soon as it arrives. A buy reports `pending_creatives` while none of its live packages has a creative, then `pending_start` or `active` as usual. Delivery does not wait for a creative, though: an unassigned package delivers exactly as the simulation forecast. The creatives exist to test trafficking, not to gate serving.
+- **Scope.** Creatives are private to the account that synced them, like the buys they are assigned to. Each account holds up to 200 creatives of up to 32 KiB each; reference hosted media by URL. `reset_state` clears them with the rest of your market.
+
+## Move the clock
+
+Every time-dependent behaviour of these tenants reads your *sandbox clock*. Until you move it, it reads the wall clock. Move it with [`comply_test_controller`](/dist/docs/3.3.0-rc.3/building/by-layer/L3/comply-test-controller):
+
+```json
+{ "scenario": "sandbox_clock", "params": { "operation": "get" } }
+```
+
+```json
+{ "scenario": "sandbox_clock", "params": { "operation": "advance_time", "to": "2026-12-31T12:00:00Z" } }
+```
+
+```json
+{ "scenario": "sandbox_clock", "params": { "operation": "advance_time", "by": "P30D" } }
+```
+
+- `get` returns `simulated.simulated_now`, and `pinned: false` while the clock still reads the wall clock.
+- `advance_time` takes either `to` (an RFC 3339 instant) or `by` (an ISO 8601 duration in weeks, days, hours, minutes or seconds). It returns the new `simulated_now` and `days_crossed`, the number of UTC days the clock moved across. The tenant you call runs those days at once; the other runs them on your next call to it, with the same results.
+- The clock only moves forward. An earlier instant is refused with `INVALID_TRANSITION`.
+- `reset_state` on either inventory tenant unpins the clock and discards your buys on both. A `reset_state` elsewhere that unpins the clock, such as `/sales/mcp`'s, also leaves your inventory buys behind: a market that has run days the clock has not reached starts fresh.
+- You have one clock per credential. It is the same clock that `reporting_subscription_probe` `advance_time` moves on `/sales/mcp`, so moving it on either tenant moves it for both.
+
+Both tenants list `sandbox_clock`, `reset_state` and the seeds below in `list_scenarios` and in `compliance_testing.scenarios`.
+
+### Test controller seeds
+
+A storyboard's fixtures are seeded through the same controller, so the media-buy storyboards run against these tenants:
+
+- `seed_account` provisions an account, exactly as on `/sales/mcp`.
+- `seed_product` adds a product to your market on the tenant you call. It is sold on the season's own placements, so it forecasts, books and delivers like any other product. A video fixture uses the video placements, an audio fixture the audio ones, and anything else display. A season without that channel uses its nearest installment placement instead: the creator series for video, the podcast for audio, the newsletter otherwise. The product shows the fixture's own name, channels, formats and publisher properties.
+- `seed_pricing_option` prices a seeded product. A `floor_price` is the lowest bid an auction booking places, and a `fixed_price` is a guaranteed booking's rate. A seeded product with no seeded pricing option is priced like the season's own products.
+
+Seeded products are private to your credential, like your buys. A credential that never seeds sees only the season's products. `reset_state` discards your seeds with the rest of your market.
+
+## What happens each simulated day
+
+When the clock passes the end of a day, that day runs:
+
+1. **Bookings start.** A buy confirmed by the end of day N serves from day N+1, or from its flight start if that is later.
+2. **Actual traffic arrives.** It differs from the forecast by seeded noise and by the season's scripted events.
+3. **Guarantees are served first.** The takeover and the sponsorships take their share. Impression goals are then served by the high-water mark method. Each package's daily target is its remaining goal divided by its remaining days. The package with the least usable supply goes first, and each takes the same share of every impression it can use, never more than its target. A package that falls short spreads the shortfall over its remaining days.
+4. **The auction takes what is left.** The highest bid above the floor wins until each package's daily budget is spent.
+5. **Installments run.** Each one runs, is postponed or is cancelled, as the season says. One that runs builds its audience over its channel's curve: newsletter opens over 3 days, podcast listens over 30, video views over 6 weeks.
+
+Delivery is reported once the day has closed and the product's reporting delay has passed: the next day for the websites, a day later for the podcast and the creator series. A sponsorship package keeps delivering after its flight ends, while its installments' audience builds.
+
+## The season
+
+The simulation is deterministic: the same calls at the same simulated times always give the same results. The season runs from 2026-11-01 to 2028-10-30 and includes these scripted events:
+
+| Tenant | When | Event |
+|--------|------|-------|
+| Ad server | 2027-01-08 to 2027-01-12 | The Summit Sports hero unit serves a quarter of its traffic. A guarantee on `sports_hero_guaranteed` falls behind, then catches up. |
+| Ad server | 2027-01-20 to 2027-01-22 | Pinnacle News traffic nearly doubles. |
+| Content | 2027-01-18 | The Morning Brief episode `morning_brief_012` is cancelled. Its sponsor receives nothing for it. |
+| Content | 2027-01-18 | The Maker Studio video `maker_studio_006` is postponed to 2027-01-23. |
+
+A content product lists the installments scheduled in the requested flight, with each one's `status` as known at your sandbox time: `scheduled`, then `published`, `postponed` (with the new `scheduled_at`) or `cancelled` once its date passes. A sponsorship package buys every installment of its product scheduled in its flight.
+
+## A month in five calls
+
+On `/inventory-adserver/mcp`:
+
+1. Pin the clock before the flight: `sandbox_clock` `advance_time` `to` `2026-12-31T12:00:00Z`.
+2. [`create_media_buy`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/create_media_buy) for 2027-01-01 to 2027-01-31 with one package on `sports_hero_guaranteed` (`pricing_option_id` `sports_hero_guaranteed_cpm`, `impressions` 180000).
+3. `create_media_buy` for the same flight with one package on `preroll_auction` (`preroll_auction_cpm`, `bid_price` 10). Two buys keep each one's `daily_breakdown` separate.
+4. `sandbox_clock` `advance_time` `by` `P31D`.
+5. [`get_media_buy_delivery`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/get_media_buy_delivery) for both buys.
+
+In the daily breakdown, the guarantee drops to under half its usual delivery during the outage and delivers above its earlier pace afterwards. The auction package's delivery differs from the forecast [`get_products`](/dist/docs/3.3.0-rc.3/media-buy/task-reference/get_products) gave for the same flight.
+
+The engine behind these tenants lives in `server/src/training-agent/inventory-sim/engine/` and has no dependencies on the rest of the test agent, so it can move into `@adcp/sdk` if that proves useful.

@@ -207,7 +207,7 @@
     },
     "color_value": {
       "oneOf": [
-        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "5.0.0", "description": "Deprecated in 3.3. The single-value form: send a one-item array instead. brand.json is read without version negotiation, so readers accept this form until 5.0." },
         { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
       ]
     },
