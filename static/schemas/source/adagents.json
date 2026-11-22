@@ -27,7 +27,6 @@
       "required": [
         "authoritative_location"
       ],
-      "not": { "required": ["authorized_agents"] },
       "additionalProperties": true
     },
     {
@@ -731,7 +730,6 @@
       "required": [
         "authorized_agents"
       ],
-      "not": { "required": ["authoritative_location"] },
       "additionalProperties": true,
       "allOf": [
         {

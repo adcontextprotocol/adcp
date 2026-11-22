@@ -1,21 +1,5 @@
 title: Separate the either/or union branches by key presence (#9051)
 changes:
-  - location: adagents.json#/oneOf/0
-    keyword: not
-    new:
-      required:
-        - authorized_agents
-    direction: tighten
-    side: none
-    note: 'Witness verified with the repo Ajv: a valid form of this branch plus a malformed copy of the other branch key, accepted at the base by this branch alone.'
-  - location: adagents.json#/oneOf/1
-    keyword: not
-    new:
-      required:
-        - authoritative_location
-    direction: tighten
-    side: none
-    note: 'Witness verified with the repo Ajv: a valid form of this branch plus a malformed copy of the other branch key, accepted at the base by this branch alone.'
   - location: core/evaluator-spec.json#/oneOf/0
     keyword: not
     new:
