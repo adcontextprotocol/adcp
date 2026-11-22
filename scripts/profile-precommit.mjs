@@ -104,11 +104,12 @@
 //     cpu/ cpu-summary.json      With --cpu-prof.
 //
 // WHAT IS NOT COVERED
-//   - Forked vitest workers (the `forks` pool) lose a --cpu-prof profile
-//     given in NODE_OPTIONS; vitest leaves get it through vitest's --execArgv
-//     instead, and the server-unit step through ADCP_VITEST_CPU_PROF_DIR,
-//     giving one profile per test file. Under --cpu-prof, ten server test files never
-//     finish (their worker idles in the event loop; for example
+//   - vitest stops a forked worker (the `forks` pool) before Node's exit-time
+//     profile write can finish on a loaded machine, so each worker's own
+//     profiles are written by profile-precommit/vitest-worker-profiler.mjs
+//     before vitest stops it: one profile per worker process. NODE_OPTIONS
+//     profiles every other process and thread. Under --cpu-prof, ten server
+//     test files never finish (their worker idles in the event loop; for example
 //     tests/unit/storyboards.test.ts and
 //     src/training-agent/identity33/identity33-route.test.ts), so stop a
 //     profiling run once the rest finish; the profiles written so far are
@@ -142,6 +143,7 @@ import { planCommands, phasesOf } from './profile-precommit/plan.mjs';
 import { renderCompareHtml } from './profile-precommit/render.mjs';
 import { buildSummary, collectResults, readJson } from './profile-precommit/results.mjs';
 import { leanLauncher, pruneHookRuns, runPlan } from './profile-precommit/runner.mjs';
+import { vitestWorkerProfilerUrl } from './profile-precommit/vitest-worker-profiler-url.cjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -174,17 +176,17 @@ function parseArgs(argv) {
 // ------------------------------------------------------------ instrumentation
 
 
-// Profiling flags for vitest's workers. A forks-pool worker is stopped with
-// SIGTERM and writes its profile on that signal only when the flag is in its
-// own execArgv (vitest's nodejs/node#55094 work-around); NODE_OPTIONS alone
-// loses it. Worker threads accept the same flags. As the server-unit step
-// does (scripts/precommit-server-unit.cjs).
+// Profiling flags for vitest's workers. vitest stops a forks-pool worker with
+// SIGTERM and SIGKILL 500 ms later, too soon for Node's exit-time profile
+// write on a loaded machine, so each worker loads the profiler module, which
+// writes its profiles before vitest stops it. As the server-unit step does
+// (scripts/precommit-server-unit.cjs).
 function vitestProfileArgs(dir, opts) {
-  const flags = [
-    ...(opts['cpu-prof'] ? ['--cpu-prof', `--cpu-prof-dir=${path.join(dir, 'cpu')}`] : []),
-    ...(opts['heap-prof'] ? ['--heap-prof', `--heap-prof-dir=${path.join(dir, 'heap')}`] : []),
-  ];
-  return flags.map((flag) => ` --execArgv=${flag}`).join('');
+  const url = vitestWorkerProfilerUrl({
+    cpu: opts['cpu-prof'] ? path.join(dir, 'cpu') : undefined,
+    heap: opts['heap-prof'] ? path.join(dir, 'heap') : undefined,
+  });
+  return url ? ` --execArgv=--import=${url}` : '';
 }
 
 // The leaf command as run: the hook's command plus structured reporters.

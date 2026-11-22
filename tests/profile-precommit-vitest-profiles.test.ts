@@ -1,11 +1,16 @@
 // `profile-precommit run --cpu-prof --heap-prof` must profile the test files
 // of a vitest leaf that runs on the forks pool, as the root suite does.
 //
-// A forks-pool worker is stopped with SIGTERM, and Node writes its profile on
-// that signal only when --cpu-prof or --heap-prof is in the worker's own
-// execArgv (vitest's work-around for nodejs/node#55094); from NODE_OPTIONS
-// alone the worker's profile is lost. The case runs the real CLI against a
-// throwaway root with one test file and reads the profiles it writes.
+// vitest stops a forks-pool worker with SIGTERM once it answers the stop
+// request, and with SIGKILL 500 ms later. Node writes a --cpu-prof or
+// --heap-prof profile at exit, so a worker whose exit takes longer than that,
+// as on a loaded machine, lost its profiles. Each worker now writes them when
+// the stop request arrives (scripts/profile-precommit/vitest-worker-profiler.mjs).
+// The fixture's worker makes its exit slower than the SIGKILL delay: an exit
+// listener sleeps 1.5 s without using CPU, so the case fails the same way on
+// an idle machine as the old profiler did under load. The case runs the real
+// CLI against a throwaway root with one test file and reads the profiles it
+// writes.
 //
 // Node only logs a profile it cannot write and exits 0, so on a full disk the
 // profile is simply missing. The case first requires the step to report no
@@ -103,7 +108,7 @@ function profilesNamingMarker(dir: string, suffix: string): string[] {
 }
 
 describe('profile-precommit run', () => {
-  it('writes CPU and heap profiles for the test files of a forks-pool vitest leaf', async () => {
+  it('writes CPU and heap profiles for the test files of a forks-pool vitest leaf, even when the worker exits slowly', async () => {
     const root = mkdtempSync(join(tmpdir(), 'profile-precommit-forks-'));
     dirs.push(root);
     mkdirSync(join(root, 'scripts'));
@@ -129,6 +134,8 @@ describe('profile-precommit run', () => {
       '  return kept.length + (checksum & 0);',
       '}',
       `it('runs in a forks worker', () => { expect(${MARKER_FUNCTION}()).toBeGreaterThan(0); });`,
+      // An exit slower than vitest's 500 ms SIGKILL delay, without CPU use.
+      "process.on('exit', () => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500); });",
       '',
     ].join('\n'));
     execFileSync('git', ['init', '-q'], { cwd: root });

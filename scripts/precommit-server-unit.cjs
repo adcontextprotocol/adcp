@@ -128,6 +128,7 @@ function resolveWorkerCount(env = process.env, cpus, totalmem) {
 // scripts/profile-precommit.mjs can rank files after the run.
 const REPORT_DIR_ENV = 'ADCP_PRECOMMIT_REPORT_DIR';
 const TIMING_REPORTER = path.resolve(__dirname, 'profile-precommit', 'vitest-timing-reporter.mjs');
+const { vitestWorkerProfilerUrl } = require('./profile-precommit/vitest-worker-profiler-url.cjs');
 
 function keptReportArgs(name, env = process.env) {
   const dir = env[REPORT_DIR_ENV];
@@ -135,12 +136,12 @@ function keptReportArgs(name, env = process.env) {
   mkdirSync(dir, { recursive: true });
   env.ADCP_VITEST_TIMING_DIR ||= dir;
   const imports = env.ADCP_VITEST_IMPORT_DURATIONS;
-  // Forked workers do not inherit --cpu-prof/--heap-prof from NODE_OPTIONS;
-  // vitest's --execArgv passes them to every worker process.
-  const profile = [
-    ...(env.ADCP_VITEST_CPU_PROF_DIR ? ['--execArgv=--cpu-prof', `--execArgv=--cpu-prof-dir=${env.ADCP_VITEST_CPU_PROF_DIR}`] : []),
-    ...(env.ADCP_VITEST_HEAP_PROF_DIR ? ['--execArgv=--heap-prof', `--execArgv=--heap-prof-dir=${env.ADCP_VITEST_HEAP_PROF_DIR}`] : []),
-  ];
+  // vitest stops a forked worker before Node's exit-time profile write can
+  // finish on a loaded machine, so each worker loads
+  // profile-precommit/vitest-worker-profiler.mjs, which writes its profiles
+  // to these directories before vitest stops it.
+  const profilerUrl = vitestWorkerProfilerUrl({ cpu: env.ADCP_VITEST_CPU_PROF_DIR, heap: env.ADCP_VITEST_HEAP_PROF_DIR });
+  const profile = profilerUrl ? [`--execArgv=--import=${profilerUrl}`] : [];
   return [
     '--reporter=default', '--reporter=json', `--outputFile.json=${path.join(dir, name)}`,
     `--reporter=${TIMING_REPORTER}`,
