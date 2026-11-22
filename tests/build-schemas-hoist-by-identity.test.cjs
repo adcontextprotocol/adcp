@@ -203,7 +203,7 @@ test('generateBundledSchemas hoists provenance end to end and the bundle compile
     },
   }));
 
-  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, errorCount: 0 });
+  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, failures: [] });
   const bundled = JSON.parse(fs.readFileSync(path.join(out, rel), 'utf8'));
   assert.equal(bundled.properties.a.$ref, '#/$defs/Provenance');
   assert.equal(bundled.properties.a.description, 'a-site');

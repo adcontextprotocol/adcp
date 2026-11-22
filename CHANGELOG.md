@@ -1,5 +1,38 @@
 # Changelog
 
+## 3.3.0-rc.3
+
+### Minor Changes
+
+- a1cebda: Experimental reporting subscriptions (`media_buy.reporting_subscriptions`) now break delivery down by geography the same way a delivery report does. The standard reporting dimension vocabulary gains `postal_area`. A new `dimension_systems` object names the system behind a `metro` or `postal_area` breakdown: `metro` takes a metro system such as `nielsen_dma`, and `postal_area` takes a list of `{ country, system }`.
+  
+  - **Offerings.** An offering whose `standard_dimensions` include `metro` or `postal_area` MUST publish `dimension_systems` for each, so a metro code such as `501` is never ambiguous.
+  - **Selectors.** A subscription selector may set `dimension_systems` to match only offerings in those systems. Without it, any system matches, as before.
+  - **Report definitions.** A `contract_version` `1.2` report definition names each geography dimension with its standard name (`country`, `region`, `metro`, `postal_area`) and fills it with codes, never display names: ISO 3166-1, ISO 3166-2, or a code in the offering's metro or postal system. These are the values `geo_code` carries in `by_geo` delivery rows, so a breakdown reads the same in `get_media_buy_delivery` and in a reporting feed. A native geography dimension that breaks the rule is unmapped.
+  
+  Updated: `sync_principal` (selector), `get_reporting_status` (report definition versions), and the reporting-subscription coverage test vectors (three cases).
+
+### Patch Changes
+
+- fe24de8: Deprecate the single-value form of the 17 scalar-or-list unions (#8477): the `brand.json` color values and `get_brand_identity` colors, `envelope_field` on `REQUOTE_REQUIRED` details, the creative asset maps, `status_filter` on `get_media_buys` and `get_media_buy_delivery`, and audience characteristic `value`. Each scalar branch carries `deprecated: true` and `x-deprecated-in: "3.3.0"`, with `x-removed-in: "4.0.0"`, or `"5.0.0"` for the `brand.json` color values, which are read without version negotiation. Senders send a one-item array, except in a creative asset map to a 3.0 peer, since those maps accept an array only from 3.1; receivers keep accepting the single value through 3.x. No payload validates differently.
+- 6043df6: Accept payloads that two branches of a `oneOf` both matched, which the union rejected (#9051, #3939). In each union, the branch that should give way now refuses the other branch's shape with `not: { $ref: … }`, so such a payload resolves to one branch and nothing that validated before stops validating.
+  
+  - `property/property-feature-result.json` `property` rejected every property ID: a value such as `homepage` is both a string and a valid `core/property-id.json`. The domain-string branch now refuses property IDs, so they validate as the property ID.
+  - The six content-standards responses (`calibrate-content`, `create-content-standards`, `get-content-standards`, `get-media-buy-artifacts`, `list-content-standards`, `validate-content-delivery`) rejected a success body that also lists `errors`. Their error branch now refuses a valid success body, so it is the success shape.
+  - `adagents.json` rejected a file carrying both a valid `authoritative_location` and inline `authorized_agents`. The inline variant now refuses a valid URL reference, so the file is the URL reference and validators follow `authoritative_location`, as the validation steps in `adagents.mdx` describe.
+  - `calibration_exemplars` pass and fail entries in `create-content-standards-request` and `update-content-standards-request` rejected an artifact that also carries `type` and `value`. The URL-reference branch now refuses a valid artifact.
+- 2db59ba: Add the `PROPOSAL_TERMS_CHANGED` error code (#9168). A seller returns it when an `accept_proposal` request's `proposal_terms_digest` does not match the committed proposal's current `terms_digest`, including a proposal already accepted under a different digest. Nothing is accepted. Recovery is `correctable`: the buyer re-reads the proposal; if it is `accepted`, it finds the existing MediaBuy through `get_media_buys`, and otherwise accepts the current terms with the current digest and a fresh `idempotency_key`. `IDEMPOTENCY_CONFLICT` and the proposal-state codes take precedence.
+  
+  `proposal_terms_digest` and the `accept_proposal` page now say that a mismatch MUST be refused with nothing created, amended, or cancelled, and SHOULD use `PROPOSAL_TERMS_CHANGED` with `error.field` set to `proposal_terms_digest`. Sellers on releases before 3.3 may use another code, so buyers act on `recovery` and `field`. `error.code` is an open string, so no payload validates differently.
+  
+  The `media_buy_seller/compact_product_lifecycle` storyboard (1.3.0) attempts acceptance with a mismatched digest before the real acceptance. Any refusal passes, and the acceptance that follows proves the proposal wasn't accepted. The code, a `correctable` recovery, and `field: proposal_terms_digest` are advisory checks, since they are SHOULD. The training agent returns the new code.
+- 9d55f79: Docs: Choose your SDK, Versions and the creative33 sandbox note name `@adcp/sdk` 17.0.0-beta.31, which still bundles `3.3.0-rc.0`. It no longer records `context.media_buy_id` from an interim `create_media_buy` or `update_media_buy` envelope (adcontextprotocol/adcp-client#3683), so `webhook_emission` grades a `working` response that carries `media_buy_id` on its webhooks instead of classifying it as synchronous.
+- 01237a9: Docs: Choose your SDK, Versions and the creative33 sandbox note name `@adcp/sdk` 17.0.0-beta.32, which still bundles `3.3.0-rc.0` (with stable 3.2.8, 3.1.31 and 3.0.25). The release only cuts repeated schema and compliance work (adcontextprotocol/adcp-client#3750); validation results, storyboard grading and error messages are unchanged.
+- ab48f0c: Raise the training agent's inventory-tenant storyboard floors to their current result, which now includes the required_metrics filter on get_products.
+- 1c41290: Run the training agent's inventory-tenant storyboards as two isolated orchestrators per tenant behind one aggregate check, and set their floors from the run with the tenants' comply_test_controller seed scenarios.
+- 034bee5: Grade the training agent's simulated inventory tenants (`/inventory-adserver`, `/inventory-content`) in the storyboard CI matrix on the current compliance surface, each storyboard in its own bounded process, against non-regression floors.
+- adcaf29: Run the authoritative storyboard CI matrix on draft Version Packages PRs, so a release merge's exact head already has a completed storyboard run that the release workflow reuses instead of re-running the matrix serially at publication.
+
 ## 3.3.0-rc.2
 
 ### Patch Changes
