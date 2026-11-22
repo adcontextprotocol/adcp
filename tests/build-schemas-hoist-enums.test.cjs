@@ -20,9 +20,10 @@
  *   6. Fingerprint includes title — two enums with identical values but
  *      different titles stay distinct (no silent rename)
  *
- * And call-site annotations (#8477): a `deprecated` written beside one
- * `$ref` to the enum stays at that call-site and never marks the hoisted
- * $defs body, whichever occurrence the walk meets first.
+ * And call-site annotations (#8477): an annotation written beside one
+ * `$ref` to the enum (`deprecated`, a `description`, a `default`) stays at
+ * that call-site and never marks the hoisted $defs body, whichever
+ * occurrence the walk meets first.
  */
 
 'use strict';
@@ -328,8 +329,9 @@ test('when every occurrence is annotated differently, the body drops the call-si
   assert.deepEqual(result.properties.b, { $ref: '#/$defs/Status', 'x-removed-in': '4.0.0', description });
 });
 
-test('an unannotated occurrence with its own description still becomes a bare $ref', () => {
-  // Unchanged behavior: only annotated occurrences keep keys beside the $ref.
+test('an occurrence with its own description keeps it beside the $ref', () => {
+  // `{ "$ref": "enums/status.json", "description": "Status of b." }` reaches
+  // the hoist as the enum with b's description: the description is b's.
   const schema = {
     type: 'object',
     properties: {
@@ -341,5 +343,5 @@ test('an unannotated occurrence with its own description still becomes a bare $r
 
   assert.deepEqual(result.$defs.Status, STATUS);
   assert.deepEqual(result.properties.a, { $ref: '#/$defs/Status' });
-  assert.deepEqual(result.properties.b, { $ref: '#/$defs/Status' });
+  assert.deepEqual(result.properties.b, { $ref: '#/$defs/Status', description: 'Status of b.' });
 });

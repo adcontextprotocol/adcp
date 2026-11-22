@@ -1937,34 +1937,46 @@ function hoistNestedDefsToRoot(schema) {
  * ≤ 4 top-level keys — allows title, description alongside type+enum) that
  * appear at 2+ distinct non-$defs locations, hoists each into root $defs, and
  * replaces every occurrence with a $ref pointer. Single-occurrence enums are
- * left inline — no change to those bundled schemas. An occurrence that
- * carries call-site annotations (`deprecated` on one branch of a union, say)
- * keeps them beside its $ref, and the $defs body omits them; see
+ * left inline — no change to those bundled schemas. Occurrences that
+ * validate alike share one entry even when their annotations differ: an
+ * annotation that not every occurrence states alike (`deprecated` on one
+ * branch of a union, a field's own `description` or `default`) stays beside
+ * that occurrence's $ref, and the $defs body omits it; see
  * `canonicalEnumBody`.
  *
  * Complex object schemas ($defs hoisting for objects) is intentionally out of
  * scope — see issue #3145 for the RFC on opt-in x-hoist markers.
  */
-// Annotations that can mark one use of an enum rather than the enum itself.
+// Keys that describe a schema without constraining what it accepts.
 // `resolveRefs` merges keys written beside a `$ref` into the inlined body, so
-// `{ "$ref": "enums/x.json", "deprecated": true }` reaches the hoist as an
-// inline enum carrying `deprecated`. Such a key is part of the enum's own
-// definition only when every occurrence carries it with the same value.
-const ENUM_CALL_SITE_ANNOTATIONS = ['deprecated', 'x-deprecated-in', 'x-removed-in'];
+// `{ "$ref": "enums/x.json", "deprecated": true, "description": "..." }`
+// reaches the hoist as an inline enum carrying the call-site's own
+// annotations. Such a key is part of the enum's own definition only when
+// every occurrence carries it with the same value.
+const ANNOTATION_KEYS = new Set([
+  'title', 'description', 'default', 'examples', 'deprecated', 'readOnly', 'writeOnly',
+  'enumDescriptions', '$comment',
+]);
+function isAnnotationKey(key) {
+  return ANNOTATION_KEYS.has(key) || key.startsWith('x-');
+}
 
 /**
  * Pick the `$defs` body for a duplicated enum from its inline occurrences.
  * Returns the body and the annotation keys that belong to call-sites, not to
  * the enum: those some occurrences carry and others lack or carry with
- * another value. The body is the first occurrence that carries none of them,
- * unchanged. When every occurrence carries one, the first is used with those
- * keys removed, and its description is kept only if every occurrence shares
- * it, since it may be the call-site's own.
+ * another value. The body keeps every other key, which all occurrences
+ * share. It is the first occurrence that carries none of the call-site keys,
+ * or the first occurrence with them removed. A `description` stays in the
+ * body only if every occurrence has one and, when no occurrence is free of
+ * call-site keys, all agree; `pointerFor` gives each occurrence whose
+ * description differs from the body's its own.
  */
 function canonicalEnumBody(occurrences) {
   const has = (o, key) => Object.prototype.hasOwnProperty.call(o, key);
-  const callSiteKeys = new Set(ENUM_CALL_SITE_ANNOTATIONS.filter(key => {
-    if (!occurrences.some(o => has(o, key))) return false;
+  const annotationKeys = new Set(occurrences.flatMap(o => Object.keys(o))
+    .filter(key => key !== 'description' && isAnnotationKey(key)));
+  const callSiteKeys = new Set([...annotationKeys].filter(key => {
     const first = JSON.stringify(occurrences[0][key]);
     return occurrences.some(o => !has(o, key) || JSON.stringify(o[key]) !== first);
   }));
@@ -1973,6 +1985,7 @@ function canonicalEnumBody(occurrences) {
   const body = { ...(unannotated || occurrences[0]) };
   for (const key of callSiteKeys) delete body[key];
   if (!unannotated && occurrences.some(o => o.description !== body.description)) delete body.description;
+  if (occurrences.some(o => o.description === undefined)) delete body.description;
   return { body, callSiteKeys };
 }
 
@@ -1993,8 +2006,14 @@ function hoistDuplicateInlineEnums(schema) {
   function fingerprint(s) {
     // Preserve enum value order — order-different arrays are distinct schemas.
     // Include title so two enums with same values but different titles are NOT
-    // collapsed into one $ref (would silently rename one of them).
-    return JSON.stringify({ type: s.type, enum: s.enum, title: s.title || null });
+    // collapsed into one $ref (would silently rename one of them). Include
+    // every other key that is not an annotation, so only occurrences that
+    // validate alike share an entry.
+    const validation = Object.keys(s)
+      .filter(key => !isAnnotationKey(key) && key !== '$id' && key !== '$schema')
+      .sort()
+      .map(key => [key, s[key]]);
+    return JSON.stringify({ title: s.title || null, validation });
   }
 
   // Pass 1: count occurrences of each pure-enum shape, excluding $defs blocks.
@@ -2047,9 +2066,10 @@ function hoistDuplicateInlineEnums(schema) {
 
   const rootDefs = { ...(schema.$defs || {}) };
   // Pre-populate $defs with all hoisted definitions before the replace pass.
-  // The body comes from an occurrence without call-site annotations, so a
-  // `$ref` that marks one use of the enum (the deprecated single-value
-  // branch of a scalar-or-list union, say) does not mark the named type.
+  // The body holds only what every occurrence shares, so a `$ref` that marks
+  // one use of the enum (the deprecated single-value branch of a
+  // scalar-or-list union, a field's own `default`) does not mark the named
+  // type.
   const hoisted = new Map(); // fingerprint -> { ref, body, callSiteKeys }
   for (const [fp, defName] of hoistMap) {
     const { body, callSiteKeys } = canonicalEnumBody(seen.get(fp).occurrences);
@@ -2057,14 +2077,13 @@ function hoistDuplicateInlineEnums(schema) {
     hoisted.set(fp, { ref: `#/$defs/${defName}`, body, callSiteKeys });
   }
 
-  // An occurrence becomes a `$ref`. An annotated occurrence keeps its
-  // call-site annotations beside it, with its description when that differs
-  // from the hoisted one (the deprecation note, say): the same form
-  // `hoistMarkedSchemas` writes. Unannotated occurrences become a bare
-  // `$ref`, as before.
+  // An occurrence becomes a `$ref` that keeps its call-site annotations
+  // beside it, with its description when that differs from the hoisted one
+  // (a field's own description, or the deprecation note): the same form
+  // `hoistMarkedSchemas` writes. An occurrence that adds nothing to the
+  // hoisted body becomes a bare `$ref`.
   function pointerFor(occurrence, { ref, body, callSiteKeys }) {
     const pointer = { $ref: ref };
-    if (!Object.keys(occurrence).some(key => callSiteKeys.has(key))) return pointer;
     for (const key of Object.keys(occurrence)) {
       if (callSiteKeys.has(key)) pointer[key] = occurrence[key];
     }
