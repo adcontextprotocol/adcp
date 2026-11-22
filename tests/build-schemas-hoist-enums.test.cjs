@@ -170,9 +170,9 @@ test('preserves enum-value order across hoisted instances', () => {
   assert.deepEqual(result.$defs.YX.enum, ['y', 'x']);
 });
 
-test('skips enums nested inside an existing $defs block', () => {
-  // The walk explicitly skips $defs/definitions to avoid hoisting a schema
-  // that's already a def into a sibling def.
+test('does not count an existing $defs entry as an occurrence', () => {
+  // The walk looks inside $defs/definitions entries but never counts an
+  // entry itself: it is already a def, and hoisting it would add a sibling.
   const schema = {
     $defs: {
       Existing: { type: 'string', enum: ['a', 'b'], title: 'Existing' },

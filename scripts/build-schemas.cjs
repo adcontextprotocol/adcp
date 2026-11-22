@@ -1928,6 +1928,26 @@ function hoistNestedDefsToRoot(schema) {
 }
 
 /**
+ * Whether `key` names a definitions block (`$defs` or `definitions`).
+ *
+ * The content-based hoists below look inside such a block but never count or
+ * replace an entry itself: the entry is already a named definition. What an
+ * entry contains is ordinary schema, and a large one can be the bulk of a
+ * bundle. `hoistNestedDefsToRoot` moves an inlined document's `definitions`
+ * to the root (`creative-manifest.json#/definitions/...`, say), so skipping
+ * the block would leave its marked schemas and repeated enums inline.
+ */
+function isDefinitionsKey(key) {
+  return key === '$defs' || key === 'definitions';
+}
+
+/** Calls `visit` on each entry of a definitions block. */
+function forEachDefinition(block, visit) {
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return;
+  for (const entry of Object.values(block)) visit(entry);
+}
+
+/**
  * After resolveRefs inlines every $ref, the same pure-enum schema can appear
  * at multiple paths in the bundled output. json-schema-to-typescript sees two
  * structurally identical inline shapes and emits both as Foo and Foo1, making
@@ -1935,7 +1955,7 @@ function hoistNestedDefsToRoot(schema) {
  *
  * This function detects pure-enum schemas (type === 'string', has enum,
  * ≤ 4 top-level keys — allows title, description alongside type+enum) that
- * appear at 2+ distinct non-$defs locations, hoists each into root $defs, and
+ * appear at 2+ locations, hoists each into root $defs, and
  * replaces every occurrence with a $ref pointer. Single-occurrence enums are
  * left inline — no change to those bundled schemas. Occurrences that
  * validate alike share one entry even when their annotations differ: an
@@ -2016,8 +2036,10 @@ function hoistDuplicateInlineEnums(schema) {
     return JSON.stringify({ title: s.title || null, validation });
   }
 
-  // Pass 1: count occurrences of each pure-enum shape, excluding $defs blocks.
-  // Check array elements directly (symmetry with Pass 2's array branch).
+  // Pass 1: count occurrences of each pure-enum shape. Inside a `$defs` or
+  // `definitions` block, only what the entries contain counts; an entry is
+  // already a definition. Check array elements directly (symmetry with
+  // Pass 2's array branch).
   const seen = new Map(); // fingerprint -> { schema, count }
 
   function track(s) {
@@ -2036,7 +2058,7 @@ function hoistDuplicateInlineEnums(schema) {
       return;
     }
     for (const [key, val] of Object.entries(node)) {
-      if (key === '$defs' || key === 'definitions') continue;
+      if (isDefinitionsKey(key)) { forEachDefinition(val, collect); continue; }
       if (isPureEnum(val)) track(val);
       collect(val);
     }
@@ -2093,7 +2115,8 @@ function hoistDuplicateInlineEnums(schema) {
     return pointer;
   }
 
-  // Pass 2: replace duplicate inline occurrences with $ref pointers.
+  // Pass 2: replace duplicate inline occurrences with $ref pointers, inside
+  // definitions entries too, leaving the entries themselves in place.
   function replace(node) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
@@ -2107,8 +2130,8 @@ function hoistDuplicateInlineEnums(schema) {
       return;
     }
     for (const key of Object.keys(node)) {
-      if (key === '$defs' || key === 'definitions') continue;
       const val = node[key];
+      if (isDefinitionsKey(key)) { forEachDefinition(val, replace); continue; }
       if (isPureEnum(val)) {
         const fp = fingerprint(val);
         if (hoisted.has(fp)) { node[key] = pointerFor(val, hoisted.get(fp)); continue; }
@@ -2133,8 +2156,8 @@ function hoistDuplicateInlineEnums(schema) {
  * Spec authors opt in per-schema by setting `x-adcp-hoist: true` on the
  * source schema's root. The marker is a build-time directive, not a wire
  * contract — it is stripped from the bundled output (both at canonical
- * `$defs` entries and anywhere a stray marker survived a pre-existing
- * `$defs` block).
+ * `$defs` entries and on a pre-existing `$defs` or `definitions` entry
+ * that is not itself hoisted).
  *
  * Name derivation: uses `title`, sanitized to PascalCase, suffixed with an
  * integer ONLY when colliding with a pre-existing `$defs` key. Two marked
@@ -2183,8 +2206,9 @@ function hoistMarkedSchemas(schema) {
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
 
-  // Pass 1: collect every marked schema, excluding existing $defs blocks
-  // (those are already canonical). Recurse into marked nodes too so nested
+  // Pass 1: collect every marked schema. An entry of a `$defs` or
+  // `definitions` block is already canonical and is not collected, but the
+  // marked schemas it contains are. Recurse into marked nodes too so nested
   // markers (a marked schema referenced inside another marked schema) are
   // also tracked.
   const seen = new Map(); // fingerprint -> { schema, title }
@@ -2204,7 +2228,7 @@ function hoistMarkedSchemas(schema) {
       return;
     }
     for (const [key, val] of Object.entries(node)) {
-      if (key === '$defs' || key === 'definitions') continue;
+      if (isDefinitionsKey(key)) { forEachDefinition(val, collect); continue; }
       if (isMarked(val)) track(val);
       collect(val);
     }
@@ -2214,9 +2238,9 @@ function hoistMarkedSchemas(schema) {
 
   if (seen.size === 0) {
     // No markers found at hoist-eligible sites. Still strip any stray
-    // markers that may live inside pre-existing $defs entries — the
-    // directive must not leak into the bundled output regardless of
-    // where it was authored.
+    // marker on a `$defs` or `definitions` entry itself — the directive
+    // must not leak into the bundled output regardless of where it was
+    // authored.
     collapseHoistTargets(schema);
     stripStrayMarkers(schema);
     return schema;
@@ -2306,8 +2330,8 @@ function hoistMarkedSchemas(schema) {
   collapseHoistTargets(schema);
 
   // Final sweep: delete any stray `x-adcp-hoist` keys that survived (e.g.
-  // markers authored inside a pre-existing $defs entry that Pass 1
-  // skipped). The directive must never appear in bundled output.
+  // the marker on a `$defs` or `definitions` entry that Pass 1 does not
+  // collect). The directive must never appear in bundled output.
   stripStrayMarkers(schema);
 
   return schema;
@@ -2317,9 +2341,8 @@ function hoistMarkedSchemas(schema) {
  * Fold every `HOIST_TARGET_KEY` left by `resolveRefs` back into its node.
  * A hoisted target (now `{ $ref }`) becomes the node's `$ref`, so the
  * call-site keeps its sibling keys next to the pointer, the same form
- * `hoistBySourceIdentity` writes. A target that was not hoisted (reached
- * only inside a pre-existing `$defs` block) is merged as `resolveRefs`
- * would have merged it, with the call-site keys winning.
+ * `hoistBySourceIdentity` writes. A target that was not hoisted is merged
+ * as `resolveRefs` would have merged it, with the call-site keys winning.
  */
 function collapseHoistTargets(node) {
   if (!node || typeof node !== 'object') return;
