@@ -12,6 +12,7 @@ import { canonicalizeAccountRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { getAgentUrl } from '../config.js';
 import { decodeOffsetCursor, encodeOffsetCursor } from '../pagination.js';
+import { reportingMetricIsAvailable } from '../task-handlers.js';
 import { formatOptionsForTrainingFormats } from '../product-factory.js';
 import {
   DAY_MS,
@@ -126,6 +127,13 @@ function servesFormatOptionRef(product: { format_options?: unknown }, refs: read
   const options = Array.isArray(product.format_options) ? product.format_options as FormatOptionRef[] : [];
   return refs.some(ref => options.some(option => option.format_option_id === ref.format_option_id
     && (ref.scope !== 'publisher' || option.publisher_domain === ref.publisher_domain)));
+}
+
+/** Whether a wire product's reporting_capabilities cover every metric in
+ * `filters.required_metrics`. */
+function reportsAllMetrics(product: { reporting_capabilities?: unknown }, required: readonly string[]): boolean {
+  const declared = new Set((product.reporting_capabilities as { available_metrics?: string[] } | undefined)?.available_metrics ?? []);
+  return required.every(metric => reportingMetricIsAvailable(metric, declared));
 }
 
 function parseDateStart(value: unknown, field: string): number {
@@ -559,6 +567,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const offset = pagination ? decodeOffsetCursor('products', pagination.cursor) : 0;
       if (offset === null) throw invalid('pagination.cursor is malformed', 'pagination.cursor');
       const formatRefs = Array.isArray(filters.format_option_refs) ? filters.format_option_refs as FormatOptionRef[] : undefined;
+      const requiredMetrics = Array.isArray(filters.required_metrics) && filters.required_metrics.length > 0 ? filters.required_metrics as string[] : undefined;
       // A caller's seeded products come first: a storyboard that seeds the
       // products it pages through reads them before the season's.
       const seededIds = new Set((market.doc.seeded?.products ?? []).map(record => record.product_id));
@@ -567,7 +576,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         .filter(product => filters.delivery_type === undefined || product.delivery_type === filters.delivery_type)
         .filter(product => !channels || this.channelsOf(market, product).some(channel => channels.has(channel)))
         .map(product => this.wireProduct(product, sim, market.nowMs, { startMs, endMs }, targeting, budget, this.seededProduct(market, product.product_id)))
-        .filter(product => !formatRefs || servesFormatOptionRef(product, formatRefs));
+        .filter(product => !formatRefs || servesFormatOptionRef(product, formatRefs))
+        // Filter, never fail: a product must report every required metric, a
+        // declared container (viewability) covering its leaves (viewable_rate).
+        .filter(product => !requiredMetrics || reportsAllMetrics(product, requiredMetrics));
       market.save();
       if (!pagination) return { products, cache_scope: scoped ? 'account' : 'public' } as never;
       // Same page sizes as the sales tenant: 50 by default, at most 100.

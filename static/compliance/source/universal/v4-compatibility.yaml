@@ -526,6 +526,34 @@ schema_removals_not_checked:
       - "core/targeting-overlay-support.json#/properties/demographics/anyOf/0"
       - "core/targeting-overlay-requirements.json#/properties/demographics/anyOf/0"
 
+  - change: "Single-value form of the scalar-or-list unions, where a one-item array says the same"
+    issue: 8477
+    reason: >-
+      Both forms are valid through 3.x, so a 3.x run cannot grade which one a
+      party sends. Status filters and creative asset maps are buyer-sent; the
+      response sites are not graded yet. brand.json#/definitions/color_value/oneOf/0
+      is marked x-removed-in "5.0.0", not 4.0, because brand.json is read without
+      version negotiation, so it is outside this 4.0 registry by design.
+    sites:
+      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/primary/oneOf/0"
+      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/secondary/oneOf/0"
+      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/accent/oneOf/0"
+      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/background/oneOf/0"
+      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/text/oneOf/0"
+      - "error-details/requote-required.json#/properties/envelope_field/oneOf/0"
+      - "core/creative-asset.json#/properties/assets/patternProperties/^/oneOf/0"
+      - "core/creative-assets.json#/patternProperties/^/anyOf/0"
+      - "core/creative-manifest-base.json#/properties/assets/patternProperties/^/oneOf/0"
+      - "creative/list-creatives-response.json#/properties/creatives/items/properties/assets/patternProperties/^/oneOf/0"
+      - "core/creative-localization.json#/properties/target_variants/items/properties/assets/patternProperties/^[a-z0-9_]+$/anyOf/0"
+      - "core/creative-localization-readback.json#/definitions/resolvedAssets/patternProperties/^[a-z0-9_]+$/anyOf/0"
+      - "media-buy/get-media-buy-delivery-request.json#/properties/status_filter/oneOf/0"
+      - "media-buy/get-media-buys-request.json#/properties/status_filter/oneOf/0"
+      - "core/audience-characteristic.json#/properties/value/oneOf/0"
+      - "core/audience-characteristic.json#/properties/value/oneOf/1"
+      - "core/audience-characteristic.json#/properties/value/oneOf/2"
+      - "core/audience-characteristic.json#/allOf/0/then/properties/value/oneOf/0"
+
   - change: "Enum values that collide with SDK reserved words, replaced in 3.3"
     issue: 8791
     reason: >-
