@@ -16528,20 +16528,12 @@ async function handleCreateMediaBuyUnlocked(
       || typeof internalProposal.__brand_id === 'string'
       || Array.isArray(internalProposal.__brand_countries)
       || typeof internalProposal.__account_id === 'string';
+    // The proposal-state codes below take precedence over
+    // PROPOSAL_TERMS_CHANGED, which is checked after expiry. A proposal
+    // already executed under a different digest falls through to it.
     const suppliedTermsDigest = (req as unknown as { proposal_terms_digest?: unknown }).proposal_terms_digest;
-    if (typeof suppliedTermsDigest === 'string') {
-      const expectedTermsDigest = outwardProposal(internalProposal, productMap).terms_digest;
-      if (suppliedTermsDigest !== expectedTermsDigest) {
-        return {
-          errors: [{
-            code: 'INVALID_REQUEST',
-            message: 'proposal_terms_digest does not match the committed proposal snapshot.',
-            field: 'proposal_terms_digest',
-            recovery: 'correctable',
-          }] as TaskError[],
-        };
-      }
-    }
+    const termsDigestMismatch = typeof suppliedTermsDigest === 'string'
+      && suppliedTermsDigest !== outwardProposal(internalProposal, productMap).terms_digest;
     if (internalProposal.__declined === true) {
       return {
         errors: [{
@@ -16552,7 +16544,7 @@ async function handleCreateMediaBuyUnlocked(
         }] as TaskError[],
       };
     }
-    if (compactProposal && internalProposal.__executed === true) {
+    if (compactProposal && internalProposal.__executed === true && !termsDigestMismatch) {
       return {
         errors: [{
           code: 'INVALID_STATE',
@@ -16592,6 +16584,17 @@ async function handleCreateMediaBuyUnlocked(
     if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
       return {
         errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Request and finalize a fresh proposal before retrying.` }] as TaskError[],
+      };
+    }
+
+    if (termsDigestMismatch) {
+      return {
+        errors: [{
+          code: 'PROPOSAL_TERMS_CHANGED',
+          message: "proposal_terms_digest does not match the committed proposal's current terms_digest; nothing was accepted. Re-read the proposal and accept its current terms with the current terms_digest.",
+          field: 'proposal_terms_digest',
+          recovery: 'correctable',
+        }] as TaskError[],
       };
     }
 
@@ -24562,17 +24565,31 @@ function proposalAcceptanceSnapshot(
     return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was declined and cannot be accepted.`, field: 'proposal_id' }] } };
   }
   const proposal = canonicalProposalFromRecord(record);
-  if (record.accepted) {
+  const digestMatches = proposal.terms_digest === args.proposal_terms_digest;
+  if (record.accepted && digestMatches) {
     return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was already accepted.`, field: 'proposal_id' }] } };
   }
-  if (proposal.proposal_status !== 'committed') {
+  // The proposal-state codes take precedence over PROPOSAL_TERMS_CHANGED. A
+  // proposal already accepted under a different digest falls through to it.
+  if (!record.accepted && proposal.proposal_status !== 'committed') {
     return { response: { errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal ${args.proposal_id} is not committed.`, field: 'proposal_id' }] } };
   }
   if (proposal.expires_at && Date.parse(proposal.expires_at) <= Date.now()) {
     return { response: { errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal ${args.proposal_id} expired at ${proposal.expires_at}.`, field: 'proposal_id' }] } };
   }
-  if (proposal.terms_digest !== args.proposal_terms_digest) {
-    return { response: { errors: [{ code: 'INVALID_REQUEST', message: 'proposal_terms_digest does not match the committed proposal snapshot.', field: 'proposal_terms_digest' }] } };
+  if (!digestMatches) {
+    return {
+      response: {
+        errors: [{
+          code: 'PROPOSAL_TERMS_CHANGED',
+          message: record.accepted
+            ? "Proposal was already accepted under a different terms_digest; nothing changed. Find the existing MediaBuy through get_media_buys."
+            : "proposal_terms_digest does not match the committed proposal's current terms_digest; nothing was accepted. Re-read the proposal and accept its current terms with the current terms_digest.",
+          field: 'proposal_terms_digest',
+          recovery: 'correctable',
+        }],
+      },
+    };
   }
   return { proposal };
 }

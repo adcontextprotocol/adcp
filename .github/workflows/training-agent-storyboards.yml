@@ -803,7 +803,8 @@ jobs:
           required_exact=(
             # 9 steps since 1.1.0 added the assignment_operations check (#8933).
             "media_buy_seller/compact_direct_buy_lifecycle:9:0"
-            "media_buy_seller/compact_product_lifecycle:10:0"
+            # 11 steps since 1.3.0 added the terms-digest mismatch refusal (#9168).
+            "media_buy_seller/compact_product_lifecycle:11:0"
             "media_buy_seller/declined_proposal_refinement:7:0"
             "media_buy_seller/declined_proposal_execution:9:0"
             "media_buy_seller/expired_proposal_execution:9:0"
