@@ -38,7 +38,7 @@
     },
     "proposal_terms_digest": {
       "$ref": "/schemas/core/proposal-terms-digest.json",
-      "description": "terms_digest from the committed proposal. The seller MUST atomically verify both ID and digest before acceptance."
+      "description": "terms_digest from the committed proposal. The seller MUST atomically verify both ID and digest before acceptance. When the digest does not match the proposal's current terms_digest, including a proposal already accepted under a different digest, the seller MUST refuse the request without creating, amending, or cancelling anything, and SHOULD return PROPOSAL_TERMS_CHANGED with error.field set to 'proposal_terms_digest'. Idempotency checks (IDEMPOTENCY_CONFLICT) and the proposal-state codes (PROPOSAL_NOT_FOUND, PROPOSAL_EXPIRED, PROPOSAL_NOT_COMMITTED, and INVALID_STATE for a declined or withdrawn proposal) take precedence. The buyer re-reads the proposal: if it is accepted, the buyer does not accept again and finds the existing MediaBuy through get_media_buys; otherwise, if its current terms are acceptable, it accepts them with the current terms_digest and a fresh idempotency_key. Sellers on releases before 3.3 may use another code, so buyers act on error.recovery and error.field rather than the code alone."
     },
     "total_budget": {
       "$ref": "/schemas/core/money.json",

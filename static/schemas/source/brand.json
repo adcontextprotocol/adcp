@@ -200,7 +200,7 @@
     },
     "color_value": {
       "oneOf": [
-        { "$ref": "/schemas/core/hex-color.json" },
+        { "$ref": "/schemas/core/hex-color.json", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "5.0.0", "description": "Deprecated in 3.3. The single-value form: send a one-item array instead. brand.json is read without version negotiation, so readers accept this form until 5.0." },
         { "type": "array", "items": { "$ref": "/schemas/core/hex-color.json" }, "minItems": 1 }
       ]
     },

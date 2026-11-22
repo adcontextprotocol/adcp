@@ -372,3 +372,93 @@ test('production AssetVariant stays hoisted to bound bundled creative validators
   assert.equal(source.title, 'AssetVariant');
   assert.equal(source['x-adcp-hoist'], true);
 });
+
+// A `$ref` to a marked schema can carry call-site keys (here the deprecated
+// single-value branch of a value-or-array union). The bundle must keep one
+// canonical $defs entry and put the call-site keys beside the local $ref,
+// not merge them into a second copy of the named type.
+function makeMarkedSourceDir(t, rootSchema) {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hoist-marked-'));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'hoist-marked-out-'));
+  t.after(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(out, { recursive: true, force: true });
+  });
+  fs.mkdirSync(path.join(dir, 'core'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'media-buy'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'core/thing.json'), JSON.stringify({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: '/schemas/core/thing.json',
+    title: 'Thing',
+    description: 'The canonical thing.',
+    'x-adcp-hoist': true,
+    type: 'object',
+    properties: { id: { type: 'string' } },
+    required: ['id'],
+  }));
+  fs.writeFileSync(path.join(dir, 'media-buy/x-request.json'), JSON.stringify({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: '/schemas/media-buy/x-request.json',
+    ...rootSchema,
+  }));
+  return { dir, out, rel: path.join('media-buy', 'x-request.json') };
+}
+
+const SINGLE_SITE = {
+  $ref: '/schemas/core/thing.json',
+  deprecated: true,
+  'x-deprecated-in': '3.3.0',
+  description: 'Single-value form: send a one-item array instead.',
+};
+
+test('bundles a $ref with call-site keys beside the hoisted marked schema', async (t) => {
+  const Ajv = require('ajv');
+  const { generateBundledSchemas } = require('../scripts/build-schemas.cjs');
+  const { dir, out, rel } = makeMarkedSourceDir(t, {
+    type: 'object',
+    properties: {
+      thing: {
+        oneOf: [
+          SINGLE_SITE,
+          { type: 'array', items: { $ref: '/schemas/core/thing.json' }, minItems: 1 },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, failures: [] });
+  const bundled = JSON.parse(fs.readFileSync(path.join(out, rel), 'utf8'));
+  const [single, list] = bundled.properties.thing.oneOf;
+  assert.deepEqual(single, {
+    $ref: '#/$defs/Thing',
+    deprecated: true,
+    'x-deprecated-in': '3.3.0',
+    description: 'Single-value form: send a one-item array instead.',
+  });
+  assert.deepEqual(list.items, { $ref: '#/$defs/Thing' });
+  assert.deepEqual(Object.keys(bundled.$defs), ['Thing']);
+  assert.equal(bundled.$defs.Thing.description, 'The canonical thing.');
+  assert.equal(bundled.$defs.Thing.deprecated, undefined);
+  assert.doesNotMatch(JSON.stringify(bundled), /x-adcp-hoist/);
+
+  const validate = new Ajv({ strict: false }).compile(bundled);
+  assert.equal(validate({ thing: { id: 'a' } }), true);
+  assert.equal(validate({ thing: [{ id: 'a' }] }), true);
+  assert.equal(validate({ thing: {} }), false);
+});
+
+test('a lone $ref with call-site keys does not become the canonical marked schema', async (t) => {
+  const { generateBundledSchemas } = require('../scripts/build-schemas.cjs');
+  const { dir, out, rel } = makeMarkedSourceDir(t, {
+    type: 'object',
+    properties: { thing: SINGLE_SITE },
+  });
+
+  assert.deepEqual(await generateBundledSchemas(dir, out, '3.2.1'), { successCount: 1, failures: [] });
+  const bundled = JSON.parse(fs.readFileSync(path.join(out, rel), 'utf8'));
+  assert.equal(bundled.properties.thing.$ref, '#/$defs/Thing');
+  assert.equal(bundled.properties.thing.deprecated, true);
+  assert.equal(bundled.$defs.Thing.description, 'The canonical thing.');
+  assert.equal(bundled.$defs.Thing.deprecated, undefined);
+});
