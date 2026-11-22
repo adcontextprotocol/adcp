@@ -9,7 +9,10 @@
       "oneOf": [
         {
           "type": "string",
-          "description": "Domain string (e.g., 'example.com')"
+          "description": "Domain string (e.g., 'example.com'). A value that is also a valid property ID is the property ID.",
+          "not": {
+            "$ref": "/schemas/core/property-id.json"
+          }
         },
         {
           "$ref": "/schemas/core/property-id.json"
