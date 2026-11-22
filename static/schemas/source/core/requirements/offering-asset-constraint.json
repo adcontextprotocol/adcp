@@ -30,63 +30,13 @@
     },
     "asset_requirements": {
       "$ref": "/schemas/core/requirements/asset-requirements.json",
-      "description": "Technical requirements for each item in this group (e.g., max_length for text, min_width/aspect_ratio for images). Applies uniformly to all items in the group. When asset_type has a requirements schema, asset_requirements must satisfy that schema; the allOf rules below pair each asset_type with its requirements schema."
+      "description": "Technical requirements for each item in this group (e.g., max_length for text, min_width/aspect_ratio for images). Applies uniformly to all items in the group."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
   "required": ["asset_group_id", "asset_type"],
-  "allOf": [
-    {
-      "if": { "properties": { "asset_type": { "const": "image" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "video" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "audio" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "text" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "markdown" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "html" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "css" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "javascript" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "vast" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "daast" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "url" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" } } }
-    },
-    {
-      "if": { "properties": { "asset_type": { "const": "webhook" } }, "required": ["asset_type"] },
-      "then": { "properties": { "asset_requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" } } }
-    }
-  ],
   "additionalProperties": true,
   "examples": [
     {

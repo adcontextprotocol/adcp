@@ -41,8 +41,7 @@
     },
     "mcp_resource_uri": {
       "type": "string",
-      "format": "uri",
-      "description": "MCP resource URI for hosts with MCP Apps support. An absolute URI in any scheme, not limited to http or https (e.g., ui://si/session-abc123)."
+      "description": "MCP resource URI for hosts with MCP Apps support (e.g., ui://si/session-abc123)"
     },
     "sponsored_context": {
       "$ref": "/schemas/sponsored-intelligence/si-sponsored-context.json",

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/requirements/asset-requirements.json",
   "title": "Asset Requirements",
-  "description": "Technical requirements for creative assets. The applicable schema is determined by the sibling asset_type field: offering-asset-constraint.json applies the requirements schema for its asset_type to asset_requirements.",
+  "description": "Technical requirements for creative assets. The applicable schema is determined by the sibling asset_type field.",
   "anyOf": [
     { "$ref": "/schemas/core/requirements/image-asset-requirements.json" },
     { "$ref": "/schemas/core/requirements/video-asset-requirements.json" },

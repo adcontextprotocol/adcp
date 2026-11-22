@@ -3,49 +3,6 @@
   "$id": "/schemas/creative/asset-types/index.json",
   "title": "AdCP Asset Type Registry",
   "description": "Registry of asset types used in AdCP creative manifests. Each asset type defines the structure of actual content payloads (what you send), not requirements or constraints (which belong in format specifications).",
-  "type": "object",
-  "properties": {
-    "version": {
-      "type": "string",
-      "description": "Version of this registry. Bumped on every published change."
-    },
-    "lastUpdated": {
-      "type": "string",
-      "format": "date",
-      "description": "Date of the last published change (YYYY-MM-DD)."
-    },
-    "asset_types": {
-      "type": "object",
-      "description": "Asset types, keyed by asset_type value.",
-      "additionalProperties": {
-        "type": "object",
-        "required": ["description", "schema"],
-        "properties": {
-          "description": {
-            "type": "string",
-            "description": "What the asset type carries."
-          },
-          "schema": {
-            "type": "string",
-            "description": "Reference to the asset type's payload schema."
-          },
-          "typical_use": {
-            "type": "string",
-            "description": "Where the asset type is typically used."
-          }
-        },
-        "additionalProperties": true
-      }
-    },
-    "architecture": {
-      "type": "object",
-      "description": "Design notes on how asset schemas relate to format requirements."
-    },
-    "usage_notes": {
-      "type": "object",
-      "description": "Guidance for using the registry."
-    }
-  },
   "version": "1.0.0",
   "lastUpdated": "2026-08-02",
   "asset_types": {

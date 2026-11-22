@@ -1,8 +1,0 @@
-title: State format uri on mcp_resource_uri (#8924)
-changes:
-  - location: sponsored-intelligence/si-send-message-response.json#/properties/mcp_resource_uri
-    keyword: format
-    new: uri
-    direction: tighten
-    side: response
-    note: 'Witness verified with the repo Ajv: "session-abc123", a relative reference with no scheme.'
