@@ -33,8 +33,8 @@ function writeJson(file, value) {
 
 /**
  * Writes a repository tree with the smallest source the build accepts: a
- * registry, one error code, no task types, a permissive manifest schema, and
- * the bundled roots. `marked(title)` gives the two schemas each root marks
+ * registry, the extension registry placeholder, one error code, no task types,
+ * a permissive manifest schema, and the bundled roots. `marked(title)` gives the two schemas each root marks
  * with `x-adcp-hoist`.
  */
 function writeFixtureTree(marked) {
@@ -44,6 +44,7 @@ function writeFixtureTree(marked) {
   writeJson(path.join(root, 'package.json'), { version: '0.0.0' });
   writeJson(path.join(source, 'index.json'), {});
   writeJson(path.join(source, 'manifest.schema.json'), {});
+  writeJson(path.join(source, 'extensions/index.json'), {});
   writeJson(path.join(source, 'enums/task-type.json'), { enum: [] });
   writeJson(path.join(source, 'enums/error-code.json'), {
     enum: ['FIXTURE_ERROR'],
