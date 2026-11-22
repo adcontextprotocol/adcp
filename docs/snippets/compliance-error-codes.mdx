@@ -1174,7 +1174,7 @@ SI session has already been terminated and cannot accept further messages. Recov
 
 **Suggested action:** verify signal_id via get_signals, or confirm the signal is available from this agent
 
-Referenced signal does not exist in the agent's catalog. Recovery: correctable (verify signal_ref via get_signals, or confirm the signal is available from this agent). Sellers MUST return this code uniformly for any signal_ref not accessible to the calling account — never distinguish 'exists but unauthorized' from 'does not exist', which would enable cross-tenant enumeration.
+Referenced signal does not exist in the agent's catalog. Recovery: correctable (verify signal_id via get_signals, or confirm the signal is available from this agent). Sellers MUST return this code uniformly for any signal_id not accessible to the calling account — never distinguish 'exists but unauthorized' from 'does not exist', which would enable cross-tenant enumeration. SIGNAL_NOT_FOUND covers signal_id only (a data-provider catalog reference); an unresolvable signal_agent_segment_id (an opaque agent-internal segment ID) uses REFERENCE_NOT_FOUND.
 
 </Accordion>
 <a id="error-code-signal-targeting-incompatible"></a>
