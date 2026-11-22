@@ -2605,7 +2605,9 @@ const QUARTILE_LEAF_FIELDS = {
   quartile_100: 'q4_views',
 } as const;
 
-function reportingMetricIsAvailable(metricId: string, available: ReadonlySet<string>): boolean {
+/** Whether a declared metric set satisfies `metricId` under the container
+ * rule: `viewability` covers its numeric leaves, `quartile_data` its quartiles. */
+export function reportingMetricIsAvailable(metricId: string, available: ReadonlySet<string>): boolean {
   if (available.has(metricId)) return true;
   if (VIEWABILITY_NUMERIC_FIELDS.includes(metricId as typeof VIEWABILITY_NUMERIC_FIELDS[number])) {
     return available.has('viewability');
