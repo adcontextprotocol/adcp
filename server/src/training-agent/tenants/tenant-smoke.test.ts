@@ -1031,6 +1031,25 @@ describe('tenant routing smoke', () => {
       }) as { result?: { structuredContent?: { adcp_error?: { code?: string } } } };
       expect(crossAccountAccept.result?.structuredContent?.adcp_error?.code).toBe('PROPOSAL_NOT_FOUND');
 
+      // A digest that does not match the committed terms is refused with
+      // nothing booked; the accept below then succeeds with the real digest.
+      const staleDigest = 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+      expect(committed!.terms_digest).not.toBe(staleDigest);
+      const staleDigestAccept = await callTenantTool(url, 81, 'accept_proposal', {
+        idempotency_key: 'tenant-profile-stale-digest-0001',
+        account: {
+          brand: { domain: 'buyer.example' },
+          operator: 'buyer.example',
+        },
+        proposal_id: committed!.proposal_id,
+        proposal_terms_digest: staleDigest,
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string; recovery?: string } } } };
+      expect(staleDigestAccept.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'PROPOSAL_TERMS_CHANGED',
+        field: 'proposal_terms_digest',
+        recovery: 'correctable',
+      });
+
       const accepted = await callTenantTool(url, 9, 'accept_proposal', {
         idempotency_key: 'tenant-profile-accept-0000001',
         account: {
@@ -1058,6 +1077,21 @@ describe('tenant routing smoke', () => {
           proposal_id: committed!.proposal_id,
           proposal_status: 'accepted',
         },
+      });
+
+      // Already accepted under a different digest is the same refusal.
+      const acceptedStaleDigest = await callTenantTool(url, 82, 'accept_proposal', {
+        idempotency_key: 'tenant-profile-stale-digest-0002',
+        account: {
+          brand: { domain: 'buyer.example' },
+          operator: 'buyer.example',
+        },
+        proposal_id: committed!.proposal_id,
+        proposal_terms_digest: staleDigest,
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(acceptedStaleDigest.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'PROPOSAL_TERMS_CHANGED',
+        field: 'proposal_terms_digest',
       });
 
       const account = {

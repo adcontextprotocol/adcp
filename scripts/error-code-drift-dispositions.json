@@ -400,6 +400,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.3",
       "note": "Advisory channel restrictions on rights constraints (#5542, experimental under brand.rights_lifecycle). Non-terminal creative-agent advisory when a requested build targets a channel outside rights[].channels. New 3.3 wire code \u2014 held for 3.3."
+    },
+    "PROPOSAL_TERMS_CHANGED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.3",
+      "note": "accept_proposal whose proposal_terms_digest does not match the committed proposal's current terms_digest (#9168). Nothing is accepted; buyer re-reads the proposal and, unless it is already accepted, accepts its current terms with the current digest. Earlier sellers may use another code. New 3.3 wire code \u2014 held for 3.3."
     }
   }
 }

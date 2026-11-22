@@ -345,6 +345,17 @@ describe('inventory tenants', () => {
       expect((pkgBudget.adcp_error ?? pkgBudget.errors?.[0])?.code).toBe('INVALID_STATE');
     });
 
+    it('filters by required_metrics, keeping only products that report every one', async () => {
+      const ids = async (required: string[]) => (await call(tenant, 'get_products', {
+        buying_mode: 'wholesale', filters: { required_metrics: required },
+      })).products.map((product: Structured) => product.product_id);
+      expect(await ids(['completed_views'])).toEqual(['preroll_guaranteed', 'preroll_auction']);
+      // The season declares the viewable_impressions leaf, not the viewability
+      // container, so it cannot satisfy the sibling viewable_rate leaf.
+      expect(await ids(['viewable_rate'])).toEqual([]);
+      expect((await ids([])).length).toBeGreaterThan(2);
+    });
+
     it('refuses an unknown product and a wrong pricing option', async () => {
       const unknown = await call(tenant, 'create_media_buy', {
         idempotency_key: 'inventory-tenants-unknown-00001',
@@ -967,6 +978,20 @@ describe('inventory tenants', () => {
       const seeded = offer.products.find((product: Structured) => product.product_id === 'seeded_reporting');
       expect(seeded.reporting_capabilities.available_metrics).toEqual(declared);
       expect(seeded.reporting_capabilities.available_reporting_frequencies).toEqual(['daily']);
+    });
+
+    it('lets a declared viewability container satisfy its leaves under required_metrics, but not a sibling leaf', async () => {
+      const tenant = 'inventory-adserver';
+      const seed = (id: string, metrics: string[]) => controller(tenant, 'seed_product', {
+        product_id: id, fixture: { ...displayFixture, reporting_capabilities: { available_metrics: ['impressions', 'spend', ...metrics] } },
+      });
+      expect((await seed('seeded_container', ['viewability'])).success).toBe(true);
+      expect((await seed('seeded_leaf', ['viewable_rate'])).success).toBe(true);
+      const matching = async (required: string[]) => (await call(tenant, 'get_products', {
+        buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: { ...flight, required_metrics: required },
+      }, SEED_TOKEN)).products.map((product: Structured) => product.product_id).filter((id: string) => id.startsWith('seeded_container') || id.startsWith('seeded_leaf'));
+      expect(await matching(['viewable_rate'])).toEqual(['seeded_container', 'seeded_leaf']);
+      expect(await matching(['viewable_rate', 'viewed_seconds'])).toEqual(['seeded_container']);
     });
 
     it('rejects a seeded product that reuses one of the tenant\'s own ids', async () => {
