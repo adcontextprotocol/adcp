@@ -440,14 +440,14 @@ REQUIRED_EXACT_CURRENT_SALES=(
   # Experimental 3.3 reporting subscriptions over the sandbox clock.
   "media_buy_seller/reporting_subscription_coverage:46:1"
   "media_buy_seller/reporting_subscription_capacity:16:0"
-  # Experimental 3.3 holds over seeded hold policies. The hold_extension
-  # skips are the extend_hold steps the @adcp/sdk runner cannot send yet
-  # (adcontextprotocol/adcp-client#3601) and their dependents.
+  # Experimental 3.3 holds over seeded hold policies. hold_extension grades
+  # every step since @adcp/sdk 17.0.0-beta.33 sends extend_hold
+  # (adcontextprotocol/adcp-client#3601).
   "media_buy_seller/hold_policy_bounds:18:0"
   "media_buy_seller/hold_policy_terms_only:19:4"
   "media_buy_seller/hold_policy_version_gate:11:0"
   "media_buy_seller/hold_unavailable_batch:12:0"
-  "media_buy_seller/hold_extension:22:10"
+  "media_buy_seller/hold_extension:32:0"
   "media_buy_seller/hold_ranking:11:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
