@@ -963,8 +963,13 @@ function generateExtensionRegistry(extensions, targetVersion) {
  * - Filters to those valid for target version
  * - Copies valid extension schemas
  * - Generates the index.json registry
+ *
+ * `version` is the AdCP release the extensions are filtered against.
+ * `uriVersion` is the path segment their `$id`/`$ref` URIs use: the release
+ * itself for `dist/schemas/<version>/`, and `latest` for `dist/schemas/latest/`,
+ * whose other schemas all live under `/schemas/latest/`.
  */
-function buildExtensions(sourceDir, targetDir, version) {
+function buildExtensions(sourceDir, targetDir, version, uriVersion = version) {
   const sourceExtensionsDir = path.join(sourceDir, 'extensions');
   const targetExtensionsDir = path.join(targetDir, 'extensions');
 
@@ -980,13 +985,13 @@ function buildExtensions(sourceDir, targetDir, version) {
     if (fs.existsSync(metaSchemaPath)) {
       const content = transformPublishedSchemaText(
         fs.readFileSync(metaSchemaPath, 'utf8'),
-        version,
+        uriVersion,
       );
       fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
     }
 
     // Generate empty registry
-    const registry = generateExtensionRegistry([], version);
+    const registry = generateExtensionRegistry([], uriVersion);
     fs.writeFileSync(
       path.join(targetExtensionsDir, 'index.json'),
       JSON.stringify(registry, null, 2)
@@ -1003,7 +1008,7 @@ function buildExtensions(sourceDir, targetDir, version) {
   if (fs.existsSync(metaSchemaPath)) {
     const content = transformPublishedSchemaText(
       fs.readFileSync(metaSchemaPath, 'utf8'),
-      version,
+      uriVersion,
     );
     fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
   }
@@ -1012,7 +1017,7 @@ function buildExtensions(sourceDir, targetDir, version) {
   for (const ext of validExtensions) {
     const content = transformPublishedSchemaText(
       JSON.stringify(ext.schema),
-      version,
+      uriVersion,
     );
     fs.writeFileSync(
       path.join(targetExtensionsDir, `${ext.namespace}.json`),
@@ -1021,7 +1026,7 @@ function buildExtensions(sourceDir, targetDir, version) {
   }
 
   // Generate the registry index
-  const registry = generateExtensionRegistry(validExtensions, version);
+  const registry = generateExtensionRegistry(validExtensions, uriVersion);
   fs.writeFileSync(
     path.join(targetExtensionsDir, 'index.json'),
     JSON.stringify(registry, null, 2)
@@ -2914,8 +2919,8 @@ async function main() {
     pinSchemaRootDeclaredVersion(latestDir, version);
     copyAsyncResponseRefsToCore(latestDir);
 
-    // Build extensions for latest (using full version for filtering)
-    buildExtensions(SOURCE_DIR, latestDir, version);
+    // Build extensions for latest: filter by the release, publish under latest/
+    buildExtensions(SOURCE_DIR, latestDir, version, 'latest');
 
     // Manifest for latest/.
     writeManifest(SOURCE_DIR, latestDir, 'latest', version, REPO_ROOT);
@@ -2980,7 +2985,7 @@ async function main() {
 
     // Build extensions (auto-discovered, filtered by current version)
     console.log(`🔌 Building extensions for ${version}`);
-    const extResult = buildExtensions(SOURCE_DIR, latestDir, version);
+    const extResult = buildExtensions(SOURCE_DIR, latestDir, version, 'latest');
     if (extResult.total === 0) {
       console.log(`   ✓ No extensions defined yet (empty registry created)`);
     } else {
