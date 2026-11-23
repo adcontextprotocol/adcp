@@ -141,67 +141,84 @@ A segment delivered this way surfaces on the seller as **signal inventory**, tar
 
 Initial response, with membership shipped and awaiting the seller's read:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
-  "deployments": [{
-    "type": "agent",
-    "agent_url": "https://wonderstruck.salesagents.com",
-    "is_live": false,
-    "delivery_status": "awaiting_read",
-    "delivery": {
-      "kind": "platform_segment",
-      "vendor": { "domain": "activation-hub.example" },
-      "segment_ref": "seg_88213"
-    },
-    "estimated_activation_duration_minutes": 2880
-  }]
+  "deployments": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com",
+      "is_live": false,
+      "delivery_status": "awaiting_read",
+      "delivery": {
+        "kind": "platform_segment",
+        "vendor": {
+          "domain": "activation-hub.example"
+        },
+        "segment_ref": "seg_88213"
+      },
+      "estimated_activation_duration_minutes": 2880
+    }
+  ]
 }
 ```
 
 After the seller reads and matches:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
-  "deployments": [{
-    "type": "agent",
-    "agent_url": "https://wonderstruck.salesagents.com",
-    "is_live": true,
-    "delivery_status": "delivered",
-    "delivery": {
-      "kind": "platform_segment",
-      "vendor": { "domain": "activation-hub.example" },
-      "segment_ref": "seg_88213"
-    },
-    "match_status": "ready",
-    "matched_count": 412000,
-    "effective_match_rate": 0.58,
-    "activation_key": { "type": "key_value", "key": "audience_segment", "value": "luxury_auto_intenders_v2" },
-    "deployed_at": "2026-10-07T09:14:00Z"
-  }]
+  "deployments": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com",
+      "is_live": true,
+      "delivery_status": "delivered",
+      "delivery": {
+        "kind": "platform_segment",
+        "vendor": {
+          "domain": "activation-hub.example"
+        },
+        "segment_ref": "seg_88213"
+      },
+      "match_status": "ready",
+      "matched_count": 412000,
+      "effective_match_rate": 0.58,
+      "activation_key": {
+        "type": "key_value",
+        "key": "audience_segment",
+        "value": "luxury_auto_intenders_v2"
+      },
+      "deployed_at": "2026-10-07T09:14:00Z"
+    }
+  ]
 }
 ```
 
 No rail in common with the destination:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
-  "deployments": [{
-    "type": "agent",
-    "agent_url": "https://wonderstruck.salesagents.com",
-    "is_live": false,
-    "delivery_status": "failed",
-    "delivery_error": {
-      "code": "UNSUPPORTED_FEATURE",
-      "message": "Destination declares no delivery rail in common with this signal agent.",
-      "field": "destinations[0]"
+  "deployments": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com",
+      "is_live": false,
+      "delivery_status": "failed",
+      "delivery_error": {
+        "code": "UNSUPPORTED_FEATURE",
+        "message": "Destination declares no delivery rail in common with this signal agent.",
+        "field": "destinations[0]"
+      }
     }
-  }]
+  ]
 }
 ```
 
@@ -318,23 +335,26 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 
 ### MCP Response - Synchronous (Key-Value)
 Immediate response with activation key:
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
   "message": "Signal successfully activated on Wonderstruck sales agent",
   "context_id": "ctx-signals-123",
-  "deployments": [{
-    "type": "agent",
-    "agent_url": "https://wonderstruck.salesagents.com",
-    "is_live": true,
-    "activation_key": {
-      "type": "key_value",
-      "key": "audience_segment",
-      "value": "luxury_auto_intenders_v2"
-    },
-    "deployed_at": "2025-01-15T14:30:00Z"
-  }]
+  "deployments": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com",
+      "is_live": true,
+      "activation_key": {
+        "type": "key_value",
+        "key": "audience_segment",
+        "value": "luxury_auto_intenders_v2"
+      },
+      "deployed_at": "2025-01-15T14:30:00Z"
+    }
+  ]
 }
 ```
 
@@ -356,40 +376,46 @@ Immediate response with activation key:
 
 ### MCP Response - Asynchronous (Segment ID)
 Initial response:
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
-  "deployments": [{
-    "type": "platform",
-    "platform": "the-trade-desk",
-    "account": "agency-123-ttd",
-    "is_live": false,
-    "estimated_activation_duration_minutes": 30
-  }]
+  "deployments": [
+    {
+      "type": "platform",
+      "platform": "the-trade-desk",
+      "account": "agency-123-ttd",
+      "is_live": false,
+      "estimated_activation_duration_minutes": 30
+    }
+  ]
 }
 ```
 
 After polling for completion:
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
   "message": "Signal successfully activated on The Trade Desk",
   "context_id": "ctx-signals-123",
-  "deployments": [{
-    "type": "platform",
-    "platform": "the-trade-desk",
-    "account": "agency-123-ttd",
-    "is_live": true,
-    "activation_key": {
-      "type": "segment_id",
-      "segment_id": "ttd_agency123_lux_auto"
-    },
-    "deployed_at": "2025-01-15T14:30:00Z"
-  }]
+  "deployments": [
+    {
+      "type": "platform",
+      "platform": "the-trade-desk",
+      "account": "agency-123-ttd",
+      "is_live": true,
+      "activation_key": {
+        "type": "segment_id",
+        "segment_id": "ttd_agency123_lux_auto"
+      },
+      "deployed_at": "2025-01-15T14:30:00Z"
+    }
+  ]
 }
 ```
 
@@ -519,19 +545,22 @@ See **[Webhooks](/docs/building/by-layer/L3/webhooks)** for complete details on 
 **Message**: "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use."
 
 **Complete Response**:
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
   "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
   "context_id": "ctx-signals-def456",
-  "deployments": [{
-    "type": "platform",
-    "platform": "pubmatic",
-    "account": "brand-456-pm",
-    "is_live": false,
-    "estimated_activation_duration_minutes": 60
-  }]
+  "deployments": [
+    {
+      "type": "platform",
+      "platform": "pubmatic",
+      "account": "brand-456-pm",
+      "is_live": false,
+      "estimated_activation_duration_minutes": 60
+    }
+  ]
 }
 ```
 
@@ -539,23 +568,26 @@ See **[Webhooks](/docs/building/by-layer/L3/webhooks)** for complete details on 
 **Message**: "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes."
 
 **Complete Response**:
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
   "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes.",
   "context_id": "ctx-signals-def456",
-  "deployments": [{
-    "type": "platform",
-    "platform": "pubmatic",
-    "account": "brand-456-pm",
-    "is_live": true,
-    "activation_key": {
-      "type": "segment_id",
-      "segment_id": "pm_brand456_peer39_lux_auto"
-    },
-    "deployed_at": "2025-01-15T14:30:00Z"
-  }]
+  "deployments": [
+    {
+      "type": "platform",
+      "platform": "pubmatic",
+      "account": "brand-456-pm",
+      "is_live": true,
+      "activation_key": {
+        "type": "segment_id",
+        "segment_id": "pm_brand456_peer39_lux_auto"
+      },
+      "deployed_at": "2025-01-15T14:30:00Z"
+    }
+  ]
 }
 ```
 
@@ -563,23 +595,26 @@ See **[Webhooks](/docs/building/by-layer/L3/webhooks)** for complete details on 
 **Message**: "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration."
 
 **Complete Response**:
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
   "message": "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration.",
   "context_id": "ctx-signals-ghi789",
-  "deployments": [{
-    "type": "agent",
-    "agent_url": "https://wonderstruck.salesagents.com",
-    "is_live": true,
-    "activation_key": {
-      "type": "key_value",
-      "key": "audience_segment",
-      "value": "luxury_auto_context_v2"
-    },
-    "deployed_at": "2025-01-15T14:31:00Z"
-  }]
+  "deployments": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com",
+      "is_live": true,
+      "activation_key": {
+        "type": "key_value",
+        "key": "audience_segment",
+        "value": "luxury_auto_context_v2"
+      },
+      "deployed_at": "2025-01-15T14:31:00Z"
+    }
+  ]
 }
 ```
 
@@ -587,23 +622,26 @@ See **[Webhooks](/docs/building/by-layer/L3/webhooks)** for complete details on 
 **Message**: "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated."
 
 **Complete Response**:
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",
   "status": "completed",
   "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
   "context_id": "ctx-signals-def456",
-  "deployments": [{
-    "type": "platform",
-    "platform": "pubmatic",
-    "account": "brand-456-pm",
-    "is_live": true,
-    "activation_key": {
-      "type": "segment_id",
-      "segment_id": "pm_brand456_peer39_lux_auto"
-    },
-    "deployed_at": "2025-01-15T14:30:00Z"
-  }]
+  "deployments": [
+    {
+      "type": "platform",
+      "platform": "pubmatic",
+      "account": "brand-456-pm",
+      "is_live": true,
+      "activation_key": {
+        "type": "segment_id",
+        "segment_id": "pm_brand456_peer39_lux_auto"
+      },
+      "deployed_at": "2025-01-15T14:30:00Z"
+    }
+  ]
 }
 ```
 
@@ -615,6 +653,7 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 **Message**: "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again."
 
 **Complete Response**:
+{/* schema-example: #/examples/10 */}
 ```json
 {
   "$schema": "/schemas/signals/activate-signal-response.json",

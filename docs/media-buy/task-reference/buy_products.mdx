@@ -13,11 +13,17 @@ Per-purchase flight dates, `measurement_terms`, and `performance_standards` may 
 
 **Request schema:** [`/schemas/v3/media-buy/buy-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/buy-products-request.json)
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/buy-products-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441010",
-  "account": { "account_id": "account_123" },
-  "brand": { "domain": "acmeoutdoor.example" },
+  "account": {
+    "account_id": "account_123"
+  },
+  "brand": {
+    "domain": "acmeoutdoor.example"
+  },
   "name": "Acme summer display launch",
   "feed_version": "products-2027-06-01T12:00:00Z",
   "pricing_version": "pricing-42",
@@ -26,7 +32,10 @@ Per-purchase flight dates, `measurement_terms`, and `performance_standards` may 
   "frequency_cap": {
     "max_impressions": 5,
     "per": "individuals",
-    "window": { "interval": 7, "unit": "days" }
+    "window": {
+      "interval": 7,
+      "unit": "days"
+    }
   },
   "purchases": [
     {

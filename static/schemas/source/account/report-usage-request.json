@@ -199,6 +199,74 @@
           "currency": "USD"
         }
       ]
+    },
+    {
+      "idempotency_key": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "reporting_period": {
+        "start": "2026-03-01T00:00:00Z",
+        "end": "2026-03-31T23:59:59Z"
+      },
+      "usage": [
+        {
+          "account": {
+            "account_id": "acct_acme_creative"
+          },
+          "creative_id": "cr_88201",
+          "pricing_option_id": "po_video_cpm",
+          "impressions": 2400000,
+          "vendor_cost": 1200,
+          "currency": "USD"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "reporting_period": {
+        "start": "2025-03-01T00:00:00Z",
+        "end": "2025-03-31T23:59:59Z"
+      },
+      "usage": [
+        {
+          "account": {
+            "account_id": "acct_pinnacle_signals"
+          },
+          "signal_agent_segment_id": "luxury_auto_intenders",
+          "pricing_option_id": "po_lux_auto_cpm",
+          "impressions": 2100000,
+          "vendor_cost": 1050,
+          "currency": "USD"
+        },
+        {
+          "account": {
+            "account_id": "acct_nova"
+          },
+          "signal_agent_segment_id": "eco_conscious_shoppers",
+          "pricing_option_id": "po_eco_cpm",
+          "impressions": 800000,
+          "vendor_cost": 400,
+          "currency": "USD"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+      "reporting_period": {
+        "start": "2025-03-01T00:00:00Z",
+        "end": "2025-03-31T23:59:59Z"
+      },
+      "usage": [
+        {
+          "account": {
+            "account_id": "acct_pinnacle_signals"
+          },
+          "signal_agent_segment_id": "luxury_auto_intenders",
+          "pricing_option_id": "po_auto_cpm",
+          "impressions": 4200000,
+          "media_spend": 21000,
+          "vendor_cost": 2100,
+          "currency": "USD"
+        }
+      ]
     }
   ]
 }

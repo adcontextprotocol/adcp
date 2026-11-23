@@ -181,5 +181,64 @@
     "results",
     "validated_at"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "list_id": "pl_abc123",
+      "summary": {
+        "total_records": 4,
+        "total_impressions": 200,
+        "compliant_records": 1,
+        "compliant_impressions": 103,
+        "non_compliant_records": 1,
+        "non_compliant_impressions": 47,
+        "not_covered_records": 1,
+        "not_covered_impressions": 25,
+        "unidentified_records": 1,
+        "unidentified_impressions": 25
+      },
+      "aggregate": {
+        "score": 68.7,
+        "grade": "C+",
+        "label": "68.7% compliant",
+        "methodology_url": "https://governance.example.com/methodology/compliance-scoring"
+      },
+      "results": [
+        {
+          "identifier": {
+            "type": "domain",
+            "value": "sketchy-site.example"
+          },
+          "status": "non_compliant",
+          "impressions": 47,
+          "features": [
+            {
+              "feature_id": "record:list_membership",
+              "status": "failed",
+              "explanation": "Identifier not found in resolved property list"
+            }
+          ]
+        },
+        {
+          "identifier": {
+            "type": "domain",
+            "value": "new-site.example"
+          },
+          "status": "not_covered",
+          "impressions": 25
+        },
+        {
+          "identifier": {
+            "type": "android_package",
+            "value": "com.unknown.app"
+          },
+          "status": "unidentified",
+          "impressions": 25
+        }
+      ],
+      "validated_at": "2026-01-04T19:00:00Z",
+      "list_resolved_at": "2026-01-04T12:00:00Z"
+    }
+  ]
 }

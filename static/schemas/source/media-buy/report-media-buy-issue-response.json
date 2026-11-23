@@ -64,5 +64,21 @@
   ],
   "discriminator": {
     "propertyName": "outcome"
-  }
+  },
+  "examples": [
+    {
+      "status": "completed",
+      "outcome": "recorded",
+      "issue": {
+        "issue_id": "issue_123",
+        "media_buy_id": "media_buy_789",
+        "package_id": "package_video",
+        "severity": "critical",
+        "category": "tracking",
+        "description": "An unapproved tracker is firing on the package. Please disable it at the seller ad server.",
+        "status": "reported",
+        "received_at": "2027-01-11T20:00:00Z"
+      }
+    }
+  ]
 }

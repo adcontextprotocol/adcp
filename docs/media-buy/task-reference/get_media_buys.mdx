@@ -181,6 +181,7 @@ For example, after a whole-buy cancellation, the package and its previously
 exposed platform mapping remain available even if the platform campaign has
 been deleted. `ext.streamhaus.ad_set_id` here is a seller-defined extension:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-response.json",
@@ -202,9 +203,13 @@ been deleted. `ext.streamhaus.ad_set_id` here is a seller-defined extension:
         {
           "package_id": "pkg_autumn_display",
           "product_id": "prod_display",
-          "context": { "buyer_ref": "nova_line_01" },
+          "context": {
+            "buyer_ref": "nova_line_01"
+          },
           "ext": {
-            "streamhaus": { "ad_set_id": "adset_789" }
+            "streamhaus": {
+              "ad_set_id": "adset_789"
+            }
           }
         }
       ]
@@ -530,18 +535,26 @@ For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-c
 
 A buyer renews `mb_pinnacle_q3` by creating a new buy with `predecessor_media_buy_id` and `lineage_reason` on [`buy_products`](/docs/media-buy/task-reference/buy_products) (or [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)). The seller does not touch `mb_pinnacle_q3`; the link lives only on the successor. Creating the successor:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/media-buy/buy-products-request.json",
   "idempotency_key": "6f1d0a52-7c3e-4b1a-9e0d-2a5b8c4d7e91",
-  "account": { "account_id": "acct_nova_brands" },
-  "brand": { "domain": "novabrands.example" },
+  "account": {
+    "account_id": "acct_nova_brands"
+  },
+  "brand": {
+    "domain": "novabrands.example"
+  },
   "feed_version": "products-2026-09-15T12:00:00Z",
   "start_time": "2026-10-01T00:00:00Z",
   "end_time": "2026-12-31T23:59:59Z",
   "predecessor_media_buy_id": "mb_pinnacle_q3",
   "lineage_reason": "renewal",
-  "total_budget": { "amount": 40000, "currency": "USD" },
+  "total_budget": {
+    "amount": 40000,
+    "currency": "USD"
+  },
   "purchases": [
     {
       "product_id": "prod_d979b543",
@@ -554,6 +567,7 @@ A buyer renews `mb_pinnacle_q3` by creating a new buy with `predecessor_media_bu
 
 Reverse lookup finds the direct successors of the old buy in every status, since the filter suppresses the implicit `["active"]` default:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-media-buys-request.json",
@@ -563,6 +577,7 @@ Reverse lookup finds the direct successors of the old buy in every status, since
 
 Each returned buy echoes the link. A buy that has not been renewed yields an empty page, not an error:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-media-buys-response.json",

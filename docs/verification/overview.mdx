@@ -67,17 +67,27 @@ For webhooks, `maxAge` and `requireCreated` are not optional: without a freshnes
 
 Sam's agent reads `identity.brand_json_url` from Northwind's `get_adcp_capabilities` and fetches that file, `https://northwind.example/.well-known/brand.json` ([Agent resolution](/docs/building/by-layer/L1/security#agent-resolution)). This is Northwind's self-declaration: who it is, which agents it runs, which publishers it says it sells for, and where its signing keys live.
 
+{/* schema-example: #/examples/35 */}
 ```json
 {
   "$schema": "/schemas/brand.json",
   "version": "1.0",
   "id": "northwind_media",
-  "names": [{ "en_US": "Northwind Media" }],
+  "names": [
+    {
+      "en_US": "Northwind Media"
+    }
+  ],
   "url": "https://northwind.example",
   "keller_type": "master",
   "industries": ["advertising"],
   "properties": [
-    { "type": "ctv_app", "identifier": "12345", "store": "roku", "relationship": "delegated" }
+    {
+      "type": "ctv_app",
+      "identifier": "12345",
+      "store": "roku",
+      "relationship": "delegated"
+    }
   ],
   "agents": [
     {
@@ -105,6 +115,7 @@ Two things matter here:
 
 Sam's agent fetches `https://streamhaus.example/.well-known/adagents.json` — the publisher's own declaration of who is authorized to sell its inventory:
 
+{/* schema-example: #/examples/24 */}
 ```json
 {
   "$schema": "/schemas/adagents.json",
@@ -119,7 +130,12 @@ Sam's agent fetches `https://streamhaus.example/.well-known/adagents.json` — t
       "property_type": "ctv_app",
       "name": "StreamHaus CTV App",
       "publisher_domain": "streamhaus.example",
-      "identifiers": [{ "type": "roku_store_id", "value": "12345" }]
+      "identifiers": [
+        {
+          "type": "roku_store_id",
+          "value": "12345"
+        }
+      ]
     }
   ],
   "authorized_agents": [
@@ -176,12 +192,17 @@ Acme Outdoor's inclusion list resolves at the parent-house level — they trust 
 
 StreamHaus's own brand.json declares its parent:
 
+{/* schema-example: #/examples/36 */}
 ```json
 {
   "$schema": "/schemas/brand.json",
   "version": "1.0",
   "id": "streamhaus",
-  "names": [{ "en_US": "StreamHaus" }],
+  "names": [
+    {
+      "en_US": "StreamHaus"
+    }
+  ],
   "url": "https://streamhaus.example",
   "house_domain": "sportshaus-holdings.example",
   "keller_type": "endorsed",
@@ -191,6 +212,7 @@ StreamHaus's own brand.json declares its parent:
 
 Then the parent's brand.json reciprocates:
 
+{/* schema-example: #/examples/37 */}
 ```json
 {
   "$schema": "/schemas/brand.json",
@@ -201,8 +223,15 @@ Then the parent's brand.json reciprocates:
     "architecture": "branded_house"
   },
   "brand_refs": [
-    { "domain": "streamhaus.example", "brand_id": "streamhaus", "effective_at": "2025-01-01T00:00:00Z" },
-    { "domain": "courtsidehq.example", "brand_id": "courtsidehq" }
+    {
+      "domain": "streamhaus.example",
+      "brand_id": "streamhaus",
+      "effective_at": "2025-01-01T00:00:00Z"
+    },
+    {
+      "domain": "courtsidehq.example",
+      "brand_id": "courtsidehq"
+    }
   ]
 }
 ```

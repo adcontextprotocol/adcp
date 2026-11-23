@@ -140,5 +140,52 @@
   "required": [
     "list"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "list": {
+        "list_id": "cl_novamotors_dna_2026",
+        "name": "Nova Motors CTV Do Not Air — 2026",
+        "collection_count": 247
+      },
+      "collections": [
+        {
+          "collection_rid": "019abc12-3d4e-7f5a-ab6c-7d8e9f0a1b2c",
+          "publisher_domain": "studio.example.com",
+          "collection_id": "danger_zone",
+          "name": "Danger Zone",
+          "distribution_ids": [
+            {
+              "type": "imdb_id",
+              "value": "tt9999901"
+            }
+          ],
+          "content_rating": {
+            "system": "tv_parental",
+            "rating": "TV-MA"
+          },
+          "genre": [
+            "comedy",
+            "animation"
+          ],
+          "genre_taxonomy": "iab_content_3.0",
+          "kind": "series"
+        }
+      ],
+      "pagination": {
+        "has_more": false
+      },
+      "resolved_at": "2026-04-07T14:00:00Z",
+      "cache_valid_until": "2026-04-14T14:00:00Z",
+      "coverage_gaps": {
+        "genre": [
+          {
+            "type": "imdb_id",
+            "value": "tt9999905"
+          }
+        ]
+      }
+    }
+  ]
 }

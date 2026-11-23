@@ -161,12 +161,13 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Use Cases**: Display, native, banner advertising
 
 **Example**:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_guaranteed",
   "pricing_model": "cpm",
-  "fixed_price": 12.50,
+  "fixed_price": 12.5,
   "currency": "USD",
   "min_spend_per_package": 5000
 }
@@ -186,12 +187,13 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 - **Video ads**: 50% of pixels in-view for at least 2 continuous seconds
 
 **Example**:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/vcpm-option.json",
   "pricing_option_id": "vcpm_usd_guaranteed",
   "pricing_model": "vcpm",
-  "fixed_price": 18.50,
+  "fixed_price": 18.5,
   "currency": "USD",
   "min_spend_per_package": 5000
 }
@@ -209,6 +211,7 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Use Cases**: Video campaigns, audio ads, pre-roll video
 
 **Example**:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpcv-option.json",
@@ -229,6 +232,7 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Use Cases**: Video campaigns with shorter completion requirements
 
 **Example**:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpv-option.json",
@@ -255,12 +259,13 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Use Cases**: Connected TV, linear TV, radio, audio streaming
 
 **Example**:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpp-option.json",
   "pricing_option_id": "cpp_usd_a18-49",
   "pricing_model": "cpp",
-  "fixed_price": 250.00,
+  "fixed_price": 250,
   "currency": "USD",
   "parameters": {
     "demographic": "A18-49",
@@ -334,13 +339,14 @@ Buyers should verify the measurement provider meets their campaign requirements 
 **Use Cases**: Retail media (pay per order), lead generation, app install campaigns, commerce media
 
 **Example**:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpa-option.json",
   "pricing_option_id": "cpa_usd_purchase",
   "pricing_model": "cpa",
   "event_type": "purchase",
-  "fixed_price": 5.00,
+  "fixed_price": 5,
   "currency": "USD"
 }
 ```
@@ -433,23 +439,25 @@ Revenue share is channel-independent. Affiliate is the immediate use case, but s
 **Use Cases**: Sponsorships, takeovers, exclusive placements, branded content, DOOH fixed slots
 
 **Example** (sponsorship):
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
   "pricing_option_id": "flat_rate_usd_sponsorship",
   "pricing_model": "flat_rate",
-  "fixed_price": 50000.00,
+  "fixed_price": 50000,
   "currency": "USD"
 }
 ```
 
 **Example** (DOOH slot with parameters):
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
   "pricing_option_id": "flat_rate_usd_dooh_morning",
   "pricing_model": "flat_rate",
-  "fixed_price": 5000.00,
+  "fixed_price": 5000,
   "currency": "USD",
   "parameters": {
     "type": "dooh",
@@ -493,12 +501,13 @@ slot-count share produce the same result. Delivery reports use the corresponding
 **Use Cases**: Homepage takeovers, section sponsorships, premium placements where price depends on booking duration
 
 **Example**:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/time-option.json",
   "pricing_option_id": "time_usd_daily",
   "pricing_model": "time",
-  "fixed_price": 50000.00,
+  "fixed_price": 50000,
   "currency": "USD",
   "parameters": {
     "time_unit": "day",

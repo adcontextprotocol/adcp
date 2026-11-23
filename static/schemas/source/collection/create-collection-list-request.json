@@ -57,5 +57,89 @@
     "idempotency_key",
     "name"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "c5d6e7f8-a9b0-4123-c456-123456789012",
+      "name": "Nova Motors CTV Do Not Air — 2026",
+      "description": "Programs excluded from Nova Motors CTV advertising",
+      "base_collections": [
+        {
+          "selection_type": "distribution_ids",
+          "identifiers": [
+            {
+              "type": "imdb_id",
+              "value": "tt9999901"
+            },
+            {
+              "type": "imdb_id",
+              "value": "tt9999902"
+            }
+          ]
+        },
+        {
+          "selection_type": "publisher_genres",
+          "publisher_domain": "streamhaus.com",
+          "genres": [
+            "news",
+            "crime"
+          ],
+          "genre_taxonomy": "iab_content_3.0"
+        }
+      ],
+      "filters": {
+        "content_ratings_exclude": [
+          {
+            "system": "tv_parental",
+            "rating": "TV-MA"
+          },
+          {
+            "system": "bbfc",
+            "rating": "18"
+          }
+        ],
+        "genres_exclude": [
+          "news"
+        ],
+        "genre_taxonomy": "iab_content_3.0",
+        "kinds": [
+          "series"
+        ]
+      },
+      "brand": {
+        "domain": "novamotors.com"
+      }
+    },
+    {
+      "idempotency_key": "f8a9b0c1-d2e3-4456-f789-456789012345",
+      "name": "Acme Outdoor — Excluded Sports Events",
+      "base_collections": [
+        {
+          "selection_type": "distribution_ids",
+          "identifiers": [
+            {
+              "type": "gracenote_id",
+              "value": "SP000001"
+            },
+            {
+              "type": "gracenote_id",
+              "value": "SP000002"
+            }
+          ]
+        }
+      ],
+      "filters": {
+        "kinds": [
+          "event_series"
+        ],
+        "genres_exclude": [
+          "combat_sports"
+        ],
+        "genre_taxonomy": "gracenote"
+      },
+      "brand": {
+        "domain": "acmeoutdoor.com"
+      }
+    }
+  ]
 }

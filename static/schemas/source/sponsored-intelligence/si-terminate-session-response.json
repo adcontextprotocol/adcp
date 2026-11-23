@@ -87,5 +87,66 @@
     "session_id",
     "terminated"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "terminated": true,
+      "acp_handoff": {
+        "checkout_url": "https://delta.com/acp/checkout",
+        "payload": {
+          "session_id": "sess_abc123",
+          "flight": "DL628",
+          "passenger": {
+            "email": "jane@example.com",
+            "name": "Jane Smith"
+          },
+          "applied_offers": [
+            "delta_chatgpt_3313"
+          ],
+          "price": {
+            "amount": 199,
+            "currency": "USD"
+          }
+        },
+        "expires_at": "2026-01-18T11:00:00Z"
+      }
+    },
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "terminated": true,
+      "follow_up": {
+        "action": "save_for_later",
+        "data": {
+          "flights_discussed": [
+            "DL628",
+            "DL632"
+          ],
+          "destination": "BOS",
+          "travel_date": "2026-01-27"
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "terminated": true,
+      "follow_up": {
+        "action": "set_reminder",
+        "data": {
+          "incomplete_booking": {
+            "flight": "DL628",
+            "step": "seat_selection"
+          }
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "terminated": true
+    }
+  ]
 }

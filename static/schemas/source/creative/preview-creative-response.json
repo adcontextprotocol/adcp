@@ -370,5 +370,73 @@
       "additionalProperties": true
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "response_type": "single",
+      "previews": [
+        {
+          "preview_id": "prev_001",
+          "renders": [
+            {
+              "render_id": "render_1",
+              "output_format": "url",
+              "preview_url": "https://creative-agent.example.com/preview/abc123",
+              "role": "primary"
+            }
+          ],
+          "input": {
+            "name": "Default",
+            "macros": {}
+          }
+        }
+      ],
+      "expires_at": "2027-02-15T18:00:00Z"
+    },
+    {
+      "status": "completed",
+      "response_type": "variant",
+      "variant_id": "gen_mobile_morning",
+      "previews": [
+        {
+          "preview_id": "prev_gen_morning",
+          "renders": [
+            {
+              "render_id": "render_1",
+              "output_format": "url",
+              "preview_url": "https://creative-agent.example.com/preview/variant/gen_mobile_morning",
+              "role": "primary",
+              "dimensions": {
+                "width": 300,
+                "height": 250
+              }
+            }
+          ]
+        }
+      ],
+      "manifest": {
+        "format_kind": "image",
+        "assets": {
+          "hero_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative.example.com/generated/mobile_morning_v1.jpg",
+            "width": 300,
+            "height": 250
+          },
+          "headline": {
+            "asset_type": "text",
+            "content": "Start Your Summer Right"
+          }
+        }
+      },
+      "expires_at": "2027-02-15T18:00:00Z"
+    },
+    {
+      "response_type": "submitted",
+      "status": "submitted",
+      "task_id": "task_preview_abc123",
+      "message": "Production-quality video preview queued"
+    }
+  ]
 }

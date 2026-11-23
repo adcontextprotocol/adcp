@@ -1091,6 +1091,145 @@
         "proposal_id": "prop_draft_ctv"
       },
       "message": "The next finalize of prop_draft_ctv will fail with hold_unavailable"
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "simulated": {
+        "prepared": true,
+        "product_id": "compact_lifecycle_video"
+      }
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "simulated": {
+        "expiry_processed": true,
+        "proposal_id": "proposal_committed_123",
+        "target_time": "2026-10-01T12:00:00.001Z"
+      }
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "simulated": {
+        "prepared": true,
+        "product_id": "compact_direct_buy_video"
+      }
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "simulated": {
+        "simulated_now": "2030-11-04T18:00:00Z",
+        "account_id": "acc_copy_from_sync_accounts",
+        "previous_timezone": "America/New_York",
+        "timezone": "America/Los_Angeles",
+        "changed_at": "2030-11-04T18:00:00Z",
+        "timezone_cutovers": [
+          {
+            "offering_id": "analytics_daily_api",
+            "previous_timezone": "America/New_York",
+            "timezone": "America/Los_Angeles",
+            "effective_at": "2030-11-05T05:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "forced": {
+        "arm": "submitted",
+        "task_id": "task_async_signed_io_q2"
+      },
+      "message": "Next create_media_buy call will return the submitted arm with task_id task_async_signed_io_q2"
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "simulated": {
+        "action": "hold"
+      },
+      "message": "Next create_media_buy call from this sandbox account will return synchronous success with confirmed_at null"
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "previous_state": "unconfirmed",
+      "current_state": "confirmed",
+      "message": "Media buy mb_held_q4 confirmed; revision incremented"
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "previous_state": "submitted",
+      "current_state": "completed",
+      "message": "Task task_async_signed_io_q2 transitioned from submitted to completed"
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "simulated": {
+        "delivery_date": "2026-04-15",
+        "impressions": 10000,
+        "clicks": 150,
+        "reach": 4000,
+        "frequency": 2.5,
+        "reach_window": {
+          "kind": "rolling",
+          "period": {
+            "interval": 7,
+            "unit": "days"
+          }
+        },
+        "viewability": {
+          "measurable_impressions": 9000,
+          "viewable_impressions": 7200,
+          "viewable_rate": 0.8,
+          "viewed_seconds": 4.3,
+          "standard": "mrc"
+        },
+        "reported_spend": {
+          "amount": 150,
+          "currency": "USD"
+        }
+      },
+      "cumulative": {
+        "impressions": 25000,
+        "clicks": 380,
+        "reach": 4000,
+        "frequency": 2.5,
+        "reach_window": {
+          "kind": "rolling",
+          "period": {
+            "interval": 7,
+            "unit": "days"
+          }
+        },
+        "viewability": {
+          "measurable_impressions": 9000,
+          "viewable_impressions": 7200,
+          "viewable_rate": 0.8,
+          "viewed_seconds": 4.3,
+          "standard": "mrc"
+        },
+        "reported_spend": {
+          "amount": 375,
+          "currency": "USD"
+        }
+      },
+      "message": "Delivery simulated for mb-789: 10000 impressions, 150 clicks, $150.00 spend"
+    },
+    {
+      "status": "completed",
+      "success": true,
+      "scenarios": [
+        "force_creative_status",
+        "force_account_status",
+        "force_media_buy_status",
+        "force_media_buy_purge"
+      ]
     }
   ],
   "properties": {}

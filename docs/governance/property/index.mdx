@@ -30,6 +30,7 @@ Authorization is bilateral — publishers declare authorized agents in `adagents
 
 Publishers declare their properties, authorize sales agents, and reference governance agents via `/.well-known/adagents.json`:
 
+{/* schema-example: #/examples/17 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -38,7 +39,12 @@ Publishers declare their properties, authorize sales agents, and reference gover
       "property_id": "example_site",
       "property_type": "website",
       "name": "Example Site",
-      "identifiers": [{"type": "domain", "value": "example.com"}]
+      "identifiers": [
+        {
+          "type": "domain",
+          "value": "example.com"
+        }
+      ]
     }
   ],
   "authorized_agents": [

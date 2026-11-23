@@ -148,8 +148,11 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 }
 ```
 
+{/* schema-example: #/examples/0 */}
 ```json Response (pending approval)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/acquire-rights-response.json",
+  "status": "completed",
   "rights_id": "janssen_likeness_voice",
   "rights_status": "pending_approval",
   "brand_id": "daan_janssen",
@@ -158,21 +161,24 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 }
 ```
 
+{/* schema-example: #/examples/1 */}
 ```json Response (rejected — actionable)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/acquire-rights-response.json",
+  "status": "completed",
   "rights_id": "janssen_likeness_voice",
   "rights_status": "rejected",
   "brand_id": "daan_janssen",
   "reason": "Active exclusivity with another brand for food/restaurant in NL through 2026-09-30",
-  "suggestions": [
-    "Available in BE and DE markets",
-    "Available in NL after 2026-10-01"
-  ]
+  "suggestions": ["Available in BE and DE markets", "Available in NL after 2026-10-01"]
 }
 ```
 
+{/* schema-example: #/examples/2 */}
 ```json Response (rejected — final)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/acquire-rights-response.json",
+  "status": "completed",
   "rights_id": "janssen_likeness_voice",
   "rights_status": "rejected",
   "brand_id": "daan_janssen",

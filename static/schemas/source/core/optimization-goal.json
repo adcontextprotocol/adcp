@@ -253,5 +253,56 @@
       "required": ["kind", "vendor", "metric_id"],
       "additionalProperties": true
     }
+  ],
+  "examples": [
+    {
+      "kind": "metric",
+      "metric": "clicks",
+      "target": {
+        "kind": "cost_per",
+        "value": 2.5
+      },
+      "priority": 1
+    },
+    {
+      "kind": "event",
+      "event_sources": [
+        {
+          "event_source_id": "es_web_pixel",
+          "event_type": "purchase",
+          "value_field": "order_total",
+          "value_factor": 1
+        }
+      ],
+      "target": {
+        "kind": "per_ad_spend",
+        "value": 4
+      },
+      "attribution_window": {
+        "post_click": {
+          "interval": 7,
+          "unit": "days"
+        },
+        "post_view": {
+          "interval": 1,
+          "unit": "days"
+        }
+      },
+      "priority": 2
+    },
+    {
+      "kind": "metric",
+      "metric": "reach",
+      "reach_unit": "individuals",
+      "target_frequency": {
+        "min": 2,
+        "max": 5,
+        "window": {
+          "interval": 7,
+          "unit": "days"
+        }
+      },
+      "priority": 1
+    }
   ]
 }

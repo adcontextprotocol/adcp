@@ -19,23 +19,35 @@ Revision may target a draft, committed, or accepted proposal; finalization must 
     Update to the correct version alias after the next release. */}
 **Request schema:** [`/schemas/3.2.1/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/refine-proposals-request.json)
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
   "refinements": [
     {
       "proposal_id": "proposal_123",
       "action": "revise",
       "constraints": {
-        "total_budget": { "max": 50000, "currency": "USD" },
-        "cpm": { "max": 18, "currency": "USD" },
-        "flight": { "end_no_earlier_than": "2026-10-31T23:59:59Z" }
+        "total_budget": {
+          "max": 50000,
+          "currency": "USD"
+        },
+        "cpm": {
+          "max": 18,
+          "currency": "USD"
+        },
+        "flight": {
+          "end_no_earlier_than": "2026-10-31T23:59:59Z"
+        }
       },
       "product_changes": {
         "premium_video": "include",
         "display_ros": "omit"
       },
-      "alternatives": { "count": 3 },
+      "alternatives": {
+        "count": 3
+      },
       "ask": "Use materially different product mixes while preserving reach."
     },
     {
@@ -165,8 +177,10 @@ Experimental (`media_buy.installment_refinement`, [#8967](https://github.com/adc
 
 Nothing new goes into `commercial_terms`. The seller answers with a draft that buys a product whose `installments[]` is exactly the chosen set, often one it derives for the selection. Buying that product buys its complete installment set, so `terms_digest` binds the choice through the `product_id`.
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441007",
   "refinements": [
     {
@@ -176,7 +190,10 @@ Nothing new goes into `commercial_terms`. The seller answers with a draft that b
         {
           "product_id": "creator_juniper_vale",
           "installment_ref": {
-            "collection_ref": { "publisher_domain": "availnet.example", "collection_id": "juniper_vale" },
+            "collection_ref": {
+              "publisher_domain": "availnet.example",
+              "collection_id": "juniper_vale"
+            },
             "installment_id": "2026-12-10"
           },
           "action": "omit"
@@ -236,8 +253,10 @@ See [Choosing installments](/docs/media-buy/product-discovery/collections-and-in
 
 Finalization is seller commitment, not buyer acceptance. It locks the already-negotiated terms and reserves inventory until the returned `expires_at`:
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441003",
   "refinements": [
     {
@@ -310,6 +329,7 @@ Proposal-level policy exists only in the compact lifecycle described on this pag
 
 Durations are strictly positive ISO 8601 durations in days, hours, minutes, and seconds only (`P2D`, `PT36H`). A duration is elapsed time: a day is exactly 24 hours (86,400 seconds) added to the UTC instant, never a calendar day, so time zones and daylight-saving changes do not affect it. Compare durations after normalizing them, so `P1D` equals `PT24H`, as for elapsed-clock [SLA windows](https://adcontextprotocol.org/schemas/v3/core/sla-window.json). Durations, `extendable`, and `rankable` are forbidden when `available` is `false`. When present, `min_duration` MUST NOT exceed `max_duration`, and `max_duration` MUST NOT exceed `max_total_duration`. The schema cannot compare durations, so test runners check this ordering after normalizing.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/hold-policy.json",
@@ -347,6 +367,7 @@ Sellers of scheduled media often hold the same slot for several buyers in order:
 | `available: true`, `rankable` absent or `false` | An exclusive, first-position hold, or the entry returns `hold_unavailable` | Forbidden |
 | `available: true`, `rankable: true` | A hold at any position | Required: `1` is first position; `n` means `n - 1` holds are ahead, counting only holds whose booking could prevent this one |
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/core/canonical-proposal.json",
@@ -357,12 +378,19 @@ Sellers of scheduled media often hold the same slot for several buyers in order:
   "name": "Creator launch sponsorship",
   "expires_at": "2027-01-20T17:00:00Z",
   "commercial_terms": {
-    "brand": { "domain": "nova-athletics.example" },
+    "brand": {
+      "domain": "nova-athletics.example"
+    },
     "purchases": [
       {
         "product_id": "availnet_creator_slot_0412",
         "pricing_option_id": "flat_usd",
-        "pricing": { "pricing_option_id": "flat_usd", "pricing_model": "flat_rate", "currency": "USD", "fixed_price": 12000 },
+        "pricing": {
+          "pricing_option_id": "flat_usd",
+          "pricing_model": "flat_rate",
+          "currency": "USD",
+          "fixed_price": 12000
+        },
         "budget": 12000,
         "start_time": "2027-03-01T00:00:00Z",
         "end_time": "2027-03-31T23:59:59Z"
@@ -370,10 +398,18 @@ Sellers of scheduled media often hold the same slot for several buyers in order:
     ],
     "start_time": "2027-03-01T00:00:00Z",
     "end_time": "2027-03-31T23:59:59Z",
-    "total_budget": { "amount": 12000, "currency": "USD" }
+    "total_budget": {
+      "amount": 12000,
+      "currency": "USD"
+    }
   },
   "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
-  "hold_policy": { "available": true, "min_duration": "P2D", "max_duration": "P5D", "rankable": true },
+  "hold_policy": {
+    "available": true,
+    "min_duration": "P2D",
+    "max_duration": "P5D",
+    "rankable": true
+  },
   "hold_placed_at": "2027-01-16T17:00:00Z",
   "hold_rank": 2
 }
@@ -396,6 +432,7 @@ Experimental (`media_buy.installment_holds`): sellers that emit `holds` declare 
 
 For installment products such as creator posts, podcast episodes, or linear airings, the thing being held is a specific post date or episode. A committed proposal can list them in `holds`:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/core/canonical-proposal.json",
@@ -406,12 +443,19 @@ For installment products such as creator posts, podcast episodes, or linear airi
   "name": "Creator launch sponsorship",
   "expires_at": "2027-01-20T17:00:00Z",
   "commercial_terms": {
-    "brand": { "domain": "nova-athletics.example" },
+    "brand": {
+      "domain": "nova-athletics.example"
+    },
     "purchases": [
       {
         "product_id": "availnet_creator_slot_0412",
         "pricing_option_id": "flat_usd",
-        "pricing": { "pricing_option_id": "flat_usd", "pricing_model": "flat_rate", "currency": "USD", "fixed_price": 12000 },
+        "pricing": {
+          "pricing_option_id": "flat_usd",
+          "pricing_model": "flat_rate",
+          "currency": "USD",
+          "fixed_price": 12000
+        },
         "budget": 12000,
         "start_time": "2027-03-01T00:00:00Z",
         "end_time": "2027-03-31T23:59:59Z"
@@ -419,21 +463,41 @@ For installment products such as creator posts, podcast episodes, or linear airi
     ],
     "start_time": "2027-03-01T00:00:00Z",
     "end_time": "2027-03-31T23:59:59Z",
-    "total_budget": { "amount": 12000, "currency": "USD" }
+    "total_budget": {
+      "amount": 12000,
+      "currency": "USD"
+    }
   },
   "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
-  "hold_policy": { "available": true, "min_duration": "P2D", "max_duration": "P5D", "rankable": true },
+  "hold_policy": {
+    "available": true,
+    "min_duration": "P2D",
+    "max_duration": "P5D",
+    "rankable": true
+  },
   "hold_placed_at": "2027-01-16T17:00:00Z",
   "hold_rank": 2,
   "holds": [
     {
       "product_id": "availnet_creator_slot_0412",
-      "installment_ref": { "collection_ref": { "publisher_domain": "availnet.example", "collection_id": "pinnacle_creator" }, "installment_id": "ep_041" },
+      "installment_ref": {
+        "collection_ref": {
+          "publisher_domain": "availnet.example",
+          "collection_id": "pinnacle_creator"
+        },
+        "installment_id": "ep_041"
+      },
       "hold_rank": 1
     },
     {
       "product_id": "availnet_creator_slot_0412",
-      "installment_ref": { "collection_ref": { "publisher_domain": "availnet.example", "collection_id": "pinnacle_creator" }, "installment_id": "ep_042" },
+      "installment_ref": {
+        "collection_ref": {
+          "publisher_domain": "availnet.example",
+          "collection_id": "pinnacle_creator"
+        },
+        "installment_id": "ep_042"
+      },
       "hold_rank": 2
     }
   ]
@@ -452,8 +516,10 @@ For installment products such as creator posts, podcast episodes, or linear airi
 
 Buyers often need more time for legal review or client sign-off than the seller's first `expires_at` allows. `action: "extend_hold"` lengthens a hold without lapsing it and re-finalizing. It is experimental under feature id `media_buy.hold_extension`: a seller that supports it lists that id in `experimental_features` and declares `media_buy.proposal_refinement.hold_extension: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#proposal_refinement). Buyers MUST NOT send `extend_hold` unless the seller declares it; a seller that does not declare it fails the unknown `action` value with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error). The shared request schema lists `extend_hold`, so this is enforced by the seller at runtime, not by schema validation.
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441021",
   "refinements": [
     {
@@ -485,8 +551,10 @@ Both sides of this task are agents, and both sides' inputs are untrusted. `ask` 
 
 An accepted proposal is the immutable commercial envelope attached to its MediaBuy. Refining it forks a successor proposal rather than reopening or mutating the accepted snapshot:
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441013",
   "refinements": [
     {

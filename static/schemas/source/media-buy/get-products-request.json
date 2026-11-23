@@ -265,5 +265,205 @@
     "catalog": ["brand"],
     "if_pricing_version": ["if_wholesale_feed_version"]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "buying_mode": "brief",
+      "brief": "Video inventory for a spring launch.",
+      "account": {
+        "account_id": "acc_spring_launch"
+      },
+      "ext": {
+        "adcp": {
+          "opportunity": {
+            "opportunity_id": "opp_spring_launch"
+          }
+        }
+      }
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655442003",
+      "buying_mode": "brief",
+      "brief": "Premium sports and outdoor-recreation contexts for Acme Outdoor's Q2 launch. Budget $50K.",
+      "filters": {
+        "channels": [
+          "ctv",
+          "display"
+        ],
+        "pricing_currencies": [
+          "USD"
+        ]
+      },
+      "targeting_overlay": {
+        "geo_countries": [
+          "US"
+        ],
+        "demographics": {
+          "age": {
+            "min": 25,
+            "max": 45,
+            "include_unknown": false
+          }
+        }
+      },
+      "brand": {
+        "domain": "acmeoutdoor.com"
+      }
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655442004",
+      "buying_mode": "refine",
+      "refine": [
+        {
+          "scope": "product",
+          "product_id": "streamhaus_sports_ctv_q2",
+          "action": "more_like_this",
+          "ask": "More CTV inventory like this, willing to go up to $35 CPM"
+        },
+        {
+          "scope": "request",
+          "ask": "Drop display entirely, reallocate budget to CTV and OLV"
+        }
+      ]
+    },
+    {
+      "buying_mode": "brief",
+      "brief": "Premium national video for outdoor enthusiasts",
+      "filters": {
+        "channels": [
+          "ctv"
+        ],
+        "delivery_type": "guaranteed",
+        "pricing_currencies": [
+          "USD"
+        ]
+      },
+      "targeting_overlay": {
+        "geo_countries": [
+          "US"
+        ]
+      },
+      "required_overlay_support": {
+        "geo_metros": {
+          "systems": [
+            "nielsen_dma"
+          ]
+        },
+        "placement_selection": true
+      }
+    },
+    {
+      "buying_mode": "brief",
+      "brief": "Local video inventory for a municipal services campaign",
+      "targeting_overlay": {
+        "geo_places": [
+          {
+            "country": "NL",
+            "system": "geonames",
+            "system_version": "2026-05",
+            "place_type": "city",
+            "values": [
+              "2759794"
+            ]
+          }
+        ]
+      },
+      "required_overlay_support": {
+        "geo_places": {
+          "systems": {
+            "geonames": {
+              "countries": {
+                "NL": [
+                  "city"
+                ]
+              },
+              "system_versions": [
+                "2026-05"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441005",
+      "buying_mode": "wholesale",
+      "filters": {
+        "signal_targeting": [
+          {
+            "signal_ref": {
+              "scope": "data_provider",
+              "data_provider_domain": "pinnacle-data.example",
+              "signal_id": "auto_intenders"
+            },
+            "value_type": "binary",
+            "value": true,
+            "targeting_mode": "include"
+          }
+        ]
+      },
+      "fields": [
+        "product_id",
+        "name",
+        "included_signals",
+        "signal_targeting_allowed",
+        "signal_targeting_options",
+        "signal_targeting_rules",
+        "pricing_options"
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441006",
+      "buying_mode": "wholesale",
+      "filters": {
+        "pricing_currencies": [
+          "USD"
+        ]
+      },
+      "fields": [
+        "product_id",
+        "name",
+        "pricing_options"
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441007",
+      "buying_mode": "wholesale",
+      "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441027",
+      "buying_mode": "refine",
+      "refine": [
+        {
+          "scope": "request",
+          "ask": "more video, less display"
+        },
+        {
+          "scope": "product",
+          "product_id": "prod_premium_video",
+          "ask": "add 16:9 format option"
+        },
+        {
+          "scope": "product",
+          "product_id": "prod_display_run_of_site",
+          "action": "omit"
+        },
+        {
+          "scope": "proposal",
+          "proposal_id": "prop_awareness_q2",
+          "ask": "reallocate display budget to video"
+        }
+      ],
+      "filters": {
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "budget_range": {
+          "min": 200000,
+          "max": 200000,
+          "currency": "USD"
+        }
+      }
+    }
+  ]
 }

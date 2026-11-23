@@ -762,5 +762,71 @@
   "required": [
     "plans"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "plans": [
+        {
+          "plan_id": "plan_q1_2027_acme",
+          "plan_version": 1,
+          "status": "active",
+          "budget": {
+            "authorized": 500000,
+            "committed": 150000,
+            "remaining": 350000,
+            "utilization_pct": 30
+          },
+          "governed_actions": [
+            {
+              "governance_context": "11ab64d0-2e20-4b62-8964-b024cfc98d36",
+              "purchase_type": "media_buy",
+              "status": "active",
+              "committed": 150000,
+              "check_count": 1
+            }
+          ],
+          "summary": {
+            "checks_performed": 2,
+            "outcomes_reported": 1,
+            "statuses": {
+              "approved": 2,
+              "denied": 0,
+              "conditions": 0
+            },
+            "findings_count": 0
+          },
+          "entries": [
+            {
+              "id": "chk_378be2f1",
+              "type": "check",
+              "timestamp": "2027-01-15T14:32:41.008Z",
+              "caller": "https://ads.seller-a.example",
+              "tool": "create_media_buy",
+              "check_type": "execution",
+              "mode": "enforce",
+              "purchase_type": "media_buy",
+              "governance_context": "11ab64d0-2e20-4b62-8964-b024cfc98d36",
+              "verdict": "approved",
+              "explanation": "All governance checks passed.",
+              "policies_evaluated": [],
+              "categories_evaluated": [
+                "delegation_authority"
+              ],
+              "findings": []
+            },
+            {
+              "id": "out_9b2c1f04",
+              "type": "outcome",
+              "timestamp": "2027-01-15T14:32:41.105Z",
+              "outcome": "completed",
+              "committed_budget": 150000,
+              "purchase_type": "media_buy",
+              "governance_context": "11ab64d0-2e20-4b62-8964-b024cfc98d36"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

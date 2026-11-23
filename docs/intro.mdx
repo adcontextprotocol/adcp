@@ -117,13 +117,16 @@ Before Alex's team can buy media, they need a commercial relationship. In the ol
 
 AdCP standardizes this with the accounts protocol. Sam, Alex's media buyer, sets up Pinnacle's relationship with StreamHaus in one call:
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "f6c0a3d4-2345-48b1-2345-6789012345ab",
   "accounts": [
     {
-      "brand": { "domain": "acmeoutdoor.com" },
+      "brand": {
+        "domain": "acmeoutdoor.com"
+      },
       "operator": "pinnacle-agency.com",
       "billing": "operator"
     }
@@ -149,6 +152,7 @@ This is where it gets powerful. Sam wants to find premium sports inventory for A
 
 With AdCP, `get_products` sends the same structured request and brief to every connected seller. Sam keeps semantic intent in prose and exact constraints in fields every seller can process deterministically:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
@@ -162,10 +166,16 @@ With AdCP, `get_products` sends the same structured request and brief to every c
   "targeting_overlay": {
     "geo_countries": ["US"],
     "demographics": {
-      "age": { "min": 25, "max": 45, "include_unknown": false }
+      "age": {
+        "min": 25,
+        "max": 45,
+        "include_unknown": false
+      }
     }
   },
-  "brand": { "domain": "acmeoutdoor.com" }
+  "brand": {
+    "domain": "acmeoutdoor.com"
+  }
 }
 ```
 
@@ -200,6 +210,7 @@ Every seller responds in the same format — products with pricing, forecasts, t
 
 But Sam isn't done. He likes StreamHaus's sports package but wants to shift budget toward CTV and drop the display allocation. Instead of starting over, he uses **refine mode** — an iterative conversation with the seller:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
@@ -248,12 +259,15 @@ Each product returns canonical `format_options[]` with exact constraints—dimen
 
 Then Maya briefs the creative agent. One brief produces all formats:
 
+{/* schema-example: #/examples/16 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
   "idempotency_key": "c1d2e3f4-a5b6-4789-c012-789012345678",
   "message": "Adventurous, aspirational summer campaign — gear for people who live outside",
-  "brand": { "domain": "acmeoutdoor.com" },
+  "brand": {
+    "domain": "acmeoutdoor.com"
+  },
   "target_capability_ids": ["video_16x9_30s", "display_300x250"]
 }
 ```
@@ -264,18 +278,30 @@ If Maya doesn't like the first draft, she refines with natural language: *"Make 
 
 Once approved, `sync_creatives` distributes the finished assets to every seller simultaneously:
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
   "idempotency_key": "d2e3f4a5-b6c7-4890-d123-890123456789",
-  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "account": {
+    "brand": {
+      "domain": "acmeoutdoor.com"
+    },
+    "operator": "pinnacle-agency.com"
+  },
   "creatives": [
     {
       "creative_id": "acme_summer_ctv_30s",
       "name": "Acme Summer CTV 30s",
       "format_kind": "video_hosted",
       "assets": {
-        "video": { "asset_type": "video", "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4", "width": 1920, "height": 1080, "duration_ms": 30000 }
+        "video": {
+          "asset_type": "video",
+          "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4",
+          "width": 1920,
+          "height": 1080,
+          "duration_ms": 30000
+        }
       }
     }
   ]
@@ -294,12 +320,20 @@ Once approved, `sync_creatives` distributes the finished assets to every seller 
 
 Sam has products, creatives, and accounts. Time to buy. One call to `create_media_buy` executes the campaign across every seller:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
   "idempotency_key": "e3f4a5b6-c7d8-4901-e234-901234567890",
-  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
-  "brand": { "domain": "acmeoutdoor.com" },
+  "account": {
+    "brand": {
+      "domain": "acmeoutdoor.com"
+    },
+    "operator": "pinnacle-agency.com"
+  },
+  "brand": {
+    "domain": "acmeoutdoor.com"
+  },
   "start_time": "2026-04-01T00:00:00Z",
   "end_time": "2026-06-30T23:59:59Z",
   "packages": [
@@ -340,11 +374,17 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 **Audiences** travel with the campaign via `sync_audiences`:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
   "idempotency_key": "a7d1b4e5-3456-48c2-3456-789012345abc",
-  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "account": {
+    "brand": {
+      "domain": "acmeoutdoor.com"
+    },
+    "operator": "pinnacle-agency.com"
+  },
   "audiences": [
     {
       "audience_id": "acme_existing_customers",
@@ -357,6 +397,7 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 **Signals** — third-party targeting data — are discovered and activated through the signals protocol. Sam searches for what he needs:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json",
@@ -366,13 +407,17 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 Kai's Meridian Geo returns matching signal segments with pricing, coverage, and activation options. Sam activates the ones he wants:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
   "idempotency_key": "f4a5b6c7-d8e9-4012-f345-012345678901",
   "signal_agent_segment_id": "meridian_outdoor_rec_25_45",
   "destinations": [
-    { "type": "platform", "platform": "streamhaus" }
+    {
+      "type": "platform",
+      "platform": "streamhaus"
+    }
   ]
 }
 ```
@@ -393,6 +438,7 @@ Before any of Sam's campaigns go live, they pass through governance. Jordan, Pin
 
 `check_governance` runs automatically before execution — budget limits, brand safety, targeting compliance:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
@@ -401,7 +447,9 @@ Before any of Sam's campaigns go live, they pass through governance. Jordan, Pin
   "target_agent": "https://seller.streamhaus.example/a2a",
   "tool": "create_media_buy",
   "payload": {
-    "brand": { "domain": "acmeoutdoor.com" },
+    "brand": {
+      "domain": "acmeoutdoor.com"
+    },
     "start_time": "2026-04-01T00:00:00Z",
     "end_time": "2026-06-30T23:59:59Z"
   }
@@ -472,6 +520,7 @@ For deeper performance tracking, AdCP provides two more tools:
 
 **`log_event`** records marketing events — purchases, leads, sign-ups — back to the sellers for attribution and optimization:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json",
@@ -483,7 +532,10 @@ For deeper performance tracking, AdCP provides two more tools:
       "event_type": "purchase",
       "event_time": "2026-05-15T10:30:00Z",
       "action_source": "website",
-      "custom_data": { "value": 149.99, "currency": "USD" }
+      "custom_data": {
+        "value": 149.99,
+        "currency": "USD"
+      }
     }
   ]
 }
@@ -491,6 +543,7 @@ For deeper performance tracking, AdCP provides two more tools:
 
 **`provide_performance_feedback`** closes the optimization loop — telling sellers what's working and what isn't, so their algorithms can adjust:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
@@ -514,11 +567,17 @@ Acme Outdoor has a Shopify store with 200 products. They want their catalog avai
 
 `sync_catalogs` pushes the product feed to every connected platform:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
   "idempotency_key": "b8e2c5f6-4567-48d3-4567-89012345abcd",
-  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "account": {
+    "brand": {
+      "domain": "acmeoutdoor.com"
+    },
+    "operator": "pinnacle-agency.com"
+  },
   "catalogs": [
     {
       "catalog_id": "acme_outdoor_products",
@@ -546,6 +605,7 @@ Tomoko manages brand operations at Acme Outdoor's parent company, Nova Motors. S
 https://novamotors.com/.well-known/brand.json
 ```
 
+{/* schema-example: #/examples/34 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -556,11 +616,18 @@ https://novamotors.com/.well-known/brand.json
   "brands": [
     {
       "id": "acme_outdoor",
-      "names": [{ "en": "Acme Outdoor" }],
-      "identity_agent": {
-        "url": "https://brand.novamotors.com/mcp",
-        "id": "nova_brand_agent"
-      }
+      "names": [
+        {
+          "en": "Acme Outdoor"
+        }
+      ],
+      "agents": [
+        {
+          "type": "brand",
+          "url": "https://brand.novamotors.com/mcp",
+          "id": "nova_brand_agent"
+        }
+      ]
     }
   ]
 }

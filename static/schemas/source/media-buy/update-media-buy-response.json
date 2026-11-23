@@ -235,5 +235,15 @@
       "additionalProperties": true
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "media_buy_id": "mb_12345",
+      "media_buy_status": "canceled",
+      "revision": 4,
+      "implementation_date": "2025-06-15T10:00:00Z",
+      "affected_packages": []
+    }
+  ]
 }

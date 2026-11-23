@@ -50,8 +50,10 @@ The governance agent advertises support in two capability locations:
 - `adcp.attestations` is the shared issuer, resolver, verifier, proof-format, and delivery allowlist.
 - `governance.runtime_attestations.signal_activation` declares whether evidence is `optional` or `required` for signal activation and which signal-quality claim types apply.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
   "plan_id": "plan_nova_signal_launch",
   "caller": "https://buying.pinnacle-agency.example",
   "target_agent": "https://signals.meridian.example/adcp",
@@ -200,6 +202,7 @@ A modification that changes `start_time` or `end_time` so that the buy lands in 
 
 **Delivery checks.** On `delivery` phase checks, a governance agent that evaluates pacing SHOULD evaluate it against the buy's period rather than the whole plan flight. The buy's period comes from the commitment the governance agent retained, not from dates the seller restates on the delivery check. A delivery check reports on a commitment that was already authorized, so it is not denied for its period.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-request.json",
@@ -209,16 +212,23 @@ A modification that changes `start_time` or `end_time` so that the buy lands in 
   "tool": "create_media_buy",
   "purchase_type": "media_buy",
   "budget_period_id": "q1",
-  "proposed_commitment": { "amount": 25000, "currency": "USD" },
+  "proposed_commitment": {
+    "amount": 25000,
+    "currency": "USD"
+  },
   "payload": {
     "idempotency_key": "nova-spring-q1-buy-0001",
-    "total_budget": { "amount": 25000, "currency": "USD" },
+    "total_budget": {
+      "amount": 25000,
+      "currency": "USD"
+    },
     "start_time": "2027-01-15T00:00:00Z",
     "end_time": "2027-03-15T00:00:00Z"
   }
 }
 ```
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
@@ -237,6 +247,7 @@ A modification that changes `start_time` or `end_time` so that the buy lands in 
 
 A flight from 15 March to 15 April crosses the `q1`/`q2` boundary, so the same plan denies it:
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
@@ -486,14 +497,23 @@ On the first `check_governance` call, the governance agent extracts what it need
 
 ### approved (intent check)
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-response.json",
+  "status": "completed",
   "check_id": "chk_001",
   "check_type": "intent",
   "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Proposed create_media_buy is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
-  "categories_evaluated": ["budget_authority", "geo_compliance", "channel_compliance", "flight_compliance", "delegation_authority"],
+  "categories_evaluated": [
+    "budget_authority",
+    "geo_compliance",
+    "channel_compliance",
+    "flight_compliance",
+    "delegation_authority"
+  ],
   "policies_evaluated": ["us_coppa", "alcohol_advertising"],
   "expires_at": "2026-03-15T01:00:00Z",
   "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.intent.signature"
@@ -504,8 +524,11 @@ The orchestrator proceeds to send the [`create_media_buy`](/docs/media-buy/task-
 
 ### approved (execution check -- purchase with delivery opt-in)
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-response.json",
+  "status": "completed",
   "check_id": "chk_002",
   "check_type": "execution",
   "verdict": "approved",
@@ -521,8 +544,11 @@ The seller proceeds with the media buy. The presence of `next_check` signals tha
 
 ### approved (execution check -- delivery)
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-response.json",
+  "status": "completed",
   "check_id": "chk_003",
   "check_type": "execution",
   "verdict": "approved",
@@ -555,8 +581,12 @@ The seller proceeds with the media buy. The presence of `next_check` signals tha
         "currency": "USD",
         "impressions": 850000,
         "cumulative_impressions": 850000,
-        "geo_distribution": { "US": 100 },
-        "channel_distribution": { "olv": 100 },
+        "geo_distribution": {
+          "US": 100
+        },
+        "channel_distribution": {
+          "olv": 100
+        },
         "pacing": "on_track",
         "audience_distribution": {
           "baseline": "platform",
@@ -590,8 +620,11 @@ The seller continues delivery and schedules the next governance check for `next_
 
 ### denied (intent check)
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-response.json",
+  "status": "completed",
   "check_id": "chk_004",
   "check_type": "intent",
   "verdict": "denied",
@@ -615,8 +648,11 @@ The orchestrator MUST NOT send the tool call to the seller.
 
 ### conditions (intent counterproposal)
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-response.json",
+  "status": "completed",
   "check_id": "chk_004b",
   "check_type": "intent",
   "verdict": "conditions",
@@ -637,8 +673,11 @@ The buyer adjusts the indicated field on the complete request-arguments object a
 
 ### denied (execution check -- delivery geo drift)
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-response.json",
+  "status": "completed",
   "check_id": "chk_005",
   "check_type": "execution",
   "verdict": "denied",
@@ -651,7 +690,10 @@ The buyer adjusts the indicated field on the complete request-arguments object a
       "explanation": "Geo distribution shows 12% delivery in CA, but plan only covers US.",
       "details": {
         "plan_countries": ["US"],
-        "actual_distribution": { "US": 88, "CA": 12 }
+        "actual_distribution": {
+          "US": 88,
+          "CA": 12
+        }
       }
     }
   ]

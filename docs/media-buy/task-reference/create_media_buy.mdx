@@ -1373,26 +1373,41 @@ A seller that declares the parent but not a given sub-capability MUST reject a s
 
 Continuous allocation decisions inside an accepted seller-optimized buy are delivery behavior. Distributing spend between packages within the accepted caps and goals mutates no state that [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) reports, so it does not advance the media-buy revision or create a history entry, and it is not a separate `reallocate_budget` action. A seller that changes a value the read does report (a package cap, a minimum-spend target, pacing, pause or cancellation state, or the accepted `budget_allocation`) advances the revision and appends a `history` entry with `origin.kind: "seller_system"`, like any other committed change ([Revision and confirmation semantics](/docs/media-buy/specification#revision-and-confirmation-semantics)).
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
   "idempotency_key": "0c491eb7-fdf7-47de-b3c3-7284f2c56a41",
-  "account": { "account_id": "acc_performance_001" },
-  "brand": { "domain": "acmecorp.com" },
-  "total_budget": { "amount": 100000, "currency": "USD" },
+  "account": {
+    "account_id": "acc_performance_001"
+  },
+  "brand": {
+    "domain": "acmecorp.com"
+  },
+  "total_budget": {
+    "amount": 100000,
+    "currency": "USD"
+  },
   "budget_allocation": {
     "mode": "seller_optimized",
     "optimization_goals": [
       {
         "kind": "event",
         "event_sources": [
-          { "event_source_id": "checkout_events", "event_type": "purchase" }
+          {
+            "event_source_id": "checkout_events",
+            "event_type": "purchase"
+          }
         ]
       }
     ]
   },
   "pacing": "even",
   "bidding": {
-    "cost_per": { "amount": 25, "strength": "cap" },
+    "cost_per": {
+      "amount": 25,
+      "strength": "cap"
+    },
     "max_bid": 8
   },
   "packages": [
@@ -1545,15 +1560,19 @@ const response = await session.call('create_media_buy', {
 ```
 
 **Response:**
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json",
   "status": "completed",
   "media_buy_id": "mb_12345",
   "account": {
     "account_id": "acc_acme_direct",
     "name": "Acme",
     "status": "active",
-    "brand": { "domain": "acmecorp.com" },
+    "brand": {
+      "domain": "acmecorp.com"
+    },
     "operator": "acmecorp.com"
   },
   "media_buy_status": "active",
@@ -1601,8 +1620,10 @@ const response = await session.call('create_media_buy',
 ```
 
 **Initial response:**
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json",
   "status": "submitted",
   "task_id": "task_abc123",
   "message": "Budget exceeds auto-approval limit. Sales review required (2-4 hours)."
@@ -1640,6 +1661,7 @@ const response = await session.call('create_media_buy',
 
 **Submitted response with a scheduled confirmation:** a seller whose confirmation follows a scheduled event also returns `expected_confirmation_at`, so the buyer can check at that time instead of polling:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/media-buy/create-media-buy-response.json",
@@ -1653,8 +1675,10 @@ const response = await session.call('create_media_buy',
 ### Error (`failed`)
 
 **Response:**
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json",
   "status": "failed",
   "errors": [
     {

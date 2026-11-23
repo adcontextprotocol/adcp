@@ -1049,5 +1049,57 @@
   "required": [
     "media_buys"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "adcp_version": "3.3",
+      "status": "completed",
+      "media_buys": [
+        {
+          "media_buy_id": "mb_nova_autumn",
+          "status": "canceled",
+          "currency": "USD",
+          "total_budget": 5000,
+          "confirmed_at": "2026-10-01T09:00:00Z",
+          "revision": 3,
+          "cancellation": {
+            "canceled_at": "2026-10-15T12:00:00Z",
+            "canceled_by": "buyer"
+          },
+          "packages": [
+            {
+              "package_id": "pkg_autumn_display",
+              "product_id": "prod_display",
+              "context": {
+                "buyer_ref": "nova_line_01"
+              },
+              "ext": {
+                "streamhaus": {
+                  "ad_set_id": "adset_789"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "media_buys": [
+        {
+          "media_buy_id": "mb_pinnacle_q4",
+          "predecessor_media_buy_id": "mb_pinnacle_q3",
+          "lineage_reason": "renewal",
+          "status": "active",
+          "confirmed_at": "2026-09-28T15:00:00Z",
+          "currency": "USD",
+          "total_budget": 40000,
+          "revision": 1,
+          "created_at": "2026-09-28T15:00:00Z",
+          "updated_at": "2026-09-28T15:00:00Z",
+          "packages": []
+        }
+      ]
+    }
+  ]
 }

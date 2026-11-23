@@ -1318,5 +1318,348 @@
     "reporting_period",
     "media_buy_deliveries"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "reporting_period": {
+        "start": "2026-08-03T00:00:00-04:00",
+        "end": "2026-08-24T00:00:00-04:00",
+        "timezone": "America/New_York"
+      },
+      "media_buy_deliveries": [
+        {
+          "media_buy_id": "mb_harbor_a2554",
+          "status": "completed",
+          "is_final": true,
+          "finalized_at": "2026-09-14T15:00:00Z",
+          "totals": {
+            "impressions": 4870000,
+            "spend": 155840
+          },
+          "by_package": [
+            {
+              "package_id": "pkg_harbor_prime",
+              "spend": 155840,
+              "pricing_model": "cpm",
+              "rate": 32,
+              "currency": "USD",
+              "impressions": 4870000,
+              "measurement_source": "videoamp",
+              "measurement_window": "c7",
+              "is_final": true,
+              "finalized_at": "2026-09-14T15:00:00Z",
+              "by_demographic": [
+                {
+                  "demographic": "A25-54",
+                  "demographic_system": "nielsen",
+                  "age": {
+                    "min": 25,
+                    "max": 54,
+                    "include_unknown": false
+                  },
+                  "impressions": 4870000,
+                  "spend": 155840,
+                  "measurement_source": "videoamp"
+                }
+              ],
+              "by_demographic_truncated": false,
+              "by_demographic_suppressed": false,
+              "by_spot": [
+                {
+                  "spot_id": "spot_0408",
+                  "spot_status": "preempted",
+                  "scheduled_at": "2026-08-04T19:46:30-04:00",
+                  "network": "Harbor Network",
+                  "station": "WTST-TV",
+                  "daypart": "prime_access",
+                  "creative_id": "nova_summer_30"
+                },
+                {
+                  "spot_id": "spot_0412",
+                  "aired_at": "2026-08-04T20:14:30-04:00",
+                  "network": "Harbor Network",
+                  "station": "WTST-TV",
+                  "daypart": "prime_time",
+                  "creative_id": "nova_summer_30",
+                  "break_position": {
+                    "position_in_break": 2,
+                    "spots_in_break": 5
+                  }
+                },
+                {
+                  "spot_id": "spot_0413",
+                  "aired_at": "2026-08-04T21:02:30-04:00",
+                  "network": "Harbor Network",
+                  "station": "WTST-TV",
+                  "daypart": "prime_time",
+                  "creative_id": "nova_summer_15",
+                  "break_position": {
+                    "position_in_break": 1,
+                    "spots_in_break": 4
+                  }
+                },
+                {
+                  "spot_id": "spot_0431",
+                  "spot_status": "makegood",
+                  "replaces_spot_id": "spot_0408",
+                  "aired_at": "2026-08-06T19:46:30-04:00",
+                  "network": "Harbor Network",
+                  "station": "WTST-TV",
+                  "daypart": "prime_access",
+                  "creative_id": "nova_summer_30"
+                }
+              ],
+              "by_spot_truncated": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "reporting_period": {
+        "start": "2026-11-15T00:00:00Z",
+        "end": "2026-11-16T00:00:00Z"
+      },
+      "media_buy_deliveries": [
+        {
+          "media_buy_id": "mb_pinnacle_q4",
+          "status": "active",
+          "totals": {
+            "impressions": 0,
+            "spend": 0
+          },
+          "by_package": [
+            {
+              "package_id": "pkg_prime",
+              "spend": 0,
+              "pricing_model": "cpm",
+              "rate": 18.5,
+              "currency": "EUR",
+              "by_spot": [
+                {
+                  "spot_id": "spot_pinnacle_001",
+                  "spot_status": "scheduled",
+                  "scheduled_at": "2026-11-15T20:00:00Z",
+                  "network": "Pinnacle One",
+                  "daypart": "prime_time",
+                  "grps": 2.1,
+                  "break_position": {
+                    "position_in_break": 2,
+                    "spots_in_break": 5,
+                    "break_id": "brk_20h00"
+                  }
+                },
+                {
+                  "spot_id": "spot_pinnacle_002",
+                  "spot_status": "scheduled",
+                  "scheduled_at": "2026-11-15T21:00:00Z",
+                  "network": "Pinnacle One",
+                  "daypart": "prime_time",
+                  "grps": 1.8
+                }
+              ],
+              "by_spot_truncated": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "reporting_period": {
+        "start": "2026-11-15T00:00:00Z",
+        "end": "2026-11-18T00:00:00Z"
+      },
+      "media_buy_deliveries": [
+        {
+          "media_buy_id": "mb_pinnacle_q4",
+          "status": "active",
+          "totals": {
+            "impressions": 410000,
+            "spend": 7585
+          },
+          "by_package": [
+            {
+              "package_id": "pkg_prime",
+              "spend": 7585,
+              "pricing_model": "cpm",
+              "rate": 18.5,
+              "currency": "EUR",
+              "by_spot": [
+                {
+                  "spot_id": "spot_pinnacle_001",
+                  "spot_status": "aired",
+                  "scheduled_at": "2026-11-15T20:00:00Z",
+                  "aired_at": "2026-11-15T20:02:00Z",
+                  "network": "Pinnacle One",
+                  "daypart": "prime_time",
+                  "impressions": 410000,
+                  "grps": 1.9,
+                  "break_position": {
+                    "position_in_break": 2,
+                    "spots_in_break": 5,
+                    "break_id": "brk_20h00"
+                  }
+                },
+                {
+                  "spot_id": "spot_pinnacle_002",
+                  "spot_status": "preempted",
+                  "scheduled_at": "2026-11-15T21:00:00Z",
+                  "network": "Pinnacle One"
+                },
+                {
+                  "spot_id": "spot_pinnacle_009",
+                  "spot_status": "scheduled",
+                  "replaces_spot_id": "spot_pinnacle_002",
+                  "scheduled_at": "2026-11-17T20:00:00Z",
+                  "network": "Pinnacle One",
+                  "grps": 1.8
+                }
+              ],
+              "by_spot_truncated": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "reporting_period": {
+        "start": "2026-11-15T00:00:00Z",
+        "end": "2026-11-18T00:00:00Z"
+      },
+      "media_buy_deliveries": [
+        {
+          "media_buy_id": "mb_pinnacle_q4",
+          "status": "active",
+          "totals": {
+            "impressions": 800000,
+            "spend": 14800
+          },
+          "by_package": [
+            {
+              "package_id": "pkg_prime",
+              "spend": 14800,
+              "pricing_model": "cpm",
+              "rate": 18.5,
+              "currency": "EUR",
+              "by_spot": [
+                {
+                  "spot_id": "spot_pinnacle_001",
+                  "spot_status": "aired",
+                  "scheduled_at": "2026-11-15T20:00:00Z",
+                  "aired_at": "2026-11-15T20:02:00Z",
+                  "network": "Pinnacle One",
+                  "impressions": 410000,
+                  "grps": 1.9
+                },
+                {
+                  "spot_id": "spot_pinnacle_002",
+                  "spot_status": "preempted",
+                  "scheduled_at": "2026-11-15T21:00:00Z",
+                  "network": "Pinnacle One"
+                },
+                {
+                  "spot_id": "spot_pinnacle_009",
+                  "spot_status": "makegood",
+                  "replaces_spot_id": "spot_pinnacle_002",
+                  "scheduled_at": "2026-11-17T20:00:00Z",
+                  "aired_at": "2026-11-17T20:05:00Z",
+                  "network": "Pinnacle One",
+                  "impressions": 390000,
+                  "grps": 1.8
+                }
+              ],
+              "by_spot_truncated": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "reporting_period": {
+        "start": "2026-10-12T00:00:00Z",
+        "end": "2026-10-19T00:00:00Z"
+      },
+      "media_buy_deliveries": [
+        {
+          "media_buy_id": "mb_nova_creators",
+          "status": "active",
+          "totals": {
+            "impressions": 0,
+            "spend": 8000
+          },
+          "by_package": [
+            {
+              "package_id": "pkg_creator_video",
+              "spend": 8000,
+              "pricing_model": "flat_rate",
+              "rate": 8000,
+              "currency": "USD",
+              "by_installment": [
+                {
+                  "installment_ref": {
+                    "collection_ref": {
+                      "publisher_domain": "pinnacle-creators.example.com",
+                      "collection_id": "pinnacle_unboxed"
+                    },
+                    "installment_id": "ep_2026_10_12"
+                  },
+                  "installment_name": "Unboxed: the autumn drop",
+                  "installment_status": "published",
+                  "scheduled_at": "2026-10-12T15:00:00Z",
+                  "views": 52000,
+                  "spend": 8000,
+                  "publication": {
+                    "published_at": "2026-10-12T15:04:00Z",
+                    "posts": [
+                      {
+                        "asset_type": "published_post",
+                        "post_url": "https://video.example.com/watch/abc123",
+                        "platform": "example_video",
+                        "published_at": "2026-10-12T15:04:00Z"
+                      },
+                      {
+                        "asset_type": "published_post",
+                        "post_url": "https://shorts.example.com/p/xyz789",
+                        "platform": "example_shorts",
+                        "published_at": "2026-10-12T15:10:00Z"
+                      },
+                      {
+                        "asset_type": "published_post",
+                        "platform": "example_social",
+                        "platform_post_id": "9876543210"
+                      }
+                    ],
+                    "evidence": {
+                      "url": "https://archive.example.com/captures/abc123.png",
+                      "captured_at": "2026-10-12T16:00:00Z"
+                    }
+                  }
+                },
+                {
+                  "installment_ref": {
+                    "collection_ref": {
+                      "publisher_domain": "pinnacle-creators.example.com",
+                      "collection_id": "pinnacle_unboxed"
+                    },
+                    "installment_id": "ep_2026_10_19"
+                  },
+                  "installment_status": "scheduled",
+                  "scheduled_at": "2026-10-19T15:00:00Z",
+                  "spend": 0
+                }
+              ],
+              "by_installment_truncated": false,
+              "by_installment_sorted_by": "spend",
+              "by_installment_sort_direction": "desc"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

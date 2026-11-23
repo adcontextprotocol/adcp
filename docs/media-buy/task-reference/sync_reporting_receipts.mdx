@@ -60,9 +60,13 @@ append-only-history semantics were added in `3.2.0-rc.1` and are part of the fin
 3.2 schemas linked above.
 </Note>
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
-  "account": { "account_id": "acc_123" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-reporting-receipts-request.json",
+  "account": {
+    "account_id": "acc_123"
+  },
   "idempotency_key": "019c9f25-5d28-7d4b-a6c2-4e7543291840",
   "receipts": [
     {
@@ -74,8 +78,18 @@ append-only-history semantics were added in `3.2.0-rc.1` and are part of the fin
       "verification_profile": "canonical_digest",
       "observed_row_count": 7,
       "observed_control_totals": [
-        { "name": "impressions", "value": "4200", "value_type": "integer", "unit": "impressions" },
-        { "name": "spend", "value": "7000.00", "value_type": "decimal", "unit": "USD" }
+        {
+          "name": "impressions",
+          "value": "4200",
+          "value_type": "integer",
+          "unit": "impressions"
+        },
+        {
+          "name": "spend",
+          "value": "7000.00",
+          "value_type": "decimal",
+          "unit": "USD"
+        }
       ],
       "observed_canonical_content_digest": {
         "algorithm": "sha256",

@@ -334,5 +334,114 @@
         }
       ]
     }
-  }
+  },
+  "examples": [
+    {
+      "property_rid": "01916f3a-a1d3-7000-8000-000000000030",
+      "artifact_id": "article_ai_trends_2026",
+      "provenance": {
+        "digital_source_type": "digital_creation",
+        "declared_by": {
+          "role": "platform"
+        }
+      },
+      "assets": [
+        {
+          "type": "text",
+          "role": "title",
+          "content": "AI trends reshaping the industry in 2026"
+        },
+        {
+          "type": "image",
+          "url": "https://cdn.aimagazine.example.com/illustration.jpg",
+          "alt_text": "Conceptual illustration of neural networks",
+          "provenance": {
+            "digital_source_type": "trained_algorithmic_media",
+            "ai_tool": {
+              "name": "Midjourney",
+              "version": "v7"
+            },
+            "human_oversight": "directed",
+            "declared_by": {
+              "role": "platform"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "property_rid": "01916f3a-a1d3-7000-8000-000000000040",
+      "artifact_id": "r_fitness_abc123",
+      "assets": [
+        {
+          "type": "text",
+          "role": "title",
+          "content": "Best protein sources for muscle building",
+          "language": "en"
+        },
+        {
+          "type": "text",
+          "role": "paragraph",
+          "content": "Looking for recommendations on high-quality protein sources for recovery",
+          "language": "en"
+        },
+        {
+          "type": "text",
+          "role": "paragraph",
+          "content": "I've been lifting for 6 months and want to optimize my diet.",
+          "language": "en"
+        },
+        {
+          "type": "image",
+          "url": "https://cdn.reddit.com/fitness-image.jpg",
+          "alt_text": "Person lifting weights"
+        }
+      ]
+    },
+    {
+      "property_rid": "property_streamhaus_001",
+      "artifact_id": "episode_42_segment_3",
+      "assets": [
+        {
+          "type": "audio",
+          "url": "https://storage.streamhaus.example/episodes/42/segment-3.mp3",
+          "access": {
+            "method": "service_account",
+            "provider": "gcp",
+            "credentials": {
+              "type": "service_account",
+              "private_key": "legacy-secret-redacted"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "property_rid": "property_streamhaus_001",
+      "artifact_id": "episode_42_segment_3",
+      "assets": [
+        {
+          "type": "audio",
+          "url": "https://assets.streamhaus.example/episodes/42/segment-3.mp3?expires=1786003200&signature=redacted",
+          "access": {
+            "method": "signed_url"
+          }
+        }
+      ]
+    },
+    {
+      "property_rid": "property_streamhaus_001",
+      "artifact_id": "episode_42_segment_3",
+      "assets": [
+        {
+          "type": "audio",
+          "url": "https://storage.streamhaus.example/episodes/42/segment-3.mp3",
+          "access": {
+            "method": "service_account",
+            "provider": "gcp"
+          }
+        }
+      ]
+    }
+  ]
 }

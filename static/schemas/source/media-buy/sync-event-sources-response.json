@@ -200,5 +200,64 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "event_sources": [
+        {
+          "event_source_id": "web_pixel",
+          "name": "Website Pixel",
+          "platform_id": "px_abc123",
+          "seller_id": "px_abc123",
+          "action": "created",
+          "managed_by": "buyer",
+          "setup": {
+            "snippet": "<script src=\"https://seller.example/pixel/px_abc123.js\"></script>",
+            "snippet_type": "javascript",
+            "instructions": "Place this tag in the <head> of all pages where you want to track events."
+          }
+        },
+        {
+          "event_source_id": "seller_sales_attribution",
+          "name": "Sales Attribution",
+          "platform_id": "internal_attr",
+          "seller_id": "internal_attr",
+          "action": "unchanged",
+          "managed_by": "seller",
+          "action_source": "in_store"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "event_sources": [
+        {
+          "event_source_id": "creator_channel",
+          "name": "Creator Channel Events",
+          "platform_id": "creator_attr_001",
+          "seller_id": "creator_attr_001",
+          "event_types": [
+            "follow",
+            "content_view",
+            "watch_milestone"
+          ],
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "managed_by": "seller",
+          "action": "unchanged",
+          "ext": {
+            "video_platform": {
+              "native_origin": "owned_channel"
+            }
+          }
+        }
+      ]
+    }
+  ]
 }

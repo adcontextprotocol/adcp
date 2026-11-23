@@ -131,50 +131,72 @@ An operator-controlled audio player in a tavern, grocery store, convenience stor
 
 The venue-network owner publishes the property, placement, and seller authorization in its own namespace—for example, the following file is hosted at `https://harbor-audio.example/.well-known/adagents.json`:
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
-  "properties": [{
-    "property_id": "harbor_tavern_12345",
-    "property_type": "dooh",
-    "name": "Harbor Tavern 12345",
-    "identifiers": [
-      { "type": "venue_id", "value": "harbor:STP-12345" },
-      { "type": "openooh_venue_type", "value": "openooh-1.1:804" }
-    ],
-    "supported_channels": ["dooh", "streaming_audio"]
-  }],
-  "placements": [{
-    "placement_id": "harbor_tavern_12345_audio",
-    "name": "In-venue audio player",
-    "property_ids": ["harbor_tavern_12345"],
-    "channels": ["dooh"],
-    "identifiers": [
-      { "type": "venue_id", "value": "harbor:STP-12345" }
-    ],
-    "dooh_placement_attributes": {
-      "slot_duration_seconds": 30,
-      "loop_duration_seconds": 900
-    },
-    "format_options": [{
-      "format_kind": "audio_hosted",
-      "params": {
-        "duration_ms_exact": 30000,
-        "audio_codecs": ["mp3", "aac"],
-        "slots": [
-          { "asset_group_id": "audio_main", "asset_type": "audio", "required": true }
-        ]
-      }
-    }]
-  }],
-  "authorized_agents": [{
-    "url": "https://sales.harbor-audio.example/adcp",
-    "authorized_for": "In-venue audio inventory",
-    "authorization_type": "property_ids",
-    "property_ids": ["harbor_tavern_12345"],
-    "placement_ids": ["harbor_tavern_12345_audio"],
-    "delegation_type": "delegated"
-  }],
+  "properties": [
+    {
+      "property_id": "harbor_tavern_12345",
+      "property_type": "dooh",
+      "name": "Harbor Tavern 12345",
+      "identifiers": [
+        {
+          "type": "venue_id",
+          "value": "harbor:STP-12345"
+        },
+        {
+          "type": "openooh_venue_type",
+          "value": "openooh-1.1:804"
+        }
+      ],
+      "supported_channels": ["dooh", "streaming_audio"]
+    }
+  ],
+  "placements": [
+    {
+      "placement_id": "harbor_tavern_12345_audio",
+      "name": "In-venue audio player",
+      "property_ids": ["harbor_tavern_12345"],
+      "channels": ["dooh"],
+      "identifiers": [
+        {
+          "type": "venue_id",
+          "value": "harbor:STP-12345"
+        }
+      ],
+      "dooh_placement_attributes": {
+        "slot_duration_seconds": 30,
+        "loop_duration_seconds": 900
+      },
+      "format_options": [
+        {
+          "format_kind": "audio_hosted",
+          "params": {
+            "duration_ms_exact": 30000,
+            "audio_codecs": ["mp3", "aac"],
+            "slots": [
+              {
+                "asset_group_id": "audio_main",
+                "asset_type": "audio",
+                "required": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://sales.harbor-audio.example/adcp",
+      "authorized_for": "In-venue audio inventory",
+      "authorization_type": "property_ids",
+      "property_ids": ["harbor_tavern_12345"],
+      "placement_ids": ["harbor_tavern_12345_audio"],
+      "delegation_type": "delegated"
+    }
+  ],
   "last_updated": "2026-08-30T00:00:00Z"
 }
 ```

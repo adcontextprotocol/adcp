@@ -633,5 +633,178 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "brand_id": "daan_janssen",
+      "house": {
+        "domain": "lotientertainment.com",
+        "name": "Loti Entertainment"
+      },
+      "names": [
+        {
+          "en": "Daan Janssen"
+        }
+      ],
+      "description": "Dutch Olympic speed skater, 2x gold medalist",
+      "industries": [
+        "sports_fitness"
+      ],
+      "keller_type": "independent",
+      "logos": [
+        {
+          "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+          "variant": "primary"
+        }
+      ],
+      "tagline": [
+        {
+          "en-US": "Speed is a choice"
+        },
+        {
+          "nl-NL": "Snelheid is een keuze"
+        }
+      ],
+      "available_fields": [
+        "tone",
+        "voice_synthesis",
+        "assets",
+        "rights"
+      ]
+    },
+    {
+      "status": "completed",
+      "brand_id": "daan_janssen",
+      "house": {
+        "domain": "lotientertainment.com",
+        "name": "Loti Entertainment"
+      },
+      "names": [
+        {
+          "en": "Daan Janssen"
+        }
+      ],
+      "logos": [
+        {
+          "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+          "variant": "primary"
+        },
+        {
+          "url": "https://assets.lotientertainment.com/janssen/hero_01_highres.jpg",
+          "variant": "full-lockup",
+          "width": 3000,
+          "height": 2000
+        }
+      ],
+      "voice_synthesis": {
+        "provider": "elevenlabs",
+        "voice_id": "janssen_v2",
+        "rights_offering_id": "loti_dj_voice_2026",
+        "settings": {
+          "stability": 0.7
+        }
+      },
+      "tone": {
+        "voice": "enthusiastic, warm, competitive",
+        "attributes": [
+          "athletic",
+          "Dutch pride",
+          "approachable"
+        ],
+        "dos": [
+          "Reference athletic achievements",
+          "Use Dutch cultural touchpoints"
+        ],
+        "donts": [
+          "No injury references",
+          "No competitor comparisons"
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "brand_id": "daan_janssen",
+      "house": {
+        "domain": "lotientertainment.com",
+        "name": "Loti Entertainment"
+      },
+      "names": [
+        {
+          "en": "Daan Janssen"
+        }
+      ],
+      "colors": {
+        "primary": "#FF6600",
+        "secondary": "#1A1A2E",
+        "accent": "#FBA007"
+      },
+      "fonts": {
+        "primary": {
+          "family": "Montserrat",
+          "files": [
+            {
+              "url": "https://cdn.example.com/fonts/montserrat-vf.woff2",
+              "weight_range": [
+                100,
+                900
+              ],
+              "style": "normal"
+            }
+          ],
+          "opentype_features": [
+            "tnum"
+          ],
+          "fallbacks": [
+            "Helvetica Neue",
+            "Arial",
+            "sans-serif"
+          ]
+        },
+        "secondary": "Open Sans"
+      },
+      "visual_guidelines": {
+        "photography": {
+          "realism": "photorealistic",
+          "lighting": "bright, natural",
+          "framing": [
+            "medium shot",
+            "action shot"
+          ]
+        },
+        "restrictions": [
+          "Never place text over the athlete",
+          "No competitor brand logos in frame"
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "brand_id": "jordan_vega",
+      "house": {
+        "domain": "jordanvega.example.com",
+        "name": "Jordan Vega Media"
+      },
+      "names": [
+        {
+          "en": "Jordan Vega"
+        }
+      ],
+      "logos": [
+        {
+          "url": "https://cdn.jordanvega.example.com/headshot.jpg",
+          "variant": "primary"
+        }
+      ],
+      "collections": [
+        {
+          "publisher_domain": "acmestreaming.example.com",
+          "collection_id": "pinnacle_challenge",
+          "name": "The Pinnacle Challenge",
+          "role": "host",
+          "seller_agent_url": "https://sales.acmestreaming.example.com/adcp"
+        }
+      ]
+    }
+  ]
 }

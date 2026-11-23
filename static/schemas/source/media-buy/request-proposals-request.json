@@ -87,5 +87,161 @@
       }
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "6f3d8a52-7b1e-4c4a-9d20-3c1b5e7a9f01",
+      "brief": "Five million adults 25-54 impressions in prime access and prime, :15 and :30 spots, measured by VideoAmp at C7.",
+      "account": {
+        "brand": {
+          "domain": "novabrands.example"
+        },
+        "operator": "pinnacle-media.example"
+      },
+      "criteria": {
+        "product_ids": [
+          "harbor_prime_a2554"
+        ],
+        "outcome_target": {
+          "goal": {
+            "kind": "metric",
+            "metric": "measured_impressions"
+          },
+          "volume": 5000000
+        }
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655442008",
+      "brief": "Launch Nova Running's spring trail shoe line with outdoor enthusiasts. Favor trusted adventure and fitness contexts, avoid discount-led positioning, and prioritize packages that can support a brand-lift readout.",
+      "brand": {
+        "domain": "novarunning.example"
+      }
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655442009",
+      "adcp_version": "3.2",
+      "brief": "Launch Nova Running's spring trail shoe line with outdoor enthusiasts. Favor trusted adventure and fitness contexts.",
+      "brand": {
+        "domain": "novarunning.example"
+      },
+      "criteria": {
+        "offer_filters": {
+          "channels": [
+            "ctv",
+            "display"
+          ],
+          "pricing_currencies": [
+            "USD"
+          ],
+          "required_metrics": [
+            "impressions",
+            "clicks"
+          ]
+        }
+      }
+    },
+    {
+      "idempotency_key": "open-opportunity-nova-za-0001",
+      "account": {
+        "account_id": "acc_nova_za"
+      },
+      "brand": {
+        "domain": "novabrands.example"
+      },
+      "brief": "Reach young adults in South Africa around major sporting events, online video and display.",
+      "opportunity": {
+        "opportunity_id": "opp_nova_za_q4",
+        "intent": "live_rfp",
+        "status": "open",
+        "planning_horizon": {
+          "start": "2026-10-01",
+          "end": "2026-12-31"
+        },
+        "later_proposals": {
+          "accepted": true,
+          "max_count": 5,
+          "min_interval": {
+            "interval": 2,
+            "unit": "days"
+          }
+        }
+      }
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
+      "brief": "Reach outdoor enthusiasts with premium video inventory.",
+      "account": {
+        "brand": {
+          "domain": "nova-athletics.example",
+          "countries": [
+            "DE",
+            "NL"
+          ]
+        },
+        "operator": "pinnacle-media.example",
+        "operator_unit": {
+          "id": "seat_emea_01",
+          "name": "EMEA"
+        },
+        "currency": "EUR"
+      },
+      "opportunity": {
+        "opportunity_id": "opp_spring_launch_2027",
+        "phase": "active_sourcing",
+        "intent": "live_rfp",
+        "response_deadline": "2027-01-15T17:00:00Z"
+      },
+      "criteria": {
+        "product_ids": [
+          "product_premium_video"
+        ],
+        "targeting_overlay": {
+          "geo_countries": [
+            "US"
+          ]
+        },
+        "required_overlay_support": {
+          "geo_metros": {
+            "systems": [
+              "nielsen_dma"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
+      "brief": "Drive traffic to the spring running collection page.",
+      "account": {
+        "brand": {
+          "domain": "nova-athletics.example"
+        },
+        "operator": "pinnacle-media.example"
+      },
+      "criteria": {
+        "product_ids": [
+          "product_premium_video"
+        ],
+        "offer_filters": {
+          "budget_range": {
+            "max": 5000,
+            "currency": "EUR"
+          }
+        },
+        "outcome_target": {
+          "goal": {
+            "kind": "metric",
+            "metric": "clicks"
+          },
+          "cost_per": {
+            "amount": 3,
+            "currency": "EUR",
+            "strength": "cap"
+          }
+        }
+      }
+    }
+  ]
 }

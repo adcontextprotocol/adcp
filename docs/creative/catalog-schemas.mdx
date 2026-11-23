@@ -54,6 +54,7 @@ Plus [common fields](#common-fields) (`assets`, `tags`, `ext`) shared by all ver
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/job-item.json",
@@ -66,6 +67,7 @@ Minimal — just required fields:
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/job-item.json",
@@ -76,7 +78,12 @@ Full example with optional fields:
   "location": "Amsterdam, NL",
   "employment_type": "full_time",
   "experience_level": "senior",
-  "salary": { "min": 80000, "max": 110000, "currency": "EUR", "period": "year" },
+  "salary": {
+    "min": 80000,
+    "max": 110000,
+    "currency": "EUR",
+    "period": "year"
+  },
   "date_posted": "2025-06-01",
   "valid_through": "2025-08-01",
   "apply_url": "https://acmecorp.com/careers/eng-sr-2025-042",
@@ -117,24 +124,32 @@ Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/hotel-item.json",
   "hotel_id": "grand-amsterdam",
   "name": "Grand Hotel Amsterdam",
-  "location": { "lat": 52.3676, "lng": 4.9041 }
+  "location": {
+    "lat": 52.3676,
+    "lng": 4.9041
+  }
 }
 ```
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/hotel-item.json",
   "hotel_id": "grand-amsterdam",
   "name": "Grand Hotel Amsterdam",
   "description": "Five-star canal-side hotel in the heart of Amsterdam with rooftop bar and spa.",
-  "location": { "lat": 52.3676, "lng": 4.9041 },
+  "location": {
+    "lat": 52.3676,
+    "lng": 4.9041
+  },
   "address": {
     "street": "Herengracht 100",
     "city": "Amsterdam",
@@ -143,7 +158,11 @@ Full example with optional fields:
     "country": "NL"
   },
   "star_rating": 5,
-  "price": { "amount": 289, "currency": "EUR", "period": "night" },
+  "price": {
+    "amount": 289,
+    "currency": "EUR",
+    "period": "night"
+  },
   "image_url": "https://images.acmehotels.com/grand-amsterdam/hero.jpg",
   "url": "https://acmehotels.com/amsterdam/grand",
   "amenities": ["spa", "pool", "restaurant", "wifi", "parking"],
@@ -185,6 +204,7 @@ Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json",
@@ -198,6 +218,7 @@ Minimal — just required fields:
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json",
@@ -207,7 +228,10 @@ Full example with optional fields:
   "model": "Horizon",
   "year": 2024,
   "trim": "EX",
-  "price": { "amount": 28500, "currency": "USD" },
+  "price": {
+    "amount": 28500,
+    "currency": "USD"
+  },
   "condition": "new",
   "body_style": "sedan",
   "transmission": "cvt",
@@ -245,25 +269,40 @@ Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/flight-item.json",
   "flight_id": "ams-jfk-summer",
-  "origin": { "airport_code": "AMS" },
-  "destination": { "airport_code": "JFK" }
+  "origin": {
+    "airport_code": "AMS"
+  },
+  "destination": {
+    "airport_code": "JFK"
+  }
 }
 ```
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/flight-item.json",
   "flight_id": "ams-jfk-summer",
-  "origin": { "airport_code": "AMS", "city": "Amsterdam" },
-  "destination": { "airport_code": "JFK", "city": "New York" },
+  "origin": {
+    "airport_code": "AMS",
+    "city": "Amsterdam"
+  },
+  "destination": {
+    "airport_code": "JFK",
+    "city": "New York"
+  },
   "airline": "Acme Air",
-  "price": { "amount": 449, "currency": "EUR" },
+  "price": {
+    "amount": 449,
+    "currency": "EUR"
+  },
   "description": "Direct flights from Amsterdam to New York, daily departures.",
   "image_url": "https://images.acmeair.com/routes/ams-jfk.jpg",
   "url": "https://acmeair.com/flights/ams-jfk",
@@ -300,17 +339,22 @@ Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json",
   "listing_id": "ams-jordaan-3br",
   "title": "Spacious 3BR Apartment in Jordaan",
-  "address": { "city": "Amsterdam", "country": "NL" }
+  "address": {
+    "city": "Amsterdam",
+    "country": "NL"
+  }
 }
 ```
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json",
@@ -324,13 +368,22 @@ Full example with optional fields:
     "postal_code": "1017 KE",
     "country": "NL"
   },
-  "price": { "amount": 650000, "currency": "EUR" },
+  "price": {
+    "amount": 650000,
+    "currency": "EUR"
+  },
   "property_type": "apartment",
   "listing_type": "for_sale",
   "bedrooms": 3,
   "bathrooms": 1,
-  "area": { "value": 95, "unit": "sqm" },
-  "location": { "lat": 52.3667, "lng": 4.8833 },
+  "area": {
+    "value": 95,
+    "unit": "sqm"
+  },
+  "location": {
+    "lat": 52.3667,
+    "lng": 4.8833
+  },
   "neighborhood": "Jordaan",
   "year_built": 1920,
   "tags": ["canal-view", "renovated"]
@@ -366,6 +419,7 @@ Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/education-item.json",
@@ -377,6 +431,7 @@ Minimal — just required fields:
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/education-item.json",
@@ -387,7 +442,11 @@ Full example with optional fields:
   "subject": "computer-science",
   "degree_type": "master",
   "level": "advanced",
-  "price": { "amount": 2314, "currency": "EUR", "period": "year" },
+  "price": {
+    "amount": 2314,
+    "currency": "EUR",
+    "period": "year"
+  },
   "duration": "2 years",
   "start_date": "2025-09-01",
   "language": "en",
@@ -424,6 +483,7 @@ Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/destination-item.json",
@@ -434,6 +494,7 @@ Minimal — just required fields:
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/destination-item.json",
@@ -443,9 +504,15 @@ Full example with optional fields:
   "city": "Barcelona",
   "region": "Catalonia",
   "country": "ES",
-  "location": { "lat": 41.3874, "lng": 2.1686 },
+  "location": {
+    "lat": 41.3874,
+    "lng": 2.1686
+  },
   "destination_type": "urban",
-  "price": { "amount": 399, "currency": "EUR" },
+  "price": {
+    "amount": 399,
+    "currency": "EUR"
+  },
   "image_url": "https://images.acmetravel.com/barcelona/hero.jpg",
   "url": "https://acmetravel.com/destinations/barcelona",
   "rating": 4.7,
@@ -486,6 +553,7 @@ Plus [common fields](#common-fields) (`assets`, `tags`, `ext`) shared by all ver
 
 Minimal — just required fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/app-item.json",
@@ -497,6 +565,7 @@ Minimal — just required fields:
 
 Full example with optional fields:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/app-item.json",
@@ -509,7 +578,10 @@ Full example with optional fields:
   "genre": "puzzle",
   "icon_url": "https://assets.acmegames.com/puzzlequest/icon-1024.png",
   "store_url": "https://apps.apple.com/app/puzzle-quest-match-3/id1234567890",
-  "price": { "amount": 0, "currency": "USD" },
+  "price": {
+    "amount": 0,
+    "currency": "USD"
+  },
   "rating": 4.7,
   "rating_count": 82000,
   "content_rating": "4+",

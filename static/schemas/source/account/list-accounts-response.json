@@ -124,6 +124,50 @@
           "rate_card": "acme_vip_2024"
         }
       ]
+    },
+    {
+      "status": "completed",
+      "accounts": [
+        {
+          "account_id": "acct_streamhaus_nova_pinnacle",
+          "name": "Nova Motors c/o Pinnacle Agency",
+          "brand": {
+            "domain": "novamotors.example"
+          },
+          "operator": "pinnacle-agency.example",
+          "status": "active",
+          "billing": "advertiser",
+          "billing_entity": {
+            "legal_name": "Nova Motors Ltd.",
+            "registration_number": "NM-2026-1042",
+            "address": {
+              "street": "12 Aurora Road",
+              "city": "London",
+              "postal_code": "SW1A 1AA",
+              "country": "GB"
+            },
+            "contacts": [
+              {
+                "role": "billing",
+                "name": "Tomoko",
+                "email": "accounts-payable@novamotors.example"
+              }
+            ]
+          },
+          "payment_terms": "net_30",
+          "account_scope": "operator_brand",
+          "notification_configs": [
+            {
+              "subscriber_id": "account-lifecycle",
+              "url": "https://buyer.pinnacle-agency.example/webhooks/adcp/accounts",
+              "event_types": [
+                "account.status_changed"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ]
     }
   ]
 }

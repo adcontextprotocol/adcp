@@ -47,5 +47,47 @@
     "after_revocation": "Authority is never extended past its end. Once the caller's authority for the account ends, every reference to that account, including receipts for revisions it read earlier, resolves as unavailable, exactly like an unknown identifier. A seller that wants a buyer to finish reconciling after a relationship ends, for example after an agency change, keeps a reduced grant instead of revoking: an authorization whose allowed_tasks lists only the reconciliation tasks it permits, such as get_reporting_status, sync_reporting_receipts, and sync_reporting_status, with read_only false. Revocation, as in a fraud or compromise response, stops everything. A partial grant is not a loss of authority: when the caller's authorization for the account lists get_reporting_status but not sync_reporting_receipts, the account stays in reporting-subscription coverage and keeps reading as known, and the seller rejects sync_reporting_receipts for it with SCOPE_INSUFFICIENT, never the unknown-identifier shape. A consumer_receipt obligation the caller cannot receipt stays receipt-pending under the ordinary receipt rules, and the pending receipt is the buyer's, never a seller delay.",
     "partial_results": "Each receipt is independent. One failed result does not roll back successfully recorded receipts; retries use the same receipt IDs and content."
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "account": {
+        "account_id": "acc_123"
+      },
+      "idempotency_key": "019c9f25-5d28-7d4b-a6c2-4e7543291840",
+      "receipts": [
+        {
+          "reporting_receipt_id": "receipt_2026_08_billing_01",
+          "reporting_obligation_id": "obligation_2026_08_billing_01",
+          "reporting_revision_id": "revision_2026_08_billing_02",
+          "reporting_materialization_id": "materialization_2026_08_bq_01",
+          "status": "accepted",
+          "verification_profile": "canonical_digest",
+          "observed_row_count": 7,
+          "observed_control_totals": [
+            {
+              "name": "impressions",
+              "value": "4200",
+              "value_type": "integer",
+              "unit": "impressions"
+            },
+            {
+              "name": "spend",
+              "value": "7000.00",
+              "value_type": "decimal",
+              "unit": "USD"
+            }
+          ],
+          "observed_canonical_content_digest": {
+            "algorithm": "sha256",
+            "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "canonicalization_id": "billing-rows-v1",
+            "canonicalization_uri": "https://billing.example/reporting/canonicalization/billing-rows-v1.json",
+            "canonicalization_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "consumer_commit_ref": "buyer-ledger-run-42",
+          "observed_at": "2026-09-02T00:01:00Z"
+        }
+      ]
+    }
+  ]
 }

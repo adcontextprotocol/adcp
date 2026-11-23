@@ -364,5 +364,38 @@
       "additionalProperties": true
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "creatives": [
+        {
+          "creative_id": "acme_hero_video",
+          "revision_id": "rev_2026_11_02",
+          "action": "updated",
+          "status": "approved",
+          "staged_update": {
+            "status": "pending_review",
+            "revision_id": "rev_2026_11_02",
+            "change_kinds": [
+              "asset_content"
+            ],
+            "staged_at": "2026-11-02T15:04:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "creatives": [],
+      "merges": [
+        {
+          "creative_id": "acme_video_001",
+          "package_id": "pkg_premium_video",
+          "merged_creative_id": "slr_88412",
+          "approval_status": "approved"
+        }
+      ]
+    }
+  ]
 }

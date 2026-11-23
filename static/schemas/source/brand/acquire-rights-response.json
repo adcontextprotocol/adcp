@@ -233,5 +233,33 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "rights_id": "janssen_likeness_voice",
+      "rights_status": "pending_approval",
+      "brand_id": "daan_janssen",
+      "detail": "Creative concept requires talent approval per contract terms",
+      "estimated_response_time": "48h"
+    },
+    {
+      "status": "completed",
+      "rights_id": "janssen_likeness_voice",
+      "rights_status": "rejected",
+      "brand_id": "daan_janssen",
+      "reason": "Active exclusivity with another brand for food/restaurant in NL through 2026-09-30",
+      "suggestions": [
+        "Available in BE and DE markets",
+        "Available in NL after 2026-10-01"
+      ]
+    },
+    {
+      "status": "completed",
+      "rights_id": "janssen_likeness_voice",
+      "rights_status": "rejected",
+      "brand_id": "daan_janssen",
+      "reason": "This violates our public figures brand guidelines"
+    }
+  ]
 }

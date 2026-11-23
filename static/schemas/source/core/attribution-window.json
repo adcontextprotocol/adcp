@@ -18,5 +18,18 @@
       "description": "Attribution model used to assign credit when multiple touchpoints exist. SHOULD be populated when committing to a specific model; when absent, the seller's default applies."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "post_click": {
+        "interval": 7,
+        "unit": "days"
+      },
+      "post_view": {
+        "interval": 1,
+        "unit": "days"
+      },
+      "model": "last_touch"
+    }
+  ]
 }

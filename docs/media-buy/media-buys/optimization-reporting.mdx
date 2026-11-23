@@ -1516,16 +1516,23 @@ Rows are ordered ascending, and a spot that moves from `scheduled` to `aired` ca
 
 **Plan to as-run, aired.** Before airing, the buyer sees the planned spots and what the seller expects them to deliver:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
   "status": "completed",
-  "reporting_period": { "start": "2026-11-15T00:00:00Z", "end": "2026-11-16T00:00:00Z" },
+  "reporting_period": {
+    "start": "2026-11-15T00:00:00Z",
+    "end": "2026-11-16T00:00:00Z"
+  },
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_pinnacle_q4",
       "status": "active",
-      "totals": { "impressions": 0, "spend": 0 },
+      "totals": {
+        "impressions": 0,
+        "spend": 0
+      },
       "by_package": [
         {
           "package_id": "pkg_prime",
@@ -1541,7 +1548,11 @@ Rows are ordered ascending, and a spot that moves from `scheduled` to `aired` ca
               "network": "Pinnacle One",
               "daypart": "prime_time",
               "grps": 2.1,
-              "break_position": { "position_in_break": 2, "spots_in_break": 5, "break_id": "brk_20h00" }
+              "break_position": {
+                "position_in_break": 2,
+                "spots_in_break": 5,
+                "break_id": "brk_20h00"
+              }
             },
             {
               "spot_id": "spot_pinnacle_002",
@@ -1562,16 +1573,23 @@ Rows are ordered ascending, and a spot that moves from `scheduled` to `aired` ca
 
 After the evening, the same `spot_id` is `aired` with its actual time and measured value; `grps` is now an actual. The 21:00 spot is reported as `preempted`, so its absence from the as-run log is explained, and its planned replacement already appears as a `scheduled` row that points back at it:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
   "status": "completed",
-  "reporting_period": { "start": "2026-11-15T00:00:00Z", "end": "2026-11-18T00:00:00Z" },
+  "reporting_period": {
+    "start": "2026-11-15T00:00:00Z",
+    "end": "2026-11-18T00:00:00Z"
+  },
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_pinnacle_q4",
       "status": "active",
-      "totals": { "impressions": 410000, "spend": 7585 },
+      "totals": {
+        "impressions": 410000,
+        "spend": 7585
+      },
       "by_package": [
         {
           "package_id": "pkg_prime",
@@ -1589,7 +1607,11 @@ After the evening, the same `spot_id` is `aired` with its actual time and measur
               "daypart": "prime_time",
               "impressions": 410000,
               "grps": 1.9,
-              "break_position": { "position_in_break": 2, "spots_in_break": 5, "break_id": "brk_20h00" }
+              "break_position": {
+                "position_in_break": 2,
+                "spots_in_break": 5,
+                "break_id": "brk_20h00"
+              }
             },
             {
               "spot_id": "spot_pinnacle_002",
@@ -1616,16 +1638,23 @@ After the evening, the same `spot_id` is `aired` with its actual time and measur
 
 **Plan to as-run, preempted and made good.** The 21:00 spot never aired. The seller reports it as `preempted`, and a later report carries the replacement as a `makegood` row that points at it. Before the replacement airs, the seller can already show it as a `scheduled` row with `replaces_spot_id`. Rows are in `aired_at`/`scheduled_at` order:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
   "status": "completed",
-  "reporting_period": { "start": "2026-11-15T00:00:00Z", "end": "2026-11-18T00:00:00Z" },
+  "reporting_period": {
+    "start": "2026-11-15T00:00:00Z",
+    "end": "2026-11-18T00:00:00Z"
+  },
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_pinnacle_q4",
       "status": "active",
-      "totals": { "impressions": 800000, "spend": 14800 },
+      "totals": {
+        "impressions": 800000,
+        "spend": 14800
+      },
       "by_package": [
         {
           "package_id": "pkg_prime",
@@ -1670,6 +1699,7 @@ After the evening, the same `spot_id` is `aired` with its actual time and measur
 
 A seller that reports these rows declares them in the product's reporting capabilities:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/reporting-capabilities.json",
@@ -1708,16 +1738,23 @@ A `by_installment` row can follow one installment from plan to proof. `installme
 
 **Creator video with two cross-posts.** The installment is reported with views rather than impressions, and each place it was published is a separate `posts[]` entry:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
   "status": "completed",
-  "reporting_period": { "start": "2026-10-12T00:00:00Z", "end": "2026-10-19T00:00:00Z" },
+  "reporting_period": {
+    "start": "2026-10-12T00:00:00Z",
+    "end": "2026-10-19T00:00:00Z"
+  },
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_nova_creators",
       "status": "active",
-      "totals": { "impressions": 0, "spend": 8000 },
+      "totals": {
+        "impressions": 0,
+        "spend": 8000
+      },
       "by_package": [
         {
           "package_id": "pkg_creator_video",
@@ -1728,7 +1765,10 @@ A `by_installment` row can follow one installment from plan to proof. `installme
           "by_installment": [
             {
               "installment_ref": {
-                "collection_ref": { "publisher_domain": "pinnacle-creators.example.com", "collection_id": "pinnacle_unboxed" },
+                "collection_ref": {
+                  "publisher_domain": "pinnacle-creators.example.com",
+                  "collection_id": "pinnacle_unboxed"
+                },
                 "installment_id": "ep_2026_10_12"
               },
               "installment_name": "Unboxed: the autumn drop",
@@ -1765,7 +1805,10 @@ A `by_installment` row can follow one installment from plan to proof. `installme
             },
             {
               "installment_ref": {
-                "collection_ref": { "publisher_domain": "pinnacle-creators.example.com", "collection_id": "pinnacle_unboxed" },
+                "collection_ref": {
+                  "publisher_domain": "pinnacle-creators.example.com",
+                  "collection_id": "pinnacle_unboxed"
+                },
                 "installment_id": "ep_2026_10_19"
               },
               "installment_status": "scheduled",
@@ -1785,6 +1828,7 @@ A `by_installment` row can follow one installment from plan to proof. `installme
 
 A seller that reports these rows declares them in the canonical product's reporting capabilities:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/canonical-reporting-capabilities.json",

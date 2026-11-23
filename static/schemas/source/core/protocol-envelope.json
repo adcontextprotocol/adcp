@@ -158,6 +158,23 @@
           }
         ]
       }
+    },
+    {
+      "status": "failed",
+      "adcp_error": {
+        "code": "UNSUPPORTED_FEATURE",
+        "message": "This seller does not support criteria refinement.",
+        "field": "refinements[0].criteria",
+        "recovery": "correctable",
+        "details": {
+          "unsupported_dimension": "criteria",
+          "supported_dimensions": [
+            "total_budget",
+            "cpm",
+            "alternatives"
+          ]
+        }
+      }
     }
   ],
   "notes": [

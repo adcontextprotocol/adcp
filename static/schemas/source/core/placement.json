@@ -267,5 +267,38 @@
       }
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "kind": "publisher_ref",
+      "publisher_domain": "daily-pulse.example",
+      "placement_id": "homepage_banner",
+      "name": "Homepage Banner",
+      "description": "Above-the-fold banner on the homepage",
+      "mode": "targetable",
+      "tags": [
+        "homepage",
+        "display",
+        "premium"
+      ],
+      "format_options": [
+        {
+          "format_option_id": "display_728x90",
+          "format_kind": "image",
+          "params": {
+            "width": 728,
+            "height": 90
+          }
+        },
+        {
+          "format_option_id": "display_970x250",
+          "format_kind": "image",
+          "params": {
+            "width": 970,
+            "height": 250
+          }
+        }
+      ]
+    }
+  ]
 }

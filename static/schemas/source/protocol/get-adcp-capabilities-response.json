@@ -4427,5 +4427,879 @@
     }
   },
   "required": ["adcp", "supported_protocols"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "supported_versions": [
+          "3.2"
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        },
+        "capability_changes": {
+          "capabilities_version": "streamhaus-2026-09-01",
+          "cache_ttl_seconds": 300,
+          "notifications": {
+            "supported": true,
+            "registration_task": "sync_principal",
+            "event_types": [
+              "capabilities.changed"
+            ]
+          }
+        },
+        "principal": {
+          "supported": true,
+          "sync_task": "sync_principal",
+          "read_task": "get_principal",
+          "supported_sections": [
+            "notification_configs",
+            "reporting_destinations",
+            "declarations"
+          ],
+          "caller_event_types": [
+            "capabilities.changed",
+            "principal.changed"
+          ],
+          "max_reporting_destinations": 16,
+          "reporting_destination_offerings": [
+            {
+              "pattern": "file_transfer",
+              "transports": [
+                "s3",
+                "gcs"
+              ],
+              "formats": [
+                "parquet",
+                "csv"
+              ],
+              "verification_profiles": [
+                "manifest_checksums",
+                "canonical_digest"
+              ]
+            }
+          ],
+          "suspension_interval_seconds": 300,
+          "optimistic_concurrency": true
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ],
+      "experimental_features": [
+        "protocol.principal",
+        "media_buy.reporting_delivery"
+      ]
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "supported_versions": [
+          "3.1",
+          "3.2"
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ],
+      "account": {
+        "require_operator_auth": false,
+        "supported_billing": [
+          "operator",
+          "agent",
+          "advertiser"
+        ],
+        "supported_account_currency_modes": [
+          "fixed",
+          "per_media_buy"
+        ],
+        "timezone": {
+          "mode": "account_fixed",
+          "account_selection": "buyer_selected",
+          "supported_timezones": [
+            "Europe/London",
+            "UTC"
+          ]
+        },
+        "notifications": {
+          "supported": true,
+          "registration_task": "sync_accounts",
+          "read_task": "list_accounts",
+          "event_types": [
+            "account.status_changed"
+          ],
+          "supports_webhook_activity": true
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          2
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "creative"
+      ],
+      "creative": {
+        "has_creative_library": true,
+        "supports_generation": false,
+        "supports_transformation": true,
+        "supports_compliance": false,
+        "supported_formats": [
+          {
+            "capability_id": "display_image_transform",
+            "operations": [
+              "build",
+              "validate",
+              "preview"
+            ],
+            "format": {
+              "format_kind": "image",
+              "params": {
+                "width": 300,
+                "height": 250
+              }
+            }
+          }
+        ],
+        "preview": {
+          "routes": [
+            {
+              "capability_id": "display_image_transform",
+              "rendering_origin": "agent_approximation"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          2
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ],
+      "account": {
+        "supported_billing": [
+          "operator",
+          "agent"
+        ],
+        "supported_account_currency_modes": [
+          "fixed",
+          "per_media_buy"
+        ]
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        },
+        "implementation": {
+          "sdks": [
+            {
+              "name": "@adcp/sdk",
+              "version": "15.3.0",
+              "components": [
+                "types",
+                "schema_validation"
+              ]
+            }
+          ]
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ]
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "idempotency": {
+          "supported": false
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ],
+      "experimental_features": [
+        "media_buy.audience_activation"
+      ],
+      "media_buy": {
+        "audience_targeting": {
+          "supported_activation_methods": [
+            {
+              "pattern": "platform_distribution",
+              "vendor": {
+                "domain": "activation-hub.example"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "governance"
+      ],
+      "governance": {
+        "property_features": [
+          {
+            "feature_id": "mfa_score",
+            "type": "quantitative",
+            "range": {
+              "min": 0,
+              "max": 100
+            },
+            "description": "Made For Advertising detection (0=quality content, 100=likely MFA)",
+            "methodology_url": "https://vendor.example.com/methodology/mfa"
+          },
+          {
+            "feature_id": "coppa_certified",
+            "type": "binary",
+            "description": "COPPA compliance certification"
+          },
+          {
+            "feature_id": "registry:uk_hfss",
+            "type": "binary",
+            "description": "UK HFSS advertising restrictions compliance"
+          },
+          {
+            "feature_id": "carbon_score",
+            "type": "quantitative",
+            "range": {
+              "min": 0,
+              "max": 100
+            },
+            "description": "Carbon footprint sustainability score",
+            "methodology_url": "https://vendor.example.com/methodology/carbon-score"
+          }
+        ],
+        "creative_features": [
+          {
+            "feature_id": "registry:eu_ai_act_article_50",
+            "type": "binary",
+            "description": "EU AI Act Article 50 — AI-generated content disclosure"
+          },
+          {
+            "feature_id": "registry:ca_sb_942",
+            "type": "binary",
+            "description": "California SB 942 — AI transparency compliance"
+          },
+          {
+            "feature_id": "auto_redirect",
+            "type": "binary",
+            "description": "Detects auto-redirect behavior in creative code"
+          },
+          {
+            "feature_id": "credential_harvest",
+            "type": "binary",
+            "description": "Detects credential harvesting patterns"
+          }
+        ],
+        "content_standards": {
+          "supported": true,
+          "calibration_formats": [
+            "text",
+            "image",
+            "video"
+          ]
+        },
+        "policy_registry": {
+          "supported": true,
+          "domains": [
+            "campaign",
+            "property",
+            "creative",
+            "content_standards"
+          ]
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ],
+      "experimental_features": [
+        "media_buy.audience_activation"
+      ],
+      "account": {
+        "require_operator_auth": false,
+        "supported_billing": [
+          "operator",
+          "agent"
+        ],
+        "supported_account_currency_modes": [
+          "fixed",
+          "per_media_buy"
+        ],
+        "timezone": {
+          "mode": "seller_fixed",
+          "fixed_timezone": "UTC"
+        }
+      },
+      "media_buy": {
+        "creative_approval_mode": "auto_approve",
+        "features": {
+          "inline_creative_management": true,
+          "property_list_filtering": true,
+          "seller_optimized_budget": true,
+          "bidding_policy": {
+            "media_buy": {
+              "fixed": {
+                "modes": [
+                  "max_bid",
+                  "cost_per"
+                ],
+                "cost_per_strengths": [
+                  "cap",
+                  "target"
+                ],
+                "supported_combinations": [
+                  {
+                    "kind": "max_bid_with_cost_per",
+                    "cost_per_strengths": [
+                      "cap"
+                    ]
+                  }
+                ]
+              },
+              "seller_optimized": {
+                "modes": [
+                  "cost_per"
+                ],
+                "cost_per_strengths": [
+                  "cap"
+                ]
+              }
+            },
+            "package": {
+              "fixed": {
+                "modes": [
+                  "automatic",
+                  "bid_amount",
+                  "cost_per"
+                ],
+                "cost_per_strengths": [
+                  "cap"
+                ]
+              },
+              "seller_optimized": {
+                "modes": [
+                  "automatic"
+                ]
+              }
+            }
+          }
+        },
+        "execution": {
+          "axe_integrations": [
+            "https://axe.example.com"
+          ],
+          "creative_specs": {
+            "vast_versions": [
+              "4.0",
+              "4.1",
+              "4.2",
+              "4.3"
+            ],
+            "macro_resolution_capabilities": [
+              {
+                "dialect": "adcp",
+                "dialect_semantic": "GDPR_CONSENT",
+                "mapping_status": "verified_universal",
+                "universal_semantic": "GDPR_CONSENT",
+                "operation": "resolve_value",
+                "performed_by": "seller",
+                "supported_contexts": [
+                  "url_query_value"
+                ],
+                "supported_encodings": [
+                  {
+                    "kind": "rfc3986",
+                    "depth": 1
+                  }
+                ]
+              },
+              {
+                "dialect": "iab_vast",
+                "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+                "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+                "dialect_semantic": "PLAYERSTATE",
+                "mapping_status": "dialect_defined",
+                "operation": "resolve_value",
+                "performed_by": "request_executor",
+                "supported_contexts": [
+                  "url_query_value"
+                ],
+                "supported_encodings": [
+                  {
+                    "kind": "iab_vast_uri",
+                    "depth": 1
+                  }
+                ]
+              }
+            ],
+            "mraid_versions": [
+              "3.0"
+            ],
+            "vpaid": false,
+            "simid": true
+          },
+          "targeting": {
+            "geo_countries": true,
+            "geo_regions": true,
+            "geo_metros": {
+              "nielsen_dma": true
+            },
+            "geo_postal_areas": {
+              "us_zip": true,
+              "us_zip_plus_four": true,
+              "US": [
+                "zip",
+                "zip_plus_four"
+              ],
+              "GB": [
+                "outward",
+                "full"
+              ],
+              "CA": [
+                "fsa",
+                "full"
+              ],
+              "ZA": [
+                "postal_code"
+              ]
+            },
+            "geo_places": {
+              "geonames": {
+                "countries": {
+                  "US": [
+                    "city",
+                    "county"
+                  ],
+                  "NL": [
+                    "city",
+                    "municipality"
+                  ],
+                  "GB": [
+                    "city",
+                    "post_town"
+                  ]
+                },
+                "catalog": {
+                  "source": "https://seller.example/data-sources/geonames-mirror",
+                  "current_version": "2026-05",
+                  "supported_versions": [
+                    "2026-05",
+                    "2026-04"
+                  ],
+                  "resolver": {
+                    "url": "https://seller.example/adcp/geo/resolve/geonames",
+                    "auth": "seller_credentials",
+                    "protocol": "adcp_geo_place_resolver_v1"
+                  }
+                }
+              },
+              "https://seller.example/geo/catalogs/places": {
+                "countries": {
+                  "NL": [
+                    "city"
+                  ]
+                },
+                "catalog": {
+                  "current_version": "2026-q2",
+                  "supported_versions": [
+                    "2026-q2"
+                  ],
+                  "resolver": {
+                    "url": "https://seller.example/adcp/geo/resolve/private",
+                    "auth": "seller_credentials",
+                    "protocol": "adcp_geo_place_resolver_v1"
+                  }
+                }
+              }
+            },
+            "language": {
+              "supported": true,
+              "supported_languages": [
+                "en",
+                "fr-CA",
+                "es"
+              ]
+            },
+            "keyword_targets": {
+              "supported_match_types": [
+                "broad",
+                "phrase",
+                "exact"
+              ]
+            },
+            "negative_keywords": {
+              "supported_match_types": [
+                "broad",
+                "exact"
+              ]
+            }
+          }
+        },
+        "content_standards": {
+          "supports_local_evaluation": true,
+          "supported_channels": [
+            "display",
+            "olv"
+          ],
+          "supports_webhook_delivery": false
+        },
+        "audience_targeting": {
+          "supported_identifier_types": [
+            "hashed_email",
+            "hashed_phone"
+          ],
+          "supports_platform_customer_id": false,
+          "supported_uid_types": [
+            "uid2",
+            "rampid"
+          ],
+          "minimum_audience_size": 500,
+          "matching_latency_hours": {
+            "min": 1,
+            "max": 24
+          },
+          "supported_activation_methods": [
+            {
+              "pattern": "sync_audiences"
+            },
+            {
+              "pattern": "dataset_query",
+              "vendor": {
+                "domain": "data-cloud.example"
+              },
+              "consumer_identities": [
+                {
+                  "cloud": "aws",
+                  "region": "us-east-1",
+                  "identity": "SELLERORG.ADCP_INGEST"
+                }
+              ]
+            },
+            {
+              "pattern": "platform_distribution",
+              "vendor": {
+                "domain": "activation-hub.example"
+              },
+              "destination_ref": "dest_12345",
+              "bind_expiry_days": 14
+            }
+          ]
+        },
+        "conversion_tracking": {
+          "multi_source_event_dedup": false,
+          "supported_event_types": [
+            "purchase",
+            "lead",
+            "add_to_cart",
+            "view_content"
+          ],
+          "supported_action_sources": [
+            "website",
+            "app"
+          ],
+          "attribution_windows": [
+            {
+              "post_click": [
+                {
+                  "interval": 7,
+                  "unit": "days"
+                },
+                {
+                  "interval": 28,
+                  "unit": "days"
+                }
+              ],
+              "post_view": [
+                {
+                  "interval": 1,
+                  "unit": "days"
+                },
+                {
+                  "interval": 7,
+                  "unit": "days"
+                }
+              ]
+            }
+          ]
+        },
+        "portfolio": {
+          "publisher_domains": [
+            "example.com",
+            "news.example.com"
+          ],
+          "primary_channels": [
+            "display",
+            "olv"
+          ],
+          "primary_countries": [
+            "US",
+            "CA"
+          ]
+        }
+      },
+      "extensions_supported": [
+        "acmecorp"
+      ],
+      "last_updated": "2025-01-23T10:00:00Z"
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        },
+        "capability_changes": {
+          "capabilities_version": "rev_20260702_091455",
+          "last_modified": "2026-07-02T09:14:55Z",
+          "cache_ttl_seconds": 3600,
+          "notifications": {
+            "supported": true,
+            "registration_task": "sync_agent_notification_configs",
+            "event_types": [
+              "capabilities.changed"
+            ]
+          }
+        }
+      },
+      "supported_protocols": [
+        "media_buy",
+        "creative"
+      ],
+      "account": {
+        "require_operator_auth": false,
+        "supported_billing": [
+          "operator"
+        ],
+        "supported_account_currency_modes": [
+          "fixed"
+        ],
+        "timezone": {
+          "mode": "seller_fixed",
+          "fixed_timezone": "UTC"
+        }
+      },
+      "media_buy": {
+        "anonymous_discovery": true,
+        "creative_approval_mode": "require_human",
+        "features": {
+          "inline_creative_management": true
+        },
+        "portfolio": {
+          "publisher_domains": [
+            "news.example.com"
+          ],
+          "primary_channels": [
+            "display",
+            "olv"
+          ]
+        }
+      },
+      "creative": {
+        "has_creative_library": true,
+        "supports_generation": true,
+        "supports_transformation": false,
+        "representation_resolution": {
+          "supported": true,
+          "strategies": [
+            "representation_order",
+            "highest_compatible_vast"
+          ]
+        },
+        "supports_compliance": false,
+        "bills_through_adcp": true,
+        "supported_formats": [
+          {
+            "capability_id": "display_image_generator",
+            "operations": [
+              "build",
+              "validate",
+              "preview"
+            ],
+            "format": {
+              "format_kind": "image",
+              "params": {
+                "width": 300,
+                "height": 250
+              }
+            }
+          }
+        ],
+        "preview": {
+          "routes": [
+            {
+              "capability_id": "display_image_generator",
+              "rendering_origin": "platform_native"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ],
+      "account": {
+        "supported_billing": [
+          "operator",
+          "agent"
+        ],
+        "supported_account_currency_modes": [
+          "fixed",
+          "per_media_buy"
+        ]
+      },
+      "media_buy": {
+        "portfolio": {
+          "primary_channels": [
+            "display",
+            "olv",
+            "ctv"
+          ],
+          "publisher_domains": [
+            "pinnaclemedia.example.com"
+          ],
+          "primary_countries": [
+            "US"
+          ]
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          3
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "media_buy"
+      ],
+      "account": {
+        "supported_billing": [
+          "operator",
+          "agent"
+        ],
+        "supported_account_currency_modes": [
+          "fixed",
+          "per_media_buy"
+        ]
+      },
+      "media_buy": {
+        "execution": {
+          "targeting": {
+            "geo_countries": true,
+            "geo_regions": true,
+            "geo_metros": {
+              "nielsen_dma": true
+            },
+            "geo_postal_areas": {
+              "us_zip": true,
+              "us_zip_plus_four": true,
+              "US": [
+                "zip",
+                "zip_plus_four"
+              ],
+              "ZA": [
+                "postal_code"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [
+          2
+        ],
+        "idempotency": {
+          "supported": true,
+          "replay_ttl_seconds": 86400
+        }
+      },
+      "supported_protocols": [
+        "signals"
+      ]
+    }
+  ]
 }

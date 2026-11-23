@@ -577,6 +577,7 @@ resulting state rather than either field's previous value.
 
 For example, a lifetime package budget can be rejected with this error:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/error.json",
@@ -597,17 +598,21 @@ For a product whose daily minimum depends on the manual bid, this package row
 in a [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy)
 request raises the bid to 30 GBP while retaining a daily cap of 25 GBP:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/package-control.json",
   "package_id": "pkg_stream",
-  "bidding": { "bid_amount": 30 }
+  "bidding": {
+    "bid_amount": 30
+  }
 }
 ```
 
 If that row is `packages[0]`, the seller can preserve the submitted bid's issue
 pointer while identifying the retained daily cap separately:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/error.json",

@@ -43,6 +43,7 @@ Provenance is an optional object that can attach to creative assets, creative ma
 
 Most provenance declarations answer one question: **was this AI-generated, and does it need a disclosure label?**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/provenance.json",
@@ -57,6 +58,7 @@ That's it. `digital_source_type` says how the content was produced. `disclosure.
 
 For content with no AI involvement, provenance is even simpler:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/core/provenance.json",
@@ -83,6 +85,7 @@ Both `true` and `false` mean the creative was assessed. Omission means unassesse
 
 ### Full example
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/core/provenance.json",
@@ -207,13 +210,16 @@ creative-asset.provenance        (1) default for the creative in the library
 
 A creative where the image is AI-generated but the copy is human-written. The manifest-level provenance covers the overall creative. The image asset overrides with its own, more specific provenance.
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/core/creative-manifest.json",
   "format_kind": "image",
   "provenance": {
     "digital_source_type": "composite_with_trained_algorithmic_media",
-    "declared_by": { "role": "agency" }
+    "declared_by": {
+      "role": "agency"
+    }
   },
   "assets": {
     "banner_image": {
@@ -229,7 +235,9 @@ A creative where the image is AI-generated but the copy is human-written. The ma
           "provider": "OpenAI"
         },
         "human_oversight": "selected",
-        "declared_by": { "role": "agency" },
+        "declared_by": {
+          "role": "agency"
+        },
         "c2pa": {
           "manifest_url": "https://cdn.novabrands.example.com/c2pa/hero_ai.c2pa"
         }
@@ -263,6 +271,7 @@ artifact.provenance                  (1) default for the artifact
   artifact.assets[].provenance       (2) override for a specific inline asset
 ```
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/content-standards/artifact.json",
@@ -270,7 +279,9 @@ artifact.provenance                  (1) default for the artifact
   "artifact_id": "article_ai_trends_2026",
   "provenance": {
     "digital_source_type": "digital_creation",
-    "declared_by": { "role": "platform" }
+    "declared_by": {
+      "role": "platform"
+    }
   },
   "assets": [
     {
@@ -284,9 +295,14 @@ artifact.provenance                  (1) default for the artifact
       "alt_text": "Conceptual illustration of neural networks",
       "provenance": {
         "digital_source_type": "trained_algorithmic_media",
-        "ai_tool": { "name": "Midjourney", "version": "v7" },
+        "ai_tool": {
+          "name": "Midjourney",
+          "version": "v7"
+        },
         "human_oversight": "directed",
-        "declared_by": { "role": "platform" }
+        "declared_by": {
+          "role": "platform"
+        }
       }
     }
   ]
@@ -580,6 +596,7 @@ Inheritance follows the same rule as the parent `provenance` object: most-specif
 
 Sellers express provenance requirements on `creative-policy` — a field on every Product, surfaced through `get_products` so buyers see requirements before submitting.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/creative-policy.json",

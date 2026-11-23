@@ -76,5 +76,18 @@
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency", "parameters"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "pricing_option_id": "time_usd_daily",
+      "pricing_model": "time",
+      "fixed_price": 50000,
+      "currency": "USD",
+      "parameters": {
+        "time_unit": "day",
+        "min_duration": 1,
+        "max_duration": 30
+      }
+    }
+  ]
 }

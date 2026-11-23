@@ -52,5 +52,14 @@
   "required": [
     "list_id"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "list_id": "cl_novamotors_dna_2026",
+      "resolve": true,
+      "pagination": {
+        "max_results": 1000
+      }
+    }
+  ]
 }

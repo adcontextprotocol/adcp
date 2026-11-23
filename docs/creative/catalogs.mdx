@@ -832,11 +832,16 @@ A catchment defines the geographic area a store serves. Three methods are suppor
 
 **Isochrone inputs** — the platform resolves the shape from travel time and transport mode, accounting for road networks, transit routes, and terrain:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/catchment.json",
   "catchment_id": "drive",
   "label": "15-min drive",
-  "travel_time": { "value": 15, "unit": "min" },
+  "travel_time": {
+    "value": 15,
+    "unit": "min"
+  },
   "transport_mode": "driving"
 }
 ```
@@ -852,13 +857,23 @@ A catchment defines the geographic area a store serves. Three methods are suppor
 
 **Pre-computed GeoJSON** — the buyer has already calculated the boundary (via TravelTime, Mapbox, etc.) or has custom trade area data:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/catchment.json",
   "catchment_id": "trade-area",
   "label": "Primary trade area",
   "geometry": {
     "type": "Polygon",
-    "coordinates": [[[4.85, 52.35], [4.95, 52.35], [4.95, 52.40], [4.85, 52.40], [4.85, 52.35]]]
+    "coordinates": [
+      [
+        [4.85, 52.35],
+        [4.95, 52.35],
+        [4.95, 52.4],
+        [4.85, 52.4],
+        [4.85, 52.35]
+      ]
+    ]
   }
 }
 ```

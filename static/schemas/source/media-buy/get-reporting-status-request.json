@@ -58,5 +58,26 @@
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
-  "required": ["account", "view"]
+  "required": [
+    "account",
+    "view"
+  ],
+  "examples": [
+    {
+      "account": {
+        "account_id": "acc_123"
+      },
+      "view": "summary",
+      "delivery_config_ids": [
+        "analytics-daily"
+      ],
+      "feed_purposes": [
+        "analytics"
+      ],
+      "period": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-28T00:00:00Z"
+      }
+    }
+  ]
 }

@@ -1820,6 +1820,195 @@
       "account": {
         "sandbox": true
       }
+    },
+    {
+      "scenario": "force_media_buy_purge",
+      "params": {
+        "media_buy_id": "mb-789"
+      },
+      "account": {
+        "sandbox": true
+      }
+    },
+    {
+      "account": {
+        "sandbox": true
+      },
+      "scenario": "compact_product_lifecycle_probe",
+      "params": {
+        "operation": "prepare",
+        "product_id": "compact_lifecycle_video"
+      }
+    },
+    {
+      "account": {
+        "sandbox": true
+      },
+      "scenario": "compact_product_lifecycle_probe",
+      "params": {
+        "operation": "expire_proposal",
+        "proposal_id": "proposal_committed_123"
+      }
+    },
+    {
+      "account": {
+        "sandbox": true
+      },
+      "scenario": "compact_direct_buy_lifecycle_probe",
+      "params": {
+        "operation": "prepare",
+        "product_id": "compact_direct_buy_video"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "prepare"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "advance_time",
+        "target_health": "delayed"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "advance_time",
+        "target_health": "action_required"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "publish_zero_row"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "restate_after_received",
+        "received_reporting_revision_id": "rev_copy_from_publish_zero_row",
+        "advance_to": "within_grace"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "advance_past_status_deadline"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "advance_past_escalation"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "account": {
+        "account_id": "acc_copy_from_sync_accounts",
+        "sandbox": true
+      },
+      "scenario": "reporting_core_lifecycle_probe",
+      "params": {
+        "operation": "omit_obligation"
+      }
+    },
+    {
+      "scenario": "force_get_products_arm",
+      "account": {
+        "brand": {
+          "domain": "acmeoutdoor.example"
+        },
+        "operator": "pinnacle-agency.example",
+        "sandbox": true
+      },
+      "params": {
+        "arm": "submitted",
+        "task_id": "task_async_products_acme_q3",
+        "message": "Custom product curation queued; typical turnaround 10 minutes"
+      }
+    },
+    {
+      "adcp_version": "3.2",
+      "adcp_major_version": 3,
+      "scenario": "force_get_products_arm",
+      "account": {
+        "brand": {
+          "domain": "acmeoutdoor.example"
+        },
+        "operator": "pinnacle-agency.example",
+        "sandbox": true
+      },
+      "params": {
+        "arm": "rejected",
+        "reason": "The requested budget is below the minimum for this inventory.",
+        "suggestions": [
+          "Increase the campaign budget."
+        ]
+      }
+    },
+    {
+      "scenario": "force_get_signals_arm",
+      "account": {
+        "brand": {
+          "domain": "novamotors.example"
+        },
+        "operator": "pinnacle-agency.example",
+        "sandbox": true
+      },
+      "params": {
+        "arm": "submitted",
+        "task_id": "task_async_signals_nova_ev",
+        "message": "Signal discovery queued; typical turnaround 10 minutes"
+      }
+    },
+    {
+      "scenario": "force_hold_unavailable",
+      "params": {
+        "proposal_id": "prop_draft_ctv"
+      },
+      "account": {
+        "sandbox": true
+      }
     }
   ]
 }

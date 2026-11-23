@@ -11,6 +11,7 @@ Choose by the payload the seller accepts: direct audio bytes use `audio_hosted`;
 
 ## Hosted audio
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
@@ -25,14 +26,27 @@ Choose by the payload the seller accepts: direct audio bytes use `audio_hosted`;
     "true_peak_dbfs": -2,
     "asset_source": "buyer_uploaded",
     "slots": [
-      { "asset_group_id": "audio_main", "asset_type": "audio", "required": true },
-      { "asset_group_id": "companion_image", "asset_type": "image", "required": false },
-      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      {
+        "asset_group_id": "audio_main",
+        "asset_type": "audio",
+        "required": true
+      },
+      {
+        "asset_group_id": "companion_image",
+        "asset_type": "image",
+        "required": false
+      },
+      {
+        "asset_group_id": "landing_page_url",
+        "asset_type": "url",
+        "required": false
+      }
     ]
   }
 }
 ```
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
@@ -55,6 +69,7 @@ Choose by the payload the seller accepts: direct audio bytes use `audio_hosted`;
 
 When the publisher or seller produces the final audio, declare the source and the input slots explicitly:
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
@@ -64,8 +79,16 @@ When the publisher or seller produces the final audio, declare the source and th
     "asset_source": "publisher_host_recorded",
     "buyer_asset_acceptance": "rejected",
     "slots": [
-      { "asset_group_id": "script", "asset_type": "text", "required": true },
-      { "asset_group_id": "creative_brief", "asset_type": "brief", "required": false }
+      {
+        "asset_group_id": "script",
+        "asset_type": "text",
+        "required": true
+      },
+      {
+        "asset_group_id": "creative_brief",
+        "asset_type": "brief",
+        "required": false
+      }
     ]
   }
 }
@@ -99,6 +122,7 @@ Platform normalization happens after source-asset validation. Digital streaming 
 
 VAST standardized audio support begins at version 4.1, which is the recommended authoring profile. A seller may explicitly list VAST 2.0, 3.0, or 4.0 when its player supports legacy audio-in-VAST interoperability; listing an older version does not make it standards-conformant audio. Each submitted asset declares its exact version. The resolved terminal InLine ad must be Linear and provide an `audio/*` MediaFile with `width="0"` and `height="0"`; VAST 4.1+ documents must also declare `adType="audio"`.
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
@@ -114,13 +138,22 @@ VAST standardized audio support begins at version 4.1, which is the recommended 
     "max_wrapper_depth": 3,
     "ssl_required": true,
     "slots": [
-      { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },
-      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      {
+        "asset_group_id": "vast_tag",
+        "asset_type": "vast",
+        "required": true
+      },
+      {
+        "asset_group_id": "landing_page_url",
+        "asset_type": "url",
+        "required": false
+      }
     ]
   }
 }
 ```
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",

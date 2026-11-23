@@ -147,6 +147,37 @@
           "resource_types": ["account", "media_buy", "creative"]
         }
       ]
+    },
+    {
+      "status": "completed",
+      "changes": [
+        {
+          "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
+          "recorded_at": "2026-08-24T11:58:04Z",
+          "resource": {
+            "type": "creative",
+            "account_id": "acc_luma_shared",
+            "resource_id": "cr_8421"
+          },
+          "action": "updated",
+          "origin": {
+            "kind": "connected_platform",
+            "connection_id": "conn_social_primary"
+          },
+          "resource_revision": 12,
+          "changed_paths": [
+            "/name",
+            "/assets/0"
+          ],
+          "repair": {
+            "task": "list_creatives"
+          }
+        }
+      ],
+      "cursor": "opaque-checkpoint",
+      "has_more": false,
+      "available_since": "2026-05-26T00:00:00Z",
+      "generated_at": "2026-08-24T12:00:00Z"
     }
   ]
 }

@@ -95,5 +95,41 @@
       ]
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "verdict": "pass",
+      "explanation": "This content aligns well with the brand's fitness-focused positioning. Health and fitness content is explicitly marked as 'ideal' in the policy. The discussion is constructive and educational.",
+      "features": [
+        {
+          "feature_id": "brand_safety",
+          "status": "passed",
+          "explanation": "No safety concerns. Content is user-generated but constructive fitness discussion."
+        },
+        {
+          "feature_id": "brand_suitability",
+          "status": "passed",
+          "explanation": "Fitness content matches brand's athletic positioning."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "verdict": "fail",
+      "explanation": "This content discusses political topics which the policy explicitly excludes. While the article itself is balanced journalism, the brand has requested to avoid all controversial political content regardless of tone.",
+      "features": [
+        {
+          "feature_id": "brand_safety",
+          "status": "passed",
+          "explanation": "No hate speech, illegal content, or explicit material."
+        },
+        {
+          "feature_id": "brand_suitability",
+          "status": "failed",
+          "explanation": "Political content is excluded by brand policy, even when balanced."
+        }
+      ]
+    }
+  ]
 }

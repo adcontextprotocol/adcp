@@ -13,8 +13,10 @@ testable: true
     Update to the correct version alias after the next release. */}
 **Request schema:** [`/schemas/3.2.1/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/request-proposals-request.json)
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/request-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
   "brief": "Reach outdoor enthusiasts with premium video inventory.",
   "account": {
@@ -41,7 +43,9 @@ testable: true
       "geo_countries": ["US"]
     },
     "required_overlay_support": {
-      "geo_metros": { "systems": ["nielsen_dma"] }
+      "geo_metros": {
+        "systems": ["nielsen_dma"]
+      }
     }
   }
 }
@@ -184,23 +188,36 @@ The cost target is still a planning input. The execution policy is the accepted 
 
 In this worked example, a buyer asks for clicks at €3 or less on a €5,000 budget. The seller advertises fixed media-buy `cost_per` caps in `features.bidding_policy`:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/latest/media-buy/request-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
   "brief": "Drive traffic to the spring running collection page.",
   "account": {
-    "brand": { "domain": "nova-athletics.example" },
+    "brand": {
+      "domain": "nova-athletics.example"
+    },
     "operator": "pinnacle-media.example"
   },
   "criteria": {
     "product_ids": ["product_premium_video"],
     "offer_filters": {
-      "budget_range": { "max": 5000, "currency": "EUR" }
+      "budget_range": {
+        "max": 5000,
+        "currency": "EUR"
+      }
     },
     "outcome_target": {
-      "goal": { "kind": "metric", "metric": "clicks" },
-      "cost_per": { "amount": 3, "currency": "EUR", "strength": "cap" }
+      "goal": {
+        "kind": "metric",
+        "metric": "clicks"
+      },
+      "cost_per": {
+        "amount": 3,
+        "currency": "EUR",
+        "strength": "cap"
+      }
     }
   }
 }
@@ -208,6 +225,7 @@ In this worked example, a buyer asks for clicks at €3 or less on a €5,000 bu
 
 The seller can't plan clicks at €3 on this inventory. The best it can plan is €4.50, so it answers with a €4.50 cap and the roughly 1,111 clicks that €5,000 buys at that cost:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/latest/core/canonical-proposal.json",
@@ -218,7 +236,9 @@ The seller can't plan clicks at €3 on this inventory. The best it can plan is 
   "name": "Spring collection traffic at a click cost cap",
   "brief_alignment": "€3 per click is below what this inventory can plan to. The plan caps the average at €4.50 and plans about 1,111 clicks within €5,000.",
   "commercial_terms": {
-    "brand": { "domain": "nova-athletics.example" },
+    "brand": {
+      "domain": "nova-athletics.example"
+    },
     "purchases": [
       {
         "product_id": "product_premium_video",
@@ -230,27 +250,64 @@ The seller can't plan clicks at €3 on this inventory. The best it can plan is 
           "fixed_price": 9
         },
         "budget": 5000,
-        "optimization_goals": [{ "kind": "metric", "metric": "clicks", "priority": 1 }],
+        "optimization_goals": [
+          {
+            "kind": "metric",
+            "metric": "clicks",
+            "priority": 1
+          }
+        ],
         "start_time": "2027-03-01T00:00:00Z",
         "end_time": "2027-03-31T23:59:59Z"
       }
     ],
     "start_time": "2027-03-01T00:00:00Z",
     "end_time": "2027-03-31T23:59:59Z",
-    "total_budget": { "amount": 5000, "currency": "EUR" },
+    "total_budget": {
+      "amount": 5000,
+      "currency": "EUR"
+    },
     "bidding": {
-      "cost_per": { "amount": 4.5, "strength": "cap" }
+      "cost_per": {
+        "amount": 4.5,
+        "strength": "cap"
+      }
     }
   },
   "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
-  "total_budget_guidance": { "min": 4000, "recommended": 5000, "max": 5000, "currency": "EUR" },
+  "total_budget_guidance": {
+    "min": 4000,
+    "recommended": 5000,
+    "max": 5000,
+    "currency": "EUR"
+  },
   "forecast": {
     "method": "modeled",
     "currency": "EUR",
     "forecast_range_unit": "clicks",
     "points": [
-      { "budget": 2500, "metrics": { "clicks": { "mid": 555 }, "spend": { "mid": 2497.5 } } },
-      { "budget": 5000, "metrics": { "clicks": { "mid": 1111 }, "spend": { "mid": 4999.5 } } }
+      {
+        "budget": 2500,
+        "metrics": {
+          "clicks": {
+            "mid": 555
+          },
+          "spend": {
+            "mid": 2497.5
+          }
+        }
+      },
+      {
+        "budget": 5000,
+        "metrics": {
+          "clicks": {
+            "mid": 1111
+          },
+          "spend": {
+            "mid": 4999.5
+          }
+        }
+      }
     ]
   }
 }

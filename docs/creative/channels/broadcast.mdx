@@ -13,6 +13,7 @@ The following :15, :30, and :60 declarations use a common US delivery profile: 1
 
 ### :15 spot
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
@@ -38,7 +39,11 @@ The following :15, :30, and :60 declarations use a common US delivery profile: 1
     "asset_source": "buyer_uploaded",
     "buyer_asset_acceptance": "accepted",
     "slots": [
-      { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+      {
+        "asset_group_id": "video_main",
+        "asset_type": "video",
+        "required": true
+      }
     ]
   }
 }
@@ -46,6 +51,7 @@ The following :15, :30, and :60 declarations use a common US delivery profile: 1
 
 ### :30 spot
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
@@ -71,7 +77,11 @@ The following :15, :30, and :60 declarations use a common US delivery profile: 1
     "asset_source": "buyer_uploaded",
     "buyer_asset_acceptance": "accepted",
     "slots": [
-      { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+      {
+        "asset_group_id": "video_main",
+        "asset_type": "video",
+        "required": true
+      }
     ]
   }
 }
@@ -79,6 +89,7 @@ The following :15, :30, and :60 declarations use a common US delivery profile: 1
 
 ### :60 spot
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
@@ -104,7 +115,11 @@ The following :15, :30, and :60 declarations use a common US delivery profile: 1
     "asset_source": "buyer_uploaded",
     "buyer_asset_acceptance": "accepted",
     "slots": [
-      { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+      {
+        "asset_group_id": "video_main",
+        "asset_type": "video",
+        "required": true
+      }
     ]
   }
 }
@@ -141,6 +156,7 @@ The three numeric fields carry the same semantics as `loudness_lufs`, `loudness_
 
 Use the manifest's `industry_identifiers` list for the traffic or clearance identifier the broadcaster expects. AdCP supports `ad_id`, `isci`, `clearcast_clock`, and `idcrea`. Ad-ID is the common US television identifier; ISCI persists in some station traffic systems; Clearcast and IDcrea serve the UK and France. Choose the identifier your station's traffic system keys on. A manifest may carry more than one identifier (for example both `ad_id` and `isci` when a traffic system still keys on ISCI). Each duration cut carries its own identifiers: the :15 and :30 versions of one spot are two creatives.
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
@@ -150,7 +166,10 @@ Use the manifest's `industry_identifiers` list for the traffic or clearance iden
     "format_option_id": "broadcast_tv_30s"
   },
   "industry_identifiers": [
-    { "type": "ad_id", "value": "NOVA1234001H" }
+    {
+      "type": "ad_id",
+      "value": "NOVA1234001H"
+    }
   ],
   "assets": {
     "video_main": {
@@ -235,6 +254,7 @@ This works today with four gaps. Read them before building on it:
 
 The product is a `linear_tv` package with two `video_hosted` format options, one CPM price, and the measurement it will stand behind. VideoAmp is the billing vendor and C7 is the guarantee window. The final C7 record is due within 360 hours of the window closing, and the seller publishes it on `get_media_buy_delivery`. `supports_spot_breakdown.available_metrics` is empty, so spot rows are airing evidence only. The seller also declares the experimental spot lifecycle (`available_statuses`) and break position (`supports_break_position`), and lists `media_buy.spot_lifecycle` in `experimental_features` on `get_adcp_capabilities`.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/canonical-product.json",
@@ -242,7 +262,10 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
   "name": "Harbor Prime Access and Prime, Adults 25-54",
   "description": "Prime-access and prime-time :15 and :30 spots on the Harbor network, guaranteed against adults 25-54 impressions.",
   "publisher_properties": [
-    { "publisher_domain": "harborbroadcasting.example", "selection_type": "all" }
+    {
+      "publisher_domain": "harborbroadcasting.example",
+      "selection_type": "all"
+    }
   ],
   "channels": ["linear_tv"],
   "delivery_type": "guaranteed",
@@ -266,7 +289,11 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
           "max_true_peak_dbfs": -2
         },
         "slots": [
-          { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+          {
+            "asset_group_id": "video_main",
+            "asset_type": "video",
+            "required": true
+          }
         ]
       }
     },
@@ -289,7 +316,11 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
           "max_true_peak_dbfs": -2
         },
         "slots": [
-          { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+          {
+            "asset_group_id": "video_main",
+            "asset_type": "video",
+            "required": true
+          }
         ]
       }
     }
@@ -304,7 +335,9 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
   ],
   "measurement_terms": {
     "billing_measurement": {
-      "vendor": { "domain": "videoamp.com" },
+      "vendor": {
+        "domain": "videoamp.com"
+      },
       "measurement_window": "c7",
       "max_variance_percent": 5,
       "finalization_deadline_hours": 360
@@ -322,7 +355,11 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
     "points": [
       {
         "budget": 160000,
-        "metrics": { "measured_impressions": { "mid": 5000000 } }
+        "metrics": {
+          "measured_impressions": {
+            "mid": 5000000
+          }
+        }
       }
     ]
   },
@@ -359,7 +396,11 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
         "reporting_modes": ["enumerated_intervals"],
         "intervals": [
           {
-            "age": { "min": 25, "max": 54, "include_unknown": false },
+            "age": {
+              "min": 25,
+              "max": 54,
+              "include_unknown": false
+            },
             "demographic": "A25-54",
             "demographic_system": "nielsen"
           }
@@ -381,19 +422,25 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
 
 The buyer fixes the goal and volume, and states the demo in the brief because the goal cannot carry it. Send `criteria.outcome_target` only to a seller that declares `media_buy.outcome_target` in `get_adcp_capabilities`; a seller that does not rejects the structured form with `UNSUPPORTED_FEATURE`, and the buyer falls back to the brief alone. `cost_per` is not sent: it is rejected on `measured_impressions`, and the CPM rate is the price. The goal is a planning input, not a guarantee.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/request-proposals-request.json",
   "idempotency_key": "6f3d8a52-7b1e-4c4a-9d20-3c1b5e7a9f01",
   "brief": "Five million adults 25-54 impressions in prime access and prime, :15 and :30 spots, measured by VideoAmp at C7.",
   "account": {
-    "brand": { "domain": "novabrands.example" },
+    "brand": {
+      "domain": "novabrands.example"
+    },
     "operator": "pinnacle-media.example"
   },
   "criteria": {
     "product_ids": ["harbor_prime_a2554"],
     "outcome_target": {
-      "goal": { "kind": "metric", "metric": "measured_impressions" },
+      "goal": {
+        "kind": "metric",
+        "metric": "measured_impressions"
+      },
       "volume": 5000000
     }
   }
@@ -404,6 +451,7 @@ The buyer fixes the goal and volume, and states the demo in the brief because th
 
 The draft states the guaranteed volume, the price, the formats, and the agreed measurement terms on the purchase. Finalizing and accepting it ([`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)) commits `commercial_terms`. The forecast repeats the demo and the currency so delivery rows can be compared against it, but it is not part of the committed terms and its numbers may change between draft and committed proposal.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/canonical-proposal.json",
@@ -413,7 +461,9 @@ The draft states the guaranteed volume, the price, the formats, and the agreed m
   "name": "Harbor prime, adults 25-54, 5.0M guaranteed impressions",
   "brief_alignment": "Adults 25-54 at a $32 CPM, counted by VideoAmp on the C7 window. The demo is declared on the forecast; the CPM price is not demo-bound.",
   "commercial_terms": {
-    "brand": { "domain": "novabrands.example" },
+    "brand": {
+      "domain": "novabrands.example"
+    },
     "purchases": [
       {
         "product_id": "harbor_prime_a2554",
@@ -425,8 +475,14 @@ The draft states the guaranteed volume, the price, the formats, and the agreed m
           "fixed_price": 32
         },
         "format_option_refs": [
-          { "scope": "product", "format_option_id": "broadcast_tv_15s" },
-          { "scope": "product", "format_option_id": "broadcast_tv_30s" }
+          {
+            "scope": "product",
+            "format_option_id": "broadcast_tv_15s"
+          },
+          {
+            "scope": "product",
+            "format_option_id": "broadcast_tv_30s"
+          }
         ],
         "budget": 160000,
         "impressions": 5000000,
@@ -434,7 +490,9 @@ The draft states the guaranteed volume, the price, the formats, and the agreed m
         "end_time": "2026-08-24T04:00:00Z",
         "measurement_terms": {
           "billing_measurement": {
-            "vendor": { "domain": "videoamp.com" },
+            "vendor": {
+              "domain": "videoamp.com"
+            },
             "measurement_window": "c7",
             "max_variance_percent": 5,
             "finalization_deadline_hours": 360
@@ -447,11 +505,19 @@ The draft states the guaranteed volume, the price, the formats, and the agreed m
     ],
     "start_time": "2026-08-03T04:00:00Z",
     "end_time": "2026-08-24T04:00:00Z",
-    "total_budget": { "amount": 160000, "currency": "USD" },
+    "total_budget": {
+      "amount": 160000,
+      "currency": "USD"
+    },
     "agency_estimate_number": "EST-2026-04821"
   },
   "terms_digest": "sha256:xuAX4DH8NrqrGIAtXkL56CEW8EcU7vTk2ervdBHJze0",
-  "total_budget_guidance": { "min": 160000, "recommended": 160000, "max": 160000, "currency": "USD" },
+  "total_budget_guidance": {
+    "min": 160000,
+    "recommended": 160000,
+    "max": 160000,
+    "currency": "USD"
+  },
   "forecast": {
     "method": "guaranteed",
     "currency": "USD",
@@ -461,7 +527,11 @@ The draft states the guaranteed volume, the price, the formats, and the agreed m
     "points": [
       {
         "budget": 160000,
-        "metrics": { "measured_impressions": { "mid": 5000000 } }
+        "metrics": {
+          "measured_impressions": {
+            "mid": 5000000
+          }
+        }
       }
     ]
   }
@@ -478,11 +548,14 @@ If the seller confirms through a booking round or sales-desk review, `accept_pro
 
 The buyer reads delivery with the demographic breakdown for the contracted demo and the spot breakdown. A reconciliation pull omits the spot `limit` so the log is complete; this example caps it at four rows to stay short.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json",
   "account": {
-    "brand": { "domain": "novabrands.example" },
+    "brand": {
+      "domain": "novabrands.example"
+    },
     "operator": "pinnacle-media.example"
   },
   "media_buy_ids": ["mb_harbor_a2554"],
@@ -490,15 +563,24 @@ The buyer reads delivery with the demographic breakdown for the contracted demo 
   "end_date": "2026-08-24",
   "reporting_dimensions": {
     "demographic": {
-      "age_ranges": [{ "min": 25, "max": 54, "include_unknown": false }]
+      "age_ranges": [
+        {
+          "min": 25,
+          "max": 54,
+          "include_unknown": false
+        }
+      ]
     },
-    "spot": { "limit": 4 }
+    "spot": {
+      "limit": 4
+    }
   }
 }
 ```
 
 During the flight, rows are provisional: Live and C3 numbers with `is_final: false`. As-run evidence is available from the first reporting cycle, about 48 hours after an airing (`expected_delay_minutes`). Once C7 closes and the vendor publishes, the seller reports the settled row:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
@@ -534,7 +616,11 @@ During the flight, rows are provisional: Live and C3 numbers with `is_final: fal
             {
               "demographic": "A25-54",
               "demographic_system": "nielsen",
-              "age": { "min": 25, "max": 54, "include_unknown": false },
+              "age": {
+                "min": 25,
+                "max": 54,
+                "include_unknown": false
+              },
               "impressions": 4870000,
               "spend": 155840,
               "measurement_source": "videoamp"
@@ -559,7 +645,10 @@ During the flight, rows are provisional: Live and C3 numbers with `is_final: fal
               "station": "WTST-TV",
               "daypart": "prime_time",
               "creative_id": "nova_summer_30",
-              "break_position": { "position_in_break": 2, "spots_in_break": 5 }
+              "break_position": {
+                "position_in_break": 2,
+                "spots_in_break": 5
+              }
             },
             {
               "spot_id": "spot_0413",
@@ -568,7 +657,10 @@ During the flight, rows are provisional: Live and C3 numbers with `is_final: fal
               "station": "WTST-TV",
               "daypart": "prime_time",
               "creative_id": "nova_summer_15",
-              "break_position": { "position_in_break": 1, "spots_in_break": 4 }
+              "break_position": {
+                "position_in_break": 1,
+                "spots_in_break": 4
+              }
             },
             {
               "spot_id": "spot_0431",

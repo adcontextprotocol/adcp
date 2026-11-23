@@ -26,5 +26,13 @@
       "minimum": 0
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "p25": 8.5,
+      "p50": 15,
+      "p75": 18,
+      "p90": 22
+    }
+  ]
 }

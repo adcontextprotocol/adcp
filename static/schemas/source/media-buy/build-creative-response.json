@@ -709,5 +709,299 @@
       "additionalProperties": true
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "recipe_hash": "rh_scope3_9f2c7a1d5b3e",
+      "creative_manifest": {
+        "format_kind": "image",
+        "assets": {
+          "ad_tag": {
+            "asset_type": "javascript",
+            "content": "<script src=\"https://cdn.example.com/frameworks/js/sdk.js\"></script><script>AdSDK.createBanner({clickTag:'https://publisher.example.com/click/abc123',width:300,height:250,id:'ft_88201_{CACHEBUSTER}'});</script>"
+          },
+          "clickthrough_url": {
+            "asset_type": "url",
+            "url": "https://acmecorp.example.com/holiday-sale?campaign={MEDIA_BUY_ID}"
+          }
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "recipe_hash": "rh_winter_300x250_4c2a",
+      "creative_manifest": {
+        "format_kind": "image",
+        "assets": {
+          "offering_catalog": {
+            "asset_type": "catalog",
+            "type": "offering",
+            "catalog_id": "winter-sale"
+          },
+          "banner_image": {
+            "asset_type": "image",
+            "url": "https://cdn.example.com/generated-banner.png",
+            "width": 300,
+            "height": 250
+          },
+          "headline": {
+            "asset_type": "text",
+            "content": "50% Off Winter Sale"
+          },
+          "clickthrough_url": {
+            "asset_type": "url",
+            "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
+          }
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "mode": "estimate",
+      "estimate": {
+        "items_total": 150,
+        "items_to_produce": 5,
+        "variants_per_item": 3,
+        "leaves_total": 15,
+        "currency": "USD",
+        "cost_low": 6,
+        "cost_high": 9,
+        "cost_expected": 7.5,
+        "basis": "estimated_units"
+      },
+      "expires_at": "2026-06-01T00:00:00Z"
+    },
+    {
+      "status": "failed",
+      "errors": [
+        {
+          "code": "COMPLIANCE_UNSATISFIED",
+          "message": "Required disclosure cannot be rendered in this format",
+          "field": "creative_manifest.assets.brief.compliance.required_disclosures[0]",
+          "details": {
+            "disclosure_text": "Past performance is not indicative of future results.",
+            "position": "footer",
+            "reason": "Format display_mobile_320x50 does not support footer position"
+          },
+          "suggestion": "Use a format that supports footer disclosures, or change position to 'overlay'"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "creative_manifest": {
+        "format_kind": "image",
+        "assets": {
+          "banner_image": {
+            "asset_type": "image",
+            "url": "https://cdn.novabrands.example/renders/talent-banner.png",
+            "width": 300,
+            "height": 250
+          }
+        },
+        "rights": [
+          {
+            "rights_id": "rg_nova_talent_001",
+            "rights_agent": {
+              "url": "https://rights.novabrands.example/mcp",
+              "id": "nova_rights"
+            },
+            "uses": [
+              "likeness"
+            ],
+            "excluded_channels": [
+              "ctv",
+              "linear_tv"
+            ]
+          }
+        ]
+      },
+      "errors": [
+        {
+          "code": "RIGHTS_CHANNEL_VIOLATION",
+          "message": "Requested output targets ctv, which these rights exclude",
+          "field": "creative_manifest.rights[0].excluded_channels",
+          "details": {
+            "rights_id": "rg_nova_talent_001",
+            "channel": "ctv"
+          },
+          "suggestion": "Target a capability on a permitted channel, or obtain a grant that covers ctv"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "creative_manifest": {
+        "format_kind": "image",
+        "assets": {
+          "offering_catalog": {
+            "asset_type": "catalog",
+            "type": "offering",
+            "catalog_id": "winter-sale"
+          },
+          "banner_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/generated/banner_12345.png",
+            "width": 300,
+            "height": 250
+          },
+          "clickthrough_url": {
+            "asset_type": "url",
+            "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
+          }
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "creative_manifest": {
+        "format_kind": "image",
+        "assets": {
+          "banner_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/resized/banner_67890.png",
+            "width": 300,
+            "height": 250
+          },
+          "headline": {
+            "asset_type": "text",
+            "content": "Spring Sale - 30% Off"
+          },
+          "clickthrough_url": {
+            "asset_type": "url",
+            "url": "https://mybrand.example.com/spring?campaign={MEDIA_BUY_ID}"
+          }
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "creative_manifest": {
+        "format_kind": "image",
+        "assets": {
+          "banner_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/mobile/banner_mobile_123.png",
+            "width": 320,
+            "height": 50
+          },
+          "headline": {
+            "asset_type": "text",
+            "content": "New Collection - Shop Now"
+          },
+          "clickthrough_url": {
+            "asset_type": "url",
+            "url": "https://mybrand.example.com/new?campaign={MEDIA_BUY_ID}"
+          }
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "creative_manifest": {
+        "format_kind": "image",
+        "assets": {
+          "offering_catalog": {
+            "asset_type": "catalog",
+            "type": "offering",
+            "catalog_id": "spring-promo"
+          },
+          "banner_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/generated/spring_abc123.png",
+            "width": 300,
+            "height": 250
+          },
+          "clickthrough_url": {
+            "asset_type": "url",
+            "url": "https://novabrands.com/spring"
+          }
+        }
+      },
+      "preview": {
+        "previews": [
+          {
+            "preview_id": "prev_default",
+            "renders": [
+              {
+                "render_id": "r1",
+                "output_format": "url",
+                "preview_url": "https://preview.creative-agent.com/abc123/default",
+                "role": "primary",
+                "dimensions": {
+                  "width": 300,
+                  "height": 250
+                }
+              }
+            ],
+            "input": {
+              "name": "Default"
+            }
+          },
+          {
+            "preview_id": "prev_dark",
+            "renders": [
+              {
+                "render_id": "r2",
+                "output_format": "url",
+                "preview_url": "https://preview.creative-agent.com/abc123/dark",
+                "role": "primary",
+                "dimensions": {
+                  "width": 300,
+                  "height": 250
+                }
+              }
+            ],
+            "input": {
+              "name": "Dark mode",
+              "macros": {
+                "COLOR_SCHEME": "dark"
+              }
+            }
+          }
+        ],
+        "expires_at": "2026-03-13T06:00:00Z"
+      },
+      "expires_at": "2026-03-13T06:00:00Z"
+    },
+    {
+      "status": "completed",
+      "creative_manifest": {
+        "format_kind": "sponsored_placement",
+        "assets": {
+          "product_catalog": {
+            "asset_type": "catalog",
+            "type": "product",
+            "catalog_id": "spring_sale_2026"
+          },
+          "card_1_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/draft/card1_abc123.jpg",
+            "width": 400,
+            "height": 400
+          },
+          "card_2_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/draft/card2_def456.jpg",
+            "width": 400,
+            "height": 400
+          },
+          "card_3_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/draft/card3_ghi789.jpg",
+            "width": 400,
+            "height": 400
+          },
+          "card_4_image": {
+            "asset_type": "image",
+            "url": "https://cdn.creative-agent.com/draft/card4_jkl012.jpg",
+            "width": 400,
+            "height": 400
+          }
+        }
+      },
+      "expires_at": "2026-03-02T06:00:00Z"
+    }
+  ]
 }

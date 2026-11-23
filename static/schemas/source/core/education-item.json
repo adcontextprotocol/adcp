@@ -124,6 +124,35 @@
       "modality": "online",
       "url": "https://academy.acme.com/digital-marketing",
       "tags": ["self-paced", "career-change"]
+    },
+    {
+      "program_id": "pinnacle-msc-cs-2025",
+      "name": "MSc Computer Science",
+      "school": "Pinnacle University"
+    },
+    {
+      "program_id": "pinnacle-msc-cs-2025",
+      "name": "MSc Computer Science",
+      "school": "Pinnacle University",
+      "description": "Two-year research master's covering AI, distributed systems, and software engineering.",
+      "subject": "computer-science",
+      "degree_type": "master",
+      "level": "advanced",
+      "price": {
+        "amount": 2314,
+        "currency": "EUR",
+        "period": "year"
+      },
+      "duration": "2 years",
+      "start_date": "2025-09-01",
+      "language": "en",
+      "modality": "in_person",
+      "location": "Amsterdam, NL",
+      "url": "https://pinnacle-university.com/programmes/masters/computer-science",
+      "tags": [
+        "stem",
+        "research"
+      ]
     }
   ]
 }

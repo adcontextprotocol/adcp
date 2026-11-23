@@ -59,5 +59,53 @@
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "pricing_option_id": "cpm_usd_guaranteed",
+      "pricing_model": "cpm",
+      "fixed_price": 12.5,
+      "currency": "USD",
+      "min_spend_per_package": 5000
+    },
+    {
+      "pricing_option_id": "cpm_usd_auction",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 10,
+      "price_guidance": {
+        "p25": 12.5,
+        "p50": 15,
+        "p75": 18,
+        "p90": 22
+      }
+    },
+    {
+      "pricing_option_id": "cpm_usd_fixed",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 25
+    },
+    {
+      "pricing_option_id": "cpm_usd_auction",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 10,
+      "price_guidance": {
+        "p50": 15,
+        "p75": 18
+      }
+    },
+    {
+      "pricing_option_id": "cpm_usd_premium",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 15,
+      "min_spend_per_package": 5000,
+      "price_guidance": {
+        "p50": 22,
+        "p75": 28
+      }
+    }
+  ]
 }

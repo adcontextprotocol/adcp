@@ -97,6 +97,7 @@ For generative formats, two optional parameters control the generation process:
 
 For pure generation, provide a minimal source manifest with the required input assets defined by the format:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -129,6 +130,7 @@ For pure generation, provide a minimal source manifest with the required input a
 
 For transformation, provide the complete source manifest:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -171,6 +173,7 @@ Transform an existing creative to a different size:
 
 Retrieve a creative from the agent's library and resolve it into a manifest with ad-serving assets. Use this when you know the `creative_id` from [`list_creatives`](/docs/creative/task-reference/list_creatives) and want the creative agent to produce a delivery-ready manifest with tags (HTML, JavaScript, or VAST):
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -186,6 +189,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 
 **Response** — the manifest includes ad-serving tag assets with macros resolved:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -219,16 +223,13 @@ Do not use `recipe_hash` to deduplicate ad tags, prove legal/disclosure equivale
 
 Generate creatives for multiple formats in a single call using `target_capability_ids`. The agent produces one manifest per format from the same source assets and brief:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "d4e5f6a7-b8c9-4012-d345-6789abcdef01",
   "message": "Create display banners for our spring campaign",
-  "target_capability_ids": [
-    "display_image_300x250",
-    "display_image_728x90",
-    "display_image_320x50"
-  ],
+  "target_capability_ids": ["display_image_300x250", "display_image_728x90", "display_image_320x50"],
   "brand": {
     "domain": "acmecorp.com"
   },
@@ -384,11 +385,14 @@ When the creative agent charges and `account` is provided, the response includes
 
 **Per-unit pricing (transformation agent)**:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "e5f6a7b8-c9d0-4123-e456-789abcdef012",
-  "account": { "account_id": "acct_acme_creative" },
+  "account": {
+    "account_id": "acct_acme_creative"
+  },
   "creative_id": "cr_hero_banner",
   "target_capability_id": "display_728x90"
 }
@@ -436,6 +440,7 @@ The `pricing_option_id` corresponds to one of the options from [`list_creatives`
 
 When the request uses `target_capability_id`, the response contains a single creative manifest:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -599,12 +604,16 @@ AI-derivative attribution rides the manifest's existing `provenance`; `parent_bu
 None of this is a spend or approval control. Every refinement leaf is billed at build time, before any trafficking-time review, and `build_creative` is often served by a third-party creative agent that does not own approval. Bound a refinement loop with [`max_spend` and `mode: "estimate"`](#spend-controls) and review copy before trafficking; the compliance carry-forward above only guarantees that refinement cannot silently drop what the original brief required.
 </Warning>
 
+{/* schema-example: #/examples/6 */}
 ```json test=false
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
   "refine_from_build_variant_id": "bv_card01_a",
   "message": "Warmer lighting, and move the logo to the lower-right.",
   "max_variants": 3,
-  "account": { "account_id": "acct_acme" },
+  "account": {
+    "account_id": "acct_acme"
+  },
   "idempotency_key": "7f2a1b3c-4d5e-6f70-8192-a3b4c5d6e7f8"
 }
 ```
@@ -628,6 +637,7 @@ They compose: estimate to get `cost_high`, then execute with `max_spend` = `cost
 
 A `mode: "estimate"` request returns the `BuildCreativeEstimate` shape (`oneOf` member 4 of 6) — produced and billed nothing, just a projected cost band:
 
+{/* schema-example: #/examples/2 */}
 ```json test=false
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -639,9 +649,9 @@ A `mode: "estimate"` request returns the `BuildCreativeEstimate` shape (`oneOf` 
     "variants_per_item": 3,
     "leaves_total": 15,
     "currency": "USD",
-    "cost_low": 6.00,
-    "cost_high": 9.00,
-    "cost_expected": 7.50,
+    "cost_low": 6,
+    "cost_high": 9,
+    "cost_expected": 7.5,
     "basis": "estimated_units"
   },
   "expires_at": "2026-06-01T00:00:00Z"
@@ -669,6 +679,7 @@ A `mode: "estimate"` request returns the `BuildCreativeEstimate` shape (`oneOf` 
 
 If the manifest includes a brief asset with `compliance` requirements that the creative agent cannot satisfy, the agent MUST return an error — not a partial success. Unsatisfied disclosures are a hard failure.
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -710,6 +721,7 @@ Creative agents SHOULD, before generating, compare each `rights[].channels` / `e
 
 The check needs the output's channel. If the agent cannot determine which channels a requested output serves (`applies_to_channels` is optional on a capability), it skips the check and does not emit the code. If the output serves several channels and any one falls outside the effective set, that is a violation. Channels are planning abstractions: denying `ctv` does not by itself restrict the same video running as `olv` inside a CTV app, so a rights holder who cares lists both. A multi-capability request is atomic, so declining one output with a terminal error fails the whole request; prefer the advisory there. In a multi-capability success, point `error.field` at `creative_manifests[N].rights[i].excluded_channels` (or `.channels`) and set `error.details.capability_id`.
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -727,7 +739,10 @@ The check needs the output's channel. If the agent cannot determine which channe
     "rights": [
       {
         "rights_id": "rg_nova_talent_001",
-        "rights_agent": { "url": "https://rights.novabrands.example/mcp", "id": "nova_rights" },
+        "rights_agent": {
+          "url": "https://rights.novabrands.example/mcp",
+          "id": "nova_rights"
+        },
         "uses": ["likeness"],
         "excluded_channels": ["ctv", "linear_tv"]
       }
@@ -738,7 +753,10 @@ The check needs the output's channel. If the agent cannot determine which channe
       "code": "RIGHTS_CHANNEL_VIOLATION",
       "message": "Requested output targets ctv, which these rights exclude",
       "field": "creative_manifest.rights[0].excluded_channels",
-      "details": { "rights_id": "rg_nova_talent_001", "channel": "ctv" },
+      "details": {
+        "rights_id": "rg_nova_talent_001",
+        "channel": "ctv"
+      },
       "suggestion": "Target a capability on a permitted channel, or obtain a grant that covers ctv"
     }
   ]
@@ -860,6 +878,7 @@ Use `preview_quality` to control render fidelity independently from build qualit
 
 Generate a creative from scratch using a generative format:
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -889,6 +908,7 @@ Generate a creative from scratch using a generative format:
 ```
 
 **Response**:
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -920,6 +940,7 @@ Generate a creative from scratch using a generative format:
 
 Transform an existing 728x90 leaderboard to a 300x250 banner:
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -949,6 +970,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 ```
 
 **Response**:
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -979,6 +1001,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 
 Adapt a creative for mobile with specific design changes:
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -1012,6 +1035,7 @@ Adapt a creative for mobile with specific design changes:
 ```
 
 **Response**:
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -1042,6 +1066,7 @@ Adapt a creative for mobile with specific design changes:
 
 Generate a creative using structured campaign context via `brand` and a brief asset on the manifest:
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -1063,10 +1088,7 @@ Generate a creative using structured campaign context via `brand` and a brief as
         "messaging": {
           "headline": "Holiday Deals Are Here",
           "cta": "Shop Now",
-          "key_messages": [
-            "Up to 50% off select items",
-            "Free shipping on orders over $50"
-          ]
+          "key_messages": ["Up to 50% off select items", "Free shipping on orders over $50"]
         },
         "reference_assets": [
           {
@@ -1096,6 +1118,7 @@ Generate a creative using structured campaign context via `brand` and a brief as
 
 Generate a financial services creative with regulatory disclosures and prohibited claims:
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -1117,10 +1140,7 @@ Generate a financial services creative with regulatory disclosures and prohibite
         "messaging": {
           "headline": "Plan Your Retirement with Confidence",
           "cta": "Schedule a Consultation",
-          "key_messages": [
-            "Personalized retirement planning",
-            "Tax-efficient investment strategies"
-          ]
+          "key_messages": ["Personalized retirement planning", "Tax-efficient investment strategies"]
         },
         "compliance": {
           "required_disclosures": [
@@ -1147,11 +1167,7 @@ Generate a financial services creative with regulatory disclosures and prohibite
               "position": "footer"
             }
           ],
-          "prohibited_claims": [
-            "guaranteed returns",
-            "risk-free investment",
-            "outperform the market"
-          ]
+          "prohibited_claims": ["guaranteed returns", "risk-free investment", "outperform the market"]
         }
       }
     }
@@ -1165,6 +1181,7 @@ Compliance requirements differ by jurisdiction: the US requires SEC-mandated dis
 
 Generate a sponsored product carousel with campaign context, compliance disclosures, and a synced product catalog:
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -1215,6 +1232,7 @@ The brief and product catalog travel together in the manifest's `assets` map. Th
 
 Build a creative and get preview renders in the same response:
 
+{/* schema-example: #/examples/13 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -1226,8 +1244,15 @@ Build a creative and get preview renders in the same response:
   },
   "include_preview": true,
   "preview_inputs": [
-    { "name": "Default" },
-    { "name": "Dark mode", "macros": { "COLOR_SCHEME": "dark" } }
+    {
+      "name": "Default"
+    },
+    {
+      "name": "Dark mode",
+      "macros": {
+        "COLOR_SCHEME": "dark"
+      }
+    }
   ],
   "creative_manifest": {
     "format_kind": "image",
@@ -1249,6 +1274,7 @@ Build a creative and get preview renders in the same response:
 ```
 
 **Response** (when the agent supports inline preview):
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -1283,10 +1309,15 @@ Build a creative and get preview renders in the same response:
             "output_format": "url",
             "preview_url": "https://preview.creative-agent.com/abc123/default",
             "role": "primary",
-            "dimensions": { "width": 300, "height": 250 }
+            "dimensions": {
+              "width": 300,
+              "height": 250
+            }
           }
         ],
-        "input": { "name": "Default" }
+        "input": {
+          "name": "Default"
+        }
       },
       {
         "preview_id": "prev_dark",
@@ -1296,10 +1327,18 @@ Build a creative and get preview renders in the same response:
             "output_format": "url",
             "preview_url": "https://preview.creative-agent.com/abc123/dark",
             "role": "primary",
-            "dimensions": { "width": 300, "height": 250 }
+            "dimensions": {
+              "width": 300,
+              "height": 250
+            }
           }
         ],
-        "input": { "name": "Dark mode", "macros": { "COLOR_SCHEME": "dark" } }
+        "input": {
+          "name": "Dark mode",
+          "macros": {
+            "COLOR_SCHEME": "dark"
+          }
+        }
       }
     ],
     "expires_at": "2026-03-13T06:00:00Z"
@@ -1314,6 +1353,7 @@ The `preview` object contains the same content fields as a [`preview_creative`](
 
 Generate a draft-quality creative from a large catalog, capping the number of items:
 
+{/* schema-example: #/examples/14 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
@@ -1341,6 +1381,7 @@ Generate a draft-quality creative from a large catalog, capping the number of it
 The catalog may contain hundreds of products, but `item_limit: 4` ensures only 4 hero images are generated. `quality: "draft"` produces fast, lower-fidelity output for review.
 
 **Response**:
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
@@ -1440,6 +1481,7 @@ This separation allows you to:
 
 To refine, pass the previous response's `creative_manifest` back as input with a new `message`. Alternatively, update the brief asset (`assets.brief`) to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
 
+{/* schema-example: #/examples/15 */}
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",

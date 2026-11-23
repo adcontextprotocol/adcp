@@ -56,5 +56,14 @@
     }
   },
   "required": ["pricing_option_id", "pricing_model", "event_type", "currency", "fixed_price"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "pricing_option_id": "cpa_usd_purchase",
+      "pricing_model": "cpa",
+      "event_type": "purchase",
+      "fixed_price": 5,
+      "currency": "USD"
+    }
+  ]
 }

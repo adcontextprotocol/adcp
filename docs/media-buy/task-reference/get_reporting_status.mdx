@@ -50,9 +50,13 @@ Every request explicitly selects one response shape:
 SDKs may default a convenience `status()` call to `summary`; the wire request remains
 explicit so adding a filter never silently changes the response type.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
-  "account": { "account_id": "acc_123" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-request.json",
+  "account": {
+    "account_id": "acc_123"
+  },
   "view": "summary",
   "delivery_config_ids": ["analytics-daily"],
   "feed_purposes": ["analytics"],
@@ -63,8 +67,10 @@ explicit so adding a filter never silently changes the response type.
 }
 ```
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-response.json",
   "status": "completed",
   "view": "summary",
   "ledger_snapshot_id": "ledger_20260828_001",

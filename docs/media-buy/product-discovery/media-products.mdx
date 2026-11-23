@@ -280,6 +280,7 @@ Publishers declare which pricing models they support for each product. Buyers se
 #### PricingOption Structure
 
 Each pricing option includes:
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpcv-option.json",
@@ -292,18 +293,19 @@ Each pricing option includes:
 ```
 
 For auction-based pricing (no `fixed_price`), use `floor_price` for the seller's minimum and optional `price_guidance` for non-binding percentile hints. The buyer expresses execution intent separately through `bidding.bid_amount`, `bidding.max_bid`, `bidding.cost_per`, or `bidding.roas` on `create_media_buy`. Pricing-option `max_bid` and package `bid_price` are deprecated legacy migration fields in 3.2:
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_auction",
   "pricing_model": "cpm",
   "currency": "USD",
-  "floor_price": 10.00,
+  "floor_price": 10,
   "price_guidance": {
-    "p25": 12.50,
-    "p50": 15.00,
-    "p75": 18.00,
-    "p90": 22.00
+    "p25": 12.5,
+    "p50": 15,
+    "p75": 18,
+    "p90": 22
   }
 }
 ```
@@ -346,6 +348,7 @@ For products that include outcome measurement (common in retail media):
 ### CreativePolicy Object
 
 Defines creative requirements and restrictions:
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-policy.json",
@@ -522,6 +525,7 @@ constrained route.
 
 #### Placement Object Structure
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/placement.json",
@@ -533,8 +537,22 @@ constrained route.
   "mode": "targetable",
   "tags": ["homepage", "display", "premium"],
   "format_options": [
-    {"format_option_id": "display_728x90", "format_kind": "image", "params": {"width": 728, "height": 90}},
-    {"format_option_id": "display_970x250", "format_kind": "image", "params": {"width": 970, "height": 250}}
+    {
+      "format_option_id": "display_728x90",
+      "format_kind": "image",
+      "params": {
+        "width": 728,
+        "height": 90
+      }
+    },
+    {
+      "format_option_id": "display_970x250",
+      "format_kind": "image",
+      "params": {
+        "width": 970,
+        "height": 250
+      }
+    }
   ]
 }
 ```

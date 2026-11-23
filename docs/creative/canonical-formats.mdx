@@ -365,6 +365,7 @@ Canonical product declarations publish their complete asset-slot contract in `fo
 
 A video-from-brief declaration replaces the uploaded-video slot with a typed production input starting in AdCP 3.3:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
@@ -386,6 +387,7 @@ A video-from-brief declaration replaces the uploaded-video slot with a typed pro
 
 The matching manifest supplies the declared asset type. Its brief is consumed to produce video; it does not pretend to contain a finished video asset:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
@@ -394,7 +396,11 @@ The matching manifest supplies the declared asset type. Its brief is consumed to
     "video_brief": {
       "asset_type": "video_brief",
       "segments": [
-        { "order": 1, "duration_ms": 6000, "prompt": "Show Acme's trail boot crossing a mountain stream." }
+        {
+          "order": 1,
+          "duration_ms": 6000,
+          "prompt": "Show Acme's trail boot crossing a mountain stream."
+        }
       ]
     }
   }

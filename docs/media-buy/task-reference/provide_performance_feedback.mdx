@@ -19,8 +19,10 @@ Measurement agents do not receive seller credentials. In the first experimental 
 
 ## Compact contract
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "d8e9f0a1-b2c3-4456-d789-456789012345",
   "media_buy_id": "mb_123",
   "package_id": "pkg_streaming_video",
@@ -133,8 +135,10 @@ The inline `evidence` object is intentionally small:
 
 ## Response and application status
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json",
   "status": "completed",
   "success": true,
   "feedback_id": "fb_01J5Y5KQ2T8B2M8P0A4E6R3C9D",

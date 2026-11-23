@@ -25,6 +25,7 @@ Do not place long-lived API keys, private keys, cloud access keys, or other stan
 
 This legacy shape remains schema-valid during the 3.x compatibility window, but new producers must not emit it:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/content-standards/artifact.json",
@@ -53,6 +54,7 @@ Presence of this field denotes only the deprecated legacy form; it is not worklo
 
 Issue a URL scoped to one asset and the shortest practical access window:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/content-standards/artifact.json",
@@ -76,6 +78,7 @@ The complete URL is a bearer capability. Consumers must redact it from logs, tra
 
 For an established relationship, authorize the consumer's identity out of band and omit `credentials`:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/content-standards/artifact.json",

@@ -392,5 +392,15 @@
   },
   "minProperties": 1,
   "not": { "required": ["frequency_cap", "frequency_cap_support"] },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "daypart_targets": {
+        "timezone_modes": [
+          "inventory_local"
+        ],
+        "time_granularity": "quarter_hour"
+      }
+    }
+  ]
 }

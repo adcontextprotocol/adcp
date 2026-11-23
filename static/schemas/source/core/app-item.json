@@ -140,6 +140,11 @@
       "rating_count": 31500,
       "content_rating": "Everyone",
       "tags": ["finance", "banking"]
+    },
+    {
+      "app_id": "puzzlequest-ios",
+      "name": "Puzzle Quest: Match 3",
+      "platform": "ios"
     }
   ]
 }

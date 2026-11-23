@@ -48,32 +48,48 @@ Order is seller-defined and stable within one `collections_version`. There is no
 
 A key lookup that refreshes two cards, with the first selector copied from a product's `collections`:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/latest/media-buy/list-collections-request.json",
   "adcp_version": "3.3",
   "collections": [
-    { "publisher_domain": "novacreators.example", "collection_ids": ["kitchen_lab"] },
-    { "publisher_domain": "pinnaclepods.example", "collection_ids": ["founders_hour"] }
+    {
+      "publisher_domain": "novacreators.example",
+      "collection_ids": ["kitchen_lab"]
+    },
+    {
+      "publisher_domain": "pinnaclepods.example",
+      "collection_ids": ["founders_hour"]
+    }
   ]
 }
 ```
 
 Browsing a catalog page of active English video series featuring one creator, on one platform:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/latest/media-buy/list-collections-request.json",
   "adcp_version": "3.3",
-  "account": { "account_id": "acct_nova_agency" },
+  "account": {
+    "account_id": "acct_nova_agency"
+  },
   "filters": {
     "kinds": ["series"],
     "statuses": ["active"],
     "languages": ["en"],
-    "talent": [{ "domain": "jordanvega.example" }],
+    "talent": [
+      {
+        "domain": "jordanvega.example"
+      }
+    ],
     "platforms": ["videoplatform.example"]
   },
-  "pagination": { "max_results": 50 }
+  "pagination": {
+    "max_results": 50
+  }
 }
 ```
 
@@ -93,6 +109,7 @@ Filters run on the seller's copy, so a match on an anchored field (`genre`, `sta
 | `collections_version` | string | Opaque version of the selected catalog. |
 | `cache_scope` | string | `public` or `account`. |
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/latest/media-buy/list-collections-response.json",
@@ -119,12 +136,23 @@ Filters run on the seller's copy, so a match on an anchored field (`genre`, `sta
         }
       ],
       "talent": [
-        { "role": "creator", "name": "Jordan Vega", "brand_ref": { "domain": "jordanvega.example" } }
+        {
+          "role": "creator",
+          "name": "Jordan Vega",
+          "brand_ref": {
+            "domain": "jordanvega.example"
+          }
+        }
       ],
       "distribution": [
         {
           "publisher_domain": "videoplatform.example",
-          "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }],
+          "identifiers": [
+            {
+              "type": "youtube_channel_id",
+              "value": "UCexample123456"
+            }
+          ],
           "followers": {
             "lower_bound": 1230000,
             "upper_bound": 1239999,
@@ -135,7 +163,10 @@ Filters run on the seller's copy, so a match on an anchored field (`genre`, `sta
       ]
     }
   ],
-  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=" },
+  "pagination": {
+    "has_more": true,
+    "cursor": "eyJvIjo1MH0="
+  },
   "collections_version": "cc_2026_10_16_r88",
   "cache_scope": "account"
 }
@@ -155,22 +186,30 @@ A `list_collections` entry is a response copy, and the rules in [Collections in 
 
 `collections_version` and `if_collections_version` are this task's own conditional-fetch tokens. When `if_collections_version` matches, the seller returns `outcome: "unchanged"` without `collections`:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/latest/media-buy/list-collections-request.json",
   "adcp_version": "3.3",
-  "account": { "account_id": "acct_nova_agency" },
+  "account": {
+    "account_id": "acct_nova_agency"
+  },
   "filters": {
     "kinds": ["series"],
     "statuses": ["active"],
     "languages": ["en"],
-    "talent": [{ "domain": "jordanvega.example" }],
+    "talent": [
+      {
+        "domain": "jordanvega.example"
+      }
+    ],
     "platforms": ["videoplatform.example"]
   },
   "if_collections_version": "cc_2026_10_16_r88"
 }
 ```
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/latest/media-buy/list-collections-response.json",
@@ -197,22 +236,21 @@ Registry `collection.*` events report the publisher's authoritative `adagents.js
 
 Subscriptions are account-level and durable, through `sync_accounts.accounts[].notification_configs[]`, exactly like `product.*` and `wholesale_feed.bulk_change`. A `list_collections` call never creates one: the request takes no `push_notification_config`. A seller that emits these events lists them in `wholesale_feed_webhooks.event_types` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#wholesale_feed_webhooks). Buyers register only types the seller lists, and sellers reject undeclared types. Subscribing requires an account; buyers browsing without one poll.
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
   "$schema": "/schemas/latest/account/sync-accounts-request.json",
   "idempotency_key": "9b1e6f2c-4d8a-4c51-9f0e-3a7d2c8b6e41",
   "accounts": [
     {
-      "account": { "account_id": "acct_nova_agency" },
+      "account": {
+        "account_id": "acct_nova_agency"
+      },
       "notification_configs": [
         {
           "subscriber_id": "card-mirror",
           "url": "https://buyer.example/hooks/collection-cards",
-          "event_types": [
-            "collection_card.updated",
-            "collection_card.removed",
-            "collection_catalog.bulk_change"
-          ],
+          "event_types": ["collection_card.updated", "collection_card.removed", "collection_catalog.bulk_change"],
           "active": true
         }
       ]
@@ -242,6 +280,7 @@ The events reuse the [wholesale feed webhook](/docs/media-buy/task-reference/lis
 - `event.entity_type` is `collection` for card events and `feed` for the bulk event. `entity_id` is opaque: receivers key the mirror on the payload's `(publisher_domain, collection_id)`, never on `entity_id`.
 - Delivery follows the persistent webhook contract unchanged: at least once, deduped on `idempotency_key`, no ordering guarantee, and RFC 9421 signing (`webhook_signing.supported` is `true` once `wholesale_feed_webhooks.supported` is).
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/latest/core/wholesale-feed-webhook.json",
@@ -278,7 +317,9 @@ The events reuse the [wholesale feed webhook](/docs/media-buy/task-reference/lis
         ]
       },
       "changed_fields": ["sample_content"],
-      "applies_to": { "scope": "public" }
+      "applies_to": {
+        "scope": "public"
+      }
     }
   }
 }

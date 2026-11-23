@@ -45,46 +45,88 @@ If a request includes `fields` that require authorization the caller does not ha
 }
 ```
 
+{/* schema-example: #/examples/0 */}
 ```json Response (public)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-brand-identity-response.json",
+  "status": "completed",
   "brand_id": "daan_janssen",
-  "house": { "domain": "lotientertainment.com", "name": "Loti Entertainment" },
-  "names": [{"en": "Daan Janssen"}],
+  "house": {
+    "domain": "lotientertainment.com",
+    "name": "Loti Entertainment"
+  },
+  "names": [
+    {
+      "en": "Daan Janssen"
+    }
+  ],
   "description": "Dutch Olympic speed skater, 2x gold medalist",
   "industries": ["sports_fitness"],
   "keller_type": "independent",
   "logos": [
-    { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "variant": "primary" }
+    {
+      "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+      "variant": "primary"
+    }
   ],
-  "tagline": [{"en-US": "Speed is a choice"}, {"nl-NL": "Snelheid is een keuze"}],
+  "tagline": [
+    {
+      "en-US": "Speed is a choice"
+    },
+    {
+      "nl-NL": "Snelheid is een keuze"
+    }
+  ],
   "available_fields": ["tone", "voice_synthesis", "assets", "rights"]
 }
 ```
 </CodeGroup>
 
 <CodeGroup>
+{/* schema-example: #/examples/0 */}
 ```json Request (authorized, specific fields)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-brand-identity-request.json",
   "brand_id": "daan_janssen",
   "fields": ["logos", "tone", "voice_synthesis"],
   "use_case": "endorsement"
 }
 ```
 
+{/* schema-example: #/examples/1 */}
 ```json Response (authorized)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-brand-identity-response.json",
+  "status": "completed",
   "brand_id": "daan_janssen",
-  "house": { "domain": "lotientertainment.com", "name": "Loti Entertainment" },
-  "names": [{"en": "Daan Janssen"}],
+  "house": {
+    "domain": "lotientertainment.com",
+    "name": "Loti Entertainment"
+  },
+  "names": [
+    {
+      "en": "Daan Janssen"
+    }
+  ],
   "logos": [
-    { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "variant": "primary" },
-    { "url": "https://assets.lotientertainment.com/janssen/hero_01_highres.jpg", "variant": "full-lockup", "width": 3000, "height": 2000 }
+    {
+      "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+      "variant": "primary"
+    },
+    {
+      "url": "https://assets.lotientertainment.com/janssen/hero_01_highres.jpg",
+      "variant": "full-lockup",
+      "width": 3000,
+      "height": 2000
+    }
   ],
   "voice_synthesis": {
     "provider": "elevenlabs",
     "voice_id": "janssen_v2",
     "rights_offering_id": "loti_dj_voice_2026",
-    "settings": { "stability": 0.7 }
+    "settings": {
+      "stability": 0.7
+    }
   },
   "tone": {
     "voice": "enthusiastic, warm, competitive",
@@ -97,19 +139,31 @@ If a request includes `fields` that require authorization the caller does not ha
 </CodeGroup>
 
 <CodeGroup>
+{/* schema-example: #/examples/1 */}
 ```json Request (creative production)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-brand-identity-request.json",
   "brand_id": "daan_janssen",
   "fields": ["colors", "fonts", "visual_guidelines"],
   "use_case": "creative_production"
 }
 ```
 
+{/* schema-example: #/examples/2 */}
 ```json Response (authorized)
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-brand-identity-response.json",
+  "status": "completed",
   "brand_id": "daan_janssen",
-  "house": { "domain": "lotientertainment.com", "name": "Loti Entertainment" },
-  "names": [{"en": "Daan Janssen"}],
+  "house": {
+    "domain": "lotientertainment.com",
+    "name": "Loti Entertainment"
+  },
+  "names": [
+    {
+      "en": "Daan Janssen"
+    }
+  ],
   "colors": {
     "primary": "#FF6600",
     "secondary": "#1A1A2E",
@@ -119,7 +173,11 @@ If a request includes `fields` that require authorization the caller does not ha
     "primary": {
       "family": "Montserrat",
       "files": [
-        { "url": "https://cdn.example.com/fonts/montserrat-vf.woff2", "weight_range": [100, 900], "style": "normal" }
+        {
+          "url": "https://cdn.example.com/fonts/montserrat-vf.woff2",
+          "weight_range": [100, 900],
+          "style": "normal"
+        }
       ],
       "opentype_features": ["tnum"],
       "fallbacks": ["Helvetica Neue", "Arial", "sans-serif"]
@@ -132,10 +190,7 @@ If a request includes `fields` that require authorization the caller does not ha
       "lighting": "bright, natural",
       "framing": ["medium shot", "action shot"]
     },
-    "restrictions": [
-      "Never place text over the athlete",
-      "No competitor brand logos in frame"
-    ]
+    "restrictions": ["Never place text over the athlete", "No competitor brand logos in frame"]
   }
 }
 ```
@@ -203,12 +258,27 @@ The response mirrors the brand.json brand definition, extended with dynamic data
 
 A collection's `talent[].brand_ref` points at a person's brand identity. The collection carries the channel facts; the person's details come from their brand or rights agent through this task. The person's picture is in `logos`, which is always public. brand.json's `avatar` is not exposed here: it is a synthesis configuration (`provider`, `avatar_id`, `settings`), not a profile picture. `collections` (experimental, `brand.collection_links`) links back from the person to their channels, so a buyer can go from person to channel to product selector. A collection's `brand_ref` is the publisher's claim; buyers SHOULD treat it as confirmed only when the person's `collections` lists the same `{publisher_domain, collection_id}` back. Displaying the person's picture from `logos` is not a likeness license; likeness use in ads goes through [`get_rights`](/docs/brand-protocol/tasks/get_rights) and [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights). Brand agents that return `collections` list `brand.collection_links` in `experimental_features`:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-brand-identity-response.json",
+  "status": "completed",
   "brand_id": "jordan_vega",
-  "house": { "domain": "jordanvega.example.com", "name": "Jordan Vega Media" },
-  "names": [{ "en": "Jordan Vega" }],
-  "logos": [{ "url": "https://cdn.jordanvega.example.com/headshot.jpg", "variant": "primary" }],
+  "house": {
+    "domain": "jordanvega.example.com",
+    "name": "Jordan Vega Media"
+  },
+  "names": [
+    {
+      "en": "Jordan Vega"
+    }
+  ],
+  "logos": [
+    {
+      "url": "https://cdn.jordanvega.example.com/headshot.jpg",
+      "variant": "primary"
+    }
+  ],
   "collections": [
     {
       "publisher_domain": "acmestreaming.example.com",

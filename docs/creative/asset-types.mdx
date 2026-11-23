@@ -48,12 +48,17 @@ Published-post references use the same rule: a product that accepts existing pos
 Starting in AdCP 3.3, the `video_brief` asset carries the existing structured VideoBrief inside a manifest. A product declares a slot with `asset_type: "video_brief"`; each supplied brief has ordered `segments` with a duration and generation prompt. The segment durations must satisfy the selected product's duration contract. The generated output is a separate `video` asset.
 
 {/* Using latest because the typed video-brief asset is not yet released. */}
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/latest/core/assets/video-brief-asset.json",
   "asset_type": "video_brief",
   "segments": [
-    { "order": 1, "duration_ms": 15000, "prompt": "An Acme hiking boot on a forest trail." }
+    {
+      "order": 1,
+      "duration_ms": 15000,
+      "prompt": "An Acme hiking boot on a forest trail."
+    }
   ]
 }
 ```
@@ -482,8 +487,10 @@ Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEv
 Renderer-fired HTTP tracker — image pixel or JavaScript include — bound to a measurement event. Applies to any **web-rendered** canonical format (image, html5, image_carousel, responsive_creative, sponsored_placement, native_*, plus non-VAST/DAAST events on video_hosted / audio_hosted). Format-specific tracker primitives (`vast_tracker`, `daast_tracker`) remain the right shape for VAST/DAAST event semantics; `display_tag` is opaque (third-party served).
 
 **Example:**
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/assets/pixel-tracker-asset.json",
   "asset_type": "pixel_tracker",
   "event": "impression",
   "method": "img",
@@ -500,8 +507,10 @@ Renderer-fired HTTP tracker — image pixel or JavaScript include — bound to a
 
 **Hosted video and audio playback trackers (3.3).** A buyer attaches quartile trackers to a hosted file with one `pixel_tracker` per event:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/assets/pixel-tracker-asset.json",
   "asset_type": "pixel_tracker",
   "event": "first_quartile",
   "method": "img",

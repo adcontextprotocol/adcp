@@ -25,6 +25,7 @@ AdCP sell-side integration has four parts:
 
 Publish an `adagents.json` file on each publisher domain. This file declares the publisher's properties and the agents authorized to sell or enrich that inventory — similar to how `ads.txt` works for supply chain transparency.
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -39,7 +40,12 @@ Publish an `adagents.json` file on each publisher domain. This file declares the
       "property_type": "website",
       "name": "Example Publisher",
       "publisher_domain": "publisher.example.com",
-      "identifiers": [{ "type": "domain", "value": "publisher.example.com" }]
+      "identifiers": [
+        {
+          "type": "domain",
+          "value": "publisher.example.com"
+        }
+      ]
     }
   ],
   "authorized_agents": [
@@ -73,13 +79,18 @@ For publisher-owned sales teams, list owned or direct properties. For networks a
 
 For the full sell-side setup pattern, including direct publisher and delegated network examples, see [seller setup](/docs/brand-protocol/seller-setup).
 
+{/* schema-example: #/examples/33 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
   "id": "example_publisher",
   "url": "https://publisher.example.com",
-  "names": [{ "en_US": "Example Publisher" }],
+  "names": [
+    {
+      "en_US": "Example Publisher"
+    }
+  ],
   "properties": [
     {
       "type": "website",

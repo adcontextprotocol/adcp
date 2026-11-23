@@ -53,5 +53,22 @@
     "required": ["declines"]
   },
   "then": { "required": ["opportunity"] },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441004",
+      "declines": [
+        {
+          "proposal_id": "proposal_123",
+          "reason": "inventory_fit",
+          "detail": "The available placement mix does not fit this campaign."
+        }
+      ],
+      "opportunity": {
+        "opportunity_id": "opp_spring_launch_2027",
+        "status": "closed",
+        "close_reason": "not_pursued"
+      }
+    }
+  ]
 }

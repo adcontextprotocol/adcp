@@ -85,6 +85,7 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
 
 ### Success Response
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/content-standards/validate-content-delivery-response.json",
@@ -101,8 +102,7 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
       "features": [
         {
           "feature_id": "brand_safety",
-          "status": "passed",
-          "value": "safe"
+          "status": "passed"
         }
       ]
     },
@@ -113,8 +113,7 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
         {
           "feature_id": "brand_safety",
           "status": "failed",
-          "value": "high_risk",
-          "message": "Content contains violence"
+          "explanation": "Content contains violence"
         }
       ]
     }

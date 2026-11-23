@@ -13,12 +13,18 @@ description: "Discover brands on a brand agent's roster before retrieving identi
 
 ## Request
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/search-brands-request.json",
   "query": "automotive brands with electric vehicles",
   "countries": ["US"],
-  "pagination": { "max_results": 20 },
-  "context": { "correlation_id": "brand-search-001" }
+  "pagination": {
+    "max_results": 20
+  },
+  "context": {
+    "correlation_id": "brand-search-001"
+  }
 }
 ```
 
@@ -26,8 +32,11 @@ description: "Discover brands on a brand agent's roster before retrieving identi
 
 ## Response
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/search-brands-response.json",
+  "status": "completed",
   "brands": [
     {
       "brand_id": "nova_motors",
@@ -37,7 +46,11 @@ description: "Discover brands on a brand agent's roster before retrieving identi
       },
       "relationship_trust": "mutual",
       "relationship_verified_at": "2026-08-15T12:00:00Z",
-      "names": [{ "en-US": "Nova Motors" }],
+      "names": [
+        {
+          "en-US": "Nova Motors"
+        }
+      ],
       "description": "Electric mobility and vehicle technology",
       "industries": ["automotive"],
       "keller_type": "master",
@@ -47,7 +60,9 @@ description: "Discover brands on a brand agent's roster before retrieving identi
       }
     }
   ],
-  "context": { "correlation_id": "brand-search-001" }
+  "context": {
+    "correlation_id": "brand-search-001"
+  }
 }
 ```
 

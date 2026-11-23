@@ -194,5 +194,13 @@
       { "required": ["pricing_option_id"] },
       { "required": ["catalogs"] }
     ]
-  }
+  },
+  "examples": [
+    {
+      "package_id": "pkg_stream",
+      "bidding": {
+        "bid_amount": 30
+      }
+    }
+  ]
 }

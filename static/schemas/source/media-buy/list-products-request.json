@@ -95,5 +95,57 @@
       }
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "brand": {
+        "domain": "acmeoutdoor.example"
+      },
+      "criteria": {
+        "offer_filters": {
+          "channels": [
+            "olv"
+          ],
+          "pricing_currencies": [
+            "USD"
+          ]
+        },
+        "targeting_overlay": {
+          "geo_countries": [
+            "US"
+          ]
+        },
+        "required_overlay_support": {
+          "geo_metros": {
+            "systems": [
+              "nielsen_dma"
+            ]
+          }
+        }
+      },
+      "max_results": 25
+    },
+    {
+      "brand": {
+        "domain": "acmeoutdoor.example"
+      },
+      "criteria": {
+        "offer_filters": {
+          "channels": [
+            "olv"
+          ],
+          "pricing_currencies": [
+            "USD"
+          ]
+        },
+        "targeting_overlay": {
+          "geo_countries": [
+            "US"
+          ]
+        }
+      },
+      "if_feed_version": "feed_2026_08_10_1",
+      "if_pricing_version": "pricing_42"
+    }
+  ]
 }

@@ -74,6 +74,7 @@ sequenceDiagram
 
 Sam calls `get_adcp_capabilities` before choosing an account workflow. The relevant capability fragment looks like this:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
@@ -119,6 +120,7 @@ Sam sends a fresh `idempotency_key`, the Nova Motors brand, Pinnacle Agency as o
 
 **Schema:** [`sync-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json)
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
@@ -174,6 +176,7 @@ The account needs a human credit and legal review, so StreamHaus returns `pendin
 
 **Schema:** [`sync-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-response.json)
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-response.json",
@@ -245,6 +248,7 @@ After approval, StreamHaus sends the durable subscriber a complete `account.stat
 
 **Schema:** [`account-status-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/account-status-changed-webhook.json)
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/account-status-changed-webhook.json",
@@ -265,6 +269,7 @@ The event's `status` and `reason_code` are advisory. It deliberately omits the c
 
 **Request:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/list-accounts-request.json",
@@ -276,6 +281,7 @@ The event's `status` and `reason_code` are advisory. It deliberately omits the c
 
 **Schema:** [`list-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json)
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json",
@@ -330,6 +336,7 @@ Once the authoritative snapshot is `active`, Sam can call [`create_media_buy`](/
 
 The example below assumes no governance plan is configured. When governance applies, Sam first sends the full intended payload, including any `invoice_recipient`, to `check_governance`. Only an `approved` decision yields the `governance_context` that Sam attaches to `create_media_buy`; `conditions` requires an adjusted intent re-check, and `denied` stops the buy. A seller that declares online execution checks then validates its `planned_delivery` with the same context before committing, forwarding `invoice_recipient` as the execution check's separate top-level field when the buy supplied one.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",

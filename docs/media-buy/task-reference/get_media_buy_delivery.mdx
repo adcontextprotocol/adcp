@@ -751,11 +751,12 @@ The `by_package` array provides per-package delivery details with these key fiel
 
 `pacing_index` says how a package's delivery **has** tracked against its plan. `projection` says where it is **going**. Without a standard shape, each buyer re-derives a projection from `daily_breakdown` with its own assumptions, and a seller with better inputs (hourly data, seasonality, inventory availability) has no way to share its own. A seller that projects adds an optional `projection` object to a top-level `by_package[]` row. Here a package with a 1,500,000-impression goal is projected to end at 1,180,000:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/latest/core/delivery-projection.json",
   "projected_impressions": 1180000,
-  "projected_spend": 9440.00,
+  "projected_spend": 9440,
   "projected_end_state": "under_delivery",
   "basis": "trailing_daily_avg",
   "as_of": "2026-10-01T00:00:00Z"
@@ -913,8 +914,10 @@ The seller in this example emits hourly webhooks but only honors daily pulls —
 
 ### Requesting windowed slices
 
+{/* schema-example: #/examples/1 */}
 ```json test=false
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json",
   "media_buy_ids": ["mb_12345"],
   "start_date": "2026-06-01",
   "end_date": "2026-06-02",
@@ -974,21 +977,40 @@ When you include `reporting_dimensions` in the request, the response includes di
 
 ### Requesting breakdowns
 
+{/* schema-example: #/examples/2 */}
 ```json test=false
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json",
   "media_buy_ids": ["mb_123"],
   "reporting_dimensions": {
-    "geo": { "geo_level": "metro", "system": "nielsen_dma", "limit": 10 },
-    "device_type": {},
-    "format": { "sort_by": "spend" },
-    "demographic": {
-      "age_ranges": [{ "min": 26, "max": 30, "include_unknown": false }]
+    "geo": {
+      "geo_level": "metro",
+      "system": "nielsen_dma",
+      "limit": 10
     },
-    "placement": { "limit": 5, "sort_by": "roas" },
+    "device_type": {},
+    "format": {
+      "sort_by": "spend"
+    },
+    "demographic": {
+      "age_ranges": [
+        {
+          "min": 26,
+          "max": 30,
+          "include_unknown": false
+        }
+      ]
+    },
+    "placement": {
+      "limit": 5,
+      "sort_by": "roas"
+    },
     "property": {},
     "collection": {},
     "installment": {},
-    "collection_property": { "sort_by": "impressions" },
+    "collection_property": {
+      "sort_by": "impressions"
+    },
     "installment_property": {},
     "placement_property": {},
     "spot": {}

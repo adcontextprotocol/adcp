@@ -51,23 +51,35 @@ If you own several brands, you publish the list of who can act for them once, fr
 
 At `https://nova-motors.example/.well-known/brand.json`:
 
+{/* schema-example: #/examples/27 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "id": "nova_motors",
-  "names": [{ "en": "Nova Motors" }],
+  "names": [
+    {
+      "en": "Nova Motors"
+    }
+  ],
   "house_domain": "nova-brands.example"
 }
 ```
 
 At `https://nova-brands.example/.well-known/brand.json`:
 
+{/* schema-example: #/examples/28 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
-  "house": { "domain": "nova-brands.example", "name": "Nova Brands" },
+  "house": {
+    "domain": "nova-brands.example",
+    "name": "Nova Brands"
+  },
   "brand_refs": [
-    { "domain": "nova-motors.example", "brand_id": "nova_motors" }
+    {
+      "domain": "nova-motors.example",
+      "brand_id": "nova_motors"
+    }
   ]
 }
 ```
@@ -94,20 +106,32 @@ Publish `trust.json` at `https://{your-registrable-domain}/.well-known/trust.jso
 
 At `https://nova-brands.example/.well-known/trust.json`:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/trust/v1/trust.json",
   "last_updated": "2026-10-25T00:00:00Z",
   "exclusive_grants": true,
   "agents": [
-    { "url": "https://buyer.nova-brands.example", "roles": ["adcp:buying"] }
+    {
+      "url": "https://buyer.nova-brands.example",
+      "roles": ["adcp:buying"]
+    }
   ],
   "grants": [
     {
       "grantee": "pinnacle-agency.example",
       "scopes": ["adcp:media_buying"],
-      "agents": [{ "url": "https://buyer.pinnacle-agency.example" }],
-      "profiles": { "adcp": { "brands": ["nova_motors"] } },
+      "agents": [
+        {
+          "url": "https://buyer.pinnacle-agency.example"
+        }
+      ],
+      "profiles": {
+        "adcp": {
+          "brands": ["nova_motors"]
+        }
+      },
       "countries": ["US", "GB"],
       "valid_until": "2027-06-30T00:00:00Z"
     },
@@ -132,12 +156,16 @@ A grant authorizes an organization. The seller still has to confirm that the age
 
 At `https://pinnacle-agency.example/.well-known/trust.json`:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/trust/v1/trust.json",
   "last_updated": "2026-10-25T00:00:00Z",
   "agents": [
-    { "url": "https://buyer.pinnacle-agency.example", "roles": ["adcp:buying"] }
+    {
+      "url": "https://buyer.pinnacle-agency.example",
+      "roles": ["adcp:buying"]
+    }
   ]
 }
 ```

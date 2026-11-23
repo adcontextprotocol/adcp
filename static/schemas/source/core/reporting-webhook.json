@@ -79,5 +79,18 @@
     "reporting_frequency"
   ],
   "not": { "required": ["authentication", "signing_profile"] },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "url": "https://buyer.example.com/webhooks/reporting",
+      "operation_id": "op_reporting_001",
+      "authentication": {
+        "schemes": [
+          "Bearer"
+        ],
+        "credentials": "example_reporting_credential_32_chars"
+      },
+      "reporting_frequency": "daily"
+    }
+  ]
 }

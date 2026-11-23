@@ -178,5 +178,190 @@
     "currency",
     "creatives"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "media_buy_id": "mb_12345",
+      "currency": "USD",
+      "reporting_period": {
+        "start": "2026-01-20T00:00:00-05:00",
+        "end": "2026-01-27T23:59:59-05:00",
+        "timezone": "America/New_York"
+      },
+      "creatives": [
+        {
+          "creative_id": "hero_video_30s",
+          "totals": {
+            "impressions": 150000,
+            "spend": 7500,
+            "clicks": 4500,
+            "ctr": 0.03,
+            "completion_rate": 0.72
+          },
+          "variants": [
+            {
+              "variant_id": "hero_video_30s",
+              "impressions": 150000,
+              "spend": 7500,
+              "clicks": 4500,
+              "ctr": 0.03,
+              "completion_rate": 0.72
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "media_buy_id": "mb_12345",
+      "currency": "USD",
+      "reporting_period": {
+        "start": "2026-01-20T00:00:00-05:00",
+        "end": "2026-01-27T23:59:59-05:00",
+        "timezone": "America/New_York"
+      },
+      "creatives": [
+        {
+          "creative_id": "summer_campaign_assets",
+          "totals": {
+            "impressions": 200000,
+            "spend": 10000,
+            "clicks": 8000,
+            "ctr": 0.04
+          },
+          "variants": [
+            {
+              "variant_id": "var_headline_a_image_c",
+              "manifest": {
+                "format_kind": "image",
+                "assets": {
+                  "headline_0_text": {
+                    "asset_type": "text",
+                    "content": "Summer Sale - 50% Off"
+                  },
+                  "image_0_url": {
+                    "asset_type": "image",
+                    "url": "https://cdn.brand.com/beach_hero.jpg",
+                    "width": 300,
+                    "height": 250
+                  }
+                }
+              },
+              "impressions": 120000,
+              "spend": 6000,
+              "clicks": 6000,
+              "ctr": 0.05
+            },
+            {
+              "variant_id": "var_headline_b_image_d",
+              "manifest": {
+                "format_kind": "image",
+                "assets": {
+                  "headline_0_text": {
+                    "asset_type": "text",
+                    "content": "Shop Summer Styles"
+                  },
+                  "image_0_url": {
+                    "asset_type": "image",
+                    "url": "https://cdn.brand.com/sunset_hero.jpg",
+                    "width": 300,
+                    "height": 250
+                  }
+                }
+              },
+              "impressions": 80000,
+              "spend": 4000,
+              "clicks": 2000,
+              "ctr": 0.025
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "media_buy_id": "mb_12345",
+      "currency": "USD",
+      "reporting_period": {
+        "start": "2026-01-20T00:00:00-05:00",
+        "end": "2026-01-27T23:59:59-05:00",
+        "timezone": "America/New_York"
+      },
+      "creatives": [
+        {
+          "creative_id": "generative_banner",
+          "totals": {
+            "impressions": 300000,
+            "spend": 15000,
+            "clicks": 12000,
+            "ctr": 0.04
+          },
+          "variants": [
+            {
+              "variant_id": "gen_mobile_morning",
+              "generation_context": {
+                "context_type": "web_page",
+                "artifact": {
+                  "property_id": {
+                    "type": "domain",
+                    "value": "techreview.example.com"
+                  },
+                  "artifact_id": "article_semiconductor_trends_2026"
+                },
+                "topic": "technology, semiconductors",
+                "device_class": "mobile"
+              },
+              "manifest": {
+                "format_kind": "image",
+                "assets": {
+                  "hero_image": {
+                    "asset_type": "image",
+                    "url": "https://cdn.creative.example.com/generated/mobile_morning_v1.jpg",
+                    "width": 300,
+                    "height": 250
+                  },
+                  "headline": {
+                    "asset_type": "text",
+                    "content": "Start Your Summer Right"
+                  }
+                }
+              },
+              "impressions": 180000,
+              "spend": 9000,
+              "clicks": 9000,
+              "ctr": 0.05
+            },
+            {
+              "variant_id": "gen_desktop_evening",
+              "generation_context": {
+                "context_type": "web_page",
+                "topic": "lifestyle, evening entertainment",
+                "device_class": "desktop"
+              },
+              "manifest": {
+                "format_kind": "image",
+                "assets": {
+                  "hero_image": {
+                    "asset_type": "image",
+                    "url": "https://cdn.creative.example.com/generated/desktop_evening_v1.jpg",
+                    "width": 728,
+                    "height": 90
+                  },
+                  "headline": {
+                    "asset_type": "text",
+                    "content": "Evening Deals Await"
+                  }
+                }
+              },
+              "impressions": 120000,
+              "spend": 6000,
+              "clicks": 3000,
+              "ctr": 0.025
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

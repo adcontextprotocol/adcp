@@ -67,8 +67,10 @@ The response reveals only the authenticated caller's identity and state. It neve
 
 An identity-established buyer agent whose application is under review receives:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json",
   "status": "completed",
   "result": {
     "kind": "unconfigured",
@@ -85,8 +87,10 @@ An identity-established buyer agent whose application is under review receives:
 
 Before configuration, a registered buyer agent with a durable principal record receives:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json",
   "status": "completed",
   "result": {
     "kind": "recognized",
@@ -98,8 +102,10 @@ Before configuration, a registered buyer agent with a durable principal record r
 
 An authenticated caller with no durable record receives the existing result without an invented identifier or exposed party kind:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json",
   "status": "completed",
   "result": {
     "kind": "unconfigured"
@@ -107,8 +113,10 @@ An authenticated caller with no durable record receives the existing result with
 }
 ```
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json",
   "status": "completed",
   "result": {
     "kind": "current",
@@ -127,7 +135,9 @@ An authenticated caller with no durable record receives the existing result with
             "pattern": "warehouse_materialization",
             "destination_id": "analytics-warehouse",
             "active": true,
-            "provider": { "domain": "data-warehouse.example" },
+            "provider": {
+              "domain": "data-warehouse.example"
+            },
             "transport": "bigquery",
             "location": "pinnacle-analytics.adcp_reporting",
             "accepted_verification_profiles": ["native_commit", "canonical_digest"]

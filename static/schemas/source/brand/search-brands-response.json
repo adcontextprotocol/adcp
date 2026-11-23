@@ -237,5 +237,42 @@
     {
       "$ref": "/schemas/core/protocol-envelope.json"
     }
+  ],
+  "examples": [
+    {
+      "status": "completed",
+      "brands": [
+        {
+          "brand_id": "nova_motors",
+          "house": {
+            "domain": "novamotors.example",
+            "name": "Nova Motors"
+          },
+          "relationship_trust": "mutual",
+          "relationship_verified_at": "2026-08-15T12:00:00Z",
+          "names": [
+            {
+              "en-US": "Nova Motors"
+            }
+          ],
+          "description": "Electric mobility and vehicle technology",
+          "industries": [
+            "automotive"
+          ],
+          "keller_type": "master",
+          "rights": {
+            "available_uses": [
+              "commercial"
+            ],
+            "countries": [
+              "US"
+            ]
+          }
+        }
+      ],
+      "context": {
+        "correlation_id": "brand-search-001"
+      }
+    }
   ]
 }

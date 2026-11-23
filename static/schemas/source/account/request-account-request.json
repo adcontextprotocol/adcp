@@ -97,6 +97,20 @@
       "adcp_version": "3.3",
       "idempotency_key": "8c2e7d41-0a9b-4f63-b5d8-1e4c7a2f9b30",
       "account_id": "act_1029384756"
+    },
+    {
+      "adcp_version": "3.3",
+      "idempotency_key": "9d4e1b7a-2c6f-4a83-b5e0-7f1a3c8d2b64",
+      "account_id": "acc_nova_pinnacle",
+      "revision": 7,
+      "brand": {
+        "domain": "nova-athletics.example",
+        "countries": [
+          "BE",
+          "DE",
+          "NL"
+        ]
+      }
     }
   ]
 }

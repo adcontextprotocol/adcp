@@ -123,6 +123,10 @@
       "price": { "amount": 799, "currency": "CHF" },
       "url": "https://acmetravel.com/destinations/interlaken",
       "tags": ["adventure", "mountains", "winter-sports"]
+    },
+    {
+      "destination_id": "barcelona",
+      "name": "Barcelona"
     }
   ]
 }

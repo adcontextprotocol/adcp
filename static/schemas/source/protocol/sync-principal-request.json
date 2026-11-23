@@ -199,6 +199,182 @@
           }
         ]
       }
+    },
+    {
+      "idempotency_key": "5b6a3d1e-0c8f-4e49-9a2f-71c2f0d4b8a3",
+      "configuration": {
+        "declarations": {
+          "async_adcp_versions": [
+            "3.2"
+          ],
+          "webhook_signing_algorithms": [
+            "ed25519"
+          ],
+          "experimental_features": [
+            "protocol.principal"
+          ]
+        },
+        "notification_configs": [
+          {
+            "subscriber_id": "pinnacle-events",
+            "url": "https://agents.pinnacle-agency.example/adcp/webhooks",
+            "event_types": [
+              "capabilities.changed",
+              "principal.changed"
+            ],
+            "active": true
+          }
+        ],
+        "reporting_destinations": [
+          {
+            "pattern": "file_transfer",
+            "destination_id": "pinnacle-archive",
+            "active": true,
+            "provider": {
+              "domain": "object-store.example"
+            },
+            "transport": "s3",
+            "location": "s3://pinnacle-reporting/adcp/",
+            "accepted_formats": [
+              "parquet"
+            ],
+            "accepted_verification_profiles": [
+              "manifest_checksums"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "idempotency_key": "1d0b7c44-6b0e-4f0b-8a43-9d3c5a2f7e10",
+      "configuration": {
+        "declarations": {
+          "async_adcp_versions": [
+            "3.2"
+          ],
+          "webhook_signing_algorithms": [
+            "ed25519"
+          ]
+        },
+        "reporting_destinations": [
+          {
+            "pattern": "file_transfer",
+            "destination_id": "pinnacle-archive-demo",
+            "active": true,
+            "provider": {
+              "domain": "object-store.example"
+            },
+            "transport": "s3",
+            "location": "s3://pinnacle-reporting/adcp/",
+            "accepted_formats": [
+              "parquet"
+            ],
+            "accepted_verification_profiles": [
+              "manifest_checksums"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "idempotency_key": "8b54cf59-77f4-41ce-9f2a-6d1f0c8b1a77",
+      "configuration": {
+        "declarations": {
+          "async_adcp_versions": [
+            "3.2"
+          ],
+          "webhook_signing_algorithms": [
+            "ed25519"
+          ],
+          "experimental_features": [
+            "protocol.principal"
+          ]
+        }
+      }
+    },
+    {
+      "idempotency_key": "528f1f06-e2a7-49b9-bd13-c953f35a1c49",
+      "configuration": {
+        "reporting_destinations": [
+          {
+            "pattern": "file_transfer",
+            "destination_id": "reporting-archive",
+            "active": true,
+            "provider": {
+              "domain": "object-store.example"
+            },
+            "transport": "s3",
+            "location": "s3://pinnacle-reporting/adcp/",
+            "accepted_formats": [
+              "parquet"
+            ],
+            "accepted_verification_profiles": [
+              "manifest_checksums",
+              "canonical_digest"
+            ]
+          },
+          {
+            "pattern": "warehouse_materialization",
+            "destination_id": "analytics-warehouse",
+            "active": true,
+            "provider": {
+              "domain": "data-warehouse.example"
+            },
+            "transport": "bigquery",
+            "location": "pinnacle-analytics.adcp_reporting",
+            "accepted_verification_profiles": [
+              "native_commit",
+              "canonical_digest"
+            ]
+          },
+          {
+            "pattern": "dataset_share",
+            "destination_id": "daily-share",
+            "active": true,
+            "provider": {
+              "domain": "data-platform.example"
+            },
+            "transport": "delta_sharing",
+            "access_mode": "open_sharing",
+            "recipient": {
+              "identity": "reporting@example.com"
+            },
+            "accepted_verification_profiles": [
+              "native_commit"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "idempotency_key": "0f4c1d2e-7b9a-4c3e-8f61-2d5a9b7e3c40",
+      "configuration": {
+        "reporting_subscriptions": [
+          {
+            "subscription_id": "analytics-daily",
+            "subscription_version": 1,
+            "active": true,
+            "scope": {
+              "all_authorized_accounts": true
+            },
+            "selector": {
+              "feed_purpose": "analytics",
+              "period_duration": "P1D",
+              "required_finality": "official",
+              "dimensions": [
+                "package",
+                "creative"
+              ],
+              "match": "exact"
+            },
+            "reconciliation_mode": "delivery_only",
+            "destination": {
+              "destination_id": "reporting-archive",
+              "path_template": "analytics/{account_id}/{period_start}"
+            }
+          }
+        ]
+      }
     }
   ]
 }

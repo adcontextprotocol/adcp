@@ -21,6 +21,7 @@ AdCP 3.0 rc.1 replaces inline `brand_manifest` objects with lightweight brand re
 
 A brand reference identifies a brand by domain and optional `brand_id`:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/brand-ref.json",
@@ -33,8 +34,10 @@ A brand reference identifies a brand by domain and optional `brand_id`:
 - `brand_id` (optional) — Brand identifier within a house portfolio. Omit for single-brand domains.
 
 For single-brand domains:
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/brand-ref.json",
   "domain": "acme-corp.com"
 }
 ```

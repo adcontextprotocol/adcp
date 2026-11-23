@@ -84,5 +84,121 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "evaluation_id": "eval_clean_abc123",
+      "results": [
+        {
+          "feature_id": "auto_redirect",
+          "value": false
+        },
+        {
+          "feature_id": "credential_harvest",
+          "value": false
+        },
+        {
+          "feature_id": "cloaking",
+          "value": false
+        }
+      ],
+      "detail_url": "https://scanner.example.com/reports/ctx_abc123"
+    },
+    {
+      "status": "completed",
+      "evaluation_id": "eval_threat_def456",
+      "results": [
+        {
+          "feature_id": "auto_redirect",
+          "value": true,
+          "confidence": 0.97
+        },
+        {
+          "feature_id": "credential_harvest",
+          "value": true,
+          "confidence": 0.91
+        },
+        {
+          "feature_id": "cloaking",
+          "value": false
+        }
+      ],
+      "detail_url": "https://scanner.example.com/reports/ctx_def456"
+    },
+    {
+      "status": "completed",
+      "evaluation_id": "eval_quality_ghi789",
+      "results": [
+        {
+          "feature_id": "brand_consistency",
+          "value": 87,
+          "unit": "percentage"
+        },
+        {
+          "feature_id": "platform_optimized",
+          "value": true
+        },
+        {
+          "feature_id": "creative_quality_score",
+          "value": 92,
+          "unit": "score"
+        }
+      ],
+      "detail_url": "https://quality.example.com/reports/ctx_ghi789"
+    },
+    {
+      "status": "completed",
+      "evaluation_id": "eval_category_jkl012",
+      "results": [
+        {
+          "feature_id": "iab_casinos_gambling",
+          "value": true,
+          "confidence": 0.95
+        },
+        {
+          "feature_id": "iab_automotive",
+          "value": false,
+          "confidence": 0.12
+        }
+      ],
+      "detail_url": "https://categorizer.example.com/reports/ctx_jkl012"
+    },
+    {
+      "status": "completed",
+      "evaluation_id": "eval_provenance_mno345",
+      "results": [
+        {
+          "feature_id": "ai_generated",
+          "value": true,
+          "confidence": 0.94
+        }
+      ],
+      "audit_observations": [
+        {
+          "code": "OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED",
+          "severity": "audit-worthy",
+          "recovery": "informational",
+          "field": "creative_manifest.provenance.disclosure.required",
+          "message": "Creative claims human-directed AI output does not require disclosure; retain for audit review.",
+          "details": {
+            "agent_url": "https://governance.encypher.seller.example",
+            "feature_id": "ai_generated",
+            "claimed_value": {
+              "human_oversight": "directed",
+              "disclosure_required": false
+            },
+            "observed_value": true,
+            "confidence": 0.94
+          }
+        }
+      ]
+    },
+    {
+      "status": "submitted",
+      "task_id": "task_eval_abc123",
+      "evaluation_id": "eval_async_abc123",
+      "message": "Sandboxed scan accepted and queued"
+    }
+  ]
 }

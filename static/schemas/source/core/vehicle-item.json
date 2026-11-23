@@ -168,6 +168,35 @@
       "fuel_type": "electric",
       "url": "https://acmemotors.com/inventory/my-042",
       "tags": ["low-mileage", "one-owner"]
+    },
+    {
+      "vehicle_id": "dlr-2024-horizon-001",
+      "title": "2024 Apex Horizon EX Sedan",
+      "make": "Apex",
+      "model": "Horizon",
+      "year": 2024
+    },
+    {
+      "vehicle_id": "dlr-2024-horizon-001",
+      "title": "2024 Apex Horizon EX Sedan",
+      "make": "Apex",
+      "model": "Horizon",
+      "year": 2024,
+      "trim": "EX",
+      "price": {
+        "amount": 28500,
+        "currency": "USD"
+      },
+      "condition": "new",
+      "body_style": "sedan",
+      "transmission": "cvt",
+      "fuel_type": "gasoline",
+      "exterior_color": "Lunar Silver Metallic",
+      "image_url": "https://images.apexmotors.com/horizon-ex-2024.jpg",
+      "url": "https://apexmotors.com/inventory/horizon-001",
+      "tags": [
+        "new-arrival"
+      ]
     }
   ]
 }

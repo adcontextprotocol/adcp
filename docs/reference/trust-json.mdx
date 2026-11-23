@@ -46,6 +46,7 @@ The organization a record speaks for is the host that serves it, never a value i
 
 A publisher that runs one sales agent. Validated against the schema:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/trust/v1/trust.json",
@@ -62,6 +63,7 @@ A publisher that runs one sales agent. Validated against the schema:
 
 A parent organization that delegates authority and runs no agents. A grant names a grantee and, optionally, specific agent URLs. It never carries keys:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/trust/v1/trust.json",
@@ -73,12 +75,20 @@ A parent organization that delegates authority and runs no agents. A grant names
       "scopes": ["adcp:media_buying", "adcp:creative_generation"],
       "countries": ["US", "CA"],
       "valid_until": "2027-06-30T00:00:00Z",
-      "profiles": { "adcp": { "brands": ["nova_cola", "nova_snacks"] } }
+      "profiles": {
+        "adcp": {
+          "brands": ["nova_cola", "nova_snacks"]
+        }
+      }
     },
     {
       "grantee": "sentinel-governance.example",
       "scopes": ["adcp:governance"],
-      "agents": [{ "url": "https://7f3a9c.sentinel-governance.example/mcp" }]
+      "agents": [
+        {
+          "url": "https://7f3a9c.sentinel-governance.example/mcp"
+        }
+      ]
     }
   ]
 }
@@ -88,6 +98,7 @@ Grants for `adcp:media_buying` SHOULD narrow with `agents[]` on the grant that r
 
 An ad network that accepts publisher grants by reference, with the bulk entries in a sub-document:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/trust/v1/trust.json",
@@ -102,6 +113,7 @@ An ad network that accepts publisher grants by reference, with the bulk entries 
 }
 ```
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/trust/v1/trust-acknowledgements.json",
@@ -111,7 +123,11 @@ An ad network that accepts publisher grants by reference, with the bulk entries 
       "grantor": "streamhaus.example",
       "agent_url": "https://streamhaus.northwind.example/mcp",
       "via": "adcp:adagents",
-      "profiles": { "adcp": { "delegation_type": "delegated" } }
+      "profiles": {
+        "adcp": {
+          "delegation_type": "delegated"
+        }
+      }
     }
   ]
 }

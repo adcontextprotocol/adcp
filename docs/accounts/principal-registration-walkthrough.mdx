@@ -36,6 +36,7 @@ Never send identity in a request body. `sync_principal` and `get_principal` reje
 
 The agent calls [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) and reads the `adcp.principal` block together with the seller's reporting offerings:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
@@ -60,11 +61,7 @@ The agent calls [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) 
       "supported": true,
       "sync_task": "sync_principal",
       "read_task": "get_principal",
-      "supported_sections": [
-        "notification_configs",
-        "reporting_destinations",
-        "declarations"
-      ],
+      "supported_sections": ["notification_configs", "reporting_destinations", "declarations"],
       "caller_event_types": ["capabilities.changed", "principal.changed"],
       "max_reporting_destinations": 16,
       "reporting_destination_offerings": [
@@ -94,6 +91,7 @@ The agent reads three things:
 
 Before changing anything, the agent calls [`get_principal`](/docs/protocol/get_principal). It carries no parameters and has no side effects; it never creates a principal record or issues an identifier.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json",
@@ -118,6 +116,7 @@ The agent sends one request. Each section is the complete desired state for that
 
 **Schema:** [`sync-principal-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json)
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json",
@@ -141,7 +140,9 @@ The agent sends one request. Each section is the complete desired state for that
         "pattern": "file_transfer",
         "destination_id": "pinnacle-archive",
         "active": true,
-        "provider": { "domain": "object-store.example" },
+        "provider": {
+          "domain": "object-store.example"
+        },
         "transport": "s3",
         "location": "s3://pinnacle-reporting/adcp/",
         "accepted_formats": ["parquet"],
@@ -160,6 +161,7 @@ StreamHaus validates the destination against its offering, issues a `destination
 
 **Schema:** [`sync-principal-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-response.json)
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-response.json",
@@ -185,12 +187,16 @@ StreamHaus validates the destination against its offering, issues a `destination
           "destination_id": "pinnacle-archive",
           "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
           "state": "action_required",
-          "setup": { "action": "prove_control" },
+          "setup": {
+            "action": "prove_control"
+          },
           "configuration": {
             "pattern": "file_transfer",
             "destination_id": "pinnacle-archive",
             "active": true,
-            "provider": { "domain": "object-store.example" },
+            "provider": {
+              "domain": "object-store.example"
+            },
             "transport": "s3",
             "location": "s3://pinnacle-reporting/adcp/",
             "accepted_formats": ["parquet"],
@@ -232,13 +238,16 @@ The declarations section returns the negotiated contract. If the agent had decla
 
 **Schema:** [`sync-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json)
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "e7a40a15-2d54-4a4b-8d0b-3f7a1c9b6d52",
   "accounts": [
     {
-      "brand": { "domain": "novamotors.example" },
+      "brand": {
+        "domain": "novamotors.example"
+      },
       "operator": "pinnacle-agency.example",
       "billing": "advertiser",
       "reporting_delivery_configs": [
@@ -250,7 +259,9 @@ The declarations section returns the negotiated contract. If the agent had decla
           "feed_purpose": "pacing",
           "report_definition_id": "streamhaus_delivery_summary_v1",
           "reporting_profile": "streamhaus_delivery_summary_v1",
-          "scope": { "all_media_buys": true },
+          "scope": {
+            "all_media_buys": true
+          },
           "coverage_requirement": "full",
           "required_finality": "snapshot",
           "reconciliation_mode": "delivery_only",
@@ -289,6 +300,7 @@ The same destination can serve several accounts, each bound and authorized separ
 
 **Schema:** [`get-principal-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json)
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json",
@@ -316,7 +328,9 @@ The same destination can serve several accounts, each bound and authorized separ
             "pattern": "file_transfer",
             "destination_id": "pinnacle-archive",
             "active": true,
-            "provider": { "domain": "object-store.example" },
+            "provider": {
+              "domain": "object-store.example"
+            },
             "transport": "s3",
             "location": "s3://pinnacle-reporting/adcp/",
             "accepted_formats": ["parquet"],
@@ -360,6 +374,7 @@ StreamHaus tells the agent's subscriber when its own transitions change the prin
 
 **Schema:** [`principal-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/principal-changed-webhook.json)
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/principal-changed-webhook.json",
@@ -390,6 +405,7 @@ The runnable subset of step 4. Use your own `destination_id` so the sequence is 
 
 **Schema:** [`sync-principal-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json)
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json",
@@ -404,7 +420,9 @@ The runnable subset of step 4. Use your own `destination_id` so the sequence is 
         "pattern": "file_transfer",
         "destination_id": "pinnacle-archive-demo",
         "active": true,
-        "provider": { "domain": "object-store.example" },
+        "provider": {
+          "domain": "object-store.example"
+        },
         "transport": "s3",
         "location": "s3://pinnacle-reporting/adcp/",
         "accepted_formats": ["parquet"],

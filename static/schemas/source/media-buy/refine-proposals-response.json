@@ -229,5 +229,203 @@
       { "required": ["pagination"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "results": [
+        {
+          "source_proposal_id": "proposal_streamhaus_001",
+          "outcome": "revised",
+          "proposals": [
+            {
+              "proposal_id": "proposal_streamhaus_002a",
+              "parent_proposal_id": "proposal_streamhaus_001",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "draft",
+              "name": "Acme Outdoor — premium video",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "premium_video_q4",
+                    "pricing_option_id": "cpm_guaranteed",
+                    "pricing": {
+                      "pricing_option_id": "cpm_guaranteed",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 18
+                    },
+                    "start_time": "2026-10-01T00:00:00Z",
+                    "end_time": "2026-11-01T00:00:00Z"
+                  }
+                ],
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z",
+                "total_budget": {
+                  "amount": 50000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+            }
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "status": "completed",
+      "results": [
+        {
+          "source_proposal_id": "proposal_streamhaus_001",
+          "outcome": "partial",
+          "reason_code": "alternatives_unavailable",
+          "reason": "Two commercially distinct mixes are available at these terms.",
+          "proposals": [
+            {
+              "proposal_id": "proposal_streamhaus_002a",
+              "parent_proposal_id": "proposal_streamhaus_001",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "draft",
+              "name": "Acme Outdoor — premium video",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "premium_video_q4",
+                    "pricing_option_id": "cpm_guaranteed",
+                    "pricing": {
+                      "pricing_option_id": "cpm_guaranteed",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 18
+                    },
+                    "start_time": "2026-10-01T00:00:00Z",
+                    "end_time": "2026-11-01T00:00:00Z"
+                  }
+                ],
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z",
+                "total_budget": {
+                  "amount": 50000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+            },
+            {
+              "proposal_id": "proposal_streamhaus_002b",
+              "parent_proposal_id": "proposal_streamhaus_001",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "draft",
+              "name": "Acme Outdoor — video and native",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "premium_video_q4",
+                    "pricing_option_id": "cpm_guaranteed",
+                    "pricing": {
+                      "pricing_option_id": "cpm_guaranteed",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 17.5
+                    },
+                    "start_time": "2026-10-01T00:00:00Z",
+                    "end_time": "2026-11-01T00:00:00Z"
+                  },
+                  {
+                    "product_id": "native_feed_q4",
+                    "pricing_option_id": "cpm_native",
+                    "pricing": {
+                      "pricing_option_id": "cpm_native",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 16
+                    },
+                    "start_time": "2026-10-01T00:00:00Z",
+                    "end_time": "2026-11-01T00:00:00Z"
+                  }
+                ],
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z",
+                "total_budget": {
+                  "amount": 50000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:ed58dHH_xw98Gxkt8-dCQi9HZKdkIjuJ4NVLoP3txjs"
+            }
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "status": "completed",
+      "results": [
+        {
+          "source_proposal_id": "proposal_streamhaus_001",
+          "outcome": "unable",
+          "reason_code": "constraint_unsatisfiable",
+          "reason": "No eligible inventory can meet the requested fixed CPM ceiling.",
+          "unsatisfied_constraints": [
+            "cpm"
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "status": "completed",
+      "results": [
+        {
+          "source_proposal_id": "proposal_streamhaus_002a",
+          "outcome": "finalized",
+          "proposal": {
+            "proposal_id": "proposal_streamhaus_committed_003",
+            "parent_proposal_id": "proposal_streamhaus_002a",
+            "proposal_kind": "new_media_buy",
+            "proposal_status": "committed",
+            "expires_at": "2026-09-15T10:15:00Z",
+            "name": "Acme Outdoor — premium video",
+            "commercial_terms": {
+              "brand": {
+                "domain": "acmeoutdoor.example"
+              },
+              "purchases": [
+                {
+                  "product_id": "premium_video_q4",
+                  "pricing_option_id": "cpm_guaranteed",
+                  "pricing": {
+                    "pricing_option_id": "cpm_guaranteed",
+                    "pricing_model": "cpm",
+                    "currency": "USD",
+                    "fixed_price": 18
+                  },
+                  "start_time": "2026-10-01T00:00:00Z",
+                  "end_time": "2026-11-01T00:00:00Z"
+                }
+              ],
+              "start_time": "2026-10-01T00:00:00Z",
+              "end_time": "2026-11-01T00:00:00Z",
+              "total_budget": {
+                "amount": 50000,
+                "currency": "USD"
+              }
+            },
+            "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+          }
+        }
+      ],
+      "products": []
+    }
+  ]
 }

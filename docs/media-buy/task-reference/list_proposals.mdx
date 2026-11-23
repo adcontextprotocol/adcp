@@ -15,9 +15,13 @@ testable: false
     Update to the correct version alias after the next release. */}
 **Request schema:** [`/schemas/latest/media-buy/list-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-proposals-request.json)
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
-  "account": { "account_id": "acc_nova_za" },
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/list-proposals-request.json",
+  "account": {
+    "account_id": "acc_nova_za"
+  },
   "opportunity_ids": ["opp_nova_za_q4"],
   "dispositions": ["available"]
 }
@@ -25,9 +29,13 @@ testable: false
 
 To repair after a `proposal.offered` notification, read the proposal named in it with `proposal_ids`. To catch up on a buy after missed notifications, filter by buy:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
-  "account": { "account_id": "acc_nova_za" },
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/list-proposals-request.json",
+  "account": {
+    "account_id": "acc_nova_za"
+  },
   "media_buy_ids": ["mb_nova_za_0412"],
   "dispositions": ["available"]
 }

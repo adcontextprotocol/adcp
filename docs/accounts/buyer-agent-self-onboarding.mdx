@@ -152,8 +152,15 @@ Signature: sig1=:...:
 
 StreamHaus fetches the directory at the named origin, finds the key by thumbprint, verifies the signature, and checks the origin's revocation list. Pinnacle is now **identity-established**: StreamHaus knows exactly which origin is calling, but has not bound it to anything. `get_principal` returns:
 
+{/* schema-example: #/examples/2 */}
 ```json
-{ "status": "completed", "result": { "kind": "unconfigured" } }
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-principal-response.json",
+  "status": "completed",
+  "result": {
+    "kind": "unconfigured"
+  }
+}
 ```
 
 ## 5. Configure the principal

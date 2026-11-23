@@ -64,6 +64,7 @@ Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known U
 
 ## Basic Structure
 
+{/* schema-example: #/examples/20 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -419,6 +420,7 @@ The older `signal_id.source` shape is deprecated and retained only for backwards
 
 A full `adagents.json` signal definition set for an automotive data provider:
 
+{/* schema-example: #/examples/21 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -448,7 +450,11 @@ A full `adagents.json` signal definition set for an automotive data provider:
       "name": "Auto Purchase Propensity",
       "description": "Likelihood score of purchasing any new vehicle in the next 6 months",
       "value_type": "numeric",
-      "range": { "min": 0, "max": 1, "unit": "score" },
+      "range": {
+        "min": 0,
+        "max": 1,
+        "unit": "score"
+      },
       "tags": ["automotive"]
     }
   ],

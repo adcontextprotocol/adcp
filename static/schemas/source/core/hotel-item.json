@@ -169,6 +169,14 @@
       "price": { "amount": 45, "currency": "EUR", "period": "night" },
       "url": "https://acmehostels.com/barcelona/beach",
       "tags": ["budget", "beach"]
+    },
+    {
+      "hotel_id": "grand-amsterdam",
+      "name": "Grand Hotel Amsterdam",
+      "location": {
+        "lat": 52.3676,
+        "lng": 4.9041
+      }
     }
   ]
 }

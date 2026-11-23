@@ -526,5 +526,69 @@
       { "required": ["buyer_approved"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "requested": {
+        "gender": {
+          "values": [
+            "non_binary"
+          ],
+          "include_unknown": false
+        }
+      },
+      "applied": {
+        "gender": {
+          "values": [
+            "non_binary"
+          ],
+          "include_unknown": false
+        }
+      },
+      "equivalent": true,
+      "execution": {
+        "type": "gender_values"
+      }
+    },
+    {
+      "requested": {
+        "age": {
+          "min": 18,
+          "max": 55,
+          "include_unknown": false
+        },
+        "gender": {
+          "values": [
+            "female",
+            "non_binary"
+          ],
+          "include_unknown": true
+        }
+      },
+      "applied": {
+        "age": {
+          "min": 18,
+          "max": 55,
+          "include_unknown": false
+        },
+        "gender": {
+          "values": [
+            "non_binary",
+            "female"
+          ],
+          "include_unknown": true
+        }
+      },
+      "equivalent": true,
+      "execution": {
+        "type": "per_dimension",
+        "age": {
+          "type": "continuous_bounds"
+        },
+        "gender": {
+          "type": "gender_values"
+        }
+      }
+    }
+  ]
 }

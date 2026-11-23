@@ -143,6 +143,12 @@
       "salary": { "min": 5000, "max": 7000, "currency": "USD", "period": "month" },
       "apply_url": "https://novabrands.com/careers/mkt-099",
       "tags": ["remote", "contract"]
+    },
+    {
+      "job_id": "eng-sr-2025-042",
+      "title": "Senior Software Engineer",
+      "company_name": "Acme Corp",
+      "description": "Senior engineer to lead our platform team, designing distributed systems serving millions of daily requests."
     }
   ]
 }

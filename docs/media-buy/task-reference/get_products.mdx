@@ -16,6 +16,7 @@ Discover available advertising products based on campaign requirements using nat
 
 This example uses a seller-issued account ID and the unchanged [published 3.2.1 OpportunityContext](https://adcontextprotocol.org/schemas/3.2.1/core/opportunity-context.json). It validates against the published 3.2.1 request schema, so adopting the binding does not require a protocol upgrade to 3.2.2:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-products-request.json",
@@ -250,8 +251,10 @@ representation.
 Provide exact targeting once during discovery so product availability, pricing,
 and forecasts already reflect the constraints that will be booked:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
   "buying_mode": "brief",
   "brief": "Premium national video for outdoor enthusiasts",
   "filters": {
@@ -263,7 +266,9 @@ and forecasts already reflect the constraints that will be booked:
     "geo_countries": ["US"]
   },
   "required_overlay_support": {
-    "geo_metros": { "systems": ["nielsen_dma"] },
+    "geo_metros": {
+      "systems": ["nielsen_dma"]
+    },
     "placement_selection": true
   }
 }
@@ -492,25 +497,30 @@ constraint. If the buyer will choose IDs later, `required_overlay_support`
 asks for the country, identifier system, place type, and optional catalog
 version that the product must let the buyer select:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
   "buying_mode": "brief",
   "brief": "Local video inventory for a municipal services campaign",
   "targeting_overlay": {
-    "geo_places": [{
-      "country": "NL",
-      "system": "geonames",
-      "system_version": "2026-05",
-      "place_type": "city",
-      "values": ["2759794"]
-    }]
+    "geo_places": [
+      {
+        "country": "NL",
+        "system": "geonames",
+        "system_version": "2026-05",
+        "place_type": "city",
+        "values": ["2759794"]
+      }
+    ]
   },
   "required_overlay_support": {
     "geo_places": {
       "systems": {
         "geonames": {
-          "countries": { "NL": ["city"] },
+          "countries": {
+            "NL": ["city"]
+          },
           "system_versions": ["2026-05"]
         }
       }
@@ -569,6 +579,7 @@ that does not resolve to one unambiguous placement within that set.
 
 Signal-targeting filter example:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
@@ -610,6 +621,7 @@ When combined with `is_fixed_price` or `pricing_structures`, returned product `p
 
 Currency-only filter example:
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
@@ -894,6 +906,7 @@ This is the seller-side wholesale product feed returned by `get_products`. It is
 
 Request:
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
@@ -905,6 +918,7 @@ Request:
 
 Response (wholesale product feed unchanged):
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-response.json",
@@ -1595,20 +1609,41 @@ See the [Refinement guide](/docs/media-buy/product-discovery/refinement) for the
 
 Minimal example:
 
+{/* schema-example: #/examples/8 */}
 ```json test=false
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441027",
   "buying_mode": "refine",
   "refine": [
-    { "scope": "request",                                             "ask": "more video, less display" },
-    { "scope": "product",  "product_id":  "prod_premium_video",       "ask": "add 16:9 format option" },
-    { "scope": "product",  "product_id":  "prod_display_run_of_site", "action": "omit" },
-    { "scope": "proposal", "proposal_id": "prop_awareness_q2",        "ask": "reallocate display budget to video" }
+    {
+      "scope": "request",
+      "ask": "more video, less display"
+    },
+    {
+      "scope": "product",
+      "product_id": "prod_premium_video",
+      "ask": "add 16:9 format option"
+    },
+    {
+      "scope": "product",
+      "product_id": "prod_display_run_of_site",
+      "action": "omit"
+    },
+    {
+      "scope": "proposal",
+      "proposal_id": "prop_awareness_q2",
+      "ask": "reallocate display budget to video"
+    }
   ],
   "filters": {
     "start_date": "2026-04-01",
     "end_date": "2026-04-30",
-    "budget_range": { "min": 200000, "max": 200000, "currency": "USD" }
+    "budget_range": {
+      "min": 200000,
+      "max": 200000,
+      "currency": "USD"
+    }
   }
 }
 ```
@@ -1626,14 +1661,13 @@ Key rules to know before sending:
 
 A seller that understands a well-formed `brief` or `refine` request but deliberately declines to offer products returns the `GetProductsRejected` arm. This is a successful business outcome, not a malformed request or technical failure:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json",
   "status": "rejected",
   "reason": "The requested budget is below the minimum for this inventory.",
-  "suggestions": [
-    "Increase the campaign budget.",
-    "Consider display inventory for this flight."
-  ]
+  "suggestions": ["Increase the campaign budget.", "Consider display inventory for this flight."]
 }
 ```
 

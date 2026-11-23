@@ -174,5 +174,53 @@
       }
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "signal_ref": {
+        "scope": "product",
+        "signal_id": "verified_adults_25_34"
+      },
+      "name": "Verified adults 25–34",
+      "value_type": "binary",
+      "restricted_attributes": [
+        "age"
+      ],
+      "demographic_predicate": {
+        "age": {
+          "min": 25,
+          "max": 34,
+          "include_unknown": false
+        }
+      },
+      "age_determination_bases": [
+        "verified"
+      ]
+    },
+    {
+      "signal_ref": {
+        "scope": "product",
+        "signal_id": "verified_adults_25_34"
+      },
+      "name": "Verified adults 25–34",
+      "value_type": "binary",
+      "restricted_attributes": [
+        "age"
+      ],
+      "demographic_predicate": {
+        "age": {
+          "min": 25,
+          "max": 34,
+          "include_unknown": false
+        }
+      },
+      "ext": {
+        "adcp": {
+          "age_determination_bases": [
+            "verified"
+          ]
+        }
+      }
+    }
+  ]
 }

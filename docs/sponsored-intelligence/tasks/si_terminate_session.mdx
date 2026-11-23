@@ -30,31 +30,13 @@ End an SI session. Either the host or brand agent can initiate termination, with
 
 ### Termination Context Object
 
-Additional details vary by reason:
+Fields depend on the reason:
 
-**For `handoff_transaction`:**
-```json
-{
-  "intent": { /* purchase intent from handoff */ },
-  "context_for_checkout": { /* ACP context */ }
-}
-```
-
-**For `user_exit`:**
-```json
-{
-  "user_signal": "changed_topic",
-  "partial_context": { /* what was discussed */ }
-}
-```
-
-**For `session_timeout`:**
-```json
-{
-  "last_activity": "2026-01-18T10:30:00Z",
-  "timeout_seconds": 300
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary` | string | Summary of the conversation |
+| `transaction_intent` | object | For `handoff_transaction`: what the user wants to buy, with `action` (`purchase` or `subscribe`) and `product` |
+| `cause` | string | For `host_terminated`: why the host ended the session |
 
 ## Response
 
@@ -82,9 +64,8 @@ Suggestions for future engagement:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `suggested_action` | string | What the host might do next |
+| `action` | string | What the host might do next: `save_for_later`, `set_reminder`, `subscribe_updates`, or `none` |
 | `data` | object | Relevant data for the action |
-| `message` | string | Optional message to display |
 
 ## Examples
 
@@ -94,12 +75,14 @@ After receiving `pending_handoff` with `type: "transaction"`:
 
 **Request:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-request.json",
   "session_id": "sess_abc123",
   "reason": "handoff_transaction",
   "termination_context": {
-    "intent": {
+    "transaction_intent": {
       "action": "purchase",
       "product": {
         "type": "flight",
@@ -112,8 +95,11 @@ After receiving `pending_handoff` with `type: "transaction"`:
 
 **Response:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "terminated": true,
   "acp_handoff": {
@@ -142,8 +128,10 @@ When the conversation naturally ends without a transaction:
 
 **Request:**
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-request.json",
   "session_id": "sess_abc123",
   "reason": "handoff_complete"
 }
@@ -151,18 +139,20 @@ When the conversation naturally ends without a transaction:
 
 **Response:**
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "terminated": true,
   "follow_up": {
-    "suggested_action": "save_for_later",
+    "action": "save_for_later",
     "data": {
       "flights_discussed": ["DL628", "DL632"],
       "destination": "BOS",
       "travel_date": "2026-01-27"
-    },
-    "message": "Let me know if you'd like to revisit Boston flights later!"
+    }
   }
 }
 ```
@@ -173,28 +163,29 @@ When the user changes topic or explicitly leaves:
 
 **Request:**
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-request.json",
   "session_id": "sess_abc123",
   "reason": "user_exit",
   "termination_context": {
-    "user_signal": "changed_topic",
-    "partial_context": {
-      "flights_viewed": ["DL628"],
-      "last_topic": "seat selection"
-    }
+    "summary": "The user viewed flight DL628, reached seat selection, and changed the topic."
   }
 }
 ```
 
 **Response:**
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "terminated": true,
   "follow_up": {
-    "suggested_action": "remind_later",
+    "action": "set_reminder",
     "data": {
       "incomplete_booking": {
         "flight": "DL628",
@@ -211,21 +202,25 @@ When the session times out due to inactivity:
 
 **Request:**
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-request.json",
   "session_id": "sess_abc123",
   "reason": "session_timeout",
   "termination_context": {
-    "last_activity": "2026-01-18T10:25:00Z",
-    "timeout_seconds": 300
+    "summary": "No user activity for 300 seconds after 2026-01-18T10:25:00Z."
   }
 }
 ```
 
 **Response:**
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "terminated": true
 }
@@ -237,8 +232,10 @@ When the host ends the session for policy or error reasons:
 
 **Request:**
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-request.json",
   "session_id": "sess_abc123",
   "reason": "host_terminated",
   "termination_context": {
@@ -249,8 +246,11 @@ When the host ends the session for policy or error reasons:
 
 **Response:**
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-terminate-session-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "terminated": true
 }

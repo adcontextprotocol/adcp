@@ -30,5 +30,51 @@
     }
   },
   "required": ["idempotency_key"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "b6c7d8e9-f0a1-4234-b567-234567890123",
+      "media_buy_id": "mb_acme_q2_001",
+      "measurement_period": {
+        "start": "2026-04-01T00:00:00Z",
+        "end": "2026-04-30T23:59:59Z"
+      },
+      "performance_index": 1.35
+    },
+    {
+      "idempotency_key": "d8e9f0a1-b2c3-4456-d789-456789012345",
+      "media_buy_id": "mb_123",
+      "package_id": "pkg_streaming_video",
+      "measurement_period": {
+        "start": "2026-07-01T00:00:00Z",
+        "end": "2026-07-31T23:59:59Z"
+      },
+      "metric": {
+        "scope": "standard",
+        "metric_id": "conversion_value",
+        "qualifier": {
+          "attribution_methodology": "modeled"
+        }
+      },
+      "performance_index": 1.35,
+      "baseline": "control_group",
+      "producer": {
+        "domain": "measurement.example"
+      },
+      "methodology": "geo_incrementality",
+      "methodology_version": "2026-07",
+      "study_ref": "study_42",
+      "evidence": {
+        "sample_size": 14820,
+        "confidence_interval": {
+          "lower": 1.18,
+          "upper": 1.49,
+          "level": 0.95
+        }
+      },
+      "evidence_ref": "https://measurement.example/results/study_42",
+      "as_of": "2026-08-04T12:00:00Z",
+      "final": true
+    }
+  ]
 }

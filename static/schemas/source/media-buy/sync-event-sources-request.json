@@ -101,5 +101,25 @@
     "idempotency_key",
     "account"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "c9f3d6a7-5678-48e4-5678-9012345abcde",
+      "account": {
+        "account_id": "acct_12345"
+      }
+    },
+    {
+      "idempotency_key": "909a0027-9874-448d-a514-6fa5f74b6932",
+      "account": {
+        "account_id": "acct_12345"
+      },
+      "event_sources": [
+        {
+          "event_source_id": "web_pixel",
+          "archived": true
+        }
+      ]
+    }
+  ]
 }

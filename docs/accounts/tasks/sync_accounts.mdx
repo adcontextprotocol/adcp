@@ -150,12 +150,16 @@ Don't put an operator's buying-platform account ID in `account_id`. That value b
 
 To change an attribute, such as `brand.countries` or `billing`, send a settings-update entry that names the account by `account_id`. The following entry changes the countries:
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "attribute-update-018f24c0-65d1-7c3a",
   "accounts": [
     {
-      "account": { "account_id": "acc_nova_pinnacle" },
+      "account": {
+        "account_id": "acc_nova_pinnacle"
+      },
       "revision": 7,
       "brand": {
         "domain": "nova-athletics.example",
@@ -367,14 +371,22 @@ The standard challenge is an HTTPS POST to the candidate `url` with a JSON body 
 
 The receiver proves control by returning HTTP `2xx` with a JSON body containing exactly one echo field:
 
+{/* schema-example: #/examples/0 */}
 ```json
-{ "challenge": "example-challenge-token-000000000000" }
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/webhook-challenge-response.json",
+  "challenge": "example-challenge-token-000000000000"
+}
 ```
 
 Sellers MUST also accept the backward-compatible alias:
 
+{/* schema-example: #/examples/1 */}
 ```json
-{ "token": "example-challenge-token-000000000000" }
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/webhook-challenge-response.json",
+  "token": "example-challenge-token-000000000000"
+}
 ```
 
 The challenge value MUST be cryptographically random, single-use, and scoped to the registration tuple. The RFC 9421 `expires` parameter is the challenge expiry; receivers MUST reject expired challenges, and sellers MUST reject echoes received after that instant. A failed, non-`2xx`, malformed, mismatched, expired, replayed, or timed-out challenge means proof failed. Sellers SHOULD use the same outbound fetch caps as SSRF validation (10 second connect and 10 second read) and SHOULD make at most one initial challenge POST on the `sync_accounts` critical path. A seller MAY retry one transient network failure before returning if it uses the same challenge value and still completes within its request budget; otherwise the buyer retries by re-sending `sync_accounts`.
@@ -410,12 +422,16 @@ The payload is an invalidation signal. It intentionally omits the full account d
 
 Example — register a buyer-side endpoint plus an audit bus on an account-id namespace account:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
   "accounts": [
     {
-      "account": { "account_id": "acc_acme_pinnacle" },
+      "account": {
+        "account_id": "acc_acme_pinnacle"
+      },
       "notification_configs": [
         {
           "subscriber_id": "buyer-primary",
@@ -437,12 +453,16 @@ Example — register a buyer-side endpoint plus an audit bus on an account-id na
 
 Example — register a wholesale feed mirror subscriber for wholesale product and signal changes:
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "a8af8cf1-89bd-41f3-b27d-7ee7e9f8d2e4",
   "accounts": [
     {
-      "account": { "account_id": "acc_acme_pinnacle" },
+      "account": {
+        "account_id": "acc_acme_pinnacle"
+      },
       "notification_configs": [
         {
           "subscriber_id": "wholesale-feed-sync",
@@ -468,12 +488,16 @@ Example — register a wholesale feed mirror subscriber for wholesale product an
 
 Example — register an account lifecycle subscriber:
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "ee1343bb-7449-4d33-a2c1-c9cc0c75d0f4",
   "accounts": [
     {
-      "account": { "account_id": "acc_acme_pinnacle" },
+      "account": {
+        "account_id": "acc_acme_pinnacle"
+      },
       "notification_configs": [
         {
           "subscriber_id": "account-lifecycle",

@@ -53,6 +53,7 @@ Carlos's buyer agent starts where every AdCP interaction starts: `brand.json`. T
 
 The `type: "rights"` entry in `agents[]` tells the buyer agent everything it needs to know before making any MCP calls — what is licensable, what types of rights, and where.
 
+{/* schema-example: #/examples/32 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -65,7 +66,11 @@ The `type: "rights"` entry in `agents[]` tells the buyer agent everything it nee
   "brands": [
     {
       "id": "daan_janssen",
-      "names": [{ "en": "Daan Janssen" }],
+      "names": [
+        {
+          "en": "Daan Janssen"
+        }
+      ],
       "description": "Dutch Olympic speed skater, 2x gold medalist",
       "industries": ["sports_fitness"],
       "agents": [

@@ -57,35 +57,38 @@ The legacy `pricing` object (with a single `cpm` field) is replaced by a `pricin
 ### Three pricing models
 
 **CPM** — Fixed cost per thousand impressions:
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-pricing-option.json",
   "pricing_option_id": "po_auto_cpm",
   "model": "cpm",
-  "cpm": 2.50,
+  "cpm": 2.5,
   "currency": "USD"
 }
 ```
 
 **Percent of media** — Percentage of media spend, with optional CPM cap:
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-pricing-option.json",
   "pricing_option_id": "po_auto_pom",
   "model": "percent_of_media",
   "percent": 15,
-  "max_cpm": 5.00,
+  "max_cpm": 5,
   "currency": "USD"
 }
 ```
 
 **Flat fee** — Fixed charge per reporting period (monthly licensed segments):
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-pricing-option.json",
   "pricing_option_id": "po_auto_flat",
   "model": "flat_fee",
-  "amount": 10000.00,
+  "amount": 10000,
   "period": "monthly",
   "currency": "USD"
 }
@@ -118,6 +121,7 @@ When activating a signal, pass the selected `pricing_option_id`:
 | No idempotency | `idempotency_key` | Client-generated UUID prevents duplicate billing on retries |
 
 **rc.1 usage report:**
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/report-usage-request.json",
@@ -128,12 +132,14 @@ When activating a signal, pass the selected `pricing_option_id`:
   },
   "usage": [
     {
-      "account": { "account_id": "acct_pinnacle_signals" },
+      "account": {
+        "account_id": "acct_pinnacle_signals"
+      },
       "signal_agent_segment_id": "luxury_auto_intenders",
       "pricing_option_id": "po_auto_cpm",
       "impressions": 4200000,
-      "media_spend": 21000.00,
-      "vendor_cost": 2100.00,
+      "media_spend": 21000,
+      "vendor_cost": 2100,
       "currency": "USD"
     }
   ]

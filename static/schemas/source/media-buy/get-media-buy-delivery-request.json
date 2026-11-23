@@ -514,5 +514,81 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "account": {
+        "brand": {
+          "domain": "novabrands.example"
+        },
+        "operator": "pinnacle-media.example"
+      },
+      "media_buy_ids": [
+        "mb_harbor_a2554"
+      ],
+      "start_date": "2026-08-03",
+      "end_date": "2026-08-24",
+      "reporting_dimensions": {
+        "demographic": {
+          "age_ranges": [
+            {
+              "min": 25,
+              "max": 54,
+              "include_unknown": false
+            }
+          ]
+        },
+        "spot": {
+          "limit": 4
+        }
+      }
+    },
+    {
+      "media_buy_ids": [
+        "mb_12345"
+      ],
+      "start_date": "2026-06-01",
+      "end_date": "2026-06-02",
+      "time_granularity": "hourly",
+      "include_window_breakdown": true
+    },
+    {
+      "media_buy_ids": [
+        "mb_123"
+      ],
+      "reporting_dimensions": {
+        "geo": {
+          "geo_level": "metro",
+          "system": "nielsen_dma",
+          "limit": 10
+        },
+        "device_type": {},
+        "format": {
+          "sort_by": "spend"
+        },
+        "demographic": {
+          "age_ranges": [
+            {
+              "min": 26,
+              "max": 30,
+              "include_unknown": false
+            }
+          ]
+        },
+        "placement": {
+          "limit": 5,
+          "sort_by": "roas"
+        },
+        "property": {},
+        "collection": {},
+        "installment": {},
+        "collection_property": {
+          "sort_by": "impressions"
+        },
+        "installment_property": {},
+        "placement_property": {},
+        "spot": {}
+      }
+    }
+  ]
 }

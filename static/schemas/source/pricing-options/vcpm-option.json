@@ -59,5 +59,14 @@
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "pricing_option_id": "vcpm_usd_guaranteed",
+      "pricing_model": "vcpm",
+      "fixed_price": 18.5,
+      "currency": "USD",
+      "min_spend_per_package": 5000
+    }
+  ]
 }

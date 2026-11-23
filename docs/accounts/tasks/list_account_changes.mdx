@@ -48,10 +48,14 @@ For the complete coverage matrix and rationale, see the
 
 Acquire a high-water checkpoint before reading several snapshots:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/list-account-changes-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_luma_shared" },
+  "account": {
+    "account_id": "acc_luma_shared"
+  },
   "starting_position": "latest",
   "max_results": 100
 }
@@ -177,8 +181,11 @@ The same record served to any other principal on `acc_luma_shared` carries the
 same `change_id`, `resource`, `action`, `origin.kind`, and `changed_paths`, minus
 `idempotency_key`.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/list-account-changes-response.json",
+  "status": "completed",
   "changes": [
     {
       "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
@@ -195,7 +202,9 @@ same `change_id`, `resource`, `action`, `origin.kind`, and `changed_paths`, minu
       },
       "resource_revision": 12,
       "changed_paths": ["/name", "/assets/0"],
-      "repair": { "task": "list_creatives" }
+      "repair": {
+        "task": "list_creatives"
+      }
     }
   ],
   "cursor": "opaque-checkpoint",

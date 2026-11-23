@@ -60,13 +60,14 @@ PG and Preferred Deals both use `fixed_price`. The distinction between them is i
 ```
 
 **v3:**
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_fixed",
   "pricing_model": "cpm",
   "currency": "USD",
-  "fixed_price": 25.00
+  "fixed_price": 25
 }
 ```
 
@@ -89,16 +90,17 @@ Rename `fixed_rate` to `fixed_price`. No structural changes.
 ```
 
 **v3:**
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_auction",
   "pricing_model": "cpm",
   "currency": "USD",
-  "floor_price": 10.00,
+  "floor_price": 10,
   "price_guidance": {
-    "p50": 15.00,
-    "p75": 18.00
+    "p50": 15,
+    "p75": 18
   }
 }
 ```
@@ -111,13 +113,14 @@ Two changes:
 
 The v3 `price_guidance` object contains only statistical percentiles:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/price-guidance.json",
-  "p25": 8.50,
-  "p50": 15.00,
-  "p75": 18.00,
-  "p90": 22.00
+  "p25": 8.5,
+  "p50": 15,
+  "p75": 18,
+  "p90": 22
 }
 ```
 
@@ -141,13 +144,14 @@ All fields are optional. Publishers include whichever percentiles they can provi
 ```
 
 **v3:**
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
   "pricing_option_id": "dooh_times_square",
   "pricing_model": "flat_rate",
   "currency": "USD",
-  "fixed_price": 50000.00,
+  "fixed_price": 50000,
   "parameters": {
     "type": "dooh",
     "duration_hours": 24,
@@ -167,17 +171,18 @@ Sponsorship flat_rate options that had no `parameters` in v2 continue to omit it
 
 v3 adds an optional `min_spend_per_package` field to all pricing options:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_premium",
   "pricing_model": "cpm",
   "currency": "USD",
-  "floor_price": 15.00,
-  "min_spend_per_package": 5000.00,
+  "floor_price": 15,
+  "min_spend_per_package": 5000,
   "price_guidance": {
-    "p50": 22.00,
-    "p75": 28.00
+    "p50": 22,
+    "p75": 28
   }
 }
 ```

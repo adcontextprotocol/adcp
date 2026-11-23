@@ -906,6 +906,50 @@
         "rejected": 1,
         "archived": 0
       }
+    },
+    {
+      "status": "completed",
+      "query_summary": {
+        "total_matching": 1,
+        "returned": 1,
+        "filters_applied": [
+          "status=approved"
+        ]
+      },
+      "pagination": {
+        "has_more": false,
+        "total_count": 1
+      },
+      "creatives": [
+        {
+          "creative_id": "ft_88201",
+          "platform_id": "cr_400918",
+          "revision_id": "rev_2026_08_23_01",
+          "seller_revision": 7,
+          "name": "Holiday Sale - Medium Rectangle",
+          "format_kind": "image",
+          "status": "approved",
+          "created_date": "2026-01-15T10:30:00Z",
+          "updated_date": "2026-01-15T14:20:00Z",
+          "concept_id": "concept_holiday_2026",
+          "concept_name": "Holiday 2026 Campaign",
+          "variables": [
+            {
+              "variable_id": "headline_text",
+              "name": "Headline",
+              "variable_type": "text",
+              "default_value": "Holiday Sale - 50% Off",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "format_summary": {
+        "display_static_300x250": 1
+      },
+      "status_summary": {
+        "approved": 1
+      }
     }
   ]
 }

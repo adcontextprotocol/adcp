@@ -173,41 +173,51 @@ For a seller that advertises `creative.has_creative_library: true`, sync a finis
 
 For example, the initial sync can contain the full asset and no package reference:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
-  "account": { "account_id": "acct_acme_2026" },
+  "account": {
+    "account_id": "acct_acme_2026"
+  },
   "idempotency_key": "ba8fe15a-e451-486c-9cfb-4d0fdde22efa",
-  "creatives": [{
-    "creative_id": "acme_video_001",
-    "revision_id": "acme_video_001_v1",
-    "name": "Holiday Sale 30s",
-    "format_kind": "video_hosted",
-    "assets": {
-      "video": {
-        "asset_type": "video",
-        "url": "https://cdn.acme-example.com/holiday-sale-30s.mp4",
-        "width": 1920,
-        "height": 1080,
-        "duration_ms": 30000
+  "creatives": [
+    {
+      "creative_id": "acme_video_001",
+      "revision_id": "acme_video_001_v1",
+      "name": "Holiday Sale 30s",
+      "format_kind": "video_hosted",
+      "assets": {
+        "video": {
+          "asset_type": "video",
+          "url": "https://cdn.acme-example.com/holiday-sale-30s.mp4",
+          "width": 1920,
+          "height": 1080,
+          "duration_ms": 30000
+        }
       }
     }
-  }]
+  ]
 }
 ```
 
 After the package is created, a separate request assigns the already reviewed library creative:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
-  "account": { "account_id": "acct_acme_2026" },
+  "account": {
+    "account_id": "acct_acme_2026"
+  },
   "idempotency_key": "ce731bf6-ebaf-4ccc-bfe9-bf1a538848b6",
-  "assignment_operations": [{
-    "operation": "assign",
-    "creative_id": "acme_video_001",
-    "package_id": "pkg_premium_video"
-  }]
+  "assignment_operations": [
+    {
+      "operation": "assign",
+      "creative_id": "acme_video_001",
+      "package_id": "pkg_premium_video"
+    }
+  ]
 }
 ```
 

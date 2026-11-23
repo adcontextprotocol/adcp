@@ -4,5 +4,27 @@
   "title": "Signal Pricing Option",
   "deprecated": true,
   "description": "Deprecated — use vendor-pricing-option.json for new implementations. This alias is retained for backward compatibility.",
-  "$ref": "/schemas/core/vendor-pricing-option.json"
+  "$ref": "/schemas/core/vendor-pricing-option.json",
+  "examples": [
+    {
+      "pricing_option_id": "po_auto_cpm",
+      "model": "cpm",
+      "cpm": 2.5,
+      "currency": "USD"
+    },
+    {
+      "pricing_option_id": "po_auto_pom",
+      "model": "percent_of_media",
+      "percent": 15,
+      "max_cpm": 5,
+      "currency": "USD"
+    },
+    {
+      "pricing_option_id": "po_auto_flat",
+      "model": "flat_fee",
+      "amount": 10000,
+      "period": "monthly",
+      "currency": "USD"
+    }
+  ]
 }

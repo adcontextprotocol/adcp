@@ -44,5 +44,55 @@
     "list_id",
     "records"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "list_id": "pl_abc123",
+      "records": [
+        {
+          "identifier": {
+            "type": "domain",
+            "value": "www.nytimes.com"
+          },
+          "impressions": 103
+        },
+        {
+          "identifier": {
+            "type": "domain",
+            "value": "sketchy-site.example"
+          },
+          "impressions": 47
+        },
+        {
+          "identifier": {
+            "type": "android_package",
+            "value": "com.unknown.app"
+          },
+          "impressions": 25
+        }
+      ],
+      "include_compliant": false
+    },
+    {
+      "list_id": "pl_abc123",
+      "records": [
+        {
+          "identifier": {
+            "type": "domain",
+            "value": "www.nytimes.com"
+          },
+          "impressions": 103,
+          "sales_agent_url": "https://legitimate-ssp.example.com"
+        },
+        {
+          "identifier": {
+            "type": "domain",
+            "value": "www.nytimes.com"
+          },
+          "impressions": 50,
+          "sales_agent_url": "https://unauthorized-reseller.example.com"
+        }
+      ]
+    }
+  ]
 }

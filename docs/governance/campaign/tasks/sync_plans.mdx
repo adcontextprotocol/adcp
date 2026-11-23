@@ -128,6 +128,7 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 
 `budget.allocations` partitions a plan's budget by purchase type; `budget.periods` partitions it by time. Use periods when a campaign budget is split across windows: monthly or quarterly flights, a launch burst followed by a sustain phase, or money that has to be spent before a fiscal quarter closes. Without them, the governance agent can confirm that a buy sits inside the plan `flight` and that total commitments stay under `budget.total`, but it cannot stop a buy from spending Q2 money in Q1.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/governance/sync-plans-request.json",
@@ -135,16 +136,31 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
   "plans": [
     {
       "plan_id": "nova-spring-2027",
-      "brand": { "domain": "novabrands.example" },
+      "brand": {
+        "domain": "novabrands.example"
+      },
       "objectives": "Spring launch with a heavier first quarter and a sustain phase.",
-      "flight": { "start": "2027-01-01T00:00:00Z", "end": "2027-07-01T00:00:00Z" },
+      "flight": {
+        "start": "2027-01-01T00:00:00Z",
+        "end": "2027-07-01T00:00:00Z"
+      },
       "budget": {
         "total": 100000,
         "currency": "USD",
         "reallocation_threshold": 5000,
         "periods": [
-          { "budget_period_id": "q1", "start": "2027-01-01T00:00:00Z", "end": "2027-04-01T00:00:00Z", "amount": 60000 },
-          { "budget_period_id": "q2", "start": "2027-04-01T00:00:00Z", "end": "2027-07-01T00:00:00Z", "amount": 40000 }
+          {
+            "budget_period_id": "q1",
+            "start": "2027-01-01T00:00:00Z",
+            "end": "2027-04-01T00:00:00Z",
+            "amount": 60000
+          },
+          {
+            "budget_period_id": "q2",
+            "start": "2027-04-01T00:00:00Z",
+            "end": "2027-07-01T00:00:00Z",
+            "amount": 40000
+          }
         ]
       }
     }

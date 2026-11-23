@@ -145,5 +145,155 @@
     }
   },
   "required": ["collection_id", "name"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "collection_id": "northstar_weekly",
+      "name": "Northstar Weekly",
+      "kind": "publication",
+      "cadence": "weekly",
+      "status": "active",
+      "deadline_policy": {
+        "booking_lead_days": 10,
+        "cancellation_lead_days": 5,
+        "material_stages": [
+          {
+            "stage": "final",
+            "lead_days": 3,
+            "label": "Production-ready PDF"
+          }
+        ],
+        "business_days_only": true
+      }
+    },
+    {
+      "collection_id": "pinnacle_challenge",
+      "name": "The Pinnacle Challenge",
+      "description": "Competition reality collection with extreme physical and mental challenges",
+      "genre": [
+        "IAB1",
+        "IAB1-6"
+      ],
+      "genre_taxonomy": "iab_content_3.0",
+      "language": "en",
+      "content_rating": {
+        "system": "tv_parental",
+        "rating": "TV-PG"
+      },
+      "cadence": "weekly",
+      "season": "1",
+      "status": "active",
+      "production_quality": "professional",
+      "images": [
+        {
+          "asset_type": "image",
+          "url": "https://cdn.acmestreaming.example.com/pinnacle-challenge/poster.jpg",
+          "width": 1200,
+          "height": 675,
+          "alt_text": "The Pinnacle Challenge key art"
+        }
+      ],
+      "sample_content": [
+        {
+          "asset_type": "published_post",
+          "post_url": "https://video.example.com/watch/pinnacle-challenge-s1e3",
+          "platform": "video.example.com"
+        }
+      ],
+      "talent": [
+        {
+          "role": "host",
+          "name": "Jordan Vega",
+          "brand_ref": {
+            "domain": "jordanvega.example.com"
+          },
+          "brand_url": "https://jordanvega.example.com/brand.json"
+        }
+      ],
+      "distribution": [
+        {
+          "publisher_domain": "youtube.com",
+          "identifiers": [
+            {
+              "type": "youtube_channel_id",
+              "value": "UCexample123456"
+            }
+          ]
+        },
+        {
+          "publisher_domain": "acmestreaming.example.com",
+          "identifiers": [
+            {
+              "type": "imdb_id",
+              "value": "tt9876543"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "retro_news",
+      "kind": "channel",
+      "name": "Acme Retro News",
+      "status": "active",
+      "distribution": [
+        {
+          "publisher_domain": "hoststream.example",
+          "property_ids": [
+            "hoststream_ctv"
+          ],
+          "identifiers": [
+            {
+              "type": "platform_channel_id",
+              "value": "channel_942"
+            },
+            {
+              "type": "gracenote_id",
+              "value": "example-channel-id"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "apex_finals_2026",
+      "name": "Apex Championship Finals 2026",
+      "genre": [
+        "IAB17",
+        "IAB17-12"
+      ],
+      "genre_taxonomy": "iab_content_3.0",
+      "cadence": "event",
+      "status": "upcoming",
+      "special": {
+        "name": "Apex Championship Finals 2026",
+        "category": "championship",
+        "starts": "2026-05-18T19:00:00Z",
+        "ends": "2026-05-25T23:00:00Z"
+      },
+      "talent": [
+        {
+          "role": "host",
+          "name": "Deshawn Moreaux"
+        }
+      ]
+    },
+    {
+      "collection_id": "ember_s3",
+      "name": "The Ember",
+      "description": "Award-winning drama following a chef navigating the pressure of running a top restaurant",
+      "genre": [
+        "IAB1",
+        "IAB1-7"
+      ],
+      "genre_taxonomy": "iab_content_3.0",
+      "cadence": "weekly",
+      "status": "active",
+      "limited_series": {
+        "total_installments": 8,
+        "starts": "2026-02-28T21:00:00Z",
+        "ends": "2026-04-18T21:00:00Z"
+      }
+    }
+  ]
 }

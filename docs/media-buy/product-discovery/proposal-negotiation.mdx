@@ -73,6 +73,7 @@ Do not flatten task errors and negotiation outcomes into one exception type.
 
 For example, if StreamHaus explicitly omits `criteria`, the task fails before any proposal is created:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/core/protocol-envelope.json",
@@ -96,6 +97,7 @@ For example, if StreamHaus explicitly omits `criteria`, the task fails before an
 
 Sam requests a USD 50,000 ceiling, a CPM ceiling, US/Canada criteria, a product change, and three distinct alternatives. The prose asks for subjective reach optimization only:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-request.json",
@@ -105,18 +107,30 @@ Sam requests a USD 50,000 ceiling, a CPM ceiling, US/Canada criteria, a product 
       "proposal_id": "proposal_streamhaus_001",
       "action": "revise",
       "constraints": {
-        "total_budget": { "max": 50000, "currency": "USD" },
-        "cpm": { "max": 18, "currency": "USD" },
-        "flight": { "end_no_earlier_than": "2026-10-31T23:59:59Z" }
+        "total_budget": {
+          "max": 50000,
+          "currency": "USD"
+        },
+        "cpm": {
+          "max": 18,
+          "currency": "USD"
+        },
+        "flight": {
+          "end_no_earlier_than": "2026-10-31T23:59:59Z"
+        }
       },
       "product_changes": {
         "premium_video_q4": "include",
         "display_standard_q4": "omit"
       },
       "criteria": {
-        "targeting_overlay": { "geo_countries": ["US", "CA"] }
+        "targeting_overlay": {
+          "geo_countries": ["US", "CA"]
+        }
       },
-      "alternatives": { "count": 3 },
+      "alternatives": {
+        "count": 3
+      },
       "ask": "Use materially different mixes and prioritize reach."
     }
   ]
@@ -158,6 +172,7 @@ For example, the first refinement's hard budget constraint uses `/refinements/0/
 
 A fully satisfied revision returns new immutable drafts and no failure prose:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-response.json",
@@ -174,7 +189,9 @@ A fully satisfied revision returns new immutable drafts and no failure prose:
           "proposal_status": "draft",
           "name": "Acme Outdoor — premium video",
           "commercial_terms": {
-            "brand": { "domain": "acmeoutdoor.example" },
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
             "purchases": [
               {
                 "product_id": "premium_video_q4",
@@ -191,7 +208,10 @@ A fully satisfied revision returns new immutable drafts and no failure prose:
             ],
             "start_time": "2026-10-01T00:00:00Z",
             "end_time": "2026-11-01T00:00:00Z",
-            "total_budget": { "amount": 50000, "currency": "USD" }
+            "total_budget": {
+              "amount": 50000,
+              "currency": "USD"
+            }
           },
           "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
         }
@@ -215,6 +235,7 @@ Handle `outcome` before reading proposal fields:
 
 A valid counteroffer with only two of the three requested alternatives is `partial`:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-response.json",
@@ -233,7 +254,9 @@ A valid counteroffer with only two of the three requested alternatives is `parti
           "proposal_status": "draft",
           "name": "Acme Outdoor — premium video",
           "commercial_terms": {
-            "brand": { "domain": "acmeoutdoor.example" },
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
             "purchases": [
               {
                 "product_id": "premium_video_q4",
@@ -250,7 +273,10 @@ A valid counteroffer with only two of the three requested alternatives is `parti
             ],
             "start_time": "2026-10-01T00:00:00Z",
             "end_time": "2026-11-01T00:00:00Z",
-            "total_budget": { "amount": 50000, "currency": "USD" }
+            "total_budget": {
+              "amount": 50000,
+              "currency": "USD"
+            }
           },
           "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
         },
@@ -261,7 +287,9 @@ A valid counteroffer with only two of the three requested alternatives is `parti
           "proposal_status": "draft",
           "name": "Acme Outdoor — video and native",
           "commercial_terms": {
-            "brand": { "domain": "acmeoutdoor.example" },
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
             "purchases": [
               {
                 "product_id": "premium_video_q4",
@@ -290,7 +318,10 @@ A valid counteroffer with only two of the three requested alternatives is `parti
             ],
             "start_time": "2026-10-01T00:00:00Z",
             "end_time": "2026-11-01T00:00:00Z",
-            "total_budget": { "amount": 50000, "currency": "USD" }
+            "total_budget": {
+              "amount": 50000,
+              "currency": "USD"
+            }
           },
           "terms_digest": "sha256:ed58dHH_xw98Gxkt8-dCQi9HZKdkIjuJ4NVLoP3txjs"
         }
@@ -303,6 +334,7 @@ A valid counteroffer with only two of the three requested alternatives is `parti
 
 An honest refusal that produces no draft uses the same response envelope but no proposal field:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-response.json",
@@ -346,6 +378,7 @@ A seller may return `status: "submitted"` with a `task_id` when a complex multi-
 
 Finalization changes no terms:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-request.json",
@@ -363,6 +396,7 @@ A finalize batch contains only finalize entries. The seller preflights every sou
 
 The successful result is singular and committed; its commercial terms and digest are unchanged:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-response.json",
@@ -379,7 +413,9 @@ The successful result is singular and committed; its commercial terms and digest
         "expires_at": "2026-09-15T10:15:00Z",
         "name": "Acme Outdoor — premium video",
         "commercial_terms": {
-          "brand": { "domain": "acmeoutdoor.example" },
+          "brand": {
+            "domain": "acmeoutdoor.example"
+          },
           "purchases": [
             {
               "product_id": "premium_video_q4",
@@ -396,7 +432,10 @@ The successful result is singular and committed; its commercial terms and digest
           ],
           "start_time": "2026-10-01T00:00:00Z",
           "end_time": "2026-11-01T00:00:00Z",
-          "total_budget": { "amount": 50000, "currency": "USD" }
+          "total_budget": {
+            "amount": 50000,
+            "currency": "USD"
+          }
         },
         "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
       }
@@ -408,11 +447,14 @@ The successful result is singular and committed; its commercial terms and digest
 
 Accept the returned committed proposal and its exact digest before `expires_at`:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/media-buy/accept-proposal-request.json",
   "idempotency_key": "typed-negotiation-sam-accept-0001",
-  "account": { "account_id": "account_pinnacle_acme" },
+  "account": {
+    "account_id": "account_pinnacle_acme"
+  },
   "proposal_id": "proposal_streamhaus_committed_003",
   "proposal_terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
 }
@@ -424,6 +466,7 @@ The seller atomically verifies the proposal ID, digest, hold expiry, authorizati
 
 Fork an accepted snapshot with `change_kind: "amendment"`:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-request.json",
@@ -441,6 +484,7 @@ Fork an accepted snapshot with `change_kind: "amendment"`:
 
 When cancellation requires agreement, fork the accepted snapshot with `change_kind: "cancellation"`:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/media-buy/refine-proposals-request.json",
@@ -607,22 +651,33 @@ An opportunity can stay open after the first response, so a seller can bring the
 
 The buyer gives consent with `opportunity.later_proposals` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals):
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/media-buy/request-proposals-request.json",
   "idempotency_key": "open-opportunity-nova-za-0001",
-  "account": { "account_id": "acc_nova_za" },
-  "brand": { "domain": "novabrands.example" },
+  "account": {
+    "account_id": "acc_nova_za"
+  },
+  "brand": {
+    "domain": "novabrands.example"
+  },
   "brief": "Reach young adults in South Africa around major sporting events, online video and display.",
   "opportunity": {
     "opportunity_id": "opp_nova_za_q4",
     "intent": "live_rfp",
     "status": "open",
-    "planning_horizon": { "start": "2026-10-01", "end": "2026-12-31" },
+    "planning_horizon": {
+      "start": "2026-10-01",
+      "end": "2026-12-31"
+    },
     "later_proposals": {
       "accepted": true,
       "max_count": 5,
-      "min_interval": { "interval": 2, "unit": "days" }
+      "min_interval": {
+        "interval": 2,
+        "unit": "days"
+      }
     }
   }
 }

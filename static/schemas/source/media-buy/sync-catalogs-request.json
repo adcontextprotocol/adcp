@@ -197,6 +197,159 @@
           "reason": "back_in_stock"
         }
       ]
+    },
+    {
+      "idempotency_key": "b8e2c5f6-4567-48d3-4567-89012345abcd",
+      "account": {
+        "brand": {
+          "domain": "acmeoutdoor.com"
+        },
+        "operator": "pinnacle-agency.com"
+      },
+      "catalogs": [
+        {
+          "catalog_id": "acme_outdoor_products",
+          "name": "Acme Outdoor Product Feed",
+          "type": "product",
+          "url": "https://acmeoutdoor.com/feeds/products.json",
+          "feed_format": "shopify",
+          "update_frequency": "daily"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "6b08a731-0c12-4d3d-9cc7-1ac9932f9919",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "catalogs": [
+        {
+          "catalog_id": "product-feed",
+          "name": "Acme Product Catalog",
+          "type": "product",
+          "url": "https://feeds.acmecorp.com/products.xml",
+          "feed_format": "google_merchant_center",
+          "update_frequency": "daily"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "d4a8f1b2-0123-489f-a123-45678901234d",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "item_availability_updates": [
+        {
+          "catalog_id": "product-feed",
+          "catalog_generation": "catgen_01K2ABCD",
+          "item_id": "SKU-12345",
+          "expected_overlay_revision": 0,
+          "action": "suppress",
+          "reason": "out_of_stock",
+          "expires_at": "2027-12-31T23:59:59Z"
+        },
+        {
+          "catalog_id": "product-feed",
+          "catalog_generation": "catgen_01K2ABCD",
+          "item_id": "SKU-67890",
+          "expected_overlay_revision": 3,
+          "action": "restore",
+          "reason": "back_in_stock"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "e5b9a2c3-1234-48af-b234-56789012345e",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "item_availability_queries": [
+        {
+          "catalog_id": "product-feed",
+          "catalog_generation": "catgen_01K2ABCD",
+          "item_id": "SKU-12345"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "f6ca32d4-4567-49ab-8901-234567890abc",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "catalog_ids": [
+        "product-feed"
+      ]
+    },
+    {
+      "idempotency_key": "2ada7ac3-5802-427b-9157-40c0c9db3a8d",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "catalogs": [
+        {
+          "catalog_id": "product-feed",
+          "type": "product",
+          "url": "https://feeds.acmecorp.com/products.xml",
+          "feed_format": "google_merchant_center",
+          "update_frequency": "daily"
+        },
+        {
+          "catalog_id": "inventory-feed",
+          "type": "inventory",
+          "url": "https://feeds.acmecorp.com/inventory.json",
+          "feed_format": "custom",
+          "update_frequency": "hourly"
+        },
+        {
+          "catalog_id": "store-locations",
+          "type": "store",
+          "url": "https://feeds.acmecorp.com/stores.json",
+          "feed_format": "custom",
+          "update_frequency": "weekly"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "9bbc2f62-5312-41b4-a4a4-85d6f6407e51",
+      "account": {
+        "account_id": "acct_restaurants"
+      },
+      "catalogs": [
+        {
+          "catalog_id": "chef-vacancies",
+          "type": "offering",
+          "items": [
+            {
+              "offering_id": "chef-amsterdam-42",
+              "name": "Head Chef - Amsterdam",
+              "landing_url": "https://jobs.acme-restaurants.com/chef-amsterdam-42",
+              "geo_targets": {
+                "countries": [
+                  "NL"
+                ],
+                "regions": [
+                  "NL-NH"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "f683d961-b72f-410b-88bc-fa1f1e49b084",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "dry_run": true,
+      "catalogs": [
+        {
+          "catalog_id": "product-feed",
+          "type": "product",
+          "url": "https://feeds.acmecorp.com/products.xml",
+          "feed_format": "google_merchant_center"
+        }
+      ]
     }
   ]
 }

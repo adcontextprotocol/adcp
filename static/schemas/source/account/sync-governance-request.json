@@ -145,6 +145,31 @@
           ]
         }
       ]
+    },
+    {
+      "idempotency_key": "e5b9f2c3-1234-48a0-1234-56789012345e",
+      "accounts": [
+        {
+          "account": {
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
+            "operator": "pinnacle-media.com"
+          },
+          "governance_agents": [
+            {
+              "url": "https://governance.pinnacle-media.com",
+              "authentication": {
+                "schemes": [
+                  "Bearer"
+                ],
+                "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -339,6 +339,7 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
 
 Because the authenticated caller matches the deployment target, the response includes the activation key:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
@@ -383,7 +384,9 @@ Because the authenticated caller matches the deployment target, the response inc
               }
             ],
             "metrics": {
-              "coverage_rate": { "mid": 0.12 }
+              "coverage_rate": {
+                "mid": 0.12
+              }
             }
           }
         ]
@@ -404,7 +407,7 @@ Because the authenticated caller matches the deployment target, the response inc
         {
           "pricing_option_id": "po_cpm_usd",
           "model": "cpm",
-          "cpm": 3.50,
+          "cpm": 3.5,
           "currency": "USD"
         }
       ]
@@ -417,6 +420,7 @@ Because the authenticated caller matches the deployment target, the response inc
 
 Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in [`report_usage`](/docs/accounts/tasks/report_usage) for direct signal usage or in package-level `signal_targeting_groups` when the signal is selected on a media buy:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
@@ -453,14 +457,14 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
         {
           "pricing_option_id": "po_eco_cpm",
           "model": "cpm",
-          "cpm": 3.50,
+          "cpm": 3.5,
           "currency": "USD"
         },
         {
           "pricing_option_id": "po_eco_pom",
           "model": "percent_of_media",
           "percent": 15,
-          "max_cpm": 1.50,
+          "max_cpm": 1.5,
           "currency": "USD"
         },
         {
@@ -512,6 +516,7 @@ A buyer checking availability across multiple DSP platforms:
 
 A buyer with credentials for both The Trade Desk and Amazon DSP receives keys for both platforms:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
@@ -555,7 +560,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
         {
           "pricing_option_id": "po_cpm_usd",
           "model": "cpm",
-          "cpm": 3.50,
+          "cpm": 3.5,
           "currency": "USD"
         }
       ]
@@ -661,14 +666,26 @@ A non-streaming `SendMessage` response selects the Task branch:
 
 Discover all available deployments across platforms:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-request.json",
   "signal_spec": "Contextual segments for luxury automotive content",
   "destinations": [
-    { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
-    { "type": "platform", "platform": "openx" },
-    { "type": "platform", "platform": "pubmatic", "account": "brand-456-pm" }
+    {
+      "type": "platform",
+      "platform": "index-exchange",
+      "account": "agency-123-ix"
+    },
+    {
+      "type": "platform",
+      "platform": "openx"
+    },
+    {
+      "type": "platform",
+      "platform": "pubmatic",
+      "account": "brand-456-pm"
+    }
   ],
   "countries": ["US"],
   "filters": {
@@ -683,70 +700,73 @@ Discover all available deployments across platforms:
 **Message**: "Found luxury automotive contextual segment from Peer39 with 15% coverage. Live on Index Exchange and OpenX, pending activation on Pubmatic."
 
 **Payload**:
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
   "status": "completed",
   "cache_scope": "public",
   "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
-  "signals": [{
-    "signal_ref": {
-      "scope": "data_provider",
-      "data_provider_domain": "peer39.com",
-      "signal_id": "peer39_luxury_auto"
-    },
-    "signal_agent_segment_id": "peer39_luxury_auto",
-    "name": "Luxury Automotive Context",
-    "description": "Pages with luxury automotive content and high viewability",
-    "signal_type": "marketplace",
-    "data_provider": "Peer39",
-    "coverage_percentage": 15,
-    "deployments": [
-      {
-        "type": "platform",
-        "platform": "index-exchange",
-        "account": "agency-123-ix",
-        "is_live": true,
-        "activation_key": {
-          "type": "segment_id",
-          "segment_id": "ix_agency123_peer39_lux_auto"
-        }
+  "signals": [
+    {
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "peer39.com",
+        "signal_id": "peer39_luxury_auto"
       },
-      {
-        "type": "platform",
-        "platform": "index-exchange",
-        "is_live": true,
-        "activation_key": {
-          "type": "segment_id",
-          "segment_id": "ix_peer39_luxury_auto_gen"
+      "signal_agent_segment_id": "peer39_luxury_auto",
+      "name": "Luxury Automotive Context",
+      "description": "Pages with luxury automotive content and high viewability",
+      "signal_type": "marketplace",
+      "data_provider": "Peer39",
+      "coverage_percentage": 15,
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "index-exchange",
+          "account": "agency-123-ix",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ix_agency123_peer39_lux_auto"
+          }
+        },
+        {
+          "type": "platform",
+          "platform": "index-exchange",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ix_peer39_luxury_auto_gen"
+          }
+        },
+        {
+          "type": "platform",
+          "platform": "openx",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ox_peer39_lux_auto_456"
+          }
+        },
+        {
+          "type": "platform",
+          "platform": "pubmatic",
+          "account": "brand-456-pm",
+          "is_live": false,
+          "estimated_activation_duration_minutes": 60
         }
-      },
-      {
-        "type": "platform",
-        "platform": "openx",
-        "is_live": true,
-        "activation_key": {
-          "type": "segment_id",
-          "segment_id": "ox_peer39_lux_auto_456"
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 2.5,
+          "currency": "USD"
         }
-      },
-      {
-        "type": "platform",
-        "platform": "pubmatic",
-        "account": "brand-456-pm",
-        "is_live": false,
-        "estimated_activation_duration_minutes": 60
-      }
-    ],
-    "pricing_options": [
-      {
-        "pricing_option_id": "po_cpm_usd",
-        "model": "cpm",
-        "cpm": 2.50,
-        "currency": "USD"
-      }
-    ]
-  }]
+      ]
+    }
+  ]
 }
 ```
 
@@ -817,6 +837,7 @@ Two optional fields on each returned signal describe the result:
 
 The per-signal field is named `signal_status` so it cannot be confused with the response's top-level `status`, whose `failed` value selects the failure branch.
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
@@ -877,21 +898,27 @@ When a consumer (storefront, federated marketplace, registry) needs to mirror a 
 
 ### Request
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-request.json",
   "discovery_mode": "wholesale",
-  "account": { "account_id": "acct_123" },
+  "account": {
+    "account_id": "acct_123"
+  },
   "filters": {
     "catalog_types": ["marketplace", "owned"],
     "data_providers": ["acme-data", "nova-insights"]
   },
-  "pagination": { "max_results": 50 }
+  "pagination": {
+    "max_results": 50
+  }
 }
 ```
 
 ### Response
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
@@ -902,7 +929,11 @@ When a consumer (storefront, federated marketplace, registry) needs to mirror a 
   "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
   "signals": [
     {
-      "signal_ref": { "scope": "data_provider", "data_provider_domain": "acme-data.com", "signal_id": "luxury_auto_intenders" },
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "acme-data.com",
+        "signal_id": "luxury_auto_intenders"
+      },
       "signal_agent_segment_id": "sigagent_seg_4421",
       "name": "Luxury Auto Intenders",
       "description": "Households researching premium vehicles in the last 30 days.",
@@ -910,15 +941,31 @@ When a consumer (storefront, federated marketplace, registry) needs to mirror a 
       "data_provider": "Acme Data",
       "coverage_percentage": 18.4,
       "deployments": [
-        { "type": "platform", "platform": "the-trade-desk", "is_live": true,
-          "activation_key": { "type": "segment_id", "segment_id": "ttd_seg_99821" } }
+        {
+          "type": "platform",
+          "platform": "the-trade-desk",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ttd_seg_99821"
+          }
+        }
       ],
       "pricing_options": [
-        { "pricing_option_id": "po_cpm_1", "model": "cpm", "cpm": 2.50, "currency": "USD" }
+        {
+          "pricing_option_id": "po_cpm_1",
+          "model": "cpm",
+          "cpm": 2.5,
+          "currency": "USD"
+        }
       ]
     }
   ],
-  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=", "total_count": 312 }
+  "pagination": {
+    "has_more": true,
+    "cursor": "eyJvIjo1MH0=",
+    "total_count": 312
+  }
 }
 ```
 
@@ -958,6 +1005,7 @@ This is the seller-side wholesale signals feed returned by `get_signals`. It is 
 
 **Request:**
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-request.json",
@@ -968,6 +1016,7 @@ This is the seller-side wholesale signals feed returned by `get_signals`. It is 
 
 **Response (wholesale signals feed unchanged):**
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
@@ -985,8 +1034,11 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
 
 ### Wholesale signals feed changed — full payload returned (abbreviated)
 
+{/* schema-example: #/examples/7 */}
 ```json test=false
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json",
+  "status": "completed",
   "message": "Returning 312 signals (wholesale feed version advanced).",
   "context_id": "ctx-abc-790",
   "wholesale_feed_version": "v2026-05-18T10:15:00Z-acme-rev415",
@@ -994,7 +1046,11 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
   "cache_scope": "public",
   "signals": [
     {
-      "signal_ref": { "scope": "data_provider", "data_provider_domain": "acme-data.com", "signal_id": "luxury_auto_intenders" },
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "acme-data.com",
+        "signal_id": "luxury_auto_intenders"
+      },
       "signal_agent_segment_id": "sigagent_seg_4421",
       "name": "Luxury Auto Intenders",
       "description": "Households researching premium vehicles in the last 30 days.",
@@ -1002,15 +1058,31 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
       "data_provider": "Acme Data",
       "coverage_percentage": 18.4,
       "deployments": [
-        { "type": "platform", "platform": "the-trade-desk", "is_live": true,
-          "activation_key": { "type": "segment_id", "segment_id": "ttd_seg_99821" } }
+        {
+          "type": "platform",
+          "platform": "the-trade-desk",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ttd_seg_99821"
+          }
+        }
       ],
       "pricing_options": [
-        { "pricing_option_id": "po_cpm_1", "model": "cpm", "cpm": 2.50, "currency": "USD" }
+        {
+          "pricing_option_id": "po_cpm_1",
+          "model": "cpm",
+          "cpm": 2.5,
+          "currency": "USD"
+        }
       ]
     }
   ],
-  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=", "total_count": 312 }
+  "pagination": {
+    "has_more": true,
+    "cursor": "eyJvIjo1MH0=",
+    "total_count": 312
+  }
 }
 ```
 
@@ -1080,6 +1152,7 @@ When the agent cannot complete all work within the caller's `time_budget` (or du
 
 To refine previous results, pass back the `signal_ref` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-request.json",
@@ -1160,6 +1233,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 
 ### Response - Partial Success with Warnings
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
@@ -1196,7 +1270,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
         {
           "pricing_option_id": "po_cpm_usd",
           "model": "cpm",
-          "cpm": 4.50,
+          "cpm": 4.5,
           "currency": "USD"
         }
       ]
@@ -1215,7 +1289,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
       }
     },
     {
-      "code": "PRICING_UNAVAILABLE", 
+      "code": "PRICING_UNAVAILABLE",
       "message": "Pricing data temporarily unavailable for Amazon DSP",
       "field": "filters.platforms",
       "suggestion": "Pricing will be available during activation, or try again later",
@@ -1230,6 +1304,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 
 ### Response - No Signals Found
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",

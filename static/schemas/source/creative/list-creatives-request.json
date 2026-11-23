@@ -218,6 +218,73 @@
       "include_purged": true,
       "include_webhook_activity": true,
       "webhook_activity_limit": 25
+    },
+    {
+      "include_assignments": true,
+      "filters": {
+        "indicator_types": [
+          "creative_fatigue"
+        ]
+      },
+      "fields": [
+        "creative_id",
+        "assignments"
+      ],
+      "assignment_projection": "matching",
+      "assignment_limit": 50,
+      "pagination": {
+        "max_results": 100
+      }
+    },
+    {
+      "filters": {
+        "concept_ids": [
+          "concept_holiday_2026"
+        ],
+        "statuses": [
+          "approved"
+        ]
+      },
+      "include_variables": true,
+      "sort": {
+        "field": "created_date",
+        "direction": "desc"
+      }
+    },
+    {
+      "fields": [
+        "creative_id",
+        "name",
+        "format_kind",
+        "status"
+      ],
+      "include_assignments": false,
+      "filters": {
+        "statuses": [
+          "approved"
+        ]
+      },
+      "sort": {
+        "field": "name",
+        "direction": "asc"
+      }
+    },
+    {
+      "filters": {
+        "media_buy_ids": [
+          "mb_summer_2026",
+          "mb_spring_2026"
+        ],
+        "statuses": [
+          "approved"
+        ]
+      },
+      "include_assignments": true,
+      "include_snapshot": true,
+      "sort": {
+        "field": "updated_date",
+        "direction": "desc"
+      }
     }
   ]
 }
