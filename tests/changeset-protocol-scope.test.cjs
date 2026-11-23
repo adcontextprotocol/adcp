@@ -8,7 +8,7 @@ const {
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
   hasProtocolScopedChanges,
-  isArchivedChangesetFile,
+  isChangesetArchivePath,
   isChangesetBumpDowngradeOrRemoval,
   isChangesetBumpEscalation,
   isChangesetClassificationMaintenance,
@@ -19,6 +19,7 @@ const {
   isReleaseAuditChangesetMaintenance,
   isStoryboardBranchRegistrationOnly,
   parseNameStatus,
+  run,
 } = require('../scripts/check-changeset-protocol-scope.cjs');
 
 const protocolChangeset = `---
@@ -377,10 +378,11 @@ violations = findChangesetProtocolScopeViolations(
 );
 assert.ok(archivedOnly(violations), 'A root downgrade stays valid; the pending verdict ignores archived paths');
 
-assert.strictEqual(isArchivedChangesetFile('.changeset/pre/x.md'), true, 'pre/*.md is an archived changeset');
-assert.strictEqual(isArchivedChangesetFile('.changeset/pre/x.json'), false, 'Non-.md files under pre/ are not archived changesets');
-assert.strictEqual(isArchivedChangesetFile('.changeset/pre/sub/x.md'), false, 'Nested pre/ paths are not archived changesets');
-assert.strictEqual(isArchivedChangesetFile('.changeset/pre.json'), false, 'pre.json is not an archived changeset');
+assert.strictEqual(isChangesetArchivePath('.changeset/pre/x.md'), true, 'pre/*.md is in the archive');
+assert.strictEqual(isChangesetArchivePath('.changeset/pre/x.json'), true, 'The whole pre/ subtree is guarded, not only .md files');
+assert.strictEqual(isChangesetArchivePath('.changeset/pre/sub/x.md'), true, 'Nested pre/ paths are guarded');
+assert.strictEqual(isChangesetArchivePath('.changeset/pre.json'), false, 'pre.json is not in the archive');
+assert.strictEqual(isChangesetArchivePath('.changeset/prefix.md'), false, 'A root changeset whose name starts with "pre" is not in the archive');
 
 // release-audit/ branches
 violations = findChangesetProtocolScopeViolations(
@@ -431,7 +433,8 @@ assert.deepStrictEqual(
   'Release-audit branches cannot rename within the archive (one violation per archived path)'
 );
 
-// Release-audit carries changeset-history edits only; a protocol change goes in its own PR.
+// The release-audit/ carve-out needs a changeset-only diff. Mixed with a protocol
+// change, the archive edit fails; any root changesets in it follow the ordinary rules.
 violations = findChangesetProtocolScopeViolations(
   [
     { status: 'M', paths: [archivedPath] },
@@ -628,5 +631,83 @@ assert.strictEqual(
   false,
   'Adding a new changeset is not maintenance-exempt'
 );
+
+// `git diff --name-status -z` output arrives unquoted, so archive paths with
+// non-ASCII, quote, tab or backslash characters are still recognised.
+const zChanges = parseNameStatus(
+  'A\0.changeset/pre/café.md\0A\0.changeset/pre/q"t.md\0A\0.changeset/pre/t\tab.md\0'
+  + 'A\0.changeset/pre/a\\b.md\0R100\0.changeset/x.md\0.changeset/pre/x.md\0M\0server/src/app.ts\0'
+);
+assert.deepStrictEqual(
+  zChanges.map(change => change.status),
+  ['A', 'A', 'A', 'A', 'R100', 'M'],
+  'NUL-delimited name-status parses one record per change, renames included'
+);
+assert.deepStrictEqual(zChanges[4].paths, ['.changeset/x.md', '.changeset/pre/x.md'], 'A NUL-delimited rename keeps both paths');
+assert.strictEqual(
+  findArchivedChangesetViolations(zChanges, 'fix/some-change').length,
+  5,
+  'Every unusual archive file name in NUL-delimited output is guarded'
+);
+
+// End to end against real Git: run() must read unquoted paths and take the
+// head ref from CHANGESET_SCOPE_HEAD_REF, which CI sets empty for fork heads.
+{
+  const { execFileSync } = require('child_process');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'changeset-scope-'));
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  const write = (file, content) => {
+    fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+    fs.writeFileSync(path.join(repo, file), content);
+  };
+  const savedCwd = process.cwd();
+  const savedHeadRef = process.env.CHANGESET_SCOPE_HEAD_REF;
+  const savedError = console.error;
+  const savedLog = console.log;
+
+  const runAs = (headRef, base) => {
+    process.env.CHANGESET_SCOPE_HEAD_REF = headRef;
+    return run([base]);
+  };
+
+  try {
+    git('init', '-q');
+    write('.changeset/pre/existing.md', protocolChangeset);
+    git('add', '-A');
+    git('commit', '-qm', 'base');
+    const base = git('rev-parse', 'HEAD');
+    // Name the local branch like an audit, so an empty head ref must not fall
+    // back to it.
+    git('checkout', '-q', '-b', 'release-audit/3.3.0');
+
+    process.chdir(repo);
+    console.error = () => {};
+    console.log = () => {};
+
+    write('.changeset/pre/café.md', protocolChangeset);
+    git('add', '-A');
+    git('commit', '-qm', 'add a non-ASCII archive file');
+    assert.strictEqual(runAs('fix/some-change', base), 1, 'run() catches an added non-ASCII archive file that git would quote');
+
+    git('reset', '-q', '--hard', base);
+    write('.changeset/pre/existing.md', rewordedProtocolChangeset);
+    git('commit', '-qam', 'reword an archived changeset');
+    assert.strictEqual(runAs('release-audit/3.3.0', base), 0, 'run() honours a trusted release-audit/ head ref');
+    assert.strictEqual(runAs('', base), 1, 'run() with an empty head ref (a fork head in CI) grades the archive edit as ordinary');
+  } finally {
+    console.error = savedError;
+    console.log = savedLog;
+    process.chdir(savedCwd);
+    if (savedHeadRef === undefined) delete process.env.CHANGESET_SCOPE_HEAD_REF;
+    else process.env.CHANGESET_SCOPE_HEAD_REF = savedHeadRef;
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+}
 
 console.log('Changeset protocol scope tests passed.');
