@@ -7307,6 +7307,9 @@ function revisionDigest(value: unknown): string {
  * any product moves it for all of them. Prices (product and nested signal
  * targeting `pricing_options`) are digested separately, so a price-only
  * change moves pricing_version alone (get-products-response.json#pricing_version).
+ * Forecasts are in neither: the version covers the durable offer definition,
+ * not forecast data (list_products.mdx, "Availability forecasts are a per-read
+ * overlay").
  */
 function servedProductFeedRevisions(session: SessionState, ctx: TrainingContext): { feed: string; pricing: string } {
   const productMap = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, { ...entry.product }]));
@@ -7314,7 +7317,12 @@ function servedProductFeedRevisions(session: SessionState, ctx: TrainingContext)
   const structure: Array<[string, unknown]> = [];
   const pricing: Array<[string, unknown]> = [];
   for (const [productId, product] of [...productMap].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    const { pricing_options: pricingOptions, signal_targeting_options: signalOptions, ...rest } = product as unknown as Record<string, unknown>;
+    const {
+      pricing_options: pricingOptions,
+      signal_targeting_options: signalOptions,
+      forecast: _forecast,
+      ...rest
+    } = product as unknown as Record<string, unknown>;
     const signals = Array.isArray(signalOptions) ? signalOptions : undefined;
     structure.push([productId, {
       ...rest,
