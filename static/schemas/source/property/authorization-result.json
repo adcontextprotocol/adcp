@@ -25,7 +25,7 @@
       "description": "Details about the authorization failure (only present for unauthorized status)",
       "properties": {
         "code": {
-          "type": "string",
+          "$ref": "/schemas/core/authorization-violation-code.json",
           "description": "Machine-readable violation code"
         },
         "message": {

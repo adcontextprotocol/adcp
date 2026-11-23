@@ -483,10 +483,7 @@
       "type": "array",
       "description": "Collections available in this product. A non-empty array is the complete roster. `[]` means the seller does not disclose it (undisclosed); absent makes no collection declaration. It bounds nothing. MUST NOT be `[]` on a response served below 3.3. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/collection-selector.json" },
-          { "required": ["collection_ids"] }
-        ]
+        "$ref": "/schemas/core/explicit-collection-selector.json"
       }
     },
     "collection_targeting_allowed": {

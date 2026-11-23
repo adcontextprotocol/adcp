@@ -34,10 +34,7 @@
       "type": "array",
       "description": "A non-empty array is the complete roster. `[]` means undisclosed. MUST NOT be `[]` below 3.3. Each entry references collections declared in an adagents.json by domain and explicit collection_ids. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/collection-selector.json" },
-          { "required": ["collection_ids"] }
-        ]
+        "$ref": "/schemas/core/explicit-collection-selector.json"
       }
     },
     "collection_targeting_allowed": {

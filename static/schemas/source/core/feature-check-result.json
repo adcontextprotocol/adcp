@@ -36,7 +36,8 @@
         "allowed_values": {
           "type": "array",
           "description": "Values that would have been acceptable",
-          "items": {}
+          "items": {},
+          "minItems": 1
         }
       },
       "additionalProperties": true

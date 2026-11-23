@@ -1672,6 +1672,10 @@
           "$ref": "/schemas/core/installment-id.json",
           "description": "Identifier of an installment of a collection."
         },
+        "collection-id": {
+          "$ref": "/schemas/core/collection-id.json",
+          "description": "Publisher-assigned identifier of a collection."
+        },
         "opportunity-id": {
           "$ref": "/schemas/core/opportunity-id.json",
           "description": "Opaque buyer-assigned identifier of a planning cycle, scoped to the seller and account."
@@ -2420,6 +2424,10 @@
           "$ref": "/schemas/core/brand-context.json",
           "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers."
         },
+        "authorization-violation-code": {
+          "$ref": "/schemas/core/authorization-violation-code.json",
+          "description": "Machine-readable reason a sales agent failed the adagents.json authorization check."
+        },
         "brand-agent": {
           "$ref": "/schemas/core/brand-agent.json",
           "description": "Reference to a brand agent that provides brand data via MCP"
@@ -2568,6 +2576,10 @@
           "$ref": "/schemas/core/cancellation.json",
           "description": "Cancellation metadata: when and by whom something was canceled, an optional reason, and when the cancellation was acknowledged."
         },
+        "canonical-collection-ref": {
+          "$ref": "/schemas/core/canonical-collection-ref.json",
+          "description": "Closed collection identity: publisher_domain and collection_id and no other members."
+        },
         "canonical-format-params": {
           "$ref": "/schemas/core/canonical-format-params.json",
           "description": "Parameters for a canonical format selector. They validate against the schema that `format_kind` selects."
@@ -2663,6 +2675,10 @@
         "evidence-max-age": {
           "$ref": "/schemas/core/evidence-max-age.json",
           "description": "The maximum age of evidence, as a duration in seconds, minutes, hours, or days. Campaign-relative durations are not allowed."
+        },
+        "explicit-collection-selector": {
+          "$ref": "/schemas/core/explicit-collection-selector.json",
+          "description": "A collection selector that names explicit collection_ids."
         },
         "feature-check-result": {
           "$ref": "/schemas/core/feature-check-result.json",
@@ -4302,6 +4318,10 @@
         "product-incomplete-scope": {
           "$ref": "/schemas/enums/product-incomplete-scope.json",
           "description": "Part of a product discovery response that a seller could not complete. A product list never contains proposals."
+        },
+        "content-artifact-identifier-type": {
+          "$ref": "/schemas/enums/content-artifact-identifier-type.json",
+          "description": "Public identifier types for a content artifact adjacent to an ad opportunity."
         }
       }
     },

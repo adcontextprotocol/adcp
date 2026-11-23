@@ -12,9 +12,8 @@
   "x-mutates-state": true,
   "properties": {
     "list_id": {
-      "type": "string",
-      "description": "ID of the collection list to delete",
-      "x-entity": "collection_list"
+      "$ref": "/schemas/core/collection-list-id.json",
+      "description": "ID of the collection list to delete"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

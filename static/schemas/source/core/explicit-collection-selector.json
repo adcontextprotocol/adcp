@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/explicit-collection-selector.json",
+  "title": "Explicit Collection Selector",
+  "description": "A collection selector that names explicit collection_ids. The domain-only bulk-grant form of core/collection-selector.json is for authorization scoping, not for composing or selecting collections.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/collection-selector.json"
+    },
+    {
+      "required": [
+        "collection_ids"
+      ]
+    }
+  ]
+}

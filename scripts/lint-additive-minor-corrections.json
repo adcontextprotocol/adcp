@@ -2702,6 +2702,222 @@
         "quote": "\"street\": { \"type\": \"string\", \"description\": \"Street address including building number\", \"maxLength\": 200 }"
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the street of the postal address in core/business-entity.json. A postal address street, which core/address-street.json bounds."
+    },
+    {
+      "file": "collection/delete-collection-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the collection list within the agent\", \"minLength\": 1, \"x-entity\": \"collection_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/collection-list-ref.json. A collection list ID, which core/collection-list-id.json bounds."
+    },
+    {
+      "file": "collection/delete-collection-list-response.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the collection list within the agent\", \"minLength\": 1, \"x-entity\": \"collection_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/collection-list-ref.json. A collection list ID, which core/collection-list-id.json bounds."
+    },
+    {
+      "file": "collection/update-collection-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the collection list within the agent\", \"minLength\": 1, \"x-entity\": \"collection_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/collection-list-ref.json. A collection list ID, which core/collection-list-id.json bounds."
+    },
+    {
+      "file": "property/delete-property-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/property-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the property list within the agent\", \"minLength\": 1, \"x-entity\": \"property_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/property-list-ref.json. A property list ID, which core/property-list-id.json bounds."
+    },
+    {
+      "file": "property/delete-property-list-response.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/property-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the property list within the agent\", \"minLength\": 1, \"x-entity\": \"property_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/property-list-ref.json. A property list ID, which core/property-list-id.json bounds."
+    },
+    {
+      "file": "property/update-property-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/property-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the property list within the agent\", \"minLength\": 1, \"x-entity\": \"property_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/property-list-ref.json. A property list ID, which core/property-list-id.json bounds."
+    },
+    {
+      "file": "collection/get-collection-list-response.json",
+      "pointer": "/properties/collections/items/properties/collection_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Collection ID from the publisher's adagents.json collection catalog.\", \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on collection_id in core/collection-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "collection/get-collection-list-response.json",
+      "pointer": "/properties/collections/items/properties/collection_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a collection ID's length; 3.3.0-beta.1 through rc.3 published this bound on collection_id in core/canonical-installment-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "collection/get-collection-list-response.json",
+      "pointer": "/properties/collections/items/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection-ref.json",
+      "pointer": "/properties/collection_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a collection ID's length; 3.3.0-beta.1 through rc.3 published this bound on collection_id in core/canonical-installment-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "core/installment-ref.json",
+      "pointer": "/properties/installment_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds an installment ID's length; 3.3.0-beta.1 through rc.3 published this bound on installment_id in core/canonical-installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/installment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on installment_id in core/installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/installment_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds an installment ID's length; 3.3.0-beta.1 through rc.3 published this bound on installment_id in core/canonical-installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/derivative_of/properties/installment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on installment_id in core/installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/derivative_of/properties/installment_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds an installment ID's length; 3.3.0-beta.1 through rc.3 published this bound on installment_id in core/canonical-installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/topics",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment.json",
+        "quote": "\"topics\": { \"type\": \"array\", \"description\": \"Content topics for this installment. Uses the same taxonomy as the collection's genre_taxonomy when present. Enables installment-level brand safety evaluation beyond content_rating.\", \"items\": { \"type\": \"string\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.3.0-beta.1 through rc.3 published this bound on topics in core/canonical-installment.json, the compact view of the same installment. An installment's topics."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/guest_talent",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment.json",
+        "quote": "\"guest_talent\": { \"type\": \"array\", \"description\": \"Installment-specific guests and talent. Additive to the collection's recurring talent.\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/talent.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.3.0-beta.1 through rc.3 published this bound on guest_talent in core/canonical-installment.json, the compact view of the same installment. An installment's guest talent."
+    },
+    {
+      "file": "property/validation-result.json",
+      "pointer": "/properties/features/items/properties/requirement/properties/allowed_values",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/feature-requirement.json",
+        "quote": "\"allowed_values\": { \"type\": \"array\", \"description\": \"Values that pass the requirement (for binary/categorical features)\", \"items\": {}, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on allowed_values in core/feature-requirement.json. The echoed requirement's allowed values, which the buyer set under that bound."
     }
   ]
 }

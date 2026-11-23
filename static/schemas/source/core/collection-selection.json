@@ -21,16 +21,7 @@
           "type": "array",
           "description": "Complete required collection set as domain-qualified selectors with explicit collection_ids; the domain-only bulk-grant form is authorization scoping, not selection. publisher_domain may be an external channel owner's domain.",
           "items": {
-            "allOf": [
-              {
-                "$ref": "/schemas/core/collection-selector.json"
-              },
-              {
-                "required": [
-                  "collection_ids"
-                ]
-              }
-            ]
+            "$ref": "/schemas/core/explicit-collection-selector.json"
           },
           "minItems": 1,
           "uniqueItems": true

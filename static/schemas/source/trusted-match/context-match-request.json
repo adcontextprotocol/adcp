@@ -69,19 +69,8 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
-            "description": "Identifier type. 'url' for web pages, 'url_hash' for URL-addressable content the publisher prefers not to share directly (buyer matches against pre-crawled index), 'eidr' for film/TV (EIDR DOI), 'gracenote' for music/TV (Gracenote TMS ID), 'isrc' for music recordings (International Standard Recording Code), 'gtin' for products (Global Trade Item Number — UPC, EAN, ISBN-13), 'rss_guid' for podcast episodes (RSS GUID), 'isbn' for books, 'custom' for publisher-defined identifiers.",
-            "enum": [
-              "url",
-              "url_hash",
-              "eidr",
-              "gracenote",
-              "isrc",
-              "gtin",
-              "rss_guid",
-              "isbn",
-              "custom"
-            ]
+            "$ref": "/schemas/enums/content-artifact-identifier-type.json",
+            "description": "Identifier type. 'url' for web pages, 'url_hash' for URL-addressable content the publisher prefers not to share directly (buyer matches against pre-crawled index), 'eidr' for film/TV (EIDR DOI), 'gracenote' for music/TV (Gracenote TMS ID), 'isrc' for music recordings (International Standard Recording Code), 'gtin' for products (Global Trade Item Number — UPC, EAN, ISBN-13), 'rss_guid' for podcast episodes (RSS GUID), 'isbn' for books, 'custom' for publisher-defined identifiers."
           },
           "value": {
             "type": "string",
