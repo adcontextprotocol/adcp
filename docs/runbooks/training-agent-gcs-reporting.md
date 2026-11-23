@@ -465,6 +465,33 @@ the saved reader grant. A 403, a current tombstone, or a synthesized response
 does not pass. Retain old-generation 404s and current tombstone/inventory
 evidence. Do not delete the bucket or schema to make a revocation test pass.
 
+### Suspending a subscriber that stops accepting deliveries
+
+A subscriber that answers with 5xx or 429, times out, or cannot be reached
+keeps each reporting notification on its account retrying until the SDK
+abandons it after 100 attempts, and every new notification starts again. An
+administrator can suspend it without the owning principal's credential:
+
+```bash
+# Subscribers, active state and outcomes of the account's latest 200 attempts.
+curl -sS -H "Authorization: Bearer $ADMIN_API_KEY" -H "X-Admin-Operator: <you>" \
+  https://<host>/api/admin/training-agent/reporting/subscribers
+curl -sS -X POST -H "Authorization: Bearer $ADMIN_API_KEY" -H "X-Admin-Operator: <you>" \
+  -H 'Content-Type: application/json' --data '{"reason":"<why>"}' \
+  https://<host>/api/admin/training-agent/reporting/subscribers/<account_id>/<subscriber_id>/suspend
+```
+
+`.../resume` turns it back on. Both need a `reason` of 5–500 characters,
+write a `registry_audit_log` row (`training_reporting_subscriber_suspended`
+or `_resumed`) and are idempotent. Suspension only clears the subscription's
+`active` flag, so its destination generation and proof survive and resuming
+needs no new challenge. A suspended subscriber gets no new deliveries; a
+pending notification settles it as undelivered on its next claim instead of
+retrying, and its outbox retries are suppressed. The whole subscription set is
+revalidated on write, so if any destination on the account, this one
+included, no longer validates (for example its host stopped resolving) the
+route answers 422 and the owning principal must replace the set.
+
 ## Rollout and failure recovery
 
 Before enabling the existing Fly application, retain: the reviewed image/head,
