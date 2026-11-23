@@ -43,6 +43,7 @@ import { setupPromptMetricsRoutes } from "./admin/prompt-metrics.js";
 import { setupIntegrityRoutes } from "./admin/integrity.js";
 import { setupRegistryReviewRoutes } from "./admin/registry-review.js";
 import { setupAdminAgentsRoutes } from "./admin/agents.js";
+import { setupTrainingReportingRoutes } from "./admin/training-reporting.js";
 import { createAAOAdminRouter } from "./aao-admin.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
@@ -198,6 +199,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Cross-org agent removal (rogue / disputed registrations)
   setupAdminAgentsRoutes(apiRouter);
+
+  // Training agent reporting webhook subscribers: suspend and resume
+  setupTrainingReportingRoutes(apiRouter);
 
   // Unified newsletter admin routes
   for (const nlConfig of getAllNewsletters()) {
