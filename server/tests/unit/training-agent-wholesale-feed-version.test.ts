@@ -136,6 +136,29 @@ describe('training agent wholesale feed version covers the built-in catalogue', 
     expect(probe.pricing_version).not.toBe(first.pricing_version);
   });
 
+  it('ignores forecast-only changes (forecast is not part of the durable offer definition)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const first = await wholesale(server);
+    const productId = (first.products as Array<{ product_id: string }>)[0].product_id;
+    const listedFirst = await call(server, 'list_products', { criteria: { product_ids: [productId] } });
+
+    rebuildCatalog(catalog => {
+      const entry = catalog.find(e => e.product.forecast?.points?.[0]?.metrics?.impressions)!;
+      entry.product.forecast.points[0].metrics.impressions.mid += 1;
+    });
+    const fresh = createTrainingAgentServer(DEFAULT_CTX);
+    const probe = await wholesale(fresh, {
+      if_wholesale_feed_version: first.wholesale_feed_version,
+      if_pricing_version: first.pricing_version,
+    });
+    expect(probe.wholesale_feed_version).toBe(first.wholesale_feed_version);
+    expect(probe.pricing_version).toBe(first.pricing_version);
+    expect(probe.unchanged).toBe(true);
+
+    const listedAfter = await call(fresh, 'list_products', { criteria: { product_ids: [productId] } });
+    expect(listedAfter.feed_version).toBe(listedFirst.feed_version);
+  });
+
   it('is independent of filters and pagination', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const all = await wholesale(server);
