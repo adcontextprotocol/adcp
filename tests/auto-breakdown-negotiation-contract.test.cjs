@@ -114,9 +114,10 @@ describe("automatic breakdown negotiation contract (RFC #6623)", () => {
       );
       assert.ok(dimensionSchema, `missing dimension schema for ${dimension}`);
       assert.ok(dimensionSchema.properties.limit, `missing limit for ${dimension}`);
-      assert.equal(dimensionSchema.properties.limit.type, "integer");
-      assert.equal(dimensionSchema.properties.limit.minimum, 1);
-      assert.equal(dimensionSchema.properties.limit.default, undefined);
+      const limit = resolveSchema(dimensionSchema.properties.limit);
+      assert.equal(limit.type, "integer");
+      assert.equal(limit.minimum, 1);
+      assert.equal(limit.default, undefined);
       assert.equal(
         dimensionSchema.properties.sort_by.$ref,
         "/schemas/enums/sort-metric.json"

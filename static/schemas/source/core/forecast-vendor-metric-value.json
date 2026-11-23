@@ -35,10 +35,8 @@
       "description": "Forecasted play-seconds (creative playout seconds summed across endpoints — screens, speakers, players) the vendor expects to be able to measure. Coverage denominator when the vendor meters exposure duration rather than discrete plays."
     },
     "breakdown": {
-      "title": "Vendor Metric Breakdown",
-      "type": "object",
-      "description": "Optional structured payload for vendor metrics that do not fit a single scalar. Forecast rows SHOULD use ForecastRange values inside breakdown when sub-values are numeric forecasts. Buyers MUST treat this object as opaque without consulting the vendor's documentation.",
-      "additionalProperties": true
+      "$ref": "/schemas/core/vendor-metric-breakdown.json",
+      "description": "Optional structured payload for vendor metrics that do not fit a single scalar. Forecast rows SHOULD use ForecastRange values inside breakdown when sub-values are numeric forecasts. Buyers MUST treat this object as opaque without consulting the vendor's documentation."
     }
   },
   "required": ["vendor", "metric_id", "value"],

@@ -46,11 +46,9 @@
       "description": "Optional qualifier disambiguating this row from sibling rows for the same (vendor, metric_id) — e.g., the same vendor outcome metric reported under 7-day and 30-day attribution windows. Same closed key set as `committed-metric`. When the matching `committed_metrics` entry carries a qualifier, this row MUST carry the identical qualifier so reconciliation joins on `(vendor, metric_id, qualifier)`."
     },
     "breakdown": {
-      "title": "Vendor Metric Breakdown",
-      "type": "object",
+      "$ref": "/schemas/core/vendor-metric-breakdown.json",
       "description": "Optional structured payload for vendor metrics that don't fit a single scalar — panel demographic breakouts, co-view audience composition, incremental reach + frequency + lift decompositions. Free-form; the keys and value semantics are defined by the vendor (see the vendor's `brand.json` measurement-agent docs). Buyers MUST treat this object as opaque without consulting the vendor's documentation. Vendors place any fields beyond the standard envelope (e.g., confidence intervals, panel sizes) inside this object rather than at the top level.",
-      "x-adcp-open-payload": true,
-      "additionalProperties": true
+      "x-adcp-open-payload": true
     }
   },
   "required": ["vendor", "metric_id", "value"],

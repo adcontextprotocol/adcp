@@ -3638,6 +3638,174 @@
         "quote": "\"keyword\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"The keyword to target\" }"
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the keyword of a package keyword target in core/targeting.json keyword_targets[], and a keyword delivery row reports that targeted keyword. Keyword text, which core/keyword.json bounds."
+    },
+    {
+      "file": "core/forecast-point.json",
+      "pointer": "/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the product ID in core/canonical-product.json, and a forecast row's product_id names that product. A product ID, which core/product-id.json bounds."
+    },
+    {
+      "file": "core/canonical-forecast-point.json",
+      "pointer": "/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the product ID in core/canonical-product.json, and a forecast row's product_id names that product. A product ID, which core/product-id.json bounds."
+    },
+    {
+      "file": "account/report-usage-request.json",
+      "pointer": "/properties/usage/items/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/measurement-terms.json",
+      "pointer": "/properties/billing_measurement/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/measurement-window.json",
+      "pointer": "/properties/window_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/supersedes_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/windows/items/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/supersedes_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/measurement-terms.json",
+      "pointer": "/properties/billing_measurement/properties/measurement_window",
+      "bound": "maxLength",
+      "value": 50,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/measurement-window.json",
+        "quote": "\"window_id\": { \"type\": \"string\", \"maxLength\": 50,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on window_id in core/measurement-window.json, and the billing measurement window references a window_id from the product's reporting_capabilities.measurement_windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/canonical-measurement-terms.json",
+      "pointer": "/properties/billing_measurement/properties/measurement_window",
+      "bound": "maxLength",
+      "value": 50,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/measurement-window.json",
+        "quote": "\"window_id\": { \"type\": \"string\", \"maxLength\": 50,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on window_id in core/measurement-window.json, and the billing measurement window references a window_id from the product's reporting_capabilities.measurement_windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-request.json",
+      "pointer": "/properties/reporting_dimensions/properties/device_type/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-request.json",
+      "pointer": "/properties/reporting_dimensions/properties/device_platform/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
     }
   ]
 }

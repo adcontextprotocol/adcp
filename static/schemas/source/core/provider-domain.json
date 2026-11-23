@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/provider-domain.json",
+  "title": "Provider Domain",
+  "description": "Lowercase dotted domain name that identifies a delivery, storage, or data-sharing platform, such as snowflake.com. Single-label and localhost-style names are invalid.",
+  "allOf": [
+    { "$ref": "/schemas/core/domain-name.json" },
+    { "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$" }
+  ]
+}

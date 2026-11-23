@@ -93,7 +93,7 @@
         "transport": { "$ref": "/schemas/core/reporting-transport.json" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
-        "provider": { "type": "object", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": true },
+        "provider": { "$ref": "/schemas/core/delivery-provider.json" },
         "format": { "$ref": "/schemas/enums/reporting-file-format.json" },
         "access_mode": { "$ref": "/schemas/core/reporting-access-mode.json" },
         "producer_identity": {
@@ -101,9 +101,9 @@
           "type": "object",
           "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering. For https_put, provider.domain is the seller operator's domain and identity is the canonical origin of the seller agent that signs every write under the Web Bot Auth profile. The receiver authorizes that origin; it resolves keys only from each write's verified Signature-Agent, never from this field.",
           "properties": {
-            "provider": { "type": "object", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": true },
+            "provider": { "$ref": "/schemas/core/delivery-provider.json" },
             "identity": { "$ref": "/schemas/core/sharing-principal-identity.json" },
-            "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
+            "cloud": { "$ref": "/schemas/enums/delivery-recipient-cloud.json" },
             "region": { "$ref": "/schemas/core/cloud-region.json" }
           },
           "required": ["provider", "identity"],

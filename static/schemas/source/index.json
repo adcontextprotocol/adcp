@@ -77,6 +77,10 @@
           "$ref": "/schemas/core/canonical-installment-ref.json",
           "description": "Closed canonical installment identity for digest-covered terms and request paths"
         },
+        "canonical-makegood-policy": {
+          "$ref": "/schemas/core/canonical-makegood-policy.json",
+          "description": "Compact, closed makegood terms: the remedies a seller offers when a standard or billing measurement is breached."
+        },
         "canonical-product-action": {
           "$ref": "/schemas/core/canonical-product-action.json",
           "description": "Fine-grained action template for compact products"
@@ -380,6 +384,10 @@
         "creative-delivery-metrics": {
           "$ref": "/schemas/core/creative-delivery-metrics.json",
           "description": "Delivery metrics row for one creative"
+        },
+        "creative-delivery-page-limit": {
+          "$ref": "/schemas/core/creative-delivery-page-limit.json",
+          "description": "Maximum number of creatives requested for one page of get_creative_delivery offset pagination."
         },
         "keyword-delivery-metrics": {
           "$ref": "/schemas/core/keyword-delivery-metrics.json",
@@ -844,6 +852,10 @@
         "vehicle-item": {
           "$ref": "/schemas/core/vehicle-item.json",
           "description": "A vehicle listing for vehicle-type catalogs"
+        },
+        "vendor-metric-breakdown": {
+          "$ref": "/schemas/core/vendor-metric-breakdown.json",
+          "description": "Structured payload for a vendor metric that does not fit a single scalar, keyed by the vendor."
         },
         "real-estate-item": {
           "$ref": "/schemas/core/real-estate-item.json",
@@ -1350,6 +1362,10 @@
           "$ref": "/schemas/core/provenance.json",
           "description": "AI provenance and disclosure metadata — declares how content was produced, C2PA references, regulatory disclosure requirements, and third-party verification results"
         },
+        "provider-domain": {
+          "$ref": "/schemas/core/provider-domain.json",
+          "description": "Lowercase dotted domain name that identifies a delivery, storage, or data-sharing platform."
+        },
         "wholesale-feed-webhook": {
           "$ref": "/schemas/core/wholesale-feed-webhook.json",
           "description": "Webhook payload carrying a wholesale feed change event"
@@ -1528,6 +1544,10 @@
           "$ref": "/schemas/core/finality-policy-id.json",
           "description": "Identifier of an immutable finality policy, bound by a report definition."
         },
+        "finalization-deadline-hours": {
+          "$ref": "/schemas/core/finalization-deadline-hours.json",
+          "description": "Maximum number of hours by which the authoritative party must publish a final measurement record."
+        },
         "reporting-issue-id": {
           "$ref": "/schemas/core/reporting-issue-id.json",
           "description": "Seller-issued identifier of one logical reporting issue. Re-emissions and later polls of the same unresolved condition reuse it."
@@ -1544,6 +1564,10 @@
           "$ref": "/schemas/core/reporting-delivery-config-id.json",
           "description": "Caller-selected identifier of a reporting delivery configuration, unique within the authenticated caller and account."
         },
+        "reporting-delivery-sla": {
+          "$ref": "/schemas/core/reporting-delivery-sla.json",
+          "description": "Non-negative ISO 8601 duration after a reporting period ends by which its required revision is due."
+        },
         "reporting-subscription-id": {
           "$ref": "/schemas/core/reporting-subscription-id.json",
           "description": "Identifier of a reporting subscription."
@@ -1551,6 +1575,10 @@
         "reporting-destination-id": {
           "$ref": "/schemas/core/reporting-destination-id.json",
           "description": "Caller-selected logical key of a destination in a principal's reporting_destinations."
+        },
+        "reporting-destination-provider": {
+          "$ref": "/schemas/core/reporting-destination-provider.json",
+          "description": "Closed platform reference, by domain, in a request to provision a reporting destination."
         },
         "reporting-destination-ref": {
           "$ref": "/schemas/core/reporting-destination-ref.json",
@@ -2424,6 +2452,10 @@
           "$ref": "/schemas/core/decline-failure-reason.json",
           "description": "Seller explanation of why it could not apply a requested proposal decline."
         },
+        "delivery-breakdown-limit": {
+          "$ref": "/schemas/core/delivery-breakdown-limit.json",
+          "description": "Maximum number of rows a delivery-reporting breakdown returns."
+        },
         "refinement-result-reason": {
           "$ref": "/schemas/core/refinement-result-reason.json",
           "description": "Seller free text that accompanies the reason code of one proposal refinement result."
@@ -2531,6 +2563,14 @@
         "authorization-violation-code": {
           "$ref": "/schemas/core/authorization-violation-code.json",
           "description": "Machine-readable reason a sales agent failed the adagents.json authorization check."
+        },
+        "automatic-limit-breakdown-controls": {
+          "$ref": "/schemas/core/automatic-limit-breakdown-controls.json",
+          "description": "Limit and ordering controls for an opt-in delivery breakdown with no default limit."
+        },
+        "automatic-limit-paged-breakdown-controls": {
+          "$ref": "/schemas/core/automatic-limit-paged-breakdown-controls.json",
+          "description": "Limit, ordering, and page cursor controls for an opt-in delivery breakdown that pages and has no default limit."
         },
         "brand-agent": {
           "$ref": "/schemas/core/brand-agent.json",
