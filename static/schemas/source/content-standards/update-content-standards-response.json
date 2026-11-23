@@ -17,7 +17,10 @@
           "type": "boolean",
           "const": true,
           "default": true,
-          "description": "Indicates the update was applied successfully"
+          "description": "Indicates the update was applied successfully. Deprecated: the envelope `status` is the single authoritative response state (core/protocol-envelope.json), and this flag is removed in 4.0. Senders keep sending it through 3.x, because 3.x receivers may read it.",
+          "deprecated": true,
+          "x-deprecated-in": "3.3.0",
+          "x-removed-in": "4.0.0"
         },
         "standards_id": {
           "type": "string",
@@ -48,7 +51,10 @@
           "type": "boolean",
           "const": false,
           "default": false,
-          "description": "Indicates the update failed"
+          "description": "Indicates the update failed. Deprecated: the envelope `status` is the single authoritative response state (core/protocol-envelope.json), and this flag is removed in 4.0. Senders keep sending it through 3.x, because 3.x receivers may read it.",
+          "deprecated": true,
+          "x-deprecated-in": "3.3.0",
+          "x-removed-in": "4.0.0"
         },
         "errors": {
           "description": "Errors that occurred during the update"
