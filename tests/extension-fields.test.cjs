@@ -478,7 +478,7 @@ async function runTests() {
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
     // Context is in oneOf branches, not at top level
-    const successBranch = schema.oneOf[0];
+    const successBranch = resolveSchema(schema.oneOf[0], schema);
     const errorBranch = schema.oneOf[1];
 
     validateExtField(successBranch.properties.context, '/schemas/core/context.json');

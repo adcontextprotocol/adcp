@@ -14,7 +14,7 @@
     },
     {
       "title": "CreateMediaBuyCompletion",
-      "$ref": "/schemas/media-buy/create-media-buy-response.json#/oneOf/0"
+      "$ref": "/schemas/media-buy/create-media-buy-success.json"
     },
     {
       "title": "GetCreativeFeaturesCompletion",

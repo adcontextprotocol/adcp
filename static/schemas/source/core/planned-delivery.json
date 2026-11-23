@@ -72,9 +72,8 @@
       "minimum": 0
     },
     "daily_budget_cap": {
-      "type": "number",
-      "description": "Hard aggregate daily spend ceiling the seller will enforce. Governance checks compare it with the authorized execution controls; it does not allocate spend to packages.",
-      "minimum": 0
+      "$ref": "/schemas/core/daily-budget-cap.json",
+      "description": "Hard aggregate daily spend ceiling the seller will enforce. Governance checks compare it with the authorized execution controls; it does not allocate spend to packages."
     },
     "budget_cap_timezone": {
       "$ref": "/schemas/core/iana-timezone.json",

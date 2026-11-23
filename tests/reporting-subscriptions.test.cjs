@@ -625,7 +625,7 @@ test('cutovers never double count and leave at most a sub-period stretch when bo
 });
 
 test('readback exception reasons stay in sync with the coverage enum', () => {
-  const state = read('core/reporting-subscription-state.json').definitions.ReportingSubscriptionAccountExceptions.properties.reasons.items.enum;
+  const state = read('core/reporting-subscription-account-exceptions.json').properties.reasons.items.enum;
   const coverage = read('core/reporting-subscription-coverage.json').definitions.ReportingSubscriptionExclusionReason.enum;
   assert.deepEqual(state, coverage);
 });
@@ -659,15 +659,17 @@ test('readback lists inactive intervals; coverage entries can be per offering', 
   assert.deepEqual(state.properties.inactive_intervals.items.required, ['deactivated_at']);
   const coverage = read('core/reporting-subscription-coverage.json');
   assert.ok(coverage.properties.gaps.items.properties.offering_id);
-  assert.ok(coverage.properties.timezone_cutovers.items.properties.offering_id);
-  assert.match(coverage.properties.timezone_cutovers.items.properties.previous_timezone.description, /Sellers MUST include it/);
+  assert.equal(coverage.properties.timezone_cutovers.items.$ref, '/schemas/core/reporting-timezone-cutover.json');
+  const cutover = read('core/reporting-timezone-cutover.json');
+  assert.ok(cutover.properties.offering_id);
+  assert.match(cutover.properties.previous_timezone.description, /Sellers MUST include it/);
   assert.ok(vState, 'state schema compiles');
 });
 
 test('prior_versions carry the configuration each version had', () => {
   const state = read('core/reporting-subscription-state.json');
-  assert.equal(state.properties.prior_versions.items.$ref, '#/definitions/ReportingSubscriptionPriorVersion');
-  const item = state.definitions.ReportingSubscriptionPriorVersion;
+  assert.equal(state.properties.prior_versions.items.$ref, '/schemas/core/reporting-subscription-prior-version.json');
+  const item = read('core/reporting-subscription-prior-version.json');
   assert.equal(item.properties.configuration.$ref, '/schemas/core/reporting-subscription.json');
   assert.match(item.properties.configuration.description, /Sellers MUST include it/);
 });
@@ -1105,7 +1107,7 @@ test('a grant reduced without get_reporting_status is a loss of authority; one t
   assert.match(rule, /A reduced grant that still lists get_reporting_status is not a loss of authority/);
   const state = read('core/reporting-subscription-state.json');
   assert.match(state.properties.accounts_unauthorized.description, /A grant reduced to allowed_tasks without get_reporting_status is such a loss, listed from the reduction/);
-  assert.match(state.definitions.ReportingSubscriptionUnauthorizedAccount.properties.unauthorized_at.description, /the reduction of its grant to allowed_tasks without get_reporting_status/);
+  assert.match(read('core/reporting-subscription-unauthorized-account.json').properties.unauthorized_at.description, /the reduction of its grant to allowed_tasks without get_reporting_status/);
   assert.match(read('core/account-authorization.json').properties.regranted_at.description, /adding get_reporting_status back is a re-grant/);
 });
 

@@ -79,8 +79,7 @@
             "type": "object",
             "properties": {
               "budget": {
-                "type": "number",
-                "minimum": 0
+                "$ref": "/schemas/core/budget-amount.json"
               }
             },
             "additionalProperties": true

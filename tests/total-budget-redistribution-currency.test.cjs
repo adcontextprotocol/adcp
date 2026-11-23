@@ -429,9 +429,7 @@ test('the committed currency is read from the only field the schemas require', (
     'get_media_buys is the authoritative read: media_buys[].currency is required'
   );
 
-  const createSuccess = readJson('static/schemas/source/media-buy/create-media-buy-response.json').oneOf.find(
-    branch => branch.title === 'CreateMediaBuySuccess'
-  );
+  const createSuccess = readJson('static/schemas/source/media-buy/create-media-buy-success.json');
   assert.equal(
     createSuccess.required.includes('currency'),
     false,

@@ -534,7 +534,8 @@
           "required": ["publisher_domain", "collection_id", "applies_to"],
           "properties": {
             "publisher_domain": {
-              "$ref": "/schemas/core/collection-selector.json#/properties/publisher_domain"
+              "$ref": "/schemas/core/domain-name.json",
+              "description": "Domain where the adagents.json declaring these collections is hosted (e.g., 'mrbeast.com'). The collections array in that file contains the authoritative collection definitions."
             },
             "collection_id": {
               "type": "string",

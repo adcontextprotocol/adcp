@@ -188,7 +188,7 @@
       "minItems": 1,
       "items": {
         "anyOf": [
-          { "$ref": "/schemas/media-buy/product-fields.json#/items" },
+          { "$ref": "/schemas/media-buy/product-field.json" },
           {
             "type": "string",
             "enum": [

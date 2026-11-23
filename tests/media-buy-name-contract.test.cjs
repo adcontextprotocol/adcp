@@ -20,7 +20,10 @@ function load(relativePath) {
 
 function successProperties(relativePath, title) {
   const schema = load(relativePath);
-  return schema.oneOf.find((branch) => branch.title === title).properties;
+  const branches = schema.oneOf.map((branch) =>
+    branch.$ref ? load(branch.$ref.replace(/^\/schemas\//, "")) : branch
+  );
+  return branches.find((branch) => branch.title === title).properties;
 }
 
 const surfaces = [

@@ -208,6 +208,70 @@
           "$ref": "/schemas/core/targeting.json",
           "description": "Strict non-null targeting criteria and effective state"
         },
+        "age-restriction": {
+          "$ref": "/schemas/core/age-restriction.json",
+          "description": "A minimum age that delivery must meet for legal compliance, with its verification requirements."
+        },
+        "browser-families": {
+          "$ref": "/schemas/core/browser-families.json",
+          "description": "Canonical browser families, each listed once."
+        },
+        "targeting-audiences": {
+          "$ref": "/schemas/core/targeting-audiences.json",
+          "description": "First-party CRM audience IDs from sync_audiences to target or suppress."
+        },
+        "targeting-axe-segment": {
+          "$ref": "/schemas/core/targeting-axe-segment.json",
+          "description": "An AXE segment ID, used only by the deprecated AXE targeting fields."
+        },
+        "targeting-collection-lists": {
+          "$ref": "/schemas/core/targeting-collection-lists.json",
+          "description": "Collection list references, each listed once."
+        },
+        "targeting-daypart-targets": {
+          "$ref": "/schemas/core/targeting-daypart-targets.json",
+          "description": "Time windows that delivery is restricted to."
+        },
+        "targeting-device-platforms": {
+          "$ref": "/schemas/core/targeting-device-platforms.json",
+          "description": "Operating-system platforms to target or exclude."
+        },
+        "targeting-device-types": {
+          "$ref": "/schemas/core/targeting-device-types.json",
+          "description": "Device form factors to target or exclude."
+        },
+        "targeting-geo-countries": {
+          "$ref": "/schemas/core/targeting-geo-countries.json",
+          "description": "ISO 3166-1 alpha-2 country codes to target or exclude."
+        },
+        "targeting-geo-metros": {
+          "$ref": "/schemas/core/targeting-geo-metros.json",
+          "description": "Metro areas to target. Each entry names its classification system and values."
+        },
+        "targeting-geo-places": {
+          "$ref": "/schemas/core/targeting-geo-places.json",
+          "description": "Catalog-backed named places to target or exclude."
+        },
+        "targeting-geo-postal-areas": {
+          "$ref": "/schemas/core/targeting-geo-postal-areas.json",
+          "description": "Postal areas to target or exclude."
+        },
+        "targeting-geo-proximity": {
+          "$ref": "/schemas/core/targeting-geo-proximity.json",
+          "description": "Geographic points to target around, each with a travel time, a distance, or a custom boundary."
+        },
+        "targeting-geo-regions": {
+          "$ref": "/schemas/core/targeting-geo-regions.json",
+          "description": "ISO 3166-2 subdivision codes to target or exclude."
+        },
+        "targeting-geo-value-labels": {
+          "$ref": "/schemas/core/targeting-geo-value-labels.json",
+          "description": "Diagnostic labels for targeted ISO country and subdivision codes, keyed by code."
+        },
+        "targeting-store-catchments": {
+          "$ref": "/schemas/core/targeting-store-catchments.json",
+          "description": "Store catchment areas from a synced store catalog to target."
+        },
         "targeting-input": {
           "$ref": "/schemas/core/targeting-input.json",
           "description": "Request-only per-dimension targeting mutations with null-clear semantics"
@@ -333,6 +397,14 @@
           "$ref": "/schemas/core/delivery-metrics.json",
           "description": "Standard delivery metrics for reporting"
         },
+        "dooh-delivery-metrics": {
+          "$ref": "/schemas/core/dooh-delivery-metrics.json",
+          "description": "Delivery metrics specific to digital out-of-home (DOOH) campaigns, such as loop plays, screens used, screen time, and share of voice."
+        },
+        "viewability-metrics": {
+          "$ref": "/schemas/core/viewability-metrics.json",
+          "description": "Viewability measurements for delivered impressions under one viewability standard."
+        },
         "impression-basis-breakdown-entry": {
           "$ref": "/schemas/core/impression-basis-breakdown-entry.json",
           "description": "Experimental. The plays of a DOOH row or forecast point estimated on one impression basis tier, and the impressions they produced"
@@ -340,6 +412,10 @@
         "delivery-metric-aggregate": {
           "$ref": "/schemas/core/delivery-metric-aggregate.json",
           "description": "Cross-buy delivery aggregate partitioned by metric scope and qualifier"
+        },
+        "standard-delivery-metric-aggregate": {
+          "$ref": "/schemas/core/standard-delivery-metric-aggregate.json",
+          "description": "One standard delivery metric value, partitioned by metric scope and qualifier."
         },
         "placement-evidence": {
           "$ref": "/schemas/core/placement-evidence.json",
@@ -649,6 +725,26 @@
           "$ref": "/schemas/core/catalog.json",
           "description": "A typed data feed — structural (offering, product, inventory, store, promotion) or vertical (hotel, flight, job, vehicle, real_estate, education, destination). Can be synced, inline, or fetched from a URL."
         },
+        "catalog-category": {
+          "$ref": "/schemas/core/catalog-category.json",
+          "description": "An item category that filters a catalog, such as beverages/soft-drinks."
+        },
+        "catalog-gtins": {
+          "$ref": "/schemas/core/catalog-gtins.json",
+          "description": "GTIN identifiers that filter a product catalog."
+        },
+        "catalog-item-ids": {
+          "$ref": "/schemas/core/catalog-item-ids.json",
+          "description": "Canonical catalog item keys that filter a catalog."
+        },
+        "catalog-query": {
+          "$ref": "/schemas/core/catalog-query.json",
+          "description": "A natural-language filter for catalog items."
+        },
+        "catalog-tags": {
+          "$ref": "/schemas/core/catalog-tags.json",
+          "description": "Item tags that filter a catalog."
+        },
         "wholesale-feed-event": {
           "$ref": "/schemas/core/wholesale-feed-event.json",
           "description": "A wholesale product feed or wholesale signals feed event carried by wholesale feed webhooks"
@@ -733,9 +829,17 @@
           "$ref": "/schemas/core/vast-tracker-constraints.json",
           "description": "Shared version-aware VAST tracker event and target constraints"
         },
+        "vast-versions": {
+          "$ref": "/schemas/core/vast-versions.json",
+          "description": "A non-empty set of VAST versions."
+        },
         "daast-tracker-constraints": {
           "$ref": "/schemas/core/daast-tracker-constraints.json",
           "description": "Shared DAAST tracker event and target constraints"
+        },
+        "daast-versions": {
+          "$ref": "/schemas/core/daast-versions.json",
+          "description": "A non-empty set of DAAST versions."
         },
         "downstream-connection-requirement": {
           "$ref": "/schemas/core/downstream-connection-requirement.json",
@@ -933,9 +1037,25 @@
           "$ref": "/schemas/core/reporting-subscription-state.json",
           "description": "Experimental: seller readback for a principal-level reporting subscription"
         },
+        "reporting-subscription-account-exceptions": {
+          "$ref": "/schemas/core/reporting-subscription-account-exceptions.json",
+          "description": "An account where a reporting subscription has an open get_reporting_status exception, with the reasons."
+        },
+        "reporting-subscription-prior-version": {
+          "$ref": "/schemas/core/reporting-subscription-prior-version.json",
+          "description": "An earlier version of a reporting subscription, with the configuration that version had."
+        },
+        "reporting-subscription-unauthorized-account": {
+          "$ref": "/schemas/core/reporting-subscription-unauthorized-account.json",
+          "description": "An account a reporting subscription covered whose authority the caller has since lost, with the reporting withheld since."
+        },
         "reporting-subscription-coverage": {
           "$ref": "/schemas/core/reporting-subscription-coverage.json",
           "description": "Experimental: how one reporting subscription covers, excludes, or withholds one account's media buys"
+        },
+        "reporting-timezone-cutover": {
+          "$ref": "/schemas/core/reporting-timezone-cutover.json",
+          "description": "One account timezone change that affects account_timezone-aligned reporting periods."
         },
         "delivery-provider": {
           "$ref": "/schemas/core/delivery-provider.json",
@@ -980,6 +1100,10 @@
         "account-change": {
           "$ref": "/schemas/core/account-change.json",
           "description": "Immutable metadata for one material change to authoritative account-scoped state"
+        },
+        "account-change-origin": {
+          "$ref": "/schemas/core/account-change-origin.json",
+          "description": "The server-derived origin of an account change."
         },
         "account-change-recorded-webhook": {
           "$ref": "/schemas/core/account-change-recorded-webhook.json",
@@ -3079,6 +3203,26 @@
         "webhook-delivery-auth": {
           "$ref": "/schemas/core/webhook-delivery-auth.json",
           "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config."
+        },
+        "budget-amount": {
+          "$ref": "/schemas/core/budget-amount.json",
+          "description": "A non-negative budget amount."
+        },
+        "daily-budget-cap": {
+          "$ref": "/schemas/core/daily-budget-cap.json",
+          "description": "A non-negative hard daily spend ceiling."
+        },
+        "min-spend-target": {
+          "$ref": "/schemas/core/min-spend-target.json",
+          "description": "A non-negative soft lifetime spend target."
+        },
+        "reporting-primary-key": {
+          "$ref": "/schemas/core/reporting-primary-key.json",
+          "description": "The name of one primary key column in canonical reporting rows."
+        },
+        "reporting-reader-compatibility-item": {
+          "$ref": "/schemas/core/reporting-reader-compatibility-item.json",
+          "description": "One reader feature or format constraint required to consume a reporting resource."
         }
       },
       "requirements": {
@@ -4274,6 +4418,18 @@
         "product-incomplete-scope": {
           "$ref": "/schemas/enums/product-incomplete-scope.json",
           "description": "Part of a product discovery response that a seller could not complete. A product list never contains proposals."
+        },
+        "daast-tracker-event": {
+          "$ref": "/schemas/enums/daast-tracker-event.json",
+          "description": "A DAAST player event that a tracker fires on."
+        },
+        "reporting-orchestration": {
+          "$ref": "/schemas/enums/reporting-orchestration.json",
+          "description": "Party responsible for starting, configuring, and monitoring the delivery operation. Independent of destination ownership and the service that moves the data."
+        },
+        "vast-tracker-event": {
+          "$ref": "/schemas/enums/vast-tracker-event.json",
+          "description": "A VAST player event that a tracker fires on."
         }
       }
     },
@@ -4456,6 +4612,34 @@
           "$ref": "/schemas/media-buy/product-purchase.json",
           "description": "Resolved canonical product selection in proposal and accepted commercial snapshots"
         },
+        "product-purchase-audience-evidence-pins": {
+          "$ref": "/schemas/media-buy/product-purchase-audience-evidence-pins.json",
+          "description": "Immutable audience-evidence snapshots selected for package construction."
+        },
+        "product-purchase-catalog-ids": {
+          "$ref": "/schemas/media-buy/product-purchase-catalog-ids.json",
+          "description": "Synchronized account catalog IDs that a product purchase promotes, each listed once."
+        },
+        "product-purchase-end-time": {
+          "$ref": "/schemas/media-buy/product-purchase-end-time.json",
+          "description": "A resolved flight end timestamp."
+        },
+        "product-purchase-format-option-refs": {
+          "$ref": "/schemas/media-buy/product-purchase-format-option-refs.json",
+          "description": "Canonical format options selected from a published product offer."
+        },
+        "product-purchase-optimization-goals": {
+          "$ref": "/schemas/media-buy/product-purchase-optimization-goals.json",
+          "description": "Canonical optimization goals for one product purchase."
+        },
+        "product-purchase-performance-standards": {
+          "$ref": "/schemas/media-buy/product-purchase-performance-standards.json",
+          "description": "Metric thresholds and measurement vendors for one product purchase."
+        },
+        "product-purchase-start-time": {
+          "$ref": "/schemas/media-buy/product-purchase-start-time.json",
+          "description": "A resolved flight start timestamp. The value asap is not accepted."
+        },
         "product-purchase-input": {
           "$ref": "/schemas/media-buy/product-purchase-input.json",
           "description": "Request-only canonical direct product selection with targeting inheritance and null-clear semantics"
@@ -4487,6 +4671,14 @@
         "package-update": {
           "$ref": "/schemas/media-buy/package-update.json",
           "description": "Package update configuration for update_media_buy - identifies package and specifies fields to modify"
+        },
+        "create-media-buy-success": {
+          "$ref": "/schemas/media-buy/create-media-buy-success.json",
+          "description": "Success response - media buy created successfully"
+        },
+        "product-field": {
+          "$ref": "/schemas/media-buy/product-field.json",
+          "description": "One canonical product field that a buyer can request from list_products."
         }
       },
       "tasks": {
@@ -5340,6 +5532,26 @@
         "trust-acknowledgements": {
           "$ref": "/schemas/trust/v1/trust-acknowledgements.json",
           "description": "Bulk acknowledgements sub-document referenced from trust.json acknowledgements_url (experimental)"
+        },
+        "trust-acknowledgement": {
+          "$ref": "/schemas/trust/v1/trust-acknowledgement.json",
+          "description": "This organization's acceptance of a grant another organization published: 'we accept the grant `grantor` gave to `agent_url`, as published via `via`.' Terms are read ONLY from the grantor's document and are never restated here. Not needed when the grantor has the same eTLD+1 as the host serving this document. In the AdCP profile with via 'adcp:adagents' this is intended to supersede brand.json properties[] entries whose relationship is direct, delegated, or ad_network in a future release; brand.json is unchanged in 3.3."
+        },
+        "trust-domain": {
+          "$ref": "/schemas/trust/v1/trust-domain.json",
+          "description": "A lowercase DNS host name (internationalized names in punycode)."
+        },
+        "trust-grant-source": {
+          "$ref": "/schemas/trust/v1/trust-grant-source.json",
+          "description": "Where the grantor publishes the grant being acknowledged. Tokens in the adcp namespace MUST be a grant source AdCP defines: 'adcp:adagents' (the grantor's /.well-known/adagents.json authorized_agents[]) or 'adcp:trust' (the grantor's /.well-known/trust.json grants[])."
+        },
+        "trust-namespaced-token": {
+          "$ref": "/schemas/trust/v1/trust-namespaced-token.json",
+          "description": "A '<namespace>:<name>' token. Each namespace is defined by the protocol that owns it (e.g. 'adcp:' by AdCP). Consumers MUST ignore tokens in namespaces they do not implement."
+        },
+        "trust-open-profiles": {
+          "$ref": "/schemas/trust/v1/trust-open-profiles.json",
+          "description": "Per-protocol data keyed by namespace. Consumers MUST ignore namespaces they do not implement. Nothing in profiles is key material or authority for another namespace."
         }
       }
     },

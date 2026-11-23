@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/viewability-metrics.json",
+  "title": "Viewability Metrics",
+  "description": "Viewability measurements for delivered impressions under one viewability standard.",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Vendor that produced these viewability values. Optional but RECOMMENDED so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers without joining back to `package.committed_metrics` or `package.performance_standards`. The vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; the metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Same shape as `vendor_metric_value.vendor` for symmetry across vendor-attested surfaces."
+    },
+    "measurable_impressions": {
+      "type": "number",
+      "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments). Coverage denominator for `viewable_rate`, `viewed_seconds`, and both viewed-seconds distributions — every duration statistic is computed over this same measurable population.",
+      "minimum": 0
+    },
+    "viewable_impressions": {
+      "type": "number",
+      "description": "Impressions that met the viewability threshold defined by the measurement standard.",
+      "minimum": 0
+    },
+    "viewable_rate": {
+      "$ref": "/schemas/core/fraction.json",
+      "description": "Viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0."
+    },
+    "viewed_seconds": {
+      "type": "number",
+      "description": "Average in-view duration per measurable impression, in seconds. Reporting-side counterpart to the `viewed_seconds` optimization metric in `optimization-goal.json`. Computed over `measurable_impressions`, not total impressions — the same denominator as `viewable_rate`. The viewability `standard` governs the threshold (e.g., MRC's 50% pixels for 1s display / 2s video) that defines when an impression is in view and therefore when the clock is running. Sellers reporting against a `viewed_seconds` optimization goal MUST populate this field.",
+      "minimum": 0
+    },
+    "viewed_seconds_percentiles": {
+      "title": "Viewed Seconds Percentiles",
+      "type": "object",
+      "description": "Percentile summary of the per-impression in-view durations whose arithmetic mean is reported in `viewed_seconds`. This object MUST use the same reporting row, measurement vendor, viewability `standard`, and `measurable_impressions` population as `viewed_seconds`; sellers MUST omit it when `measurable_impressions` is zero. Percentiles use the nearest-rank definition: sort the N observed durations in ascending order and select rank `ceil(p × N)` (one-based) for percentile p. Values MUST be non-decreasing from p25 through p95. The structured metric identity `viewed_seconds_percentiles` makes this optional surface discoverable and requestable; it is not sortable and the nested object remains the canonical carrier.",
+      "properties": {
+        "p25": {
+          "type": "number",
+          "description": "25th-percentile in-view duration in seconds.",
+          "minimum": 0
+        },
+        "p50": {
+          "type": "number",
+          "description": "Median (50th-percentile) in-view duration in seconds.",
+          "minimum": 0
+        },
+        "p75": {
+          "type": "number",
+          "description": "75th-percentile in-view duration in seconds.",
+          "minimum": 0
+        },
+        "p90": {
+          "type": "number",
+          "description": "90th-percentile in-view duration in seconds.",
+          "minimum": 0
+        },
+        "p95": {
+          "type": "number",
+          "description": "95th-percentile in-view duration in seconds.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "p25",
+        "p50",
+        "p75",
+        "p90",
+        "p95"
+      ],
+      "additionalProperties": true
+    },
+    "viewed_seconds_histogram": {
+      "type": "array",
+      "description": "Bucketed counts of the per-impression in-view durations whose arithmetic mean is reported in `viewed_seconds`. Buckets MUST be ordered by ascending lower bound, MUST NOT overlap, and MUST partition every impression in the same `measurable_impressions` population exactly once; therefore the sum of `impressions` MUST equal `measurable_impressions`. Buckets need not be contiguous: a gap between consecutive bucket boundaries is permitted when no impressions fall within that range — the sum constraint enforces this implicitly, and validators MUST NOT independently require contiguity. Each bucket is half-open `[lower_bound_seconds, upper_bound_seconds)`; only the final bucket MAY omit `upper_bound_seconds`, representing an unbounded upper range. Sellers choose boundaries, but buyers MUST combine histograms only when the complete boundary sequence, measurement vendor, and viewability `standard` match. The structured metric identity `viewed_seconds_histogram` makes this optional surface discoverable and requestable; it is not sortable and this nested array remains the canonical carrier.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "lower_bound_seconds": {
+            "type": "number",
+            "description": "Inclusive lower bound of this duration bucket, in seconds.",
+            "minimum": 0
+          },
+          "upper_bound_seconds": {
+            "type": "number",
+            "description": "Exclusive upper bound of this duration bucket, in seconds. MUST be greater than `lower_bound_seconds`. Omit only on the final bucket to represent an unbounded upper range.",
+            "minimum": 0
+          },
+          "impressions": {
+            "type": "integer",
+            "description": "Number of measurable impressions whose in-view duration falls in this bucket.",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "lower_bound_seconds",
+          "impressions"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "standard": {
+      "$ref": "/schemas/enums/viewability-standard.json",
+      "description": "Viewability measurement standard applied to these metrics. Governs the in-view threshold for `viewable_rate`, `viewed_seconds`, and both viewed-seconds distributions."
+    }
+  },
+  "dependencies": {
+    "viewed_seconds_percentiles": [
+      "viewed_seconds",
+      "measurable_impressions"
+    ],
+    "viewed_seconds_histogram": [
+      "viewed_seconds",
+      "measurable_impressions"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "viewed_seconds_percentiles"
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurable_impressions": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "viewed_seconds_histogram"
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurable_impressions": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

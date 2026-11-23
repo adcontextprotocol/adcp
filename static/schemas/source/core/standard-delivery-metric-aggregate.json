@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/standard-delivery-metric-aggregate.json",
+  "title": "Standard Delivery Metric Aggregate",
+  "description": "One standard delivery metric value, partitioned by metric scope and qualifier.",
+  "properties": {
+    "scope": {
+      "type": "string",
+      "const": "standard",
+      "default": "standard",
+      "description": "Standard metric from the closed `available-metric.json` enum."
+    },
+    "metric_id": {
+      "description": "Identifier for a scalar standard metric. Container tokens and structured distribution identities are committed and selected through their canonical carriers, not represented as numeric aggregate rows.",
+      "allOf": [
+        {
+          "$ref": "/schemas/enums/available-metric.json"
+        },
+        {
+          "not": {
+            "enum": [
+              "viewability",
+              "viewed_seconds_percentiles",
+              "viewed_seconds_histogram",
+              "quartile_data",
+              "time_based_views",
+              "dooh_metrics",
+              "print_metrics",
+              "publication"
+            ]
+          }
+        }
+      ]
+    },
+    "qualifier": {
+      "$ref": "/schemas/core/canonical-metric-qualifier.json",
+      "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` today; expected to diverge as transparency disclosures buyers don't commit to ship delivery-only. Closed (`additionalProperties: false`), because consumers join on the key set; new qualifier keys ship in a major release."
+    },
+    "value": {
+      "type": "number",
+      "description": "Aggregated metric value for this `(metric_id, qualifier)` partition. Heterogeneous by `metric_id` — rate metrics (`viewable_rate`, `completion_rate`) are 0.0–1.0; cost-per metrics (`cost_per_acquisition`, `cost_per_completed_view`) are currency amounts; count metrics (`impressions`, `clicks`) are non-negative integers as numbers; ratio metrics (`roas`) are non-negative numbers. Buyer agents MUST inspect `metric_id` before doing arithmetic — same dispatch convention as `committed_metrics`."
+    },
+    "measurable_impressions": {
+      "type": "number",
+      "description": "Coverage denominator for verification metrics (e.g., `viewable_rate`). Buyers compute coverage as `measurable_impressions / impressions` from the partition.",
+      "minimum": 0
+    },
+    "viewable_impressions": {
+      "type": "number",
+      "description": "Component for `viewable_rate` (numerator).",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Component for rate metrics whose denominator is total impressions (e.g., `completion_rate`, `engagement_rate`).",
+      "minimum": 0
+    },
+    "completed_views": {
+      "type": "number",
+      "description": "Component for `completion_rate` (numerator).",
+      "minimum": 0
+    },
+    "spend": {
+      "type": "number",
+      "description": "Component for cost-per metrics (denominator-ish; the cost half of the ratio).",
+      "minimum": 0
+    },
+    "conversions": {
+      "type": "number",
+      "description": "Component for `cost_per_acquisition` and ROAS-family metrics.",
+      "minimum": 0
+    },
+    "conversion_value": {
+      "type": "number",
+      "description": "Component for `roas` (numerator).",
+      "minimum": 0
+    },
+    "clicks": {
+      "type": "number",
+      "description": "Component for `cost_per_click` and click-rate metrics.",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "scope",
+    "metric_id",
+    "value"
+  ],
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "metric_id": {
+            "const": "viewable_rate"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "measurable_impressions",
+          "viewable_impressions"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "metric_id": {
+            "const": "completion_rate"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "impressions",
+          "completed_views"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "metric_id": {
+            "const": "cost_per_acquisition"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "spend",
+          "conversions"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "metric_id": {
+            "const": "roas"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "spend",
+          "conversion_value"
+        ]
+      }
+    }
+  ]
+}

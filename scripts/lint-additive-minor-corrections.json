@@ -1432,6 +1432,18 @@
       "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
     },
     {
+      "file": "compliance/task-completion-data.json",
+      "pointer": "/anyOf/2/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
       "file": "media-buy/create-media-buy-response.json",
       "pointer": "/oneOf/0/properties/budget_cap_timezone",
       "bound": "minLength",
@@ -1444,8 +1456,32 @@
       "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
     },
     {
+      "file": "compliance/task-completion-data.json",
+      "pointer": "/anyOf/2/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
       "file": "media-buy/create-media-buy-response.json",
       "pointer": "/oneOf/0/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "compliance/task-completion-data.json",
+      "pointer": "/anyOf/2/properties/proposal_id",
       "bound": "maxLength",
       "value": 255,
       "release": "3.3.0",
@@ -1553,6 +1589,18 @@
     },
     {
       "file": "media-buy/product-purchase.json",
+      "pointer": "/properties/catalog_ids/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/catalog-item-availability-ref.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned catalog ID.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "media-buy/product-purchase-input.json",
       "pointer": "/properties/catalog_ids/items",
       "bound": "maxLength",
       "value": 255,

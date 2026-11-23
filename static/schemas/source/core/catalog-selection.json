@@ -11,22 +11,28 @@
       "x-entity": "catalog",
       "description": "Seller-known catalog identifier returned by sync_catalogs."
     },
-    "type": { "$ref": "/schemas/core/catalog.json#/properties/type" },
+    "type": {
+      "$ref": "/schemas/enums/catalog-type.json",
+      "description": "Catalog type. Structural types: 'offering' (AdCP Offering objects), 'product' (ecommerce entries), 'inventory' (stock per location), 'store' (physical locations), 'promotion' (deals and pricing). Vertical types: 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination', 'app' — each with an industry-specific item schema."
+    },
     "ids": {
-      "allOf": [{ "$ref": "/schemas/core/catalog.json#/properties/ids" }],
+      "allOf": [{ "$ref": "/schemas/core/catalog-item-ids.json", "description": "Filter catalog to exact canonical item keys. The key field is offering_id for offering, store_id for store, hotel_id for hotel, flight_id for flight, job_id for job, vehicle_id for vehicle, listing_id for real_estate, program_id for education, destination_id for destination, and app_id for app. Product, inventory, and promotion catalogs use the stable normalized source identifier retained during ingestion (for example a retailer SKU). The same canonical key is used by catalog availability item_id." }],
       "uniqueItems": true
     },
     "gtins": {
-      "allOf": [{ "$ref": "/schemas/core/catalog.json#/properties/gtins" }],
+      "allOf": [{ "$ref": "/schemas/core/catalog-gtins.json", "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'." }],
       "uniqueItems": true
     },
     "tags": {
-      "allOf": [{ "$ref": "/schemas/core/catalog.json#/properties/tags" }],
+      "allOf": [{ "$ref": "/schemas/core/catalog-tags.json", "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included." }],
       "uniqueItems": true
     },
-    "category": { "$ref": "/schemas/core/catalog.json#/properties/category" },
+    "category": {
+      "$ref": "/schemas/core/catalog-category.json",
+      "description": "Filter catalog to items in this category (e.g., 'beverages/soft-drinks', 'chef-positions')."
+    },
     "query": {
-      "allOf": [{ "$ref": "/schemas/core/catalog.json#/properties/query" }],
+      "allOf": [{ "$ref": "/schemas/core/catalog-query.json", "description": "Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'amsterdam vacancies')." }],
       "minLength": 1
     }
   },

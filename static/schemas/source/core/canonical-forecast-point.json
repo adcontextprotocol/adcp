@@ -11,7 +11,7 @@
   },
   "properties": {
     "label": { "$ref": "/schemas/core/forecast-point-label.json" },
-    "budget": { "type": "number", "minimum": 0 },
+    "budget": { "$ref": "/schemas/core/budget-amount.json" },
     "product_id": { "type": "string", "x-entity": "product" },
     "dimensions": { "$ref": "/schemas/core/forecast-point-dimensions.json" },
     "availability_status": { "$ref": "/schemas/enums/availability-status.json" },

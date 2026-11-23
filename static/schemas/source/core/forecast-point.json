@@ -11,9 +11,8 @@
       "examples": ["Primetime", "Morning Drive", "Large Format Transit"]
     },
     "budget": {
-      "type": "number",
-      "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory.",
-      "minimum": 0
+      "$ref": "/schemas/core/budget-amount.json",
+      "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory."
     },
     "product_id": {
       "type": "string",

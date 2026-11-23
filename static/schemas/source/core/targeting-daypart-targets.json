@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-daypart-targets.json",
+  "title": "Targeting Daypart Targets",
+  "description": "Time windows that delivery is restricted to.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/daypart-target.json"
+  },
+  "minItems": 1
+}

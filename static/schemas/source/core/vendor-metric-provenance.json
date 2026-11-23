@@ -8,15 +8,15 @@
   "type": "object",
   "properties": {
     "vendor": {
-      "$ref": "/schemas/core/vendor-metric-value.json#/properties/vendor",
+      "$ref": "/schemas/core/brand-ref.json",
       "description": "Vendor of the row this entry describes. Matches the row's `vendor`."
     },
     "metric_id": {
-      "$ref": "/schemas/core/vendor-metric-value.json#/properties/metric_id",
+      "$ref": "/schemas/core/vendor-metric-id.json",
       "description": "Metric of the row this entry describes. Matches the row's `metric_id`."
     },
     "qualifier": {
-      "$ref": "/schemas/core/vendor-metric-value.json#/properties/qualifier",
+      "$ref": "/schemas/core/canonical-metric-qualifier.json",
       "description": "The row's `qualifier`, repeated verbatim when the row carries one, so provenance joins on `(vendor, metric_id, qualifier)`. Omit when the row has none."
     },
     "mechanisms": {

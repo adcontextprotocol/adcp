@@ -24,18 +24,15 @@
       "minItems": 1
     },
     "budget": {
-      "type": "number",
-      "description": "Hard lifetime spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total.",
-      "minimum": 0
+      "$ref": "/schemas/core/budget-amount.json",
+      "description": "Hard lifetime spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total."
     },
     "min_spend_target": {
-      "type": "number",
-      "description": "Soft lifetime spend target accepted for this package under seller-optimized budget allocation. This is an allocation preference, not a billing or delivery guarantee.",
-      "minimum": 0
+      "$ref": "/schemas/core/min-spend-target.json",
+      "description": "Soft lifetime spend target accepted for this package under seller-optimized budget allocation. This is an allocation preference, not a billing or delivery guarantee."
     },
     "daily_budget_cap": {
-      "type": "number",
-      "minimum": 0,
+      "$ref": "/schemas/core/daily-budget-cap.json",
       "description": "The hard package spend ceiling per shared media-buy cap day, in the media buy's currency. Sellers MUST echo this whenever a package daily cap is set. It is a subordinate ceiling, not a reserved or current allocation; the media buy's budget_cap_timezone defines its day boundary."
     },
     "pacing": {

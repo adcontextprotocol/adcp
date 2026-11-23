@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-device-types.json",
+  "title": "Targeting Device Types",
+  "description": "Device form factors to target or exclude.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/device-type.json"
+  },
+  "minItems": 1
+}

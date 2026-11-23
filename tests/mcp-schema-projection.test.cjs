@@ -153,13 +153,20 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // Merged with main's single-value deprecations (#9123) and
 // PROPOSAL_TERMS_CHANGED (#9171), the media-buy inputs measure 571,034 bytes
 // (557.65 KiB); bound it at 558 KiB.
+// Referencing whole documents instead of another document's internals lets
+// buy_products reach the product purchase field documents without the rest of
+// media-buy/product-purchase.json: 571,034 → 562,655 bytes (549.47 KiB); the
+// bound stays.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 558,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
-  // definition to 453,051 bytes / 442.43 KiB.
-  creative: 443,
+  // definition to 453,051 bytes / 442.43 KiB. Giving each cross-document
+  // reference target a titled document of its own adds those titles and
+  // descriptions: 451,534 → 453,704 bytes (440.95 → 443.07 KiB); bound it at
+  // 444 KiB.
+  creative: 444,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product

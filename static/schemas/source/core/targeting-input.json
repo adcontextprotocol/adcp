@@ -7,31 +7,61 @@
   "properties": {
     "geo_countries": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_countries" },
+        {
+          "$ref": "/schemas/core/targeting-geo-countries.json",
+          "description": "Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE')."
+        },
         { "type": "null" }
       ]
     },
     "geo_countries_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_countries_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-geo-countries.json",
+          "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE')."
+        },
         { "type": "null" }
       ]
     },
     "geo_regions": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_regions" },
+        {
+          "$ref": "/schemas/core/targeting-geo-regions.json",
+          "description": "Restrict delivery to exact canonical ISO 3166-2 subdivisions (states, provinces, regions, departments, or other subdivision categories). Unknown identifiers are invalid. At create or update, sellers MUST reject unsupported identifiers and MUST NOT silently widen, drop, or partially apply the list. During get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome. Exact internal translation preserves accepted identifiers in package readback."
+        },
         { "type": "null" }
       ]
     },
     "geo_regions_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_regions_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-geo-regions.json",
+          "description": "Exclude exact canonical ISO 3166-2 subdivisions. Support is independent from geo_regions inclusion support. Unknown identifiers and values also present in geo_regions are invalid. At create or update, sellers MUST reject unsupported identifiers and partial application; during get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome.",
+          "x-adcp-validation": {
+            "disjoint_with": "geo_regions",
+            "spec": "docs/media-buy/advanced-topics/targeting.mdx#geo_regions_exclude"
+          }
+        },
         { "type": "null" }
       ]
     },
     "geo_value_labels": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_value_labels" },
+        {
+          "$ref": "/schemas/core/targeting-geo-value-labels.json",
+          "description": "Optional human-readable diagnostic labels for the ISO codes in geo_countries, geo_countries_exclude, geo_regions, and geo_regions_exclude, keyed by code (e.g., { \"DE\": \"Germany\", \"US-CA\": \"California\" }). Every key MUST appear in one of those four arrays; extra keys are a conformance error. Labels are not a targeting dimension: they are non-authoritative, MUST NOT be used to resolve or apply targeting, and are ignored when comparing targeting for equality or readback. Metro and place labels live in value_labels on their own entries.",
+          "x-adcp-validation": {
+            "map_keys_subset_of_arrays": {
+              "array_fields": [
+                "geo_countries",
+                "geo_countries_exclude",
+                "geo_regions",
+                "geo_regions_exclude"
+              ]
+            },
+            "description": "Every geo_value_labels key MUST appear in at least one of the listed sibling arrays. JSON Schema draft-07 cannot express this sibling-field key membership constraint, so conformance tooling must enforce it."
+          }
+        },
         { "type": "null" }
       ]
     },
@@ -44,61 +74,93 @@
     },
     "geo_metros_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_metros_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-geo-metros.json",
+          "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities."
+        },
         { "type": "null" }
       ]
     },
     "geo_postal_areas": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_postal_areas" },
+        {
+          "$ref": "/schemas/core/targeting-geo-postal-areas.json",
+          "description": "Restrict delivery to specific postal areas. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities."
+        },
         { "type": "null" }
       ]
     },
     "geo_postal_areas_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_postal_areas_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-geo-postal-areas.json",
+          "description": "Exclude specific postal areas from delivery. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities."
+        },
         { "type": "null" }
       ]
     },
     "geo_places": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_places" },
+        {
+          "$ref": "/schemas/core/targeting-geo-places.json",
+          "description": "Restrict delivery to catalog-backed named places. Values MUST be stable identifiers in the declared system, not display names. Sellers must declare supported systems, countries, and place types in get_adcp_capabilities and reject unsupported entries rather than silently dropping them."
+        },
         { "type": "null" }
       ]
     },
     "geo_places_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_places_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-geo-places.json",
+          "description": "Exclude catalog-backed named places. Uses the same identifier-based shape as geo_places. Sellers MUST reject overlap with geo_places for the same country, system, place_type, and value."
+        },
         { "type": "null" }
       ]
     },
     "daypart_targets": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/daypart_targets" },
+        {
+          "$ref": "/schemas/core/targeting-daypart-targets.json",
+          "description": "Restrict delivery to specific time windows. Each entry specifies days of week, an hour range, and an optional timezone that defaults to inventory_local. A concrete IANA zone uses one shared civil-time clock, while inventory_local evaluates each inventory unit in its seller-assigned local timezone. Entries are independent and MAY use different clocks."
+        },
         { "type": "null" }
       ]
     },
     "axe_include_segment": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/axe_include_segment" },
+        {
+          "$ref": "/schemas/core/targeting-axe-segment.json",
+          "description": "Deprecated: Use TMP provider fields instead. AXE segment ID to include for targeting.",
+          "deprecated": true
+        },
         { "type": "null" }
       ]
     },
     "axe_exclude_segment": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/axe_exclude_segment" },
+        {
+          "$ref": "/schemas/core/targeting-axe-segment.json",
+          "description": "Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targeting.",
+          "deprecated": true
+        },
         { "type": "null" }
       ]
     },
     "audience_include": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/audience_include" },
+        {
+          "$ref": "/schemas/core/targeting-audiences.json",
+          "description": "Restrict delivery to members of these first-party CRM audiences. Only users present in the uploaded lists are eligible. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Not for lookalike expansion — express that intent in the campaign brief. Seller must declare support in get_adcp_capabilities."
+        },
         { "type": "null" }
       ]
     },
     "audience_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/audience_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-audiences.json",
+          "description": "Suppress delivery to members of these first-party CRM audiences. Matched users are excluded regardless of other targeting. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Seller must declare support in get_adcp_capabilities."
+        },
         { "type": "null" }
       ]
     },
@@ -121,7 +183,10 @@
     },
     "demographics": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/demographics" },
+        {
+          "$ref": "/schemas/core/demographic-targeting-intent.json",
+          "description": "Canonical age and gender audience targeting, distinct from age_restriction legal eligibility. Named dimensions compose with AND and have independent explicit unknown handling. Age determination constraints remain age-specific. Fresh create/update requests MUST compile exactly or be rejected; get_products may offer a configured alternative only with sparse targeting_resolution modifications and a distinguishable product_id. A non-null request-side demographics value replaces the entire demographics dimension, including both age and gender; retain age when changing only gender. Sellers MUST NOT silently drop, broaden, narrow, or substitute a predicate."
+        },
         { "type": "null" }
       ],
       "description": "Whole demographics dimension mutation: omit to inherit on create or preserve on update; null suppresses or clears both age and gender; a non-null object replaces the complete age-and-gender selection. To remove gender while retaining age, submit demographics containing age only. Nested age:null or gender:null are invalid. Apply atomically and omit cleared dimensions from strict readback."
@@ -147,7 +212,10 @@
     },
     "property_list_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/property_list_exclude" },
+        {
+          "$ref": "/schemas/core/property-list-ref.json",
+          "description": "Reference to a property list whose properties must not carry the buyer's ads. Matched properties are removed from delivery. Use for brand-safety do-not-run lists (apps, sites). Exclude wins on overlap with property_list, and applies regardless of the product's property_targeting_allowed flag. Seller must declare support in get_adcp_capabilities. On an undisclosed roster (empty publisher_properties) a seller MAY accept it and MUST then apply it against its full internal roster; a seller that cannot rejects it with UNSUPPORTED_FEATURE."
+        },
         { "type": "null" }
       ]
     },
@@ -163,27 +231,57 @@
     },
     "collection_list_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/collection_list_exclude" },
+        {
+          "$ref": "/schemas/core/collection-list-ref.json",
+          "description": "Reference to a collection list for excluding specific collections (programs, publications, channels) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities. On an undisclosed roster (empty collections) a seller MAY accept it and MUST then apply it against its full internal roster; a seller that cannot rejects it with UNSUPPORTED_FEATURE."
+        },
         { "type": "null" }
       ]
     },
     "collection_lists": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/collection_lists" },
+        {
+          "$ref": "/schemas/core/targeting-collection-lists.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "x-adcp-validation": {
+            "unique_by": [
+              "agent_url",
+              "list_id"
+            ],
+            "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
+          },
+          "description": "Experimental. Several collection_list refs: intersection. Not with collection_list. Over max_references is rejected, never truncated. On an undisclosed roster a seller MAY accept them."
+        },
         { "type": "null" }
       ],
       "x-added-in": "3.3.0"
     },
     "collection_lists_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/collection_lists_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-collection-lists.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "x-adcp-validation": {
+            "unique_by": [
+              "agent_url",
+              "list_id"
+            ],
+            "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
+          },
+          "description": "Experimental. Several collection_list_exclude refs: union. Not with collection_list_exclude. Over max_references is rejected, never truncated. On an undisclosed roster the same rule as collection_list_exclude applies."
+        },
         { "type": "null" }
       ],
       "x-added-in": "3.3.0"
     },
     "placement_selection": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/placement_selection" },
+        {
+          "$ref": "/schemas/core/placement-selection.json",
+          "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. In request-side Targeting Input, a non-null value replaces this dimension, omission preserves or inherits it, and null clears it when the product permits that broader inventory set."
+        },
         { "type": "null" }
       ]
     },
@@ -199,55 +297,82 @@
     },
     "age_restriction": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/age_restriction" },
+        {
+          "$ref": "/schemas/core/age-restriction.json",
+          "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting."
+        },
         { "type": "null" }
       ]
     },
     "device_platform": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/device_platform" },
+        {
+          "$ref": "/schemas/core/targeting-device-platforms.json",
+          "description": "Restrict to specific platforms. Use for technical compatibility (app only works on iOS). Values from Sec-CH-UA-Platform standard, extended for CTV."
+        },
         { "type": "null" }
       ]
     },
     "device_platform_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/device_platform_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-device-platforms.json",
+          "description": "Exclude specific operating-system platforms from delivery. When a platform appears in both device_platform and device_platform_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion."
+        },
         { "type": "null" }
       ]
     },
     "device_type": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/device_type" },
+        {
+          "$ref": "/schemas/core/targeting-device-types.json",
+          "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns)."
+        },
         { "type": "null" }
       ]
     },
     "device_type_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/device_type_exclude" },
+        {
+          "$ref": "/schemas/core/targeting-device-types.json",
+          "description": "Exclude specific device form factors from delivery (e.g., exclude CTV for app-install campaigns)."
+        },
         { "type": "null" }
       ]
     },
     "browser": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/browser" },
+        {
+          "$ref": "/schemas/core/browser-families.json",
+          "description": "Restrict delivery to specific canonical browser families in the impression delivery and rendering environment, not the post-click landing-page browser. Values MUST NOT be inferred solely from operating system, device, web/mobile-web inventory, or placement. Values in this array use OR semantics. When browser is supplied, families not listed are ineligible: other includes a seller-recognized family that is not explicitly enumerated, while unknown includes a browser the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Browser and device constraints intersect; a seller that cannot enforce the exact combination MUST exclude or explicitly reconfigure the product during discovery and MUST reject it at create or update rather than silently widening delivery. Browser versions and seller-native IDs are intentionally unsupported."
+        },
         { "type": "null" }
       ]
     },
     "browser_exclude": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/browser_exclude" },
+        {
+          "$ref": "/schemas/core/browser-families.json",
+          "description": "Exclude specific canonical browser families from delivery. other excludes seller-recognized families that are not explicitly enumerated; unknown excludes browsers the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion."
+        },
         { "type": "null" }
       ]
     },
     "store_catchments": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/store_catchments" },
+        {
+          "$ref": "/schemas/core/targeting-store-catchments.json",
+          "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones."
+        },
         { "type": "null" }
       ]
     },
     "geo_proximity": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_proximity" },
+        {
+          "$ref": "/schemas/core/targeting-geo-proximity.json",
+          "description": "Target users within travel time, distance, or a custom boundary around arbitrary geographic points. Multiple entries use OR semantics — a user within range of any listed point is eligible. For campaigns targeting 10+ locations, consider using store_catchments with a location catalog instead. Seller must declare support in get_adcp_capabilities."
+        },
         { "type": "null" }
       ]
     },

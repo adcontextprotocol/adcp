@@ -11,7 +11,6 @@ const Ajv2020 = require("ajv/dist/2020");
 const {
   ACCOUNT_REF,
   BRAND_REF,
-  PRODUCT_PURCHASE,
   PRODUCT_PURCHASE_INPUT,
   TARGETING,
   TARGETING_INPUT,
@@ -78,9 +77,12 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Replacing repeated inline object copies with shared core definitions adds
   // 31 definitions the media-buy inputs reach, 27 of them repeated, and 103
   // instances: 1,296, 339 and 234.
-  assert.equal(report.definition_instances, 1296);
-  assert.equal(report.unique_definitions, 339);
-  assert.equal(report.repeated_definitions, 234);
+  // Giving each cross-document reference target its own document adds 30
+  // definitions the media-buy inputs reach, 16 of them repeated, and 84
+  // instances: 1,380, 369 and 250.
+  assert.equal(report.definition_instances, 1380);
+  assert.equal(report.unique_definitions, 369);
+  assert.equal(report.repeated_definitions, 250);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -95,7 +97,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   );
   assert.ok(report.fields[0].transitive_definition_count >= 70);
   assert.ok(report.fields[0].transitive_definition_bytes > 40_000);
-  assert.equal(report.definitions[0].name, "external:core/targeting.json");
+  // Ranked by repeated bytes. Targeting's field schemas are documents of their
+  // own, so core/targeting.json itself is smaller than core/provenance.json.
+  assert.equal(report.definitions[0].name, "external:core/provenance.json");
 });
 
 test("prompt cleanup experiment is pure and leaves canonical schemas unchanged", () => {
@@ -119,7 +123,6 @@ test("prompt cleanup experiment is pure and leaves canonical schemas unchanged",
     assert.ok(!Object.hasOwn(targetingInput.properties, deprecated));
   }
 
-  const purchase = definitions[PRODUCT_PURCHASE];
   const purchaseInput = definitions[PRODUCT_PURCHASE_INPUT];
   for (const inherited of [
     "pricing",
@@ -128,7 +131,6 @@ test("prompt cleanup experiment is pure and leaves canonical schemas unchanged",
     "measurement_terms",
     "performance_standards",
   ]) {
-    assert.ok(!Object.hasOwn(purchase.properties, inherited));
     assert.ok(!Object.hasOwn(purchaseInput.properties, inherited));
   }
 
@@ -207,7 +209,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 339);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 369);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

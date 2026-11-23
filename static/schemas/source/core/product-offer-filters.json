@@ -106,7 +106,7 @@
       "minItems": 1
     },
     "geo_proximity": {
-      "$ref": "/schemas/core/targeting.json#/properties/geo_proximity",
+      "$ref": "/schemas/core/targeting-geo-proximity.json",
       "description": "Inventory coverage in the specified proximity boundaries: OR within this field, AND across offer filters. Does not add delivery targeting, require targeting support, or rescope pricing or forecasts."
     },
     "property_list": {

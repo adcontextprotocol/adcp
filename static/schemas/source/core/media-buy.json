@@ -89,9 +89,8 @@
       "minimum": 0
     },
     "daily_budget_cap": {
-      "type": "number",
-      "description": "Current hard aggregate spend ceiling per calendar day. Sellers MUST echo this whenever an aggregate daily cap is set. It bounds total media-buy spend without allocating or reserving spend for packages.",
-      "minimum": 0
+      "$ref": "/schemas/core/daily-budget-cap.json",
+      "description": "Current hard aggregate spend ceiling per calendar day. Sellers MUST echo this whenever an aggregate daily cap is set. It bounds total media-buy spend without allocating or reserving spend for packages."
     },
     "frequency_cap": {
       "$ref": "/schemas/core/media-buy-frequency-cap.json",

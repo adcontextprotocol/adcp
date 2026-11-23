@@ -14,7 +14,6 @@ const TARGETING = "external:core/targeting.json";
 const TARGETING_INPUT = "external:core/targeting-input.json";
 const TARGETING_REQUIREMENTS =
   "external:core/targeting-overlay-requirements.json";
-const PRODUCT_PURCHASE = "external:media-buy/product-purchase.json";
 const PRODUCT_PURCHASE_INPUT =
   "external:media-buy/product-purchase-input.json";
 
@@ -277,8 +276,6 @@ function applyMediaBuyPromptCleanupExperiment(schemas) {
     delete targetingInput.properties[property];
   }
 
-  const purchase = definitions[PRODUCT_PURCHASE];
-  assert.ok(purchase?.properties, `Experiment requires ${PRODUCT_PURCHASE}`);
   const purchaseInput = definitions[PRODUCT_PURCHASE_INPUT];
   assert.ok(
     purchaseInput?.properties,
@@ -291,7 +288,6 @@ function applyMediaBuyPromptCleanupExperiment(schemas) {
     "measurement_terms",
     "performance_standards",
   ]) {
-    delete purchase.properties[property];
     delete purchaseInput.properties[property];
   }
 
@@ -509,7 +505,6 @@ function toolsListPayload(tools) {
 module.exports = {
   ACCOUNT_REF,
   BRAND_REF,
-  PRODUCT_PURCHASE,
   PRODUCT_PURCHASE_INPUT,
   TARGETING,
   TARGETING_INPUT,

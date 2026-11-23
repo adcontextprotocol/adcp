@@ -1328,7 +1328,10 @@ async function runTests() {
   await test('create/update success reserve status for the task envelope', async () => {
     const createSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json'));
     const updateSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/update-media-buy-response.json'));
-    const createSuccess = createSchema.oneOf.find(branch => branch.title === 'CreateMediaBuySuccess');
+    const createSuccess = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-success.json'));
+    if (createSchema.oneOf[0].$ref !== '/schemas/media-buy/create-media-buy-success.json') {
+      return 'create_media_buy no longer references its success branch';
+    }
     const updateSuccess = updateSchema.oneOf.find(branch => branch.title === 'UpdateMediaBuySuccess');
 
     if (createSuccess?.properties?.status) {
@@ -2142,9 +2145,10 @@ async function runTests() {
     }
 
     const targetingSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json'));
-    const excludeMetroLabelRule = targetingSchema.properties.geo_metros_exclude.items['x-adcp-validation']?.map_keys_subset_of_array;
-    if (excludeMetroLabelRule?.map_field !== 'value_labels' || excludeMetroLabelRule?.array_field !== 'values') {
-      return 'geo_metros_exclude entries must declare value_labels key membership validation';
+    // Excluded metro entries are geo-metro entries, which declare the rule above.
+    const excludeMetros = loadSchema(path.join(SCHEMA_BASE_DIR, targetingSchema.properties.geo_metros_exclude.$ref.replace(/^\/schemas\//, '')));
+    if (excludeMetros?.items?.$ref !== '/schemas/core/geo-metro.json') {
+      return 'geo_metros_exclude entries must be geo-metro entries, which declare value_labels key membership validation';
     }
     const isoLabelRule = targetingSchema.properties.geo_value_labels?.['x-adcp-validation']?.map_keys_subset_of_arrays;
     if (JSON.stringify(isoLabelRule?.array_fields) !== JSON.stringify(['geo_countries', 'geo_countries_exclude', 'geo_regions', 'geo_regions_exclude'])) {

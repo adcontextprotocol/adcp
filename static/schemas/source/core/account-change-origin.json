@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-origin.json",
+  "title": "Account Change Origin",
+  "description": "The server-derived origin of an account change.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "adcp",
+        "seller_operator",
+        "seller_system",
+        "connected_platform",
+        "unknown"
+      ]
+    },
+    "connection_id": {
+      "type": "string",
+      "description": "Opaque, non-secret reference to the connected source when safe for this caller.",
+      "maxLength": 255
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "additionalProperties": true
+}

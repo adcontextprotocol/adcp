@@ -1279,7 +1279,8 @@
         "dooh_metrics": {
           "allOf": [
             {
-              "$ref": "/schemas/core/delivery-metrics.json#/properties/dooh_metrics"
+              "$ref": "/schemas/core/dooh-delivery-metrics.json",
+              "description": "DOOH-specific metrics (only included for DOOH campaigns)"
             }
           ],
           "description": "DOOH delivery detail to inject. Used by simulate_delivery for single-package buys; the latest injected block replaces the previous simulated DOOH detail and MUST surface at totals.dooh_metrics and by_package[0].dooh_metrics. Multi-package simulations require a future package-scoped form and MUST reject this media-buy-scoped field."
@@ -1380,7 +1381,16 @@
           "description": "Viewability metrics to inject into simulated delivery. Uses the canonical delivery viewability shape, including viewed-seconds distributions. This media-buy-scoped form is valid only for a single-package buy, where the reference seller surfaces the same values at package and media-buy totals grain.",
           "allOf": [
             {
-              "$ref": "/schemas/core/delivery-metrics.json#/properties/viewability"
+              "$ref": "/schemas/core/viewability-metrics.json",
+              "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — plus optional percentile and histogram distributions over that duration; all three use the same `measurable_impressions` population and are governed by the same viewability threshold (`standard`). Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting. The structured distribution carriers require explicit `viewed_seconds_percentiles` and `viewed_seconds_histogram` identities for declaration, commitment, and selection; they are not numeric aggregate rows or sort keys. This object remains the canonical carrier of every value. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`; when the package's `committed_metrics` carry a `viewability_standard` qualifier, sellers MUST populate `standard` on reported viewability objects so reconciliation can match the qualifier.",
+              "x-adcp-validation": {
+                "verifier_constraints": {
+                  "viewed_seconds_percentile_order": "p25 <= p50 <= p75 <= p90 <= p95",
+                  "viewed_seconds_histogram_bounds": "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; gaps between buckets are permitted only when zero impressions fall in the gap (enforced by the sum-equals-measurable_impressions rule, not a separate contiguity check); only the final bucket may omit upper_bound_seconds",
+                  "viewed_seconds_histogram_population": "sum(bucket.impressions) equals measurable_impressions"
+                },
+                "spec": "docs/media-buy/media-buys/optimization-reporting.mdx#available-metrics"
+              }
             }
           ]
         },

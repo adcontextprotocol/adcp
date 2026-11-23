@@ -32,22 +32,8 @@
       "description": "Material change action. Standard values are created, discovered, updated, status_changed, linked, unlinked, deleted, and purged. Future standard or vendor-namespaced values are allowed; receivers MUST treat unknown values as generic invalidations."
     },
     "origin": {
-      "title": "Account Change Origin",
-      "type": "object",
-      "description": "Server-derived origin classification. The seller MUST NOT trust caller-supplied origin or actor claims.",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "enum": ["adcp", "seller_operator", "seller_system", "connected_platform", "unknown"]
-        },
-        "connection_id": {
-          "type": "string",
-          "description": "Opaque, non-secret reference to the connected source when safe for this caller.",
-          "maxLength": 255
-        }
-      },
-      "required": ["kind"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/account-change-origin.json",
+      "description": "Server-derived origin classification. The seller MUST NOT trust caller-supplied origin or actor claims."
     },
     "idempotency_key": {
       "$ref": "/schemas/core/idempotency-key.json",

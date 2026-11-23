@@ -37,13 +37,13 @@
         "type": "object",
         "properties": {
           "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "description": "The offering whose periods this exception removes, when the account's covered offerings have different period boundaries; from and until are then that offering's cutover instants. Absent: the exception applies to every offering on the account (or buy, with media_buy_id)." },
-          "media_buy_id": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" },
+          "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json", "title": "Reporting Media Buy ID" },
           "reason": { "$ref": "#/definitions/ReportingSubscriptionExclusionReason" },
           "from": { "type": "string", "format": "date-time", "description": "Cutover instant: periods starting at or after it are removed." },
           "until": { "type": "string", "format": "date-time", "description": "Cutover instant at which the exception ended; periods starting at or after it are owed again. Absent while still in effect." },
           "package_ids": {
             "type": "array",
-            "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingPackageId" },
+            "items": { "$ref": "/schemas/core/package-id.json", "title": "Reporting Package ID" },
             "minItems": 1,
             "uniqueItems": true,
             "description": "With media_buy_id and reason offering_unsupported: only these packages lack a matching offering. With reason overridden: only these packages resolved an offering another subscription of the caller owes. The buy stays covered for its other packages; these are removed from its coverage rather than its periods. When the entry names every package of the buy that resolves an offering (with offering_id, that offering) and is owed the period, nothing keeps the buy covered for it, so the buy's periods for that offering that start in [from, until) are not owed. A package added after the buy's confirmed_at is owed only the periods that end after its added_at, so it does not keep the buy covered for earlier periods."
@@ -83,15 +83,7 @@
       "type": "array",
       "description": "Account timezone changes affecting account_timezone-aligned periods, retained for status_retention_days. A cutover: periods under the old timezone are owed when they start before the change, so they end by effective_at; periods under the new timezone are owed when they start at or after effective_at. Any stretch from effective_at to the first new-timezone boundary is owed under neither, except on a billing offering, where it is owed as one stub period [effective_at, first new-timezone boundary) whose obligation carries stub true, so no billable hour goes unreported. Period boundaries differ between offerings, so when the account's covered offerings have different boundaries the seller lists one entry per offering_id; an entry without offering_id applies to every offering on the account.",
       "items": {
-        "type": "object",
-        "properties": {
-          "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "description": "The offering whose account_timezone periods this cutover applies to, when covered offerings have different boundaries. Absent: every account_timezone offering on the account." },
-          "previous_timezone": { "$ref": "/schemas/core/iana-timezone.json", "description": "The IANA timezone in effect before the change. Sellers MUST include it: the account's current timezone already shows the new zone, so a buyer cannot otherwise recover the old schedule." },
-          "effective_at": { "type": "string", "format": "date-time", "description": "End of the last old-timezone period that started before the change." },
-          "timezone": { "$ref": "/schemas/core/iana-timezone.json", "description": "The account's new IANA timezone, as list_accounts shows it." }
-        },
-        "required": ["effective_at", "timezone"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/reporting-timezone-cutover.json"
       }
     },
     "gaps": {

@@ -91,7 +91,8 @@ test('compound create and update use the package schemas that define the gate', 
   assert.equal(declaresField(create), false);
   assert.equal(update.properties.new_packages.items.$ref, '/schemas/media-buy/package-request.json');
   assert.equal(update.properties.packages.items.$ref, '/schemas/media-buy/package-update.json');
-  const success = readSchema('media-buy/create-media-buy-response.json').oneOf[0];
+  assert.equal(readSchema('media-buy/create-media-buy-response.json').oneOf[0].$ref, '/schemas/media-buy/create-media-buy-success.json');
+  const success = readSchema('media-buy/create-media-buy-success.json');
   assert.equal(success.properties.packages.items.$ref, '/schemas/core/package.json');
   const updated = readSchema('media-buy/update-media-buy-response.json').oneOf[0];
   assert.equal(updated.properties.affected_packages.items.$ref, '/schemas/core/package.json');

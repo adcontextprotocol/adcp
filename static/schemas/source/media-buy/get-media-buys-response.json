@@ -96,9 +96,8 @@
             "minimum": 0
           },
           "daily_budget_cap": {
-            "type": "number",
-            "description": "Current hard aggregate spend ceiling per calendar day, denominated in media_buy.currency. It bounds total spend without allocating or reserving package spend.",
-            "minimum": 0
+            "$ref": "/schemas/core/daily-budget-cap.json",
+            "description": "Current hard aggregate spend ceiling per calendar day, denominated in media_buy.currency. It bounds total spend without allocating or reserving package spend."
           },
           "frequency_cap": {
             "$ref": "/schemas/core/media-buy-frequency-cap.json",
@@ -248,7 +247,7 @@
                   "description": "Identity of who made the change — derived from authentication context, not caller-provided. Format is seller-defined (e.g., agent URL, user email, API key label). For a change not made through an AdCP task, identify the seller operator, seller system, or connected platform at the granularity the caller is authorized to see, and classify it in origin. Sellers SHOULD omit direct personal identifiers for these changes unless the authenticated caller is authorized for them."
                 },
                 "origin": {
-                  "$ref": "/schemas/core/account-change.json#/properties/origin",
+                  "$ref": "/schemas/core/account-change-origin.json",
                   "description": "Server-derived origin classification of the change, using the same kind vocabulary as account.change.origin (adcp, seller_operator, seller_system, connected_platform, unknown). A seller MUST include it on every entry for a change that did not arrive through an AdCP task, using unknown when it cannot classify the origin or the caller is not authorized to see it, and SHOULD include kind adcp on entries for AdCP task changes. The seller MUST NOT trust a caller-supplied origin. Entries recorded before the seller adopted it omit it.",
                   "x-added-in": "3.3.0"
                 },
@@ -296,18 +295,15 @@
                   "x-entity": "product"
                 },
                 "budget": {
-                  "type": "number",
-                  "description": "Hard lifetime package spend cap denominated in media_buy.currency. In seller-optimized mode this is not a current allocation.",
-                  "minimum": 0
+                  "$ref": "/schemas/core/budget-amount.json",
+                  "description": "Hard lifetime package spend cap denominated in media_buy.currency. In seller-optimized mode this is not a current allocation."
                 },
                 "min_spend_target": {
-                  "type": "number",
-                  "description": "Accepted soft lifetime spend target for this package under seller-optimized allocation.",
-                  "minimum": 0
+                  "$ref": "/schemas/core/min-spend-target.json",
+                  "description": "Accepted soft lifetime spend target for this package under seller-optimized allocation."
                 },
                 "daily_budget_cap": {
-                  "type": "number",
-                  "minimum": 0,
+                  "$ref": "/schemas/core/daily-budget-cap.json",
                   "description": "Current hard package spend ceiling per shared media-buy cap day, denominated in media_buy.currency. It is a subordinate ceiling, not a reserved allocation; media_buy.budget_cap_timezone defines the day boundary."
                 },
                 "currency": {

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-geo-value-labels.json",
+  "title": "Targeting Geo Value Labels",
+  "description": "Diagnostic labels for targeted ISO country and subdivision codes, keyed by code.",
+  "type": "object",
+  "propertyNames": {
+    "$ref": "/schemas/core/country-or-subdivision-code.json"
+  },
+  "additionalProperties": {
+    "type": "string",
+    "minLength": 1
+  }
+}

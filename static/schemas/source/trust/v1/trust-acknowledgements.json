@@ -17,7 +17,7 @@
     "acknowledgements": {
       "type": "array",
       "items": {
-        "$ref": "/schemas/trust/v1/trust.json#/definitions/acknowledgement"
+        "$ref": "/schemas/trust/v1/trust-acknowledgement.json"
       }
     },
     "next": {

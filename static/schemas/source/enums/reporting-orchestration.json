@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-orchestration.json",
+  "title": "Reporting Orchestration",
+  "description": "Party responsible for starting, configuring, and monitoring the delivery operation. Independent of destination ownership and the service that moves the data.",
+  "x-adcp-model-context-inline": true,
+  "type": "string",
+  "enum": [
+    "producer_managed",
+    "consumer_managed"
+  ]
+}

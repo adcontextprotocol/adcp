@@ -310,8 +310,8 @@ test("sales-dooh exercises discovery, cap rejection, valid buy, and identity-saf
     assert.equal(validation.value, value);
   }
 
-  const fields = readJson("media-buy/product-fields.json");
-  assert.ok(fields.items.enum.includes("identity"));
+  assert.equal(readJson("media-buy/product-fields.json").items.$ref, "/schemas/media-buy/product-field.json");
+  assert.ok(readJson("media-buy/product-field.json").enum.includes("identity"));
   assert.match(
     readJson("enums/reach-unit.json").enumDescriptions.custom,
     /Describe in ext\./

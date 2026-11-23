@@ -32,7 +32,8 @@ async function compile(schema) {
 function findScopeBranch(schema, scopeConst) {
   const oneOf = resolveSchema(schema).oneOf;
   assert.ok(Array.isArray(oneOf), `no scope oneOf for scope=${scopeConst}`);
-  const branch = oneOf.find(
+  // A branch may be a reference to a document of its own.
+  const branch = oneOf.map((entry) => resolveSchema(entry)).find(
     (entry) => entry.properties && entry.properties.scope && entry.properties.scope.const === scopeConst
   );
   assert.ok(branch, `no oneOf branch found for scope=${scopeConst}`);

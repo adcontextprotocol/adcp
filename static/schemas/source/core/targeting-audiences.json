@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-audiences.json",
+  "title": "Targeting Audiences",
+  "description": "First-party CRM audience IDs from sync_audiences to target or suppress.",
+  "type": "array",
+  "items": {
+    "type": "string"
+  },
+  "minItems": 1
+}

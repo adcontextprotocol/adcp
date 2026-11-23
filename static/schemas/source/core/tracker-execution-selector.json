@@ -70,16 +70,17 @@
           "default": "vast_tracker"
         },
         "vast_versions": {
-          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_versions"
+          "$ref": "/schemas/core/vast-versions.json"
         },
         "vast_event": {
-          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_event"
+          "$ref": "/schemas/enums/vast-tracker-event.json"
         },
         "target": {
-          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_target"
+          "$ref": "/schemas/enums/vast-tracker-target.json",
+          "default": "linear"
         },
         "offset": {
-          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_offset"
+          "$ref": "/schemas/core/tracker-offset.json"
         },
         "execution_actor": {
           "$ref": "/schemas/enums/tracker-execution-actor.json"
@@ -119,16 +120,17 @@
           "default": "daast_tracker"
         },
         "daast_versions": {
-          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_versions"
+          "$ref": "/schemas/core/daast-versions.json"
         },
         "daast_event": {
-          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_event"
+          "$ref": "/schemas/enums/daast-tracker-event.json"
         },
         "target": {
-          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_target"
+          "$ref": "/schemas/enums/daast-tracker-target.json",
+          "default": "linear"
         },
         "offset": {
-          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_offset"
+          "$ref": "/schemas/core/tracker-offset.json"
         },
         "execution_actor": {
           "$ref": "/schemas/enums/tracker-execution-actor.json"

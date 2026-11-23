@@ -5,57 +5,19 @@
   "description": "Shared VAST TrackingEvents constraints used by tracker assets and production execution selectors. The target/event matrix is closed, progress alone carries offset, and selector version arrays may contain only versions in which the event exists.",
   "type": "object",
   "definitions": {
-    "vast_event": {
-      "type": "string",
-      "enum": [
-        "creativeView",
-        "loaded",
-        "start",
-        "firstQuartile",
-        "midpoint",
-        "thirdQuartile",
-        "complete",
-        "mute",
-        "unmute",
-        "pause",
-        "resume",
-        "rewind",
-        "skip",
-        "playerExpand",
-        "playerCollapse",
-        "fullscreen",
-        "exitFullscreen",
-        "progress",
-        "acceptInvitation",
-        "adExpand",
-        "adCollapse",
-        "minimize",
-        "overlayViewDuration",
-        "otherAdInteraction",
-        "interactiveStart",
-        "close",
-        "closeLinear"
-      ]
-    },
     "vast_target": {
       "$ref": "/schemas/enums/vast-tracker-target.json",
       "default": "linear"
     },
     "vast_offset": {
       "$ref": "/schemas/core/tracker-offset.json"
-    },
-    "vast_versions": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/vast-version.json" },
-      "minItems": 1,
-      "uniqueItems": true
     }
   },
   "properties": {
-    "vast_event": { "$ref": "#/definitions/vast_event" },
+    "vast_event": { "$ref": "/schemas/enums/vast-tracker-event.json" },
     "target": { "$ref": "#/definitions/vast_target" },
     "offset": { "$ref": "#/definitions/vast_offset" },
-    "vast_versions": { "$ref": "#/definitions/vast_versions" }
+    "vast_versions": { "$ref": "/schemas/core/vast-versions.json" }
   },
   "allOf": [
     {

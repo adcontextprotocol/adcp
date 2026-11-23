@@ -53,9 +53,9 @@
               "properties": {
                 "subscription_id": { "$ref": "/schemas/core/reporting-subscription-id.json" },
                 "list": { "$ref": "/schemas/enums/reporting-subscription-page-list.json" },
-                "accounts_with_exceptions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionAccountExceptions" }, "maxItems": 100 },
-                "accounts_unauthorized": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionUnauthorizedAccount" }, "maxItems": 100 },
-                "prior_versions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionPriorVersion" }, "maxItems": 100 },
+                "accounts_with_exceptions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-account-exceptions.json" }, "maxItems": 100 },
+                "accounts_unauthorized": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-unauthorized-account.json" }, "maxItems": 100 },
+                "prior_versions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-prior-version.json" }, "maxItems": 100 },
                 "pagination": { "$ref": "/schemas/core/pagination-response.json" }
               },
               "required": ["subscription_id", "list", "pagination"],

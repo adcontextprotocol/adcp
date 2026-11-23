@@ -186,8 +186,10 @@ test('absence of installments is run-of-collection, and is documented as such', 
 
 test('installments are requestable through the canonical fields projection', () => {
   const fields = readSchema('media-buy/product-fields.json');
-  assert.ok(fields.items.enum.includes('installments'), 'buyers can project installments');
-  assert.ok(fields.items.enum.includes('collections'));
+  assert.equal(fields.items.$ref, '/schemas/media-buy/product-field.json');
+  const field = readSchema('media-buy/product-field.json');
+  assert.ok(field.enum.includes('installments'), 'buyers can project installments');
+  assert.ok(field.enum.includes('collections'));
   assert.match(fields.description, /requesting installments also returns collections/);
   // The same enum is shared with legacy get_products, where that rule is false.
   assert.match(fields.description, /Legacy get_products shares this enum but not that rule/);
