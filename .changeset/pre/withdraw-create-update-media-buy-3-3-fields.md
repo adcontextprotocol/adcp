@@ -15,4 +15,4 @@ Keep 3.3 additions off the deprecated `create_media_buy` and `update_media_buy` 
 
 `expected_confirmation_at` stays on every `submitted` response, `create_media_buy` included. `get_media_buys` still reads back what `sync_creatives` `assign` set.
 
-The 3.2 to 3.3 migration guide lists what to remove under [Closed-schema triage: what stays in 3.3](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3).
+The 3.2 to 3.3 migration guide lists what to remove under [Closed-schema triage: what stays in 3.3](https://adcontextprotocol.org/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3).
