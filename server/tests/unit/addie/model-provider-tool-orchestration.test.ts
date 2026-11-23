@@ -269,6 +269,89 @@ describe('createAddieToolExecutor', () => {
     expect(result.execution.durable_outcome).toBeUndefined();
   });
 
+  it('re-dispatches an identical certification completion after a known gate rejection in the same turn', async () => {
+    const certificationTool: AddieTool = { ...tool, name: 'complete_certification_module' };
+    const handler = vi.fn()
+      .mockResolvedValueOnce('NOT COMPLETED — Module A3 has no teaching checkpoint recorded.')
+      .mockResolvedValueOnce('Module A3 completed! Your scores have been recorded.');
+    const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
+    const execute = createAddieToolExecutor(
+      [certificationTool],
+      new Map([['complete_certification_module', handler]]),
+      { executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect },
+    );
+    const first = { ...call(), id: 'call_complete_1', name: 'complete_certification_module' };
+
+    const rejected = await execute(first, 1);
+    const retried = await execute({ ...first, id: 'call_complete_2' }, 2);
+
+    expect(rejected.execution).toMatchObject({ is_error: true, durable_outcome: 'known' });
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(reserveSideEffect).toHaveBeenCalledTimes(2);
+    expect(retried.execution).toMatchObject({ is_error: false, durable_outcome: 'known' });
+    expect(retried.execution.blocked_by_policy).toBeFalsy();
+    expect(String(retried.result.content)).not.toContain('Duplicate external action blocked');
+  });
+
+  it('defers a repeated certification completion after success to the handler', async () => {
+    const certificationTool: AddieTool = { ...tool, name: 'complete_certification_module' };
+    const handler = vi.fn().mockResolvedValue('Module A3 completed! Your scores have been recorded.');
+    const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
+    const execute = createAddieToolExecutor(
+      [certificationTool],
+      new Map([['complete_certification_module', handler]]),
+      { executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect },
+    );
+    const first = { ...call(), id: 'call_complete_1', name: 'complete_certification_module' };
+
+    const initial = await execute(first, 1);
+    const repeated = await execute({ ...first, id: 'call_complete_2' }, 2);
+
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(initial.execution).toMatchObject({ is_error: false, durable_outcome: 'known' });
+    expect(repeated.execution).toMatchObject({ is_error: false, durable_outcome: 'known' });
+    expect(String(repeated.result.content)).not.toContain('Duplicate external action blocked');
+  });
+
+  it('keeps a thrown certification completion fenced against an identical retry', async () => {
+    const certificationTool: AddieTool = { ...tool, name: 'complete_certification_module' };
+    const handler = vi.fn().mockRejectedValue(new ToolError('Database connection was interrupted.'));
+    const execute = createAddieToolExecutor(
+      [certificationTool],
+      new Map([['complete_certification_module', handler]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        reserveSideEffect: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+    const first = { ...call(), id: 'call_complete_1', name: 'complete_certification_module' };
+
+    await execute(first, 1);
+    const retried = await execute({ ...first, id: 'call_complete_2' }, 2);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(retried.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
+  it('keeps a non-durable mutation fenced after it returns a normal error result', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn().mockResolvedValue({ status: 'error', model_context: 'x', user_summary: 'x' });
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production',
+      policy: () => ({ allowed: true }),
+      reserveSideEffect: vi.fn().mockResolvedValue(undefined),
+    });
+    const first = { ...call({ title: 'Synthetic issue', body: 'Synthetic body' }), id: 'call_issue_1', name: 'create_github_issue' };
+
+    const initial = await execute(first, 1);
+    const blocked = await execute({ ...first, id: 'call_issue_2' }, 2);
+
+    expect(initial.execution.is_error).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(blocked.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
   it('rejects structurally malformed provider input before policy or handler dispatch', async () => {
     const handler = vi.fn();
     const policy = vi.fn().mockReturnValue({ allowed: true });
