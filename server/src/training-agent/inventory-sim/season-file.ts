@@ -1,11 +1,13 @@
 /**
  * Season files: load a `SeasonSeed` from YAML or JSON.
  *
+ * A file over `MAX_SEASON_FILE_BYTES` is refused before it is read.
  * Loading makes three passes, each reporting every problem it finds:
  * 1. A zod pass checks the shape, dates, number ranges and the values tenants put on the wire
  *    (currency code, domains, formats present, floors), with the path of each problem.
  * 2. A reference pass checks what the engine leaves unchecked: product
- *    properties, product collections, the ids traffic events target and,
+ *    properties, product collections, the ids traffic events target, that
+ *    every collection's installments fall inside the season and,
  *    when the host lists the formats it supports, placement formats.
  * 3. The engine's own checks run through `trafficFor` (shares sum to 1, ids
  *    resolve), which also primes the traffic cache for the returned seed. Then
@@ -15,7 +17,7 @@
 import fs from 'node:fs';
 import { parseAllDocuments, stringify } from 'yaml';
 import { z } from 'zod';
-import { EngineError, trafficFor, type SeasonSeed } from './engine/index.js';
+import { DAY_MS, EngineError, SeasonCalendar, parseDate, trafficFor, type SeasonSeed } from './engine/index.js';
 
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -170,8 +172,8 @@ export const seasonSeedSchema = z.strictObject({
   audience_profiles: z.array(audienceProfile),
   segments: z.array(segment),
   properties: z.array(property),
-  placements: z.array(placement),
-  products: z.array(product),
+  placements: z.array(placement).min(1, 'needs at least one placement'),
+  products: z.array(product).min(1, 'needs at least one product'),
   collections: z.array(collection).optional(),
   traffic: z.strictObject({
     weekday_shape: z.array(atLeastZero),
@@ -204,6 +206,9 @@ function dottedPath(path: ReadonlyArray<PropertyKey>): string {
   }
   return out || '(root)';
 }
+
+/** The largest season file the loader reads. */
+export const MAX_SEASON_FILE_BYTES = 5 * 1024 * 1024;
 
 /** What the host that loads a season can serve. */
 export interface SeasonFileOptions {
@@ -256,6 +261,20 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
       }
     });
   });
+  const calendar = new SeasonCalendar(seed.start_date, seed.days);
+  const daysUsable = Number.isInteger(seed.days) && seed.days >= 1 && seed.days <= 1100;
+  (daysUsable ? seed.collections ?? [] : []).forEach((collection, i) => {
+    const first = (parseDate(collection.first_date) - calendar.startMs) / DAY_MS;
+    if (first < 0) {
+      problems.push(`collections[${i}]: installment 1 on ${collection.first_date} falls before the season starts (${seed.start_date})`);
+      return;
+    }
+    const lastDay = first + (collection.count - 1) * collection.cadence_days;
+    if (lastDay < seed.days) return;
+    const firstPast = Math.max(Math.floor((seed.days - 1 - first) / collection.cadence_days) + 1, 0);
+    const date = calendar.dateOf(first + firstPast * collection.cadence_days);
+    problems.push(`collections[${i}]: installment ${firstPast + 1} on ${date} falls after the season ends (${calendar.dateOf(seed.days - 1)})`);
+  });
   (seed.events ?? []).forEach((event, i) => {
     if (event.type !== 'traffic_multiplier') return;
     check(`events[${i}].placement_ids`, event.placement_ids, placementIds, 'placement');
@@ -292,6 +311,8 @@ export function parseSeasonSeed(input: unknown, source: string, options: SeasonF
 
 /** Read a YAML or JSON season file (JSON is valid YAML). */
 export function readSeasonFile(path: string, options: SeasonFileOptions = {}): SeasonSeed {
+  const { size } = fs.statSync(path);
+  if (size > MAX_SEASON_FILE_BYTES) invalid(path, [`the file is ${size} bytes; season files are limited to 5 MB`]);
   const text = fs.readFileSync(path, 'utf8');
   const documents = parseAllDocuments(text, { schema: 'core' });
   if (documents.length > 1) invalid(path, ['a season file must hold one document, found several']);
@@ -303,7 +324,14 @@ export function readSeasonFile(path: string, options: SeasonFileOptions = {}): S
       return `${path}${pos ? `:${pos.line}:${pos.col}` : ''}: ${error.message.split('\n')[0]}`;
     }));
   }
-  return parseSeasonSeed(document.toJS(), path, options);
+  let value: unknown;
+  try {
+    value = document.toJS();
+  } catch (error) {
+    if (error instanceof Error) invalid(path, [error.message.split('\n')[0]]);
+    throw error;
+  }
+  return parseSeasonSeed(value, path, options);
 }
 
 /** Serialize a season as YAML that `readSeasonFile` loads back unchanged. */

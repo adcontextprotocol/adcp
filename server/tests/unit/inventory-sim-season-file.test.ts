@@ -15,6 +15,7 @@ import {
   type SeasonSeed,
 } from '../../src/training-agent/inventory-sim/engine/index.js';
 import {
+  MAX_SEASON_FILE_BYTES,
   parseSeasonSeed,
   readSeasonFile,
   seasonToYaml,
@@ -362,6 +363,100 @@ describe('season number ranges', () => {
     seed.forecast_error.bias = -5;
     seed.traffic.trend_per_day = -0.01;
     expect(() => parseSeasonSeed(seed, 'ranges')).not.toThrow();
+  });
+});
+
+describe('season bounds', () => {
+  const collection = {
+    collection_id: 'show',
+    name: 'Show',
+    channel: 'podcast',
+    property_id: 'site',
+    placement_id: 'banner',
+    first_date: '2027-01-02',
+    cadence_days: 7,
+    count: 3,
+    expected_audience: 1000,
+    audience_sigma: 0.1,
+  };
+  const withCollection = (patch: Record<string, unknown>) => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.collections = [{ ...collection, ...patch }];
+    return seed;
+  };
+
+  it('refuses a season with no placement', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.placements = [];
+    expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'none'))).toContain('placements: needs at least one placement');
+  });
+
+  it('refuses a season with no product', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.products = [];
+    expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'none'))).toContain('products: needs at least one product');
+  });
+
+  it('refuses a huge collection count at once, naming the first installment past the end', () => {
+    const started = Date.now();
+    const message = invalidSeedMessage(() => parseSeasonSeed(withCollection({ count: 1e9 }), 'huge'));
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(message).toContain('collections[0]: installment 6 on 2027-02-06 falls after the season ends (2027-01-30)');
+  });
+
+  it('refuses an installment scheduled after the season ends', () => {
+    const message = invalidSeedMessage(() => parseSeasonSeed(withCollection({ count: 6 }), 'late'));
+    expect(message).toContain('collections[0]: installment 6 on 2027-02-06 falls after the season ends (2027-01-30)');
+  });
+
+  it('refuses a first installment before the season starts', () => {
+    const message = invalidSeedMessage(() => parseSeasonSeed(withCollection({ first_date: '2026-12-25' }), 'early'));
+    expect(message).toContain('collections[0]: installment 1 on 2026-12-25 falls before the season starts (2027-01-01)');
+  });
+
+  it('lists every collection that runs past the end', () => {
+    const seed = withCollection({ count: 100 });
+    seed.collections.push({ ...collection, collection_id: 'show2', count: 100 });
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'both'));
+    expect(message).toContain('collections[0]:');
+    expect(message).toContain('collections[1]:');
+  });
+
+  it('does not refuse installments that end on the last season day', () => {
+    // 2027-01-02 plus 4 weeks is 2027-01-30, the last day of a 30-day season from 2027-01-01.
+    let message = '';
+    try {
+      parseSeasonSeed(withCollection({ count: 5 }), 'edge');
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).not.toContain('season ends');
+  });
+
+  it('leaves an unusable season length to the engine\'s own check', () => {
+    const seed = withCollection({});
+    seed.days = 1e18;
+    expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'days'))).toContain('days');
+  });
+
+  it('refuses a file over the size limit before reading it', () => {
+    const file = path.join(dir, 'huge.yaml');
+    fs.writeFileSync(file, '');
+    fs.truncateSync(file, MAX_SEASON_FILE_BYTES + 1);
+    const message = invalidSeedMessage(() => readSeasonFile(file));
+    expect(message).toContain(`the file is ${MAX_SEASON_FILE_BYTES + 1} bytes; season files are limited to 5 MB`);
+  });
+
+  it('returns a YAML alias bomb as INVALID_SEED with the path', () => {
+    const lines = ['a: &a0 [x, x, x, x, x, x, x, x, x, x]'];
+    for (let i = 1; i < 12; i++) {
+      const prev = `*a${i - 1}`;
+      lines.push(`a${i}: &a${i} [${Array(10).fill(prev).join(', ')}]`);
+    }
+    const file = write('bomb.yaml', lines.join('\n') + '\n');
+    const message = invalidSeedMessage(() => readSeasonFile(file));
+    expect(message).toContain(`Season ${file} is invalid:`);
+    expect(message.toLowerCase()).toContain('alias');
   });
 });
 
