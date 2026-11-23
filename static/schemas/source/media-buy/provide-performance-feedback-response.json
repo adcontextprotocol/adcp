@@ -97,25 +97,16 @@
     {
       "title": "ProvidePerformanceFeedbackError",
       "description": "Error response - feedback rejected or could not be processed",
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
         "errors": {
-          "type": "array",
-          "description": "Array of errors explaining why feedback was rejected (e.g., invalid measurement period, missing campaign data)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+          "description": "Array of errors explaining why feedback was rejected (e.g., invalid measurement period, missing campaign data)"
         }
       },
-      "required": ["errors"],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           {

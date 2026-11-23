@@ -200,28 +200,18 @@
     {
       "title": "SyncCatalogsError",
       "description": "Error response - operation failed completely, no catalogs were processed",
-      "type": "object",
       "properties": {
         "errors": {
-          "type": "array",
           "description": "Operation-level errors that prevented processing any catalogs (e.g., authentication failure, service unavailable, invalid request format)",
           "items": {
             "$ref": "/schemas/core/catalog-sync-error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+          }
         }
       },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
       "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        },
         {
           "if": {
             "properties": {

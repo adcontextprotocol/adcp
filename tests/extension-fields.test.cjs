@@ -450,12 +450,23 @@ async function runTests() {
       throw new Error('Schema should have oneOf variants');
     }
 
+    // A variant declares ext itself or through a document it composes
+    // (the error variant composes core/task-error-response.json).
+    const extOf = (node) => {
+      const variant = resolveSchema(node, schema);
+      if (variant.properties && variant.properties.ext) return variant.properties.ext;
+      for (const member of variant.allOf || []) {
+        const ext = extOf(member);
+        if (ext) return ext;
+      }
+      return undefined;
+    };
     for (let i = 0; i < schema.oneOf.length; i++) {
-      const variant = resolveSchema(schema.oneOf[i], schema);
-      if (!variant.properties || !variant.properties.ext) {
+      const ext = extOf(schema.oneOf[i]);
+      if (!ext) {
         throw new Error(`oneOf variant ${i} missing ext field`);
       }
-      validateExtField(variant.properties.ext, '/schemas/core/ext.json');
+      validateExtField(ext, '/schemas/core/ext.json');
     }
 
     return true;

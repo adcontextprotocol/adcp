@@ -270,27 +270,16 @@
     {
       "title": "SyncCreativesError",
       "description": "Error response - operation failed completely, no creatives were processed",
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
         "errors": {
-          "type": "array",
-          "description": "Operation-level errors that prevented processing any creatives (e.g., authentication failure, service unavailable, invalid request format)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+          "description": "Operation-level errors that prevented processing any creatives (e.g., authentication failure, service unavailable, invalid request format)"
         }
       },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           {

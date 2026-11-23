@@ -160,27 +160,16 @@
     {
       "title": "SyncEventSourcesError",
       "description": "Error response - operation failed completely",
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
         "errors": {
-          "type": "array",
-          "description": "Operation-level errors that prevented processing",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+          "description": "Operation-level errors that prevented processing"
         }
       },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           {

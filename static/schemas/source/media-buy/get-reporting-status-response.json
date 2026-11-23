@@ -154,38 +154,49 @@
       "oneOf": [
         {
       "description": "Every unknown or unauthorized identifier returns this one shape: its message and error are constants, its error objects are closed, and it names no ledger snapshot, ledger time or account.",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "title": "Unavailable lookup",
-      "type": "object",
       "properties": {
         "status": { "type": "string", "const": "failed", "default": "failed" },
         "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
         "failure_kind": { "type": "string", "const": "lookup_unavailable", "default": "lookup_unavailable" },
-        "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
         "adcp_error": { "$ref": "#/definitions/ReportingStatusUnavailableError" },
         "errors": {
-          "type": "array",
-          "minItems": 1,
           "maxItems": 1,
-          "items": { "$ref": "#/definitions/ReportingStatusUnavailableError" }
+          "items": {
+            "$ref": "#/definitions/ReportingStatusUnavailableError"
+          }
         }
       },
-      "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": true,
+      "required": [
+        "status",
+        "view",
+        "failure_kind"
+      ],
       "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
     },
     {
       "title": "Operational failure",
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
         "status": { "type": "string", "const": "failed", "default": "failed" },
         "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
-        "failure_kind": { "type": "string", "const": "operational", "default": "operational" },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
+        "failure_kind": { "type": "string", "const": "operational", "default": "operational" }
       },
-      "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": true,
+      "required": [
+        "status",
+        "view",
+        "failure_kind"
+      ],
       "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
         }
       ]

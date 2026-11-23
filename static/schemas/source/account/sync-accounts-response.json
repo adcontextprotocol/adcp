@@ -299,27 +299,16 @@
     {
       "title": "SyncAccountsError",
       "description": "Operation failed completely, no accounts were processed",
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
         "errors": {
-          "type": "array",
-          "description": "Operation-level errors (e.g., authentication failure, service unavailable)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+          "description": "Operation-level errors (e.g., authentication failure, service unavailable)"
         }
       },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           {

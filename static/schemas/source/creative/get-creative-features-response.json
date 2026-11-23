@@ -15,31 +15,18 @@
     },
     {
       "title": "GetCreativeFeaturesError",
-      "type": "object",
       "description": "Error response",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
         "evaluation_id": {
           "$ref": "/schemas/core/creative-evaluation-id.json",
           "description": "Optional provider evaluation identity when failure occurred after the evaluation was accepted. When present, it is the same value returned on the submitted acknowledgement."
-        },
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           { "required": ["results"] },

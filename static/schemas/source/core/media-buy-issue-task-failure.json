@@ -3,32 +3,21 @@
   "$id": "/schemas/core/media-buy-issue-task-failure.json",
   "title": "Media Buy Issue Task Failure",
   "description": "A failed media buy issue result: outcome `failed` with one or more errors, and no issue.",
-  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/task-error-response.json"
+    }
+  ],
   "properties": {
     "outcome": {
       "type": "string",
       "const": "failed",
       "default": "failed"
-    },
-    "errors": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      }
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [
-    "outcome",
-    "errors"
+    "outcome"
   ],
-  "additionalProperties": true,
   "not": {
     "required": [
       "issue"

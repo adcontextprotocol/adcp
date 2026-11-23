@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/task-error-response.json",
   "title": "Task Error Response",
-  "description": "Error response",
+  "description": "A failed task response: at least one task-level error and the echoed context. Each task's failed branch composes it through allOf and keeps its own title, guard, and the fields it adds.",
   "type": "object",
   "properties": {
     "errors": {

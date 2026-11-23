@@ -3326,7 +3326,7 @@
         },
         "task-error-response": {
           "$ref": "/schemas/core/task-error-response.json",
-          "description": "Error response"
+          "description": "A failed task response: at least one task-level error and the echoed context."
         },
         "task-error-summary": {
           "$ref": "/schemas/core/task-error-summary.json",

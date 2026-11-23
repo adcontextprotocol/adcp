@@ -491,27 +491,16 @@
     {
       "title": "BuildCreativeError",
       "description": "Error response — creative generation failed. Multi-capability requests (`target_capability_ids[]`) are atomic: a single output failing means the entire batch returns an error response. Deprecated target_format_ids requests retain equivalent compatibility behavior.",
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
         "errors": {
-          "type": "array",
-          "description": "Array of errors explaining why creative generation failed. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+          "description": "Array of errors explaining why creative generation failed. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window."
         }
       },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           {

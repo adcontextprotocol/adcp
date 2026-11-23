@@ -50,27 +50,12 @@
     },
     {
       "title": "VerifyBrandClaimsError",
-      "type": "object",
       "description": "Batch-level failure — the entire request was rejected. Use per-result `error` on the success arm for per-claim failures that should not fail the batch.",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
         }
-      },
-      "required": [
-        "errors"
       ],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           {
