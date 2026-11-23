@@ -4,8 +4,11 @@ const assert = require('assert');
 const {
   changesetProtocolBump,
   changesetTargetsProtocol,
+  findArchivedChangesetViolations,
   findChangesetProtocolScopeViolations,
+  formatViolationMessage,
   hasProtocolScopedChanges,
+  isArchivedChangesetFile,
   isChangesetBumpDowngradeOrRemoval,
   isChangesetBumpEscalation,
   isChangesetClassificationMaintenance,
@@ -316,6 +319,191 @@ assert.strictEqual(
   false,
   'An empty diff is not release-audit maintenance'
 );
+
+// Archived prerelease changesets (.changeset/pre/*.md)
+const archivedPath = '.changeset/pre/x.md';
+const protocolSourcePath = 'static/schemas/source/core/product.json';
+const noFiles = readFiles({});
+const archivedHead = readFiles({ [archivedPath]: rewordedProtocolChangeset });
+const archivedBase = readFiles({ [archivedPath]: protocolChangeset });
+const ordinaryBranches = [{ headRef: 'fix/some-change' }, {}];
+const archivedOnly = violations => violations.length === 1 && violations[0].kind === 'archived';
+
+for (const opts of ordinaryBranches) {
+  const label = `ordinary branch ${JSON.stringify(opts)}`;
+
+  violations = findChangesetProtocolScopeViolations(
+    [{ status: 'M', paths: [archivedPath] }], archivedHead, archivedBase, opts
+  );
+  assert.ok(archivedOnly(violations), `${label}: editing an archived changeset yields one archived violation`);
+
+  violations = findChangesetProtocolScopeViolations([{ status: 'D', paths: [archivedPath] }], noFiles, archivedBase, opts);
+  assert.ok(archivedOnly(violations), `${label}: deleting an archived changeset fails`);
+
+  violations = findChangesetProtocolScopeViolations([{ status: 'A', paths: [archivedPath] }], archivedHead, noFiles, opts);
+  assert.ok(archivedOnly(violations), `${label}: adding an archived changeset fails`);
+
+  violations = findChangesetProtocolScopeViolations(
+    [{ status: 'R100', paths: ['.changeset/x.md', archivedPath] }], archivedHead, archivedBase, opts
+  );
+  assert.ok(archivedOnly(violations), `${label}: renaming a changeset into the archive fails`);
+
+  violations = findChangesetProtocolScopeViolations(
+    [{ status: 'R050', paths: [archivedPath, '.changeset/x.md'] }], archivedHead, archivedBase, opts
+  );
+  assert.ok(archivedOnly(violations), `${label}: renaming a changeset out of the archive fails`);
+}
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: [protocolSourcePath] },
+    { status: 'A', paths: ['.changeset/new-protocol-fix.md'] },
+    { status: 'M', paths: [archivedPath] },
+  ],
+  readFiles({ '.changeset/new-protocol-fix.md': protocolChangeset, [archivedPath]: rewordedProtocolChangeset }),
+  archivedBase,
+  { headRef: 'fix/some-change' }
+);
+assert.ok(archivedOnly(violations), 'Protocol files do not excuse archive edits: exactly one archived violation');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: ['.changeset/existing-protocol-fix.md'] },
+    { status: 'M', paths: [archivedPath] },
+  ],
+  readFiles({ '.changeset/existing-protocol-fix.md': protocolChangeset, [archivedPath]: rewordedProtocolChangeset }),
+  readFiles({ '.changeset/existing-protocol-fix.md': minorProtocolChangeset, [archivedPath]: protocolChangeset }),
+  { headRef: 'fix/some-change' }
+);
+assert.ok(archivedOnly(violations), 'A root downgrade stays valid; the pending verdict ignores archived paths');
+
+assert.strictEqual(isArchivedChangesetFile('.changeset/pre/x.md'), true, 'pre/*.md is an archived changeset');
+assert.strictEqual(isArchivedChangesetFile('.changeset/pre/x.json'), false, 'Non-.md files under pre/ are not archived changesets');
+assert.strictEqual(isArchivedChangesetFile('.changeset/pre/sub/x.md'), false, 'Nested pre/ paths are not archived changesets');
+assert.strictEqual(isArchivedChangesetFile('.changeset/pre.json'), false, 'pre.json is not an archived changeset');
+
+// release-audit/ branches
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'M', paths: [archivedPath] }], archivedHead, archivedBase, releaseAudit
+);
+assert.deepStrictEqual(violations, [], 'Release-audit branches can edit archived changeset text');
+
+violations = findChangesetProtocolScopeViolations([{ status: 'D', paths: [archivedPath] }], noFiles, archivedBase, releaseAudit);
+assert.deepStrictEqual(violations, [], 'Release-audit branches can delete archived changesets');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: ['.changeset/a.md'] },
+    { status: 'M', paths: ['.changeset/pre/b.md'] },
+  ],
+  readFiles({ '.changeset/a.md': majorProtocolChangeset, '.changeset/pre/b.md': protocolChangeset }),
+  readFiles({ '.changeset/a.md': protocolChangeset, '.changeset/pre/b.md': minorProtocolChangeset }),
+  releaseAudit
+);
+assert.deepStrictEqual(violations, [], 'Release-audit branches can escalate and downgrade archived bumps, like root changesets');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: ['.changeset/a.md'] },
+    { status: 'M', paths: ['.changeset/pre/b.md'] },
+    { status: 'D', paths: ['.changeset/pre/c.md'] },
+  ],
+  readFiles({ '.changeset/a.md': rewordedProtocolChangeset, '.changeset/pre/b.md': rewordedProtocolChangeset }),
+  readFiles({ '.changeset/a.md': protocolChangeset, '.changeset/pre/b.md': protocolChangeset, '.changeset/pre/c.md': protocolChangeset }),
+  releaseAudit
+);
+assert.deepStrictEqual(violations, [], 'Release-audit branches can mix root edits with archive edits and deletes');
+
+violations = findChangesetProtocolScopeViolations([{ status: 'A', paths: [archivedPath] }], archivedHead, noFiles, releaseAudit);
+assert.ok(archivedOnly(violations), 'Release-audit branches cannot add to the archive');
+
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'R100', paths: ['.changeset/x.md', archivedPath] }], archivedHead, archivedBase, releaseAudit
+);
+assert.ok(archivedOnly(violations), 'Release-audit branches cannot rename into the archive');
+
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'R100', paths: ['.changeset/pre/a.md', '.changeset/pre/b.md'] }], archivedHead, archivedBase, releaseAudit
+);
+assert.deepStrictEqual(
+  violations.map(v => [v.kind, v.filePath]),
+  [['archived', '.changeset/pre/a.md'], ['archived', '.changeset/pre/b.md']],
+  'Release-audit branches cannot rename within the archive (one violation per archived path)'
+);
+
+// Release-audit carries changeset-history edits only; a protocol change goes in its own PR.
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: [archivedPath] },
+    { status: 'M', paths: [protocolSourcePath] },
+  ],
+  archivedHead,
+  archivedBase,
+  releaseAudit
+);
+assert.ok(archivedOnly(violations), 'Release-audit: archive edit mixed with a protocol change fails with one archived violation');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: [archivedPath] },
+    { status: 'M', paths: ['server/src/billing/subscription-sync.ts'] },
+  ],
+  archivedHead,
+  archivedBase,
+  releaseAudit
+);
+assert.ok(archivedOnly(violations), 'Release-audit: archive edit mixed with non-changeset files fails with one archived violation');
+
+// Version Packages branches
+for (const headRef of ['changeset-release/main', 'changeset-release/3.2.x']) {
+  violations = findChangesetProtocolScopeViolations(
+    [
+      { status: 'R100', paths: ['.changeset/a.md', '.changeset/pre/a.md'] },
+      { status: 'R100', paths: ['.changeset/b.md', '.changeset/pre/b.md'] },
+      { status: 'A', paths: ['dist/schemas/3.3.0-beta.6/core/product.json'] },
+      { status: 'M', paths: ['CHANGELOG.md'] },
+      { status: 'M', paths: ['package.json'] },
+    ],
+    noFiles, noFiles, { headRef }
+  );
+  assert.deepStrictEqual(violations, [], `${headRef}: a beta cut moving changesets into the archive passes`);
+}
+
+const gaCut = [
+  { status: 'D', paths: ['.changeset/pre/a.md'] },
+  { status: 'D', paths: ['.changeset/pre/b.md'] },
+  { status: 'D', paths: ['.changeset/c.md'] },
+  { status: 'D', paths: ['.changeset/pre.json'] },
+  { status: 'A', paths: ['dist/schemas/3.3.0/core/product.json'] },
+];
+violations = findChangesetProtocolScopeViolations(gaCut, noFiles, noFiles, { headRef: 'changeset-release/main' });
+assert.deepStrictEqual(violations, [], 'Version Packages GA cut deleting the archive passes');
+
+violations = findArchivedChangesetViolations(gaCut, 'fix/not-version-packages');
+assert.deepStrictEqual(
+  violations.map(v => v.filePath),
+  ['.changeset/pre/a.md', '.changeset/pre/b.md'],
+  'Outside Version Packages the GA-cut shape yields one archived violation per archived path'
+);
+
+// formatViolationMessage
+const mixedMessage = formatViolationMessage([
+  { kind: 'archived', filePath: archivedPath, status: 'M' },
+  { filePath: '.changeset/app-fix.md', message: 'pending detail' },
+]);
+assert.ok(mixedMessage.includes('Archived prerelease changeset changed:'), 'Message has the archived section');
+assert.ok(mixedMessage.includes('Non-protocol changeset detected:'), 'Message keeps the pending section');
+assert.ok(mixedMessage.includes(archivedPath) && mixedMessage.includes('release-audit/'), 'Archived section names the path and release-audit/');
+
+// pre.json is deliberately not guarded
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'M', paths: ['.changeset/pre.json'] }], noFiles, noFiles, { headRef: 'fix/pre-exit' }
+);
+assert.deepStrictEqual(violations, [], 'Pre-exit (M pre.json) passes on an ordinary branch');
+violations = findChangesetProtocolScopeViolations(
+  [{ status: 'A', paths: ['.changeset/pre.json'] }], noFiles, noFiles, { headRef: 'fix/pre-enter' }
+);
+assert.deepStrictEqual(violations, [], 'Pre-enter (A pre.json) passes on an ordinary branch');
 
 assert.strictEqual(
   isChangesetClassificationMaintenance(
