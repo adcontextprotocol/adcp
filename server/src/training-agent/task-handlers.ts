@@ -7905,6 +7905,8 @@ export function normalizeProductDiscoveryArgs(
         : {}),
       ...(ifFeedVersion !== undefined && { if_wholesale_feed_version: ifFeedVersion }),
       buying_mode: 'wholesale',
+      // Errors on expanded criteria report the compact path they arrived on.
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'request_proposals') {
@@ -7915,6 +7917,7 @@ export function normalizeProductDiscoveryArgs(
       buying_mode: 'brief',
       __compact_proposal_lifecycle: true,
       __require_proposals: true,
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'refine_proposals') {
@@ -8875,9 +8878,12 @@ function canonicalStringSet(value: unknown): string[] | undefined {
   return [...new Set(value)].sort();
 }
 
-/** Controller fixtures expose discrete inventory coverage separately from
- * overlay_support. The training seller can evaluate country and metro facts;
- * it refuses geography it cannot evaluate instead of ignoring a predicate. */
+/** Built-in products and controller fixtures expose discrete inventory
+ * coverage as `ext.training.coverage`, separately from overlay_support. The
+ * training seller can evaluate country and metro facts; it refuses geography
+ * it cannot evaluate instead of ignoring a predicate. A coverage filter
+ * returns products whose inventory covers a requested area, so a product
+ * that declares no facts for a requested field is left out. */
 function filterProductsByCoverage(
   products: Product[],
   filters: Record<string, unknown>,
@@ -8887,23 +8893,15 @@ function filterProductsByCoverage(
   if (requested.length === 0) return { products };
   const unsupported = requested.find(field => field !== 'countries' && field !== 'metros');
   if (unsupported) return { products: [], unsupported };
-  const coverageByProduct = new Map<Product, Record<string, unknown>>();
-  for (const product of products) {
-    const ext = (product as unknown as Record<string, unknown>).ext;
-    const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
-    const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
-    for (const field of requested) {
-      if (!coverage || !Array.isArray(coverage[field])) return { products: [], unsupported: field };
-    }
-    coverageByProduct.set(product, coverage!);
-  }
   return {
     products: products.filter(product => {
-      const coverage = coverageByProduct.get(product)!;
+      const ext = (product as unknown as Record<string, unknown>).ext;
+      const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
+      const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
       return requested.every(field => {
         const values = filters[field];
-        if (!Array.isArray(values)) return false;
-        const inventory = coverage[field] as unknown[];
+        const inventory = coverage?.[field];
+        if (!Array.isArray(values) || !Array.isArray(inventory)) return false;
         return values.some(value => inventory.some(area => field === 'countries'
           ? area === value
           : isRecord(area) && isRecord(value)
