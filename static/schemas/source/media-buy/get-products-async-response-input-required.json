@@ -3,10 +3,10 @@
   "$id": "/schemas/media-buy/get-products-async-response-input-required.json",
   "title": "Get Products - Input Required",
   "description": "Payload when search is paused waiting for user clarification.",
-  "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-input-required.json" }
+    {
+      "$ref": "/schemas/core/compact-task-input-required.json"
+    }
   ],
   "properties": {
     "reason": {
@@ -30,13 +30,6 @@
       "items": {
         "type": "string"
       }
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
-  },
-  "additionalProperties": true
+  }
 }

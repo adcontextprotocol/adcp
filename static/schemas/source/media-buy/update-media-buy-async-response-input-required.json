@@ -3,24 +3,17 @@
   "$id": "/schemas/media-buy/update-media-buy-async-response-input-required.json",
   "title": "Update Media Buy - Input Required",
   "description": "Payload when update_media_buy task is paused waiting for user input or approval.",
-  "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-input-required.json" }
+    {
+      "$ref": "/schemas/core/compact-task-input-required.json"
+    }
   ],
   "properties": {
     "reason": {
       "description": "Reason code indicating why input is needed",
       "$ref": "#/definitions/reason"
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true,
   "definitions": {
     "reason": {
       "type": "string",
