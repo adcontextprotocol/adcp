@@ -335,6 +335,44 @@ fails. For a site where only one keyword changed and its effect is monotone
 (a bound, an enum subset, `required`), the tool also checks the declared
 direction.
 
+### A range of several commits
+
+A series can give each commit its own manifest. Compared as a whole range,
+its lines can then miss the range's differences: a later commit changes a
+site an earlier line describes (a bound set by one commit and lowered by the
+next), or a merge changes a value inside one (a guard ported into a union
+another commit added). The expected difference at a site is the composition
+of the commits' changes there, in commit order: the first commit's old
+value, the last one's new value.
+
+With `--manifest auto`, when the lines do not match the range as a whole and
+the range has more than one commit, the tool composes them commit by commit.
+It compares each commit of `base..head` with its first parent (when the head
+is a merge into the base, as on CI, the merge itself is left out):
+
+- A commit that adds or changes a manifest file must show exactly that
+  file's lines, as the head writes them, with their sides.
+- Any other commit must show no difference.
+- A merge's net effect against its first parent is part of the chain as it
+  is: the changes its other parent brings, and its resolution.
+
+If every commit passes, the range passes: each difference between base and
+head arises in some commit, and every commit's differences are declared.
+The composition is checked on the commits, not on rendered values, because a
+rendered value names a shared node by the first location the render met it
+at. The same schema renders differently once an earlier commit extracts a
+definition, and a merge's change can sit inside a value another line
+declares.
+
+`side` belongs to the commit that declares the line: the roots its change
+reaches in that commit. A later commit can make the same site reachable from
+roots on the other side, and that commit's differences are checked against
+its own lines. The report notes such a widening instead of failing it. Each
+line's witness comes from its own commit.
+
+The report's manifest section then has `mode: chain`, one step per commit,
+the range-wide counts the lines left unmatched (`range`), and the side notes.
+
 ## Corpus differential
 
 `--corpus` validates real payloads against both refs and reports every

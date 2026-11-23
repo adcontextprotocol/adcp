@@ -62,13 +62,22 @@ function formatText(report) {
   if (report.manifest) {
     const m = report.manifest;
     const name = m.files.length ? m.files.join(', ') : '(no delta manifest: no differences are intended)';
-    lines.push(`Manifest ${name}: ${m.ok ? 'matches the differences exactly' : 'does NOT match'}`);
-    for (const x of m.missing) lines.push(`  missing difference for manifest entry ${x.index}: ${x.location || `${x.root} ${x.pointer}`} ${x.keyword}`);
+    if (m.mode === 'chain') {
+      const merges = m.steps.filter(s => s.merge).length;
+      lines.push(`Manifest ${name}: the lines do not match the range as a whole (${m.range.extra} undeclared, ${m.range.missing} unmatched), so they are composed commit by commit: ${m.ok ? 'every commit\'s differences equal its own lines' : 'does NOT match'}`);
+      lines.push(`  ${m.steps.length} commits; ${merges} merge${merges === 1 ? '' : 's'} taken as their net effect`);
+      for (const s of m.steps) {
+        const what = s.merge ? `merge, net effect ${s.entries} entries at ${s.sites} sites` : `${s.lines.length} lines, ${s.entries} entries at ${s.sites} sites${s.ok ? '' : ' (does NOT match)'}`;
+        lines.push(`  ${s.commit.slice(0, 10)} ${s.subject}: ${what}`);
+      }
+      for (const n of m.notes) lines.push(`  note, entry ${n.index}: ${n.note}`);
+    } else lines.push(`Manifest ${name}: ${m.ok ? 'matches the differences exactly' : 'does NOT match'}`);
+    for (const x of m.missing) lines.push(`  missing difference for manifest entry ${x.index}${x.commit ? ` in ${x.commit.slice(0, 10)}` : ''}: ${x.location || `${x.root} ${x.pointer}`} ${x.keyword}`);
     if (m.extra.length) {
       lines.push(`  ${m.extra.length} undeclared difference entries:`);
       lines.push(...formatGroups(groupBySite(m.extra), { maxGroups: 20 }));
     }
-    for (const p of m.problems) lines.push(`  entry ${p.change.index}: ${p.problem}`);
+    for (const p of m.problems) lines.push(p.change ? `  entry ${p.change.index}${p.commit ? ` in ${p.commit.slice(0, 10)}` : ''}: ${p.problem}` : `  ${p.problem}`);
   }
   if (c.info.length) {
     const ig = groupBySite(c.info);

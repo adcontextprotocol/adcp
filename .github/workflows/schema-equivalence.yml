@@ -32,14 +32,17 @@ jobs:
     # Hosted runner capacity is shared across the org: skip drafts.
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # A 22-commit series checked commit by commit, with 142 witnesses, takes
+    # about 5 minutes on a 16-vCPU box; the rest of the job takes 2.
+    timeout-minutes: 20
     steps:
       # The pull_request event checks out the merge commit. Its first parent
       # is the base branch tip, so HEAD^1 -> HEAD is exactly what merging the
-      # PR does to main; two commits of history are enough.
+      # PR does to main. A series whose commits carry their own manifests is
+      # checked commit by commit, so the PR's history is fetched too.
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:

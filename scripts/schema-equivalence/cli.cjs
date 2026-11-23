@@ -23,6 +23,7 @@ const { collectCorpus, differential, sitesFromEntries, probeValues, TreeValidato
 const { generateWitnesses } = require('./lib/witness.cjs');
 const { formatText } = require('./lib/report.cjs');
 const { checkOneOf, formatOneOf } = require('./lib/oneof.cjs');
+const { checkChain, chainReport } = require('./lib/chain.cjs');
 
 // The repository whose refs are compared; --repo changes it (tests use a scratch repository).
 let REPO = path.resolve(__dirname, '..', '..');
@@ -176,6 +177,8 @@ async function main() {
   if (result.problems.length) report.failures.push(`${result.problems.length} unresolved or invalid schema locations`);
 
   let manifest = null;
+  let chain = null;
+  let chainMs = null;
   if (values.manifest) {
     let files;
     if (values.manifest === 'auto') {
@@ -194,7 +197,23 @@ async function main() {
     manifest = { changes, label: files.join(', ') };
     const match = matchManifest(result.entries, manifest);
     report.manifest = { files: files.map(displayPath), ...match };
-    if (!match.ok) report.failures.push('the differences do not equal the manifest');
+    // A range of several commits whose lines do not match the range as a
+    // whole: compose them commit by commit (lib/chain.cjs).
+    if (!match.ok && values.manifest === 'auto') {
+      const t0 = Date.now();
+      chain = checkChain({
+        repo: REPO,
+        base: refs.base,
+        head: refs.head,
+        files: files.map(f => path.relative(REPO, f).split(path.sep).join('/')),
+        changes: changes.map(c => ({ ...c, file: path.relative(REPO, path.resolve(REPO, c.file)).split(path.sep).join('/') })),
+        dir: DELTA_DIR,
+        rules: !values['no-rules'],
+      });
+      if (chain) report.manifest = { files: files.map(displayPath), ...chainReport(chain, match) };
+      chainMs = Date.now() - t0;
+    }
+    if (!report.manifest.ok) report.failures.push(chain ? 'a commit\'s differences do not equal its manifest' : 'the differences do not equal the manifest');
   } else if (result.entries.length) {
     report.failures.push(`${result.entries.length} undeclared difference entries`);
   }
@@ -205,6 +224,7 @@ async function main() {
   let validators = null;
   const getValidators = () => validators || (validators = { base: new TreeValidator(base), head: new TreeValidator(head) });
   const timings = { compare_ms: result.timings.total_ms };
+  if (chainMs !== null) timings.chain_ms = chainMs;
   if ((values.corpus && result.changedRoots.length) || values['corpus-all']) {
     const t0 = Date.now();
     if (refs) corpus = collectCorpus({ repo: REPO, commit: refs.head, baseTree: base, headTree: head });
@@ -237,7 +257,26 @@ async function main() {
   if (values.witness) {
     if (!manifest) fail('--witness needs --manifest');
     const t0 = Date.now();
-    report.witnesses = await generateWitnesses({ baseTree: base, headTree: head, manifest, match: report.manifest, corpus, validators: getValidators() });
+    if (chain) {
+      // Each line's witness comes from the commit that declares it.
+      report.witnesses = [];
+      for (const s of chain.steps) {
+        if (s.merge || !s.lines.length) continue;
+        const stepBase = loadFromRef(REPO, s.parent);
+        const stepHead = loadFromRef(REPO, s.commit);
+        report.witnesses.push(...await generateWitnesses({
+          baseTree: stepBase,
+          headTree: stepHead,
+          manifest: { changes: s.lines },
+          match: s.match,
+          corpus,
+          // Only the roots a line reaches get compiled.
+          validators: { base: new TreeValidator(stepBase, { lazy: true }), head: new TreeValidator(stepHead, { lazy: true }) },
+        }));
+      }
+      for (const c of chain.unowned) report.witnesses.push({ index: c.index, direction: c.direction, ok: false, payloads: [], reason: 'no commit of the range adds or changes its manifest file' });
+      report.witnesses.sort((a, b) => a.index - b.index);
+    } else report.witnesses = await generateWitnesses({ baseTree: base, headTree: head, manifest, match: report.manifest, corpus, validators: getValidators() });
     timings.witness_ms = Date.now() - t0;
     const missing = report.witnesses.filter(w => !w.ok);
     if (missing.length) report.failures.push(`${missing.length} manifest entries without a verified witness`);

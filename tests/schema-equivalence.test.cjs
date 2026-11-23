@@ -143,3 +143,129 @@ describe('schema-equivalence CLI on git refs', () => {
     }
   });
 });
+
+// A scratch repository with schemas under static/schemas/source and delta
+// manifests under .schema-deltas, for checks that span several commits.
+function scratchRepo() {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-equivalence-chain-'));
+  const g = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: repo }).toString().trim();
+  g('init', '-q', '-b', 'main');
+  const schema = (rel, body) => {
+    const f = path.join(repo, 'static', 'schemas', 'source', rel);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify({ $schema: 'http://json-schema.org/draft-07/schema#', $id: `/schemas/${rel}`, ...body }, null, 2));
+  };
+  const manifest = (name, changes) => {
+    fs.mkdirSync(path.join(repo, '.schema-deltas'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.schema-deltas', `${name}.yaml`), JSON.stringify({ title: name, changes }, null, 2));
+  };
+  const commit = (message) => {
+    g('add', '-A');
+    g('commit', '-q', '-m', message);
+    return g('rev-parse', 'HEAD');
+  };
+  return { repo, g, schema, manifest, commit, cleanup: () => fs.rmSync(repo, { recursive: true, force: true }) };
+}
+
+describe('schema-equivalence CLI on a range of commits', () => {
+  const name = maxLength => ({ type: 'object', properties: { name: { type: 'string', ...(maxLength ? { maxLength } : {}) } } });
+
+  it('two commits that change one site compose: the first old value, the last new one', async () => {
+    const r = scratchRepo();
+    try {
+      r.schema('a-request.json', name());
+      const base = r.commit('base');
+      r.schema('a-request.json', name(10));
+      r.manifest('first', [{ location: 'a-request.json#/properties/name', keyword: 'maxLength', new: 10, direction: 'tighten', side: 'request' }]);
+      r.commit('bound the name');
+      r.schema('a-request.json', name(8));
+      r.manifest('second', [{ location: 'a-request.json#/properties/name', keyword: 'maxLength', old: 10, new: 8, direction: 'tighten', side: 'request' }]);
+      const head = r.commit('lower the bound');
+      const { code, report, stderr } = await run(['--repo', r.repo, '--base', base, '--head', head, '--manifest', 'auto', '--witness'], r.repo);
+      assert.ok(report, stderr);
+      assert.equal(report.manifest.mode, 'chain');
+      assert.deepEqual(report.manifest.range, { extra: 1, missing: 2, problems: 0 }, 'the range alone shows absent -> 8');
+      assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.steps));
+      assert.equal(report.witnesses.filter(w => w.ok).length, 2, JSON.stringify(report.witnesses));
+      assert.equal(code, 0, report.failures.join('; '));
+    } finally {
+      r.cleanup();
+    }
+  });
+
+  it('a commit whose change no line declares fails the composed check', async () => {
+    const r = scratchRepo();
+    try {
+      r.schema('a-request.json', name());
+      const base = r.commit('base');
+      r.schema('a-request.json', name(10));
+      r.manifest('first', [{ location: 'a-request.json#/properties/name', keyword: 'maxLength', new: 10, direction: 'tighten', side: 'request' }]);
+      r.commit('bound the name');
+      r.schema('a-request.json', name(8));
+      const head = r.commit('lower the bound without a manifest');
+      const { code, report, stderr } = await run(['--repo', r.repo, '--base', base, '--head', head, '--manifest', 'auto'], r.repo);
+      assert.ok(report, stderr);
+      assert.equal(report.manifest.mode, 'chain');
+      assert.equal(report.manifest.ok, false);
+      assert.deepEqual(report.manifest.extra.map(e => [e.commit, e.keyword, e.old, e.new]), [[head, 'maxLength', 10, 8]]);
+      assert.equal(code, 1);
+    } finally {
+      r.cleanup();
+    }
+  });
+
+  it('a merge in the range counts with its net effect, including its resolution', async () => {
+    const r = scratchRepo();
+    try {
+      r.schema('a-request.json', name());
+      r.schema('b-response.json', { type: 'object', properties: { code: { type: 'string' } } });
+      r.commit('start');
+      r.g('checkout', '-q', '-b', 'side');
+      r.schema('b-response.json', { type: 'object', properties: { code: { type: 'string', minLength: 1 } } });
+      const base = r.commit('the merged branch bounds the code');
+      r.g('checkout', '-q', 'main');
+      r.schema('a-request.json', name(10));
+      r.manifest('first', [{ location: 'a-request.json#/properties/name', keyword: 'maxLength', new: 10, direction: 'tighten', side: 'request' }]);
+      r.commit('bound the name');
+      r.g('merge', '-q', '--no-commit', 'side');
+      // The resolution ports the merged branch's rule to the name.
+      r.schema('a-request.json', { type: 'object', properties: { name: { type: 'string', maxLength: 10, minLength: 1 } } });
+      const head = r.commit('merge side');
+      const { code, report, stderr } = await run(['--repo', r.repo, '--base', base, '--head', head, '--manifest', 'auto', '--witness'], r.repo);
+      assert.ok(report, stderr);
+      assert.equal(report.manifest.mode, 'chain');
+      assert.deepEqual(report.manifest.range, { extra: 1, missing: 0, problems: 0 }, 'the range alone shows the ported minLength undeclared');
+      assert.deepEqual(report.manifest.steps.map(s => s.merge), [false, true]);
+      assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.steps));
+      assert.equal(code, 0, report.failures.join('; '));
+    } finally {
+      r.cleanup();
+    }
+  });
+
+  it('a site that a later commit makes reachable from the other side keeps each line\'s own side', async () => {
+    const r = scratchRepo();
+    try {
+      const url = pattern => ({ type: 'string', ...(pattern ? { pattern: '^https://' } : {}) });
+      r.schema('url.json', url(false));
+      r.schema('x-response.json', { type: 'object', properties: { link: { $ref: '/schemas/url.json' } } });
+      r.schema('y-request.json', { type: 'object', properties: { link: { type: 'string' } } });
+      const base = r.commit('base');
+      r.schema('url.json', url(true));
+      r.manifest('first', [{ location: 'url.json#', keyword: 'pattern', new: '^https://', direction: 'tighten', side: 'response' }]);
+      r.commit('responses link over https');
+      r.schema('y-request.json', { type: 'object', properties: { link: { $ref: '/schemas/url.json' } } });
+      r.manifest('second', [{ location: 'url.json#', keyword: 'pattern', new: '^https://', direction: 'tighten', side: 'request' }]);
+      const head = r.commit('requests take the shared url');
+      const { code, report, stderr } = await run(['--repo', r.repo, '--base', base, '--head', head, '--manifest', 'auto', '--witness'], r.repo);
+      assert.ok(report, stderr);
+      assert.equal(report.manifest.mode, 'chain');
+      assert.deepEqual(report.manifest.range, { extra: 0, missing: 0, problems: 2 }, 'the range alone reaches the site on both sides');
+      assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.problems));
+      assert.deepEqual(report.manifest.notes.map(n => [n.index, n.declared, n.range_side]), [[0, 'response', 'both'], [1, 'request', 'both']]);
+      assert.equal(code, 0, report.failures.join('; '));
+    } finally {
+      r.cleanup();
+    }
+  });
+});
