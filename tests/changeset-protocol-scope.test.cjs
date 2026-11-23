@@ -19,7 +19,6 @@ const {
   isReleaseAuditChangesetMaintenance,
   isStoryboardBranchRegistrationOnly,
   parseNameStatus,
-  run,
 } = require('../scripts/check-changeset-protocol-scope.cjs');
 
 const protocolChangeset = `---
@@ -650,63 +649,103 @@ assert.strictEqual(
   'Every unusual archive file name in NUL-delimited output is guarded'
 );
 
-// End to end against real Git: run() must read unquoted paths and take the
+// End to end against real Git: the CLI must read unquoted paths and take the
 // head ref from CHANGESET_SCOPE_HEAD_REF, which CI sets empty for fork heads.
+// Every git child and the CLI run with fixtureEnv(), so the caller's GIT_*
+// variables, hooks and signing config never reach the fixture.
 {
-  const { execFileSync } = require('child_process');
+  const { execFileSync, spawnSync } = require('child_process');
+  const crypto = require('crypto');
   const fs = require('fs');
   const os = require('os');
   const path = require('path');
+  const { fixtureEnv } = require('./helpers/git-object-fixture.cjs');
 
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'changeset-scope-'));
-  const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
-    cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  const script = path.join(__dirname, '..', 'scripts', 'check-changeset-protocol-scope.cjs');
+  const gitIn = (cwd, ...args) => execFileSync('git', args, {
+    cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: fixtureEnv(),
   }).trim();
-  const write = (file, content) => {
-    fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
-    fs.writeFileSync(path.join(repo, file), content);
-  };
-  const savedCwd = process.cwd();
-  const savedHeadRef = process.env.CHANGESET_SCOPE_HEAD_REF;
-  const savedError = console.error;
-  const savedLog = console.log;
 
-  const runAs = (headRef, base) => {
-    process.env.CHANGESET_SCOPE_HEAD_REF = headRef;
-    return run([base]);
-  };
+  function checkScopeEndToEnd() {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'changeset-scope-'));
+    const git = (...args) => gitIn(repo, ...args);
+    const write = (file, content) => {
+      fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+      fs.writeFileSync(path.join(repo, file), content);
+    };
+    const runAs = (headRef, base) => spawnSync(process.execPath, [script, base], {
+      cwd: repo, encoding: 'utf8', env: { ...fixtureEnv(), CHANGESET_SCOPE_HEAD_REF: headRef },
+    }).status;
 
+    try {
+      git('init', '-q');
+      write('.changeset/pre/existing.md', protocolChangeset);
+      git('add', '-A');
+      git('commit', '-qm', 'base');
+      const base = git('rev-parse', 'HEAD');
+      // Name the local branch like an audit, so an empty head ref must not fall
+      // back to it.
+      git('checkout', '-q', '-b', 'release-audit/3.3.0');
+
+      write('.changeset/pre/café.md', protocolChangeset);
+      git('add', '-A');
+      git('commit', '-qm', 'add a non-ASCII archive file');
+      assert.strictEqual(runAs('fix/some-change', base), 1, 'The CLI catches an added non-ASCII archive file that git would quote');
+
+      git('reset', '-q', '--hard', base);
+      write('.changeset/pre/existing.md', rewordedProtocolChangeset);
+      git('commit', '-qam', 'reword an archived changeset');
+      assert.strictEqual(runAs('release-audit/3.3.0', base), 0, 'The CLI honours a trusted release-audit/ head ref');
+      assert.strictEqual(runAs('', base), 1, 'The CLI grades an archive edit as ordinary when the head ref is empty (a fork head in CI)');
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  }
+
+  checkScopeEndToEnd();
+
+  // Under a caller's GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE (a hook or a
+  // Git-aware wrapper), the fixture must leave the caller's repository alone.
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'changeset-scope-parent-'));
+  const parentIndex = path.join(parent, '.git', 'index');
+  const indexSha = () => crypto.createHash('sha256').update(fs.readFileSync(parentIndex)).digest('hex');
+  const inherited = { GIT_DIR: path.join(parent, '.git'), GIT_WORK_TREE: parent, GIT_INDEX_FILE: parentIndex };
+  const saved = Object.fromEntries(Object.keys(inherited).map(key => [key, process.env[key]]));
   try {
-    git('init', '-q');
-    write('.changeset/pre/existing.md', protocolChangeset);
-    git('add', '-A');
-    git('commit', '-qm', 'base');
-    const base = git('rev-parse', 'HEAD');
-    // Name the local branch like an audit, so an empty head ref must not fall
-    // back to it.
-    git('checkout', '-q', '-b', 'release-audit/3.3.0');
+    gitIn(parent, 'init', '-q');
+    fs.writeFileSync(path.join(parent, 'parent.txt'), 'parent\n');
+    gitIn(parent, 'add', 'parent.txt');
+    gitIn(parent, 'commit', '-qm', 'parent');
+    fs.writeFileSync(path.join(parent, 'sentinel.txt'), 'untracked\n');
+    const before = {
+      head: gitIn(parent, 'rev-parse', 'HEAD'),
+      branch: gitIn(parent, 'symbolic-ref', 'HEAD'),
+      status: gitIn(parent, 'status', '--porcelain'),
+      index: indexSha(),
+    };
 
-    process.chdir(repo);
-    console.error = () => {};
-    console.log = () => {};
+    Object.assign(process.env, inherited);
+    try {
+      checkScopeEndToEnd();
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
 
-    write('.changeset/pre/café.md', protocolChangeset);
-    git('add', '-A');
-    git('commit', '-qm', 'add a non-ASCII archive file');
-    assert.strictEqual(runAs('fix/some-change', base), 1, 'run() catches an added non-ASCII archive file that git would quote');
-
-    git('reset', '-q', '--hard', base);
-    write('.changeset/pre/existing.md', rewordedProtocolChangeset);
-    git('commit', '-qam', 'reword an archived changeset');
-    assert.strictEqual(runAs('release-audit/3.3.0', base), 0, 'run() honours a trusted release-audit/ head ref');
-    assert.strictEqual(runAs('', base), 1, 'run() with an empty head ref (a fork head in CI) grades the archive edit as ordinary');
+    assert.deepStrictEqual(
+      {
+        head: gitIn(parent, 'rev-parse', 'HEAD'),
+        branch: gitIn(parent, 'symbolic-ref', 'HEAD'),
+        status: gitIn(parent, 'status', '--porcelain'),
+        index: indexSha(),
+      },
+      before,
+      "The real-Git fixture leaves a caller's HEAD, branch, index and untracked files unchanged"
+    );
   } finally {
-    console.error = savedError;
-    console.log = savedLog;
-    process.chdir(savedCwd);
-    if (savedHeadRef === undefined) delete process.env.CHANGESET_SCOPE_HEAD_REF;
-    else process.env.CHANGESET_SCOPE_HEAD_REF = savedHeadRef;
-    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(parent, { recursive: true, force: true });
   }
 }
 
