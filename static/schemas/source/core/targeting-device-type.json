@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-device-type.json",
+  "title": "Device Type",
+  "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns).",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/device-type.json"
+  },
+  "minItems": 1
+}

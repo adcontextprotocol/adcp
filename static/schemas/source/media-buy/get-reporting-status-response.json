@@ -40,11 +40,7 @@
     }
   ],
   "properties": {
-    "view": {
-      "$ref": "/schemas/enums/reporting-status-view.json",
-      "title": "Reporting Status View",
-      "description": "Stable response-shape discriminator. SDK convenience methods may default this to summary, but the wire request is explicit."
-    },
+    "view": { "$ref": "/schemas/media-buy/reporting-status-view.json" },
     "ledger_snapshot_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value." },
     "ledger_as_of": { "type": "string", "format": "date-time", "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation." },
     "changes_checkpoint": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Opaque durable incremental-repair checkpoint for this periods snapshot. Consumers persist it only after consuming every page, then send it as changes_after. It is bound to authenticated caller, account, and filters and MUST order every committed obligation, revision, adjustment, materialization, consumer status statement, revision receipt, and adjustment receipt without gaps." },
@@ -57,7 +53,7 @@
         "period_start": { "type": "string", "format": "date-time" },
         "period_end": { "type": "string", "format": "date-time" },
         "scope_closed": { "type": "boolean", "description": "True only when no new obligation can enter this evaluated scope." },
-        "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/media-buy-id.json", "title": "Reporting Media Buy ID" }, "uniqueItems": true },
+        "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/reporting-media-buy-id.json" }, "uniqueItems": true },
         "all_accessible_media_buys": { "type": "boolean", "description": "True when media_buy_ids was omitted and the scope covers all caller-accessible account buys." },
         "delivery_config_generations": {
           "type": "array",
@@ -68,11 +64,7 @@
             "properties": {
               "delivery_config_id": { "$ref": "/schemas/core/reporting-delivery-config-id.json" },
               "delivery_config_version": { "type": "integer", "minimum": 1 },
-              "feed_purpose": {
-                "$ref": "/schemas/enums/reporting-feed-purpose.json",
-                "title": "Reporting Feed Purpose",
-                "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
-              },
+              "feed_purpose": { "$ref": "/schemas/core/reporting-feed-purpose.json" },
               "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
             },
             "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
@@ -80,7 +72,7 @@
           },
           "uniqueItems": true
         },
-        "feed_purposes": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-feed-purpose.json", "title": "Reporting Feed Purpose", "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists." }, "uniqueItems": true },
+        "feed_purposes": { "type": "array", "items": { "$ref": "/schemas/core/reporting-feed-purpose.json" }, "uniqueItems": true },
         "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "uniqueItems": true },
         "ledger_retained_from": { "type": "string", "format": "date-time", "description": "Earliest period boundary for which anti-entropy metadata is retained for every selected configuration generation." },
         "coverage_complete": { "type": "boolean", "description": "Whether the requested horizon is fully inside retained ledger coverage. False means health cannot prove completeness for the whole requested horizon." }

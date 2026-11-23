@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/age-restriction.json",
   "title": "Age Restriction",
-  "description": "A minimum age that delivery must meet for legal compliance, with its verification requirements.",
+  "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting.",
   "type": "object",
   "properties": {
     "min": {

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-collection-lists-exclude.json",
+  "title": "Collection Lists Exclude",
+  "description": "Experimental. Several collection_list_exclude refs: union. Not with collection_list_exclude. Over max_references is rejected, never truncated. On an undisclosed roster the same rule as collection_list_exclude applies.",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "x-adcp-validation": {
+    "unique_by": [
+      "agent_url",
+      "list_id"
+    ],
+    "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
+  },
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/collection-list-ref.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

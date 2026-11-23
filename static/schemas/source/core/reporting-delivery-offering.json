@@ -6,12 +6,6 @@
   "description": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering. A Core API-delivered offering requires no Managed external-materialization canonicalization code or contract, but every resulting revision still carries the fixed RFC 8785/JCS revision-binding canonicalization and digest.",
   "type": "object",
   "definitions": {
-    "ReportingFeedPurpose": {
-      "title": "Reporting Feed Purpose",
-      "x-adcp-model-context-inline": true,
-      "$ref": "/schemas/enums/reporting-feed-purpose.json",
-      "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
-    },
     "ReportingDeliveryPattern": {
       "title": "Reporting Delivery Pattern",
       "$ref": "/schemas/enums/reporting-delivery-pattern.json"
@@ -19,7 +13,7 @@
   },
   "properties": {
     "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json" },
-    "feed_purpose": { "$ref": "#/definitions/ReportingFeedPurpose" },
+    "feed_purpose": { "$ref": "/schemas/core/reporting-feed-purpose.json" },
     "report_definition_id": { "$ref": "/schemas/core/report-definition-id.json", "x-entity": "reporting_definition", "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value." },
     "standard_dimensions": {
       "type": "array",
@@ -103,7 +97,7 @@
           "properties": {
             "provider": { "type": "object", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": true },
             "identity": { "$ref": "/schemas/core/sharing-principal-identity.json" },
-            "cloud": { "$ref": "/schemas/enums/delivery-recipient-cloud.json", "title": "Reporting Cloud" },
+            "cloud": { "$ref": "/schemas/core/reporting-cloud.json" },
             "region": { "$ref": "/schemas/core/cloud-region.json" }
           },
           "required": ["provider", "identity"],

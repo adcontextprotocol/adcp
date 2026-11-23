@@ -16,8 +16,12 @@
   "x-added-in": "3.2.0",
   "x-legacy-fallback": { "tool": "update_media_buy", "mode": "orchestrated" },
   "properties": {
-    "adcp_version": { "$ref": "/schemas/core/version-envelope-adcp-version.json" },
-    "adcp_major_version": { "$ref": "/schemas/core/version-envelope-adcp-major-version.json" },
+    "adcp_version": {
+      "$ref": "/schemas/core/version-envelope-adcp-version.json"
+    },
+    "adcp_major_version": {
+      "$ref": "/schemas/core/version-envelope-adcp-major-version.json"
+    },
     "idempotency_key": {
       "$ref": "/schemas/core/idempotency-key.json"
     },

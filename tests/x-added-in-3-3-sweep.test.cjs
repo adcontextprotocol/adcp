@@ -195,7 +195,10 @@ test('expected_confirmation_at sites carry x-added-in 3.3.0', () => {
 
 test('3.3 properties carry x-added-in 3.3.0', () => {
   for (const [f, keys] of PROPERTIES_3_3) {
-    assert.equal(at(load(f), keys)['x-added-in'], '3.3.0', `${f} ${keys.join('.')}`);
+    // A property whose schema is a document of its own, such as
+    // core/targeting-collection-lists.json, carries the marker there.
+    const site = at(load(f), keys);
+    assert.equal((site['x-added-in'] ? site : resolveSchema(site, load(f)))['x-added-in'], '3.3.0', `${f} ${keys.join('.')}`);
   }
 });
 

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-geo-postal-areas.json",
-  "title": "Targeting Geo Postal Areas",
-  "description": "Postal areas to target or exclude.",
+  "title": "Geo Postal Areas",
+  "description": "Restrict delivery to specific postal areas. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities.",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/postal-area.json"

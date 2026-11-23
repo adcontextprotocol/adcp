@@ -28,9 +28,7 @@
       "description": "Offering this obligation was resolved to. Present on obligations derived from a reporting subscription (media_buy.reporting_subscriptions), where the seller resolves the selector per account and buy; a resolution change is a cutover, so no period is owed under two offerings. Authoritative for this obligation's timing: its schedule alignment, anchor, and delivery_sla, and so expected_at. Buyers compute which periods are owed themselves but read timing from here."
     },
     "feed_purpose": {
-      "$ref": "/schemas/enums/reporting-feed-purpose.json",
-      "title": "Reporting Feed Purpose",
-      "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
+      "$ref": "/schemas/core/reporting-feed-purpose.json"
     },
     "stub": {
       "type": "boolean",
@@ -48,8 +46,7 @@
     "media_buy_ids": {
       "type": "array",
       "items": {
-        "$ref": "/schemas/core/media-buy-id.json",
-        "title": "Reporting Media Buy ID"
+        "$ref": "/schemas/core/reporting-media-buy-id.json"
       },
       "uniqueItems": true,
       "description": "Exact frozen media-buy denominator resolved for this period, including buys with zero rows. An empty array is the definitive zero-buy set; omission is never used to mean all, empty, or unknown."

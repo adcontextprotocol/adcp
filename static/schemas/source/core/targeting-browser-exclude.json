@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-browser-exclude.json",
+  "title": "Browser Exclude",
+  "description": "Exclude specific canonical browser families from delivery. other excludes seller-recognized families that are not explicitly enumerated; unknown excludes browsers the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/browser-family.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

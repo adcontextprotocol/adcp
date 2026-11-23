@@ -210,67 +210,103 @@
         },
         "age-restriction": {
           "$ref": "/schemas/core/age-restriction.json",
-          "description": "A minimum age that delivery must meet for legal compliance, with its verification requirements."
+          "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting."
         },
-        "browser-families": {
-          "$ref": "/schemas/core/browser-families.json",
-          "description": "Canonical browser families, each listed once."
+        "targeting-audience-exclude": {
+          "$ref": "/schemas/core/targeting-audience-exclude.json",
+          "description": "Suppress delivery to members of these first-party CRM audiences. Matched users are excluded regardless of other targeting. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Seller must declare support in get_adcp_capabilities."
         },
-        "targeting-audiences": {
-          "$ref": "/schemas/core/targeting-audiences.json",
-          "description": "First-party CRM audience IDs from sync_audiences to target or suppress."
+        "targeting-audience-include": {
+          "$ref": "/schemas/core/targeting-audience-include.json",
+          "description": "Restrict delivery to members of these first-party CRM audiences. Only users present in the uploaded lists are eligible. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Not for lookalike expansion — express that intent in the campaign brief. Seller must declare support in get_adcp_capabilities."
         },
         "targeting-axe-segment": {
           "$ref": "/schemas/core/targeting-axe-segment.json",
           "description": "An AXE segment ID, used only by the deprecated AXE targeting fields."
         },
+        "targeting-browser-exclude": {
+          "$ref": "/schemas/core/targeting-browser-exclude.json",
+          "description": "Exclude specific canonical browser families from delivery. other excludes seller-recognized families that are not explicitly enumerated; unknown excludes browsers the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion."
+        },
+        "targeting-browser": {
+          "$ref": "/schemas/core/targeting-browser.json",
+          "description": "Restrict delivery to specific canonical browser families in the impression delivery and rendering environment, not the post-click landing-page browser. Values MUST NOT be inferred solely from operating system, device, web/mobile-web inventory, or placement. Values in this array use OR semantics. When browser is supplied, families not listed are ineligible: other includes a seller-recognized family that is not explicitly enumerated, while unknown includes a browser the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Browser and device constraints intersect; a seller that cannot enforce the exact combination MUST exclude or explicitly reconfigure the product during discovery and MUST reject it at create or update rather than silently widening delivery. Browser versions and seller-native IDs are intentionally unsupported."
+        },
+        "targeting-collection-lists-exclude": {
+          "$ref": "/schemas/core/targeting-collection-lists-exclude.json",
+          "description": "Experimental. Several collection_list_exclude refs: union. Not with collection_list_exclude. Over max_references is rejected, never truncated. On an undisclosed roster the same rule as collection_list_exclude applies."
+        },
         "targeting-collection-lists": {
           "$ref": "/schemas/core/targeting-collection-lists.json",
-          "description": "Collection list references, each listed once."
+          "description": "Experimental. Several collection_list refs: intersection. Not with collection_list. Over max_references is rejected, never truncated. On an undisclosed roster a seller MAY accept them."
         },
         "targeting-daypart-targets": {
           "$ref": "/schemas/core/targeting-daypart-targets.json",
-          "description": "Time windows that delivery is restricted to."
+          "description": "Restrict delivery to specific time windows. Each entry specifies days of week, an hour range, and an optional timezone that defaults to inventory_local. A concrete IANA zone uses one shared civil-time clock, while inventory_local evaluates each inventory unit in its seller-assigned local timezone. Entries are independent and MAY use different clocks."
         },
-        "targeting-device-platforms": {
-          "$ref": "/schemas/core/targeting-device-platforms.json",
-          "description": "Operating-system platforms to target or exclude."
+        "targeting-device-platform-exclude": {
+          "$ref": "/schemas/core/targeting-device-platform-exclude.json",
+          "description": "Exclude specific operating-system platforms from delivery. When a platform appears in both device_platform and device_platform_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion."
         },
-        "targeting-device-types": {
-          "$ref": "/schemas/core/targeting-device-types.json",
-          "description": "Device form factors to target or exclude."
+        "targeting-device-platform": {
+          "$ref": "/schemas/core/targeting-device-platform.json",
+          "description": "Restrict to specific platforms. Use for technical compatibility (app only works on iOS). Values from Sec-CH-UA-Platform standard, extended for CTV."
+        },
+        "targeting-device-type-exclude": {
+          "$ref": "/schemas/core/targeting-device-type-exclude.json",
+          "description": "Exclude specific device form factors from delivery (e.g., exclude CTV for app-install campaigns)."
+        },
+        "targeting-device-type": {
+          "$ref": "/schemas/core/targeting-device-type.json",
+          "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns)."
+        },
+        "targeting-geo-countries-exclude": {
+          "$ref": "/schemas/core/targeting-geo-countries-exclude.json",
+          "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE')."
         },
         "targeting-geo-countries": {
           "$ref": "/schemas/core/targeting-geo-countries.json",
-          "description": "ISO 3166-1 alpha-2 country codes to target or exclude."
+          "description": "Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE')."
         },
-        "targeting-geo-metros": {
-          "$ref": "/schemas/core/targeting-geo-metros.json",
-          "description": "Metro areas to target. Each entry names its classification system and values."
+        "targeting-geo-metros-exclude": {
+          "$ref": "/schemas/core/targeting-geo-metros-exclude.json",
+          "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities."
+        },
+        "targeting-geo-places-exclude": {
+          "$ref": "/schemas/core/targeting-geo-places-exclude.json",
+          "description": "Exclude catalog-backed named places. Uses the same identifier-based shape as geo_places. Sellers MUST reject overlap with geo_places for the same country, system, place_type, and value."
         },
         "targeting-geo-places": {
           "$ref": "/schemas/core/targeting-geo-places.json",
-          "description": "Catalog-backed named places to target or exclude."
+          "description": "Restrict delivery to catalog-backed named places. Values MUST be stable identifiers in the declared system, not display names. Sellers must declare supported systems, countries, and place types in get_adcp_capabilities and reject unsupported entries rather than silently dropping them."
+        },
+        "targeting-geo-postal-areas-exclude": {
+          "$ref": "/schemas/core/targeting-geo-postal-areas-exclude.json",
+          "description": "Exclude specific postal areas from delivery. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities."
         },
         "targeting-geo-postal-areas": {
           "$ref": "/schemas/core/targeting-geo-postal-areas.json",
-          "description": "Postal areas to target or exclude."
+          "description": "Restrict delivery to specific postal areas. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities."
         },
         "targeting-geo-proximity": {
           "$ref": "/schemas/core/targeting-geo-proximity.json",
-          "description": "Geographic points to target around, each with a travel time, a distance, or a custom boundary."
+          "description": "Target users within travel time, distance, or a custom boundary around arbitrary geographic points. Multiple entries use OR semantics — a user within range of any listed point is eligible. For campaigns targeting 10+ locations, consider using store_catchments with a location catalog instead. Seller must declare support in get_adcp_capabilities."
+        },
+        "targeting-geo-regions-exclude": {
+          "$ref": "/schemas/core/targeting-geo-regions-exclude.json",
+          "description": "Exclude exact canonical ISO 3166-2 subdivisions. Support is independent from geo_regions inclusion support. Unknown identifiers and values also present in geo_regions are invalid. At create or update, sellers MUST reject unsupported identifiers and partial application; during get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome."
         },
         "targeting-geo-regions": {
           "$ref": "/schemas/core/targeting-geo-regions.json",
-          "description": "ISO 3166-2 subdivision codes to target or exclude."
+          "description": "Restrict delivery to exact canonical ISO 3166-2 subdivisions (states, provinces, regions, departments, or other subdivision categories). Unknown identifiers are invalid. At create or update, sellers MUST reject unsupported identifiers and MUST NOT silently widen, drop, or partially apply the list. During get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome. Exact internal translation preserves accepted identifiers in package readback."
         },
         "targeting-geo-value-labels": {
           "$ref": "/schemas/core/targeting-geo-value-labels.json",
-          "description": "Diagnostic labels for targeted ISO country and subdivision codes, keyed by code."
+          "description": "Optional human-readable diagnostic labels for the ISO codes in geo_countries, geo_countries_exclude, geo_regions, and geo_regions_exclude, keyed by code (e.g., { \"DE\": \"Germany\", \"US-CA\": \"California\" }). Every key MUST appear in one of those four arrays; extra keys are a conformance error. Labels are not a targeting dimension: they are non-authoritative, MUST NOT be used to resolve or apply targeting, and are ignored when comparing targeting for equality or readback. Metro and place labels live in value_labels on their own entries."
         },
         "targeting-store-catchments": {
           "$ref": "/schemas/core/targeting-store-catchments.json",
-          "description": "Store catchment areas from a synced store catalog to target."
+          "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones."
         },
         "targeting-input": {
           "$ref": "/schemas/core/targeting-input.json",
@@ -399,11 +435,11 @@
         },
         "dooh-delivery-metrics": {
           "$ref": "/schemas/core/dooh-delivery-metrics.json",
-          "description": "Delivery metrics specific to digital out-of-home (DOOH) campaigns, such as loop plays, screens used, screen time, and share of voice."
+          "description": "DOOH-specific metrics (only included for DOOH campaigns)"
         },
         "viewability-metrics": {
           "$ref": "/schemas/core/viewability-metrics.json",
-          "description": "Viewability measurements for delivered impressions under one viewability standard."
+          "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — plus optional percentile and histogram distributions over that duration; all three use the same `measurable_impressions` population and are governed by the same viewability threshold (`standard`). Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting. The structured distribution carriers require explicit `viewed_seconds_percentiles` and `viewed_seconds_histogram` identities for declaration, commitment, and selection; they are not numeric aggregate rows or sort keys. This object remains the canonical carrier of every value. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`; when the package's `committed_metrics` carry a `viewability_standard` qualifier, sellers MUST populate `standard` on reported viewability objects so reconciliation can match the qualifier."
         },
         "impression-basis-breakdown-entry": {
           "$ref": "/schemas/core/impression-basis-breakdown-entry.json",
@@ -731,11 +767,11 @@
         },
         "catalog-gtins": {
           "$ref": "/schemas/core/catalog-gtins.json",
-          "description": "GTIN identifiers that filter a product catalog."
+          "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'."
         },
         "catalog-item-ids": {
           "$ref": "/schemas/core/catalog-item-ids.json",
-          "description": "Canonical catalog item keys that filter a catalog."
+          "description": "Filter catalog to exact canonical item keys. The key field is offering_id for offering, store_id for store, hotel_id for hotel, flight_id for flight, job_id for job, vehicle_id for vehicle, listing_id for real_estate, program_id for education, destination_id for destination, and app_id for app. Product, inventory, and promotion catalogs use the stable normalized source identifier retained during ingestion (for example a retailer SKU). The same canonical key is used by catalog availability item_id."
         },
         "catalog-query": {
           "$ref": "/schemas/core/catalog-query.json",
@@ -743,7 +779,7 @@
         },
         "catalog-tags": {
           "$ref": "/schemas/core/catalog-tags.json",
-          "description": "Item tags that filter a catalog."
+          "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included."
         },
         "wholesale-feed-event": {
           "$ref": "/schemas/core/wholesale-feed-event.json",
@@ -1103,7 +1139,7 @@
         },
         "account-change-origin": {
           "$ref": "/schemas/core/account-change-origin.json",
-          "description": "The server-derived origin of an account change."
+          "description": "Server-derived origin classification. The seller MUST NOT trust caller-supplied origin or actor claims."
         },
         "account-change-recorded-webhook": {
           "$ref": "/schemas/core/account-change-recorded-webhook.json",
@@ -3225,6 +3261,22 @@
           "$ref": "/schemas/core/min-spend-target.json",
           "description": "A non-negative soft lifetime spend target."
         },
+        "reporting-cloud": {
+          "$ref": "/schemas/core/reporting-cloud.json",
+          "description": "Cloud family hosting a delivery recipient's account, used together with region to disambiguate provider-native recipient identities."
+        },
+        "reporting-feed-purpose": {
+          "$ref": "/schemas/core/reporting-feed-purpose.json",
+          "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
+        },
+        "reporting-media-buy-id": {
+          "$ref": "/schemas/core/reporting-media-buy-id.json",
+          "description": "Seller-issued identifier of a media buy."
+        },
+        "reporting-package-id": {
+          "$ref": "/schemas/core/reporting-package-id.json",
+          "description": "Identifier of a package within a media buy."
+        },
         "reporting-primary-key": {
           "$ref": "/schemas/core/reporting-primary-key.json",
           "description": "The name of one primary key column in canonical reporting rows."
@@ -3232,6 +3284,10 @@
         "reporting-reader-compatibility-item": {
           "$ref": "/schemas/core/reporting-reader-compatibility-item.json",
           "description": "One reader feature or format constraint required to consume a reporting resource."
+        },
+        "reporting-schedule-alignment": {
+          "$ref": "/schemas/core/reporting-schedule-alignment.json",
+          "description": "Calendar used to establish exact period boundaries. source_timezone is an explicit upstream reporting clock, such as an ad server network timezone, that may differ from the AdCP account timezone. The obligation echoes resolved timestamps and source timezone."
         }
       },
       "requirements": {
@@ -4623,11 +4679,11 @@
         },
         "product-purchase-audience-evidence-pins": {
           "$ref": "/schemas/media-buy/product-purchase-audience-evidence-pins.json",
-          "description": "Immutable audience-evidence snapshots selected for package construction."
+          "description": "Exact immutable audience-evidence snapshots selected for package construction."
         },
         "product-purchase-catalog-ids": {
           "$ref": "/schemas/media-buy/product-purchase-catalog-ids.json",
-          "description": "Synchronized account catalog IDs that a product purchase promotes, each listed once."
+          "description": "Previously synchronized account catalog IDs promoted by this selection. Callers manage catalog bodies through sync_catalogs rather than inlining them here."
         },
         "product-purchase-end-time": {
           "$ref": "/schemas/media-buy/product-purchase-end-time.json",
@@ -4635,7 +4691,7 @@
         },
         "product-purchase-format-option-refs": {
           "$ref": "/schemas/media-buy/product-purchase-format-option-refs.json",
-          "description": "Canonical format options selected from a published product offer."
+          "description": "Canonical format options selected from the published product offer. Legacy named-format identifiers are not accepted."
         },
         "product-purchase-optimization-goals": {
           "$ref": "/schemas/media-buy/product-purchase-optimization-goals.json",
@@ -4643,7 +4699,7 @@
         },
         "product-purchase-performance-standards": {
           "$ref": "/schemas/media-buy/product-purchase-performance-standards.json",
-          "description": "Metric thresholds and measurement vendors for one product purchase."
+          "description": "Published or negotiated metric thresholds and measurement vendors. Direct buyers may omit this to inherit the product defaults; accepted proposal snapshots preserve every applicable standard."
         },
         "product-purchase-start-time": {
           "$ref": "/schemas/media-buy/product-purchase-start-time.json",
@@ -4688,6 +4744,10 @@
         "product-field": {
           "$ref": "/schemas/media-buy/product-field.json",
           "description": "One canonical product field that a buyer can request from list_products."
+        },
+        "reporting-status-view": {
+          "$ref": "/schemas/media-buy/reporting-status-view.json",
+          "description": "Stable response-shape discriminator. SDK convenience methods may default this to summary, but the wire request is explicit."
         }
       },
       "tasks": {

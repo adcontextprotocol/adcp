@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-geo-places-exclude.json",
+  "title": "Geo Places Exclude",
+  "description": "Exclude catalog-backed named places. Uses the same identifier-based shape as geo_places. Sellers MUST reject overlap with geo_places for the same country, system, place_type, and value.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/geo-place-area.json",
+    "x-adcp-schema-uri": "/schemas/core/geo-place-area.json"
+  },
+  "minItems": 1
+}

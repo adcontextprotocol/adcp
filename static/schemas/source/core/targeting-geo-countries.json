@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-geo-countries.json",
-  "title": "Targeting Geo Countries",
-  "description": "ISO 3166-1 alpha-2 country codes to target or exclude.",
+  "title": "Geo Countries",
+  "description": "Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/country-code.json"

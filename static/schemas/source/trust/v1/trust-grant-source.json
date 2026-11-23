@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/trust/v1/trust-grant-source.json",
-  "title": "Trust Grant Source",
+  "title": "Grant Source",
   "description": "Where the grantor publishes the grant being acknowledged. Tokens in the adcp namespace MUST be a grant source AdCP defines: 'adcp:adagents' (the grantor's /.well-known/adagents.json authorized_agents[]) or 'adcp:trust' (the grantor's /.well-known/trust.json grants[]).",
   "anyOf": [
     {

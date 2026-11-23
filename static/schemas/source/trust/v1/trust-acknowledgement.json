@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/trust/v1/trust-acknowledgement.json",
-  "title": "Trust Acknowledgement",
+  "title": "Acknowledgement",
   "description": "This organization's acceptance of a grant another organization published: 'we accept the grant `grantor` gave to `agent_url`, as published via `via`.' Terms are read ONLY from the grantor's document and are never restated here. Not needed when the grantor has the same eTLD+1 as the host serving this document. In the AdCP profile with via 'adcp:adagents' this is intended to supersede brand.json properties[] entries whose relationship is direct, delegated, or ad_network in a future release; brand.json is unchanged in 3.3.",
   "type": "object",
   "properties": {

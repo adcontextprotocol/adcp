@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-daypart-targets.json",
-  "title": "Targeting Daypart Targets",
-  "description": "Time windows that delivery is restricted to.",
+  "title": "Daypart Targets",
+  "description": "Restrict delivery to specific time windows. Each entry specifies days of week, an hour range, and an optional timezone that defaults to inventory_local. A concrete IANA zone uses one shared civil-time clock, while inventory_local evaluates each inventory unit in its seller-assigned local timezone. Entries are independent and MAY use different clocks.",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/daypart-target.json"

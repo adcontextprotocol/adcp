@@ -41,16 +41,13 @@
       "minItems": 1
     },
     "ids": {
-      "$ref": "/schemas/core/catalog-item-ids.json",
-      "description": "Filter catalog to exact canonical item keys. The key field is offering_id for offering, store_id for store, hotel_id for hotel, flight_id for flight, job_id for job, vehicle_id for vehicle, listing_id for real_estate, program_id for education, destination_id for destination, and app_id for app. Product, inventory, and promotion catalogs use the stable normalized source identifier retained during ingestion (for example a retailer SKU). The same canonical key is used by catalog availability item_id."
+      "$ref": "/schemas/core/catalog-item-ids.json"
     },
     "gtins": {
-      "$ref": "/schemas/core/catalog-gtins.json",
-      "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'."
+      "$ref": "/schemas/core/catalog-gtins.json"
     },
     "tags": {
-      "$ref": "/schemas/core/catalog-tags.json",
-      "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included."
+      "$ref": "/schemas/core/catalog-tags.json"
     },
     "category": {
       "$ref": "/schemas/core/catalog-category.json",

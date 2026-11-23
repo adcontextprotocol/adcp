@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/product-purchase-catalog-ids.json",
-  "title": "Product Purchase Catalog IDs",
-  "description": "Synchronized account catalog IDs that a product purchase promotes, each listed once.",
+  "title": "Catalog Ids",
+  "description": "Previously synchronized account catalog IDs promoted by this selection. Callers manage catalog bodies through sync_catalogs rather than inlining them here.",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/catalog-id.json"

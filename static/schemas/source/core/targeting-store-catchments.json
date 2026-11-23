@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-store-catchments.json",
-  "title": "Targeting Store Catchments",
-  "description": "Store catchment areas from a synced store catalog to target.",
+  "title": "Store Catchments",
+  "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones.",
   "type": "array",
   "items": {
     "type": "object",

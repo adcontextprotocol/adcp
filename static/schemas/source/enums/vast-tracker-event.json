@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/vast-tracker-event.json",
-  "title": "VAST Tracker Event",
+  "title": "Vast Event",
   "description": "A VAST player event that a tracker fires on.",
   "type": "string",
   "enum": [

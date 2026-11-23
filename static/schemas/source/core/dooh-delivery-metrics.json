@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/dooh-delivery-metrics.json",
-  "title": "DOOH Delivery Metrics",
-  "description": "Delivery metrics specific to digital out-of-home (DOOH) campaigns, such as loop plays, screens used, screen time, and share of voice.",
+  "title": "Dooh Metrics",
+  "description": "DOOH-specific metrics (only included for DOOH campaigns)",
   "type": "object",
   "properties": {
     "loop_plays": {

@@ -2145,12 +2145,15 @@ async function runTests() {
     }
 
     const targetingSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json'));
-    // Excluded metro entries are geo-metro entries, which declare the rule above.
+    // geo_metros_exclude is core/targeting-geo-metros-exclude.json.
     const excludeMetros = loadSchema(path.join(SCHEMA_BASE_DIR, targetingSchema.properties.geo_metros_exclude.$ref.replace(/^\/schemas\//, '')));
-    if (excludeMetros?.items?.$ref !== '/schemas/core/geo-metro.json') {
-      return 'geo_metros_exclude entries must be geo-metro entries, which declare value_labels key membership validation';
+    const excludeMetroLabelRule = excludeMetros?.items?.['x-adcp-validation']?.map_keys_subset_of_array;
+    if (excludeMetroLabelRule?.map_field !== 'value_labels' || excludeMetroLabelRule?.array_field !== 'values') {
+      return 'geo_metros_exclude entries must declare value_labels key membership validation';
     }
-    const isoLabelRule = targetingSchema.properties.geo_value_labels?.['x-adcp-validation']?.map_keys_subset_of_arrays;
+    // geo_value_labels is core/targeting-geo-value-labels.json, which states the rule.
+    const geoValueLabels = loadSchema(path.join(SCHEMA_BASE_DIR, targetingSchema.properties.geo_value_labels.$ref.replace(/^\/schemas\//, '')));
+    const isoLabelRule = geoValueLabels?.['x-adcp-validation']?.map_keys_subset_of_arrays;
     if (JSON.stringify(isoLabelRule?.array_fields) !== JSON.stringify(['geo_countries', 'geo_countries_exclude', 'geo_regions', 'geo_regions_exclude'])) {
       return 'geo_value_labels must declare key membership across the ISO country and region arrays';
     }

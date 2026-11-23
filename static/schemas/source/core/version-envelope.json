@@ -5,7 +5,11 @@
   "description": "Release-precision AdCP protocol version negotiation fields, defined once. Request schemas compose this envelope directly through `allOf`. Strict (`additionalProperties: false`) request schemas also redeclare these two fields in their own `properties` via `$ref`, because draft-07 does not evaluate properties across `allOf`. The Trusted Match match requests are the exception: they inline both fields for their strict privacy boundary. On a request, these fields are part of the request payload: the buyer's version pin. Responses do not compose this envelope directly. `core/protocol-envelope.json` composes it, so on a response `adcp_version` and `adcp_major_version` are envelope fields that the server framework stamps beside `status`, `task_id` and the other protocol-layer fields, not task body data.",
   "type": "object",
   "properties": {
-    "adcp_version": { "$ref": "/schemas/core/version-envelope-adcp-version.json" },
-    "adcp_major_version": { "$ref": "/schemas/core/version-envelope-adcp-major-version.json" }
+    "adcp_version": {
+      "$ref": "/schemas/core/version-envelope-adcp-version.json"
+    },
+    "adcp_major_version": {
+      "$ref": "/schemas/core/version-envelope-adcp-major-version.json"
+    }
   }
 }

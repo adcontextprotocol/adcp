@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/catalog-gtins.json",
-  "title": "Catalog GTINs",
-  "description": "GTIN identifiers that filter a product catalog.",
+  "title": "Gtins",
+  "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'.",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/gtin.json"

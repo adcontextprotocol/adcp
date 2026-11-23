@@ -11,8 +11,12 @@
   },
   "type": "object",
   "properties": {
-    "adcp_version": { "$ref": "/schemas/core/version-envelope-adcp-version.json" },
-    "adcp_major_version": { "$ref": "/schemas/core/version-envelope-adcp-major-version.json" },
+    "adcp_version": {
+      "$ref": "/schemas/core/version-envelope-adcp-version.json"
+    },
+    "adcp_major_version": {
+      "$ref": "/schemas/core/version-envelope-adcp-major-version.json"
+    },
     "account": {
       "$ref": "/schemas/core/canonical-account-ref.json"
     },

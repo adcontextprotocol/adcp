@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-geo-regions.json",
-  "title": "Targeting Geo Regions",
-  "description": "ISO 3166-2 subdivision codes to target or exclude.",
+  "title": "Geo Regions",
+  "description": "Restrict delivery to exact canonical ISO 3166-2 subdivisions (states, provinces, regions, departments, or other subdivision categories). Unknown identifiers are invalid. At create or update, sellers MUST reject unsupported identifiers and MUST NOT silently widen, drop, or partially apply the list. During get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome. Exact internal translation preserves accepted identifiers in package readback.",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/country-subdivision-code.json"

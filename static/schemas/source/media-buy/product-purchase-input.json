@@ -20,14 +20,8 @@
       "$ref": "/schemas/core/canonical-pricing-option.json",
       "description": "Resolved selected pricing terms. Optional on buy_products input, where pricing_option_id plus the versioned feed identifies the offer; required inside accepted commercial_terms. Its pricing_option_id MUST match the sibling field."
     },
-    "format_option_refs": {
-      "$ref": "/schemas/media-buy/product-purchase-format-option-refs.json",
-      "description": "Canonical format options selected from the published product offer. Legacy named-format identifiers are not accepted."
-    },
-    "catalog_ids": {
-      "$ref": "/schemas/media-buy/product-purchase-catalog-ids.json",
-      "description": "Previously synchronized account catalog IDs promoted by this selection. Callers manage catalog bodies through sync_catalogs rather than inlining them here."
-    },
+    "format_option_refs": { "$ref": "/schemas/media-buy/product-purchase-format-option-refs.json" },
+    "catalog_ids": { "$ref": "/schemas/media-buy/product-purchase-catalog-ids.json" },
     "budget": {
       "$ref": "/schemas/core/budget-amount.json",
       "description": "Hard spend cap for this selection in the media-buy currency. In seller-optimized allocation it is an optional ceiling, not a reserved allocation, and requires advertised media_buy.features.seller_optimized_package_budgets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
@@ -68,10 +62,7 @@
       "$ref": "/schemas/core/product-audience-evidence-requirements.json",
       "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
     },
-    "audience_evidence_pins": {
-      "$ref": "/schemas/media-buy/product-purchase-audience-evidence-pins.json",
-      "description": "Exact immutable audience-evidence snapshots selected for package construction."
-    },
+    "audience_evidence_pins": { "$ref": "/schemas/media-buy/product-purchase-audience-evidence-pins.json" },
     "agency_estimate_number": {
       "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Package-level agency estimate or authorization reference."
@@ -86,10 +77,7 @@
       "$ref": "/schemas/core/canonical-measurement-terms.json",
       "description": "Published or negotiated billing-measurement and makegood terms for this purchase. Direct buyers may omit this to inherit the product default; accepted proposal snapshots preserve the resolved terms."
     },
-    "performance_standards": {
-      "$ref": "/schemas/media-buy/product-purchase-performance-standards.json",
-      "description": "Published or negotiated metric thresholds and measurement vendors. Direct buyers may omit this to inherit the product defaults; accepted proposal snapshots preserve every applicable standard."
-    }
+    "performance_standards": { "$ref": "/schemas/media-buy/product-purchase-performance-standards.json" }
   },
   "required": ["product_id", "pricing_option_id"],
   "additionalProperties": true,

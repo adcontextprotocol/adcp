@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/product-purchase-audience-evidence-pins.json",
-  "title": "Product Purchase Audience Evidence Pins",
-  "description": "Immutable audience-evidence snapshots selected for package construction.",
+  "title": "Audience Evidence Pins",
+  "description": "Exact immutable audience-evidence snapshots selected for package construction.",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/audience-evidence-pin.json"

@@ -18,7 +18,7 @@
     "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect; the metaschema is never network-fetched." },
     "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is self-contained and every $ref is a local # fragment." },
     "account_id": { "$ref": "/schemas/core/account-id.json" },
-    "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/media-buy-id.json", "title": "Reporting Media Buy ID" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator inherited from the obligation, including buys with zero rows. An empty array proves a zero-buy period rather than an unknown denominator." },
+    "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/reporting-media-buy-id.json" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator inherited from the obligation, including buys with zero rows. An empty array proves a zero-buy period rather than an unknown denominator." },
     "coverage": { "$ref": "/schemas/core/reporting-coverage.json", "description": "Frozen product/package denominator represented by this logical content. The same coverage follows the revision to every destination." },
     "period": {
       "$ref": "/schemas/core/reporting-period.json",

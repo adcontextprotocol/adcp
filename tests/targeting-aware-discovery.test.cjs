@@ -744,7 +744,8 @@ test("device-platform exclusion is typed and independently discoverable", async 
     errors(validateSupport)
   );
 
-  const targetingSchema = fs.readFileSync(
+  // device_platform_exclude is a document of its own that carries the field's description.
+  const excludeSchema = fs.readFileSync(
     path.join(
       __dirname,
       "..",
@@ -752,12 +753,12 @@ test("device-platform exclusion is typed and independently discoverable", async 
       "schemas",
       "source",
       "core",
-      "targeting.json"
+      "targeting-device-platform-exclude.json"
     ),
     "utf8"
   );
-  assert.match(targetingSchema, /exclusion wins/i);
-  assert.match(targetingSchema, /MUST reject/);
+  assert.match(excludeSchema, /exclusion wins/i);
+  assert.match(excludeSchema, /MUST reject/);
 });
 
 test("daypart targeting binds delivery clocks and product-scoped timezone modes", async () => {
@@ -1001,12 +1002,17 @@ test("browser-family inclusion and exclusion are typed and independently discove
   const targeting = JSON.parse(
     fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting.json"), "utf8")
   );
-  assert.match(targeting.properties.browser.description, /families not listed are ineligible/i);
-  assert.match(targeting.properties.browser.description, /exclusion wins/i);
-  assert.match(targeting.properties.browser.description, /Browser and device constraints intersect/i);
-  assert.match(targeting.properties.browser.description, /not the post-click landing-page browser/i);
-  assert.match(targeting.properties.browser.description, /MUST reject/i);
-  assert.match(targeting.properties.browser_exclude.description, /exclusion wins/i);
+  // browser and browser_exclude are documents of their own that carry the fields' descriptions.
+  const fieldSchema = (name) => JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, targeting.properties[name].$ref.replace(/^\/schemas\//, "")), "utf8")
+  );
+  const browser = fieldSchema("browser");
+  assert.match(browser.description, /families not listed are ineligible/i);
+  assert.match(browser.description, /exclusion wins/i);
+  assert.match(browser.description, /Browser and device constraints intersect/i);
+  assert.match(browser.description, /not the post-click landing-page browser/i);
+  assert.match(browser.description, /MUST reject/i);
+  assert.match(fieldSchema("browser_exclude").description, /exclusion wins/i);
 });
 
 test("seller targeting rollups are explicit true-valued routing hints", async () => {

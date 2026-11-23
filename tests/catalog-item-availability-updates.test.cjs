@@ -380,8 +380,11 @@ test("normative text closes identity, privacy, atomicity, replay, and correlatio
   assert.match(request.properties.item_availability_queries.description, /post-upsert\/post-update candidate state/i);
   assert.match(response.oneOf[0].properties.item_availability_updates.description, /array length MUST equal/i);
   assert.match(response.oneOf[0].properties.item_availability_states.description, /replayed response is historical/i);
-  assert.match(catalog.properties.ids.description, /listing_id/);
-  assert.match(catalog.properties.ids.description, /program_id/);
+  // catalog.ids is core/catalog-item-ids.json, which carries the field's description.
+  assert.equal(catalog.properties.ids.$ref, "/schemas/core/catalog-item-ids.json");
+  const ids = readJson("static/schemas/source/core/catalog-item-ids.json");
+  assert.match(ids.description, /listing_id/);
+  assert.match(ids.description, /program_id/);
   assert.match(update.properties.catalog_generation.description, /deleted-and-recreated/i);
   assert.equal(update.properties.catalog_generation.$ref, "/schemas/core/catalog-generation.json");
   assert.equal(JSON.parse(fs.readFileSync(path.join(__dirname, "../static/schemas/source/core/catalog-generation.json"), "utf8"))["x-entity"], "catalog_generation");

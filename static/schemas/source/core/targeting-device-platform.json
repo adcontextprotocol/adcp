@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-device-platform.json",
+  "title": "Device Platform",
+  "description": "Restrict to specific platforms. Use for technical compatibility (app only works on iOS). Values from Sec-CH-UA-Platform standard, extended for CTV.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/device-platform.json"
+  },
+  "minItems": 1
+}

@@ -241,8 +241,9 @@ describe("metric identity coherence", () => {
       "histogram with a fractional denominator must be rejected"
     );
 
-    const verifierConstraints =
-      deliveryMetrics.properties.viewability["x-adcp-validation"]?.verifier_constraints;
+    // viewability is core/viewability-metrics.json, which carries the field's annotations.
+    const viewability = resolveSchema(deliveryMetrics.properties.viewability);
+    const verifierConstraints = viewability["x-adcp-validation"]?.verifier_constraints;
     assert.deepEqual(verifierConstraints, {
       viewed_seconds_percentile_order: "p25 <= p50 <= p75 <= p90 <= p95",
       viewed_seconds_histogram_bounds:
@@ -251,7 +252,7 @@ describe("metric identity coherence", () => {
         "sum(bucket.impressions) equals measurable_impressions",
     });
     assert.equal(
-      deliveryMetrics.properties.viewability["x-adcp-validation"]?.spec,
+      viewability["x-adcp-validation"]?.spec,
       "docs/media-buy/media-buys/optimization-reporting.mdx#available-metrics"
     );
   });

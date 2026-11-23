@@ -155,7 +155,7 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // (557.65 KiB); bound it at 558 KiB.
 // Referencing whole documents instead of another document's internals lets
 // buy_products reach the product purchase field documents without the rest of
-// media-buy/product-purchase.json: 571,034 → 563,513 bytes (550.31 KiB); the
+// media-buy/product-purchase.json: 571,034 → 569,852 bytes (556.50 KiB); the
 // bound stays.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 558,
@@ -165,7 +165,7 @@ const MODEL_CONTEXT_BUDGET_KIB = {
   // definition to 453,051 bytes / 442.43 KiB. Giving each cross-document
   // reference target a document of its own factors those documents into
   // $defs entries, with the same content once refs are expanded: 451,534 →
-  // 454,136 bytes (440.95 → 443.49 KiB); bound it at 444 KiB.
+  // 454,184 bytes (440.95 → 443.54 KiB); bound it at 444 KiB.
   creative: 444,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

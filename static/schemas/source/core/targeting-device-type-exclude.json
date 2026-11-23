@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-device-type-exclude.json",
+  "title": "Device Type Exclude",
+  "description": "Exclude specific device form factors from delivery (e.g., exclude CTV for app-install campaigns).",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/device-type.json"
+  },
+  "minItems": 1
+}

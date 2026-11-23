@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-device-platform-exclude.json",
+  "title": "Device Platform Exclude",
+  "description": "Exclude specific operating-system platforms from delivery. When a platform appears in both device_platform and device_platform_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/device-platform.json"
+  },
+  "minItems": 1
+}

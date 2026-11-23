@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-geo-places.json",
-  "title": "Targeting Geo Places",
-  "description": "Catalog-backed named places to target or exclude.",
+  "title": "Geo Places",
+  "description": "Restrict delivery to catalog-backed named places. Values MUST be stable identifiers in the declared system, not display names. Sellers must declare supported systems, countries, and place types in get_adcp_capabilities and reject unsupported entries rather than silently dropping them.",
   "type": "array",
   "items": {
     "$ref": "/schemas/core/geo-place-area.json",

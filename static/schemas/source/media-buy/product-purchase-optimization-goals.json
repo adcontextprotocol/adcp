@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/product-purchase-optimization-goals.json",
-  "title": "Product Purchase Optimization Goals",
+  "title": "Optimization Goals",
   "description": "Canonical optimization goals for one product purchase.",
   "type": "array",
   "items": {

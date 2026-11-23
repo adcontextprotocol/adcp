@@ -110,7 +110,7 @@ describe('request-only targeting null-clear semantics', () => {
     assert.equal(validateInput({ collection_lists_exclude: null }), true);
     for (const field of ['collection_lists', 'collection_lists_exclude']) {
       assert.deepEqual(
-        readSchema('/schemas/core/targeting.json').properties[field]['x-adcp-validation'].unique_by,
+        readSchema(readSchema('/schemas/core/targeting.json').properties[field].$ref)['x-adcp-validation'].unique_by,
         ['agent_url', 'list_id'],
         `${field} must declare identity uniqueness by (agent_url, list_id)`
       );

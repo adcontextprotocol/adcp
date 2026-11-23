@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/reporting-status-view.json",
+  "title": "Reporting Status View",
+  "description": "Stable response-shape discriminator. SDK convenience methods may default this to summary, but the wire request is explicit.",
+  "x-adcp-model-context-inline": true,
+  "allOf": [
+    {
+      "$ref": "/schemas/enums/reporting-status-view.json"
+    }
+  ]
+}
