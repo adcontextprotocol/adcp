@@ -4300,18 +4300,6 @@
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
     },
     {
-      "file": "creative/sync-creatives-async-response-working.json",
-      "pointer": "/properties/current_step",
-      "bound": "maxLength",
-      "value": 500,
-      "release": "3.3.0",
-      "source": {
-        "path": "dist/schemas/3.2.12/core/compact-task-working.json",
-        "quote": "\"current_step\": { \"type\": \"string\", \"maxLength\": 500 },"
-      },
-      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on current_step in core/compact-task-working.json, the progress payload of a working task. The current step of a working task, which core/task-current-step.json bounds."
-    },
-    {
       "file": "error-details/stale-response.json",
       "pointer": "/properties/original_error/properties/code",
       "bound": "maxLength",

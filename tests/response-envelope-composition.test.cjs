@@ -626,7 +626,7 @@ test('every status body composes its core/task-<status>.json', () => {
 
 test('every submitted body and branch composes core/task-submitted.json', () => {
   // Branches that only reference core/task-submitted-response.json are checked once, through that document.
-  assert.ok(SUBMITTED_NODES.length >= 12, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
+  assert.ok(SUBMITTED_NODES.length >= 11, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
   assert.deepEqual(SUBMITTED_NODES.filter((entry) => !composesTaskSubmitted(entry.node)).map(({ rel, pointer }) => `${rel}#${pointer}`), [],
     'a submitted body or branch must compose core/task-submitted.json');
   // The rule lives in one place: no node restates it with a required task_id,

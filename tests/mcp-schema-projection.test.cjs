@@ -322,7 +322,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // One definition per task and error field: 1_487_288 bytes; bound at 1_488_000.
 // Giving three shared definitions their own documents: 1_488_278 bytes; bound
 // at 1_489_000.
-const PARITY_COMPILE_LIMIT = 1_489_000;
+// One definition per failed task response: 1_488_814 bytes. One definition per
+// submitted and working body: 1_489_519 bytes; bound at 1_490_000.
+const PARITY_COMPILE_LIMIT = 1_490_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
