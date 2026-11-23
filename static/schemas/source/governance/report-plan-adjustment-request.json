@@ -49,10 +49,8 @@
       "description": "report is seller-authenticated and creates a non-authoritative record; review is plan-owner-authenticated and accepts or disputes it."
     },
     "plan_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Plan containing the source outcome.",
-      "x-entity": "governance_plan"
+      "$ref": "/schemas/core/governance-plan-id.json",
+      "description": "Plan containing the source outcome."
     },
     "outcome_id": {
       "type": "string",

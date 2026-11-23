@@ -128,7 +128,7 @@ const PROPERTIES_3_3 = [
   ['media-buy/sync-event-sources-response.json', ['oneOf', 0, 'properties', 'event_sources', 'items', 'properties', 'archived']],
   ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'properties', 'provenance']],
   ['core/error.json', ['properties', 'mutation_outcome']],
-  ['core/evaluator-spec.json', ['oneOf', 1, 'properties', 'agent_url']],
+  ['core/evaluator-spec.json', ['oneOf', 1, 'allOf', 1, 'properties', 'agent_url']],
   ['core/canonical-projection-ref.json', ['properties', 'supported_delivery_types']],
   ['media-buy/request-proposals-response.json', ['properties', 'later_proposals']],
   ['creative/validate-input-result.json', ['properties', 'warnings', 'items', 'properties', 'field']],

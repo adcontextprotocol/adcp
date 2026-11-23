@@ -7,7 +7,7 @@
   "properties": {
     "feature_id": {
       "type": "string",
-      "description": "Unique identifier for this feature (e.g., 'auto_redirect', 'brand_consistency', 'iab_casinos_gambling')",
+      "description": "Unique identifier for this feature (e.g., 'consent_quality', 'coppa_certified', or 'carbon_score' for properties; 'auto_redirect', 'brand_consistency', or 'iab_casinos_gambling' for creatives)",
       "x-max-length-4.0": 128
     },
     "type": {
@@ -35,7 +35,7 @@
     "methodology_url": {
       "type": "string",
       "format": "uri",
-      "description": "URL to documentation explaining how this feature is calculated or measured."
+      "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
     }
   },
   "required": [

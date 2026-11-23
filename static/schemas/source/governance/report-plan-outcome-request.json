@@ -36,9 +36,8 @@
   "x-mutates-state": true,
   "properties": {
     "plan_id": {
-      "type": "string",
-      "description": "The plan this outcome is for. The plan is owned by the authenticated buyer that synchronized it; plan_id is an identifier, not an account credential. Completed and failed settlements inherit their commercial binding from the exact approved check tuple.",
-      "x-entity": "governance_plan"
+      "$ref": "/schemas/core/governance-plan-id.json",
+      "description": "The plan this outcome is for. The plan is owned by the authenticated buyer that synchronized it; plan_id is an identifier, not an account credential. Completed and failed settlements inherit their commercial binding from the exact approved check tuple."
     },
     "check_id": {
       "type": "string",

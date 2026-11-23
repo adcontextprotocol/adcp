@@ -15,7 +15,8 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "brand"
+              "const": "brand",
+              "default": "brand"
             },
             "brand": {
               "$ref": "/schemas/core/brand-ref.json"

@@ -125,9 +125,8 @@
       "description": "Check shape that produced the verdict. Required for the cross-role governance_enforcement contract. Its presence selects the modern verdict-specific response rules; its absence selects the deprecated legacy 3.x compatibility shape. Intent checks may return conditions; execution checks are binary approved or denied."
     },
     "plan_id": {
-      "type": "string",
-      "description": "Plan identifier echoed on an initial plan-addressed check. Optional on continuation checks addressed by governance_context; services do not need this value and MUST treat the token binding as authoritative.",
-      "x-entity": "governance_plan"
+      "$ref": "/schemas/core/governance-plan-id.json",
+      "description": "Plan identifier echoed on an initial plan-addressed check. Optional on continuation checks addressed by governance_context; services do not need this value and MUST treat the token binding as authoritative."
     },
     "budget_period_id": {
       "x-added-in": "3.3.0",

@@ -120,16 +120,9 @@
       "minProperties": 1
     },
     "verify_agent": {
+      "$ref": "/schemas/core/agent-url-reference.json",
       "title": "Attestation Verifier Nomination",
-      "type": "object",
-      "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally. A verifier call goes to the matched accepted_verifiers[] entry's agent_url, never to the presented string.",
-      "properties": {
-        "agent_url": {
-          "$ref": "/schemas/core/https-url.json"
-        }
-      },
-      "required": ["agent_url"],
-      "additionalProperties": true
+      "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally. A verifier call goes to the matched accepted_verifiers[] entry's agent_url, never to the presented string."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

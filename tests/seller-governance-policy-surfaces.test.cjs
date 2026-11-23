@@ -435,7 +435,9 @@ test('failed outcomes preserve structured, attributed seller dispositions in aud
   }), true, JSON.stringify(request.errors));
 
   const auditSchema = readSchema('/schemas/governance/get-plan-audit-logs-response.json');
-  const entry = auditSchema.properties.plans.items.properties.entries.items;
+  const planRef = auditSchema.properties.plans.items.$ref;
+  assert.equal(planRef, '#/definitions/plan_audit_record');
+  const entry = auditSchema.definitions.plan_audit_record.properties.entries.items;
   assert.equal(entry.properties.error.$ref, '/schemas/governance/reported-outcome-error.json');
 });
 

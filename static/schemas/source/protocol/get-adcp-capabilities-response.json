@@ -3045,42 +3045,7 @@
           "type": "array",
           "description": "Property features this governance agent can evaluate. Each feature describes a score, rating, or certification the agent can provide for properties.",
           "items": {
-            "type": "object",
-            "properties": {
-              "feature_id": {
-                "type": "string",
-                "description": "Unique identifier for this feature (e.g., 'consent_quality', 'coppa_certified', 'carbon_score')",
-                "x-max-length-4.0": 128
-              },
-              "type": {
-                "$ref": "/schemas/enums/property-feature-type.json",
-                "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
-              },
-              "range": {
-                "$ref": "/schemas/core/numeric-range.json",
-                "description": "For quantitative features, the valid range"
-              },
-              "categories": {
-                "type": "array",
-                "description": "For categorical features, the valid values",
-                "items": {
-                  "type": "string",
-                  "x-max-length-4.0": 128
-                },
-                "x-max-items-4.0": 32
-              },
-              "description": {
-                "type": "string",
-                "description": "Human-readable description of what this feature measures",
-                "x-max-length-4.0": 1024
-              },
-              "methodology_url": {
-                "type": "string",
-                "format": "uri",
-                "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
-              }
-            },
-            "required": ["feature_id", "type"]
+            "$ref": "/schemas/core/governance-feature-definition.json"
           },
           "x-max-items-4.0": 128
         },

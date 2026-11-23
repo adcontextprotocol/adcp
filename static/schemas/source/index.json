@@ -921,6 +921,10 @@
           "$ref": "/schemas/core/agent-signing-key.json",
           "description": "Publisher-attested public key material for an authorized agent"
         },
+        "agent-url-reference": {
+          "$ref": "/schemas/core/agent-url-reference.json",
+          "description": "An agent named by its HTTPS URL."
+        },
         "response-payload-jws-envelope": {
           "$ref": "/schemas/core/response-payload-jws-envelope.json",
           "description": "Decoded-payload JWS envelope used by the closed designated-task response-signing profile"
@@ -2971,6 +2975,14 @@
         "governance-finding-details": {
           "$ref": "/schemas/core/governance-finding-details.json",
           "description": "Additional details for a governance finding as an open object."
+        },
+        "governance-plan-id": {
+          "$ref": "/schemas/core/governance-plan-id.json",
+          "description": "Identifier of a campaign governance plan, unique per owner principal."
+        },
+        "governance-plan-version": {
+          "$ref": "/schemas/core/governance-plan-version.json",
+          "description": "Version of a campaign governance plan, assigned by the governance agent; it increments on each sync."
         },
         "half-open-datetime-range": {
           "$ref": "/schemas/core/half-open-datetime-range.json",
