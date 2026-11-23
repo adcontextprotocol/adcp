@@ -1337,6 +1337,16 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
         if (keys.length) overlays.push(Object.fromEntries(keys.map(k => [k, g])));
       }
     }
+    // An added or changed `oneOf`: objects that two of its branches accept,
+    // which the `oneOf` rejects.
+    if (isObj(raw) && entry.keyword === 'oneOf' && Array.isArray(raw.oneOf)) {
+      const branches = raw.oneOf.slice(0, 8).map(b => synth(trees[side], loc.doc, b, [], 0, 0, pool));
+      for (let i = 0; i < branches.length; i++) {
+        for (let j = i + 1; j < branches.length; j++) {
+          if (isObj(branches[i]) && isObj(branches[j])) overlays.push({ ...branches[i], ...branches[j] }, { ...branches[j], ...branches[i] });
+        }
+      }
+    }
     if (isObj(raw) && raw.if !== undefined && raw.then !== undefined) {
       const ifv = synth(trees[side], loc.doc, raw.if, [], 0, 0, pool);
       if (ifv !== FAIL) {

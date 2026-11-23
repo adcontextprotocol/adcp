@@ -1,0 +1,55 @@
+title: c7-witness-oneof-overlap
+changes:
+  - location: calibration-exemplars.json#/properties/pass/items
+    keyword: required
+    old:
+      - artifact_id
+      - assets
+    direction: loosen
+    side: none
+  - location: calibration-exemplars.json#/properties/pass/items
+    keyword: type
+    old:
+      - object
+    direction: none
+    side: none
+  - location: calibration-exemplars.json#/properties/pass/items
+    keyword: oneOf
+    new:
+      - required:
+          - type
+          - value
+        type:
+          - object
+        properties:
+          type:
+            const: url
+          value:
+            format: uri
+            type:
+              - string
+      - required:
+          - artifact_id
+          - assets
+        type:
+          - object
+        properties:
+          artifact_id:
+            type:
+              - string
+          assets:
+            type:
+              - array
+    direction: tighten
+    side: none
+  - location: calibration-exemplars.json#/properties/pass/items
+    keyword: properties
+    old:
+      artifact_id:
+        type:
+          - string
+      assets:
+        type:
+          - array
+    direction: loosen
+    side: none

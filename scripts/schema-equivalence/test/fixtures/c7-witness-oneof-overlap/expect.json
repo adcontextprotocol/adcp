@@ -1,0 +1,11 @@
+{
+  "why": "An object schema replaced by a oneOf of itself and a second open branch gets a tighten witness for the oneOf line: an object that both branches accept, which the oneOf rejects.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 4
+}

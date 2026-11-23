@@ -457,6 +457,8 @@ values of every JSON type. More candidates come from the changed keyword:
   made long in its local part).
 - For a union added or removed as a whole, the instance without each
   property a branch requires, and without all of them.
+- For an added or changed `oneOf`, objects that two of its branches accept,
+  which the `oneOf` rejects.
 - For `uniqueItems`, the array with its first item repeated.
 - For `additionalProperties`, the object with one more property, of each
   JSON type.

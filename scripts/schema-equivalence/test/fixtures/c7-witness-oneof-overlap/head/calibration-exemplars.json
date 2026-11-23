@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/calibration-exemplars.json",
+  "type": "object",
+  "properties": {
+    "pass": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "url"
+              },
+              "value": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "type",
+              "value"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "artifact_id": {
+                "type": "string"
+              },
+              "assets": {
+                "type": "array"
+              }
+            },
+            "required": [
+              "artifact_id",
+              "assets"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
