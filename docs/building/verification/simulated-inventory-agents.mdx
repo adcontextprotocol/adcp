@@ -119,7 +119,7 @@ In the daily breakdown, the guarantee drops to under half its usual delivery dur
 
 ## Run on your own season
 
-The two tenants run on any season you supply as a file, so you can test against your own sites, products and scripted events. Run the training agent on your machine and point a tenant at the file. The hosted test agent serves only its shipped seasons, so a season file never leaves your machine.
+The two tenants run on any season you supply as a file, so you can test against your own sites, products and scripted events. Run the training agent on your machine and point a tenant at the file. The environment variables apply to the whole server, so every caller of that server's inventory tenants gets the file's season. That makes season files a fit for local and self-hosted runs. The hosted test agent serves its shipped seasons, so a season file never leaves your machine.
 
 A season is a YAML or JSON file. Its fields are the `SeasonSeed` type in [`engine/types.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/inventory-sim/engine/types.ts). The starter, `server/tests/fixtures/inventory-sim/small-season.yaml`, is a complete season for one site with a guaranteed and an auction product. Copy it and edit it. The sketch below shows the shape only. It does not load on its own, because it leaves out required fields such as `audience_profiles`, `segments`, `traffic` and `forecast_error`. The starter file is the complete, loadable example.
 
@@ -148,8 +148,8 @@ products:
 
 The loader checks:
 
-- The shape and value ranges. Reporting lags are whole numbers, 0 or more. Collection cadences and counts are whole numbers, 1 or more. `share_of_voice` is above 0 and at most 1, and rates are between 0 and 1. Property `traffic_multiplier`, audience-profile rate multipliers, `weekday_shape` values and the noise settings are not negative. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, and every placement lists at least one format.
-- Dates are real calendar dates.
+- The shape and value ranges. Reporting lags are whole numbers, 0 or more. Collection cadences and counts are whole numbers, 1 or more. `share_of_voice` is above 0 and at most 1, and rates are between 0 and 1. Property `traffic_multiplier`, audience-profile rate multipliers, `weekday_shape` values and the noise settings are not negative. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, every placement lists at least one format, and the season has at least one placement and one product. A season file is limited to 5 MB.
+- Dates are real calendar dates, and every installment of a collection falls inside the season.
 - References that the engine leaves unchecked: product properties and collections, and the ids traffic events name.
 - Placement `formats` are format labels the training agent knows, such as `display_300x250` or `video_preroll`; the error for any other lists them.
 - The engine's own rules. The season's `days` is a whole number from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Event multipliers are not negative. Ids are unique, and the other references resolve: product placements and segments, segment profiles, placement properties and collection placements. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`.
