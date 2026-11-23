@@ -40,7 +40,8 @@
     },
     "operator": {
       "$ref": "/schemas/core/domain-name.json",
-      "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
+      "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent.",
+      "x-entity": "operator"
     },
     "operator_unit": {
       "$ref": "/schemas/core/operator-unit.json",

@@ -19,7 +19,7 @@
           "description": "Optional seller-assigned account context for the paying principal. This intentionally carries only an account_id so the canonical economic principal remains paying_principal.brand.",
           "properties": {
             "account_id": {
-              "type": "string",
+              "$ref": "/schemas/core/account-id.json",
               "description": "Seller-assigned account identifier for the paying principal.",
               "x-entity": "account"
             }

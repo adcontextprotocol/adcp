@@ -6,13 +6,8 @@
   "type": "object",
   "properties": {
     "schemes": {
-      "type": "array",
-      "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead.",
-      "items": {
-        "$ref": "/schemas/enums/auth-scheme.json"
-      },
-      "minItems": 1,
-      "maxItems": 1
+      "$ref": "/schemas/core/webhook-auth-schemes.json",
+      "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead."
     },
     "credentials": {
       "$ref": "/schemas/core/auth-credential.json",

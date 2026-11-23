@@ -161,7 +161,8 @@ test('account_request.changed is a caller-anchored event type', () => {
   assert.ok(read('enums/notification-type.json').enum.includes('account_request.changed'));
   const accountAnchored = read('core/agent-notification-config.json').if.properties.event_types.contains.enum;
   assert.equal(accountAnchored.includes('account_request.changed'), false, 'no all_authorized_accounts acknowledgment needed');
-  const accountLevel = read('core/notification-config.json').properties.event_types.items.enum;
+  const accountLevelRef = read('core/notification-config.json').properties.event_types.items.$ref;
+  const accountLevel = read(accountLevelRef.slice('/schemas/'.length)).enum;
   assert.equal(accountLevel.includes('account_request.changed'), false, 'not an account-level subscription');
 
   const v = validate('/schemas/core/agent-notification-config.json');

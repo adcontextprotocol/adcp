@@ -2918,6 +2918,90 @@
         "quote": "\"allowed_values\": { \"type\": \"array\", \"description\": \"Values that pass the requirement (for binary/categorical features)\", \"items\": {}, \"minItems\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on allowed_values in core/feature-requirement.json. The echoed requirement's allowed values, which the buyer set under that bound."
+    },
+    {
+      "file": "account/sync-accounts-response.json",
+      "pointer": "/oneOf/0/properties/accounts/items/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/account-change.json",
+        "quote": "\"description\": \"Seller-assigned account containing the resource.\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the account ID in core/account-change.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/account-change.json",
+        "quote": "\"description\": \"Seller-assigned account containing the resource.\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the account ID in core/account-change.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/control-media-buy-request.json",
+        "quote": "\"media_buy_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"media_buy\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the media buy ID in media-buy/control-media-buy-request.json. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/creative_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/creative-representation-set.json",
+        "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\","
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative ID in core/creative-representation-set.json. A creative ID, which core/creative-id.json bounds."
     }
   ]
 }

@@ -428,6 +428,7 @@ schema_removals_not_checked:
       legacy_hmac_fallback_removed_in_4_0.
     sites:
       - "core/agent-notification-config.json#/properties/authentication"
+      - "core/agent-notification-config-state.json#/properties/authentication"
       - "core/notification-config.json#/properties/authentication"
       - "core/push-notification-config.json#/properties/authentication"
       - "core/reporting-webhook.json#/properties/authentication"

@@ -74,7 +74,8 @@
       "properties": {
         "message": {
           "type": "string",
-          "description": "Human-readable setup message safe to fan out to every active account notification subscriber."
+          "description": "Human-readable setup message safe to fan out to every active account notification subscriber.",
+          "x-max-length-4.0": 1000
         },
         "expires_at": {
           "type": "string",

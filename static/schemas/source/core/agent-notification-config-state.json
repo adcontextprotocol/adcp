@@ -12,28 +12,7 @@
       "$ref": "/schemas/core/webhook-url.json"
     },
     "event_types": {
-      "type": "array",
-      "items": {
-        "allOf": [
-          {
-            "$ref": "/schemas/enums/notification-type.json"
-          },
-          {
-            "not": {
-              "enum": [
-                "scheduled",
-                "final",
-                "delayed",
-                "adjusted",
-                "window_update",
-                "impairment"
-              ]
-            }
-          }
-        ]
-      },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/agent-notification-event-types.json"
     },
     "all_authorized_accounts": {
       "type": "boolean",
@@ -41,27 +20,19 @@
     },
     "include_future_event_types": {
       "type": "boolean",
-      "description": "Echoed from the desired configuration when set."
+      "description": "Echoed from the desired configuration when set.",
+      "default": false
     },
     "authentication": {
+      "$ref": "/schemas/core/notification-authentication-state.json",
       "description": "Rejects `credentials`: credentials are write-only and never read back.",
-      "type": "object",
       "deprecated": true,
-      "properties": {
-        "schemes": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/enums/auth-scheme.json"
-          },
-          "minItems": 1,
-          "maxItems": 1
-        }
-      },
-      "required": [
-        "schemes"
-      ],
-      "additionalProperties": true,
-      "not": { "required": ["credentials"] }
+      "x-removed-in": "4.0.0"
+    },
+    "signing_profile": {
+      "x-status": "experimental",
+      "$ref": "/schemas/enums/webhook-signing-profile.json",
+      "x-added-in": "3.3.0"
     },
     "active": {
       "type": "boolean",

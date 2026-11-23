@@ -561,6 +561,10 @@
           "$ref": "/schemas/core/verification-token-claims.json",
           "description": "Signed AgenticAdvertising.org verification token claims, including the authoritative grading profile"
         },
+        "verification-badge-version": {
+          "$ref": "/schemas/core/verification-badge-version.json",
+          "description": "AdCP version in MAJOR.MINOR form that an AgenticAdvertising.org Verified badge applies to"
+        },
         "registry-feed-response": {
           "$ref": "/schemas/core/registry-feed-response.json",
           "description": "Response wrapper for GET /api/registry/feed"
@@ -892,6 +896,14 @@
         "agent-notification-config-state": {
           "$ref": "/schemas/core/agent-notification-config-state.json",
           "description": "Credential-free response readback for an agent-level webhook subscriber"
+        },
+        "notification-authentication-state": {
+          "$ref": "/schemas/core/notification-authentication-state.json",
+          "description": "Credential-free readback of a legacy notification authentication selector, which rejects credentials"
+        },
+        "agent-notification-event-types": {
+          "$ref": "/schemas/core/agent-notification-event-types.json",
+          "description": "Notification types an agent-level webhook subscription receives: every type except the media-buy-anchored ones"
         },
         "principal-state": {
           "$ref": "/schemas/core/principal-state.json",
@@ -1531,6 +1543,14 @@
         "notification-authentication": {
           "$ref": "/schemas/core/notification-authentication.json",
           "description": "Legacy authentication selector on a notification subscription, with write-only, optional credentials."
+        },
+        "webhook-auth-schemes": {
+          "$ref": "/schemas/core/webhook-auth-schemes.json",
+          "description": "The one legacy authentication scheme (Bearer or HMAC-SHA256) a webhook authentication block selects"
+        },
+        "bearer-auth-schemes": {
+          "$ref": "/schemas/core/bearer-auth-schemes.json",
+          "description": "The scheme list of an authentication block that accepts only a Bearer credential"
         },
         "account-change-id": {
           "$ref": "/schemas/core/account-change-id.json",
@@ -3502,6 +3522,10 @@
           "$ref": "/schemas/enums/adcp-protocol.json",
           "description": "AdCP protocol domains (media-buy, signals, governance, creative, brand)"
         },
+        "verification-badge-role": {
+          "$ref": "/schemas/enums/verification-badge-role.json",
+          "description": "Agent role an AgenticAdvertising.org Verified badge applies to"
+        },
         "brand-agent-type": {
           "$ref": "/schemas/enums/brand-agent-type.json",
           "description": "Agent types declarable in brand.json (brand, rights, measurement, governance, creative, sales, buying, signals)"
@@ -3549,6 +3573,10 @@
         "notification-type": {
           "$ref": "/schemas/enums/notification-type.json",
           "description": "Shared notification registry for delivery, impairment, lifecycle, wholesale-feed, and capability-change events"
+        },
+        "account-anchored-notification-type": {
+          "$ref": "/schemas/enums/account-anchored-notification-type.json",
+          "description": "Notification types an account-level notification config may subscribe to"
         },
         "indicator-type": {
           "$ref": "/schemas/enums/indicator-type.json",

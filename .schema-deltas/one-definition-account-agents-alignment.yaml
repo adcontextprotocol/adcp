@@ -1,0 +1,212 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: accounts and agents, field alignment. The corrections the review chose, each on a
+  published basis; every other change is a $ref to an identical definition.
+changes:
+  - location: core/domain-name.json#
+    keyword: maxLength
+    new: 253
+    direction: tighten
+    side: response
+    note: >-
+      operator on account/sync-accounts-response.json#/oneOf/0/properties/accounts/items,
+      core/account-candidate.json#, and core/account-request-record.json#/properties/requested -> core/domain-name.json,
+      as core/account.json#/properties/operator. Basis: RFC 1035 limits a DNS name to 253 characters, and 3.2.8
+      published that limit on a domain: "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\",
+      \"maxLength\": 253," (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.8/core/signal-definition.json#L453-L456).
+      The register entry for sync_accounts response operator reuses that quote; account-candidate and
+      account-request-record are new in 3.3 (experimental account.requests), so no entry.
+  - location: core/domain-name.json#
+    keyword: pattern
+    new: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+    direction: tighten
+    side: response
+    note: >-
+      Same three operator sites. Basis: 3.2.12 core/account.json gives the operator, the same concept (x-entity
+      operator), the lowercase domain pattern: "\"pattern\":
+      \"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$\", \"x-entity\": \"operator\""
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/account.json#L33-L38),
+      and core/domain-name.json limits each label to 63 characters as RFC 1035 does (the #8536 label line).
+  - location: core/notification-authentication.json#
+    keyword: properties
+    new:
+      minLength: 32
+      type:
+        - string
+    direction: none
+    side: response
+    note: >-
+      core/agent-notification-config-state.json#/properties/authentication -> new:core/notification-authentication-state.json,
+      which composes core/notification-authentication.json and keeps the site's not/required[credentials] guard. The
+      composed definition declares credentials, but the guard rejects every payload that carries it, so the declared
+      credentials schema changes no verdict. Checked by hand: {"schemes":["Bearer"]} is valid at base and head;
+      {"schemes":["Bearer"],"credentials":"x"} and the same with a 32-character credential are invalid at base and
+      head (the guard), and restoring the inline object without credentials gives the same verdicts.
+  - location: core/agent-notification-config-state.json#
+    keyword: properties
+    new:
+      enum:
+        - adcp/webhook-signing/v1
+        - web-bot-auth
+    direction: tighten
+    side: response
+    note: >-
+      core/agent-notification-config-state.json declares signing_profile, as core/agent-notification-config.json does
+      (x-status experimental, x-added-in 3.3.0 beside the $ref). The state is the readback of that subscription, so
+      it echoes the signing_profile the subscription accepted. Basis: the published 3.3 text gives the subscription's
+      signing_profile the webhook-signing-profile values: "\"signing_profile\": { \"x-status\": \"experimental\",
+      \"$ref\": \"https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/webhook-signing-profile.json\","
+      (https://github.com/adcontextprotocol/adcp/blob/763c2d759b71ff5b01e68732489ed64762a7590f/dist/schemas/3.3.0-beta.4/core/agent-notification-config.json#L79-L81),
+      with "\"enum\": [ \"adcp/webhook-signing/v1\", \"web-bot-auth\""
+      (https://github.com/adcontextprotocol/adcp/blob/763c2d759b71ff5b01e68732489ed64762a7590f/dist/schemas/3.3.0-beta.4/enums/webhook-signing-profile.json#L7-L9).
+      lint:additive-minor does not report a property added to an open object.
+  - location: core/buyer-onboarding-posture.json#/properties/requirements
+    keyword: maxItems
+    new: 16
+    direction: tighten
+    side: none
+    note: >-
+      core/buyer-onboarding-posture.json requirements takes the 16-item cap that the seller's posture tier
+      (core/agent-onboarding-tier.json requirements) states for the same requirement list. The schema is
+      experimental (account.agent_onboarding) and new in 3.3, so no stable release published it and
+      lint:additive-minor does not compare it.
+  - location: core/account-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: >-
+      core/indicators-changed-webhook.json account_id and
+      sponsored-intelligence/si-sponsored-context.json#/properties/paying_principal/properties/account account_id ->
+      core/account-id.json. Basis: 3.2.8 published the bound on the seller-assigned account ID: "\"description\":
+      \"Seller-assigned account containing the resource.\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\":
+      \"account\""
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.8/core/account-change.json#L43-L48).
+      Register entry for the webhook; si-sponsored-context is experimental, so lint:additive-minor does not compare it.
+  - location: core/account-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      Same two account_id sites and basis as the maxLength line; register entry for the webhook.
+  - location: core/creative-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
+    note: >-
+      core/indicators-changed-webhook.json creative_id -> core/creative-id.json. Basis: 3.2.12 bounds the creative ID:
+      "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\","
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/creative-representation-set.json#L27-L30).
+      Register entry.
+  - location: core/media-buy-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: none
+    note: >-
+      core/indicators-changed-webhook.json media_buy_id -> core/media-buy-id.json. Basis: the register's media buy ID
+      quote, "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\":
+      \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      (https://github.com/adcontextprotocol/adcp/blob/763c2d759b71ff5b01e68732489ed64762a7590f/dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json#L177-L182).
+      Register entry.
+  - location: core/media-buy-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
+    note: >-
+      core/indicators-changed-webhook.json media_buy_id -> core/media-buy-id.json. Basis: 3.2.12 bounds the media buy
+      ID: "\"media_buy_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"media_buy\" }"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/control-media-buy-request.json#L45-L49).
+      Register entry.
+  - location: core/package-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
+    note: >-
+      core/indicators-changed-webhook.json package_id -> core/package-id.json. Basis: 3.2.12 bounds the package ID:
+      "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/package-control.json#L8-L12).
+      Register entry.
+  - location: core/verification-badge-version.json#
+    keyword: pattern
+    new: ^[1-9][0-9]*\.[0-9]+$
+    direction: tighten
+    side: response
+    note: >-
+      core/registry-event.json agent.verification_earned and agent.verification_lost payload adcp_version ->
+      new:core/verification-badge-version.json, which core/verification-token-claims.json adcp_version also references.
+      Basis: the badge is one exact (agent URL, role, AdCP version), "Each badge applies to one exact `(agent URL,
+      role, AdCP version)`"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/docs/building/verification/aao-verified.mdx#L12),
+      and 3.2.12 gives the badge's version that form: "\"adcp_version\": { \"type\": \"string\", \"pattern\":
+      \"^[1-9][0-9]*\\.[0-9]+$\""
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/verification-token-claims.json#L100-L102).
+      lint:additive-minor does not see a pattern.
+  - location: core/registry-event.json#/oneOf/13/properties/payload/properties/verified_specialisms
+    keyword: uniqueItems
+    new: true
+    direction: tighten
+    side: response
+    note: >-
+      agent.verification_earned payload verified_specialisms lists the badge's specialisms once each. Basis: 3.2.12
+      states it for the same badge field: "\"verified_specialisms\": { \"type\": \"array\", \"items\": { \"type\":
+      \"string\" }, \"minItems\": 1, \"uniqueItems\": true"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/verification-token-claims.json#L75-L81).
+      lint:additive-minor does not see uniqueItems. The tool's witness search found none (it does not build duplicate
+      items). Checked by hand on core/registry-event.json with an agent.verification_earned event whose payload has
+      verified_specialisms ["x","x"] and every other field valid: valid at base, invalid at head ("must NOT have
+      duplicate items"), and valid again with only this uniqueItems removed from the head.
+  - location: core/registry-event.json#/$defs/publisherAdagentsPayload/properties/agents_added
+    keyword: items
+    new:
+      format: uri
+      type:
+        - string
+    direction: none
+    side: response
+    note: >-
+      The publisher.adagents_changed branch composed #/$defs/publisherAdagentsPayload and restated agents_added and
+      agents_removed with the same items schema (string, format uri); it now references the definition alone, so the
+      payload accepts the same values.
+  - location: core/registry-event.json#/$defs/publisherAdagentsPayload/properties/agents_added
+    keyword: allOf
+    old:
+      items:
+        format: uri
+        type:
+          - string
+    direction: none
+    side: response
+    note: >-
+      The publisher.adagents_changed branch composed #/$defs/publisherAdagentsPayload and restated agents_added and
+      agents_removed with the same items schema (string, format uri); it now references the definition alone, so the
+      payload accepts the same values.
+  - location: core/registry-event.json#/$defs/publisherAdagentsPayload/properties/agents_removed
+    keyword: items
+    new:
+      format: uri
+      type:
+        - string
+    direction: none
+    side: response
+    note: >-
+      The publisher.adagents_changed branch composed #/$defs/publisherAdagentsPayload and restated agents_added and
+      agents_removed with the same items schema (string, format uri); it now references the definition alone, so the
+      payload accepts the same values.
+  - location: core/registry-event.json#/$defs/publisherAdagentsPayload/properties/agents_removed
+    keyword: allOf
+    old:
+      items:
+        format: uri
+        type:
+          - string
+    direction: none
+    side: response
+    note: >-
+      The publisher.adagents_changed branch composed #/$defs/publisherAdagentsPayload and restated agents_added and
+      agents_removed with the same items schema (string, format uri); it now references the definition alone, so the
+      payload accepts the same values.

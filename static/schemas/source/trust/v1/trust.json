@@ -385,7 +385,7 @@
   "oneOf": [
     {
       "type": "object",
-      "title": "Authoritative Location Redirect",
+      "title": "Authoritative Trust Location Redirect",
       "description": "Pointer for hosted records (a managed network, a platform, AAO hosting). The organization is still the host that served this pointer. Verifiers follow at most one hop, with zero HTTP redirects, and MUST NOT follow a second pointer. Hosts serving records on an organization's behalf MUST only serve records the organization controls.",
       "properties": {
         "$schema": {

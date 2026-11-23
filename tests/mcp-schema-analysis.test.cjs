@@ -83,9 +83,11 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Giving collection, list, and installment IDs one definition each adds
   // 8 instances and 4 unique definitions, 1 of them
   // repeated: 1,313, 348 and 236.
-  assert.equal(report.definition_instances, 1313);
-  assert.equal(report.unique_definitions, 348);
-  assert.equal(report.repeated_definitions, 236);
+  // Giving account and agent fields one definition each adds 8 instances and 1
+  // unique, repeated definition: 1,321, 349 and 237.
+  assert.equal(report.definition_instances, 1321);
+  assert.equal(report.unique_definitions, 349);
+  assert.equal(report.repeated_definitions, 237);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -212,7 +214,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 348);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 349);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

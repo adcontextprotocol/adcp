@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/verification-badge-role.json",
+  "title": "Verification Badge Role",
+  "description": "Agent role an AgenticAdvertising.org Verified badge applies to. Each badge applies to one exact (agent URL, role, AdCP version).",
+  "type": "string",
+  "enum": [
+    "media-buy",
+    "creative",
+    "signals",
+    "governance",
+    "brand",
+    "sponsored-intelligence"
+  ]
+}

@@ -19,10 +19,17 @@
       "type": "object",
       "description": "Echo of what was requested: for an open, the brand, operator, and attributes; for a change, the account_id and the requested changes. When a repeat request replaced an open request's terms or changes, this shows the replacement. Never echoes billing_entity bank details or other write-only fields.",
       "properties": {
-        "account_id": { "type": "string", "description": "Present when the request named an existing account." },
+        "account_id": {
+          "type": "string",
+          "description": "Present when the request named an existing account.",
+          "x-entity": "account"
+        },
         "revision": { "type": "integer", "minimum": 1, "description": "The revision a change request was based on, when sent." },
         "brand": { "$ref": "/schemas/core/brand-key.json" },
-        "operator": { "type": "string" },
+        "operator": {
+          "$ref": "/schemas/core/domain-name.json",
+          "x-entity": "operator"
+        },
         "operator_unit": { "$ref": "/schemas/core/operator-unit.json" },
         "currency": { "$ref": "/schemas/core/currency-code.json" },
         "timezone": { "$ref": "/schemas/core/iana-timezone.json" },

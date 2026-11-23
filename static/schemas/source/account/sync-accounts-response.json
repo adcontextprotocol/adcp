@@ -51,8 +51,9 @@
                 "description": "Current canonical brand reference for the account."
               },
               "operator": {
-                "type": "string",
-                "description": "Current canonical operator domain. When an identity change is pending or rejected, this remains the current value rather than echoing the requested value."
+                "$ref": "/schemas/core/domain-name.json",
+                "description": "Current canonical operator domain. When an identity change is pending or rejected, this remains the current value rather than echoing the requested value.",
+                "x-entity": "operator"
               },
               "operator_unit": {
                 "$ref": "/schemas/core/operator-unit.json",
