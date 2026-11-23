@@ -18,4 +18,4 @@ Withdraw the 3.3 additions to the deprecated `get_products` task and the depreca
 
 **`sync_creatives` `assignments[]` `landing_page_url` and `trackers` (#8180, #8220, beta.0 to beta.5).** Removed from the deprecated row, which now rejects them by name. The `assignment_operations` `assign` operation keeps both.
 
-The consumed changesets for these PRs stay in `.changeset/pre/` as history. The 3.3 release notes, What's new, the 3.2 to 3.3 migration guide, and the 3.3 beta page say what to remove under "Withdrawn from the deprecated tasks".
+The 3.2 to 3.3 migration guide lists what to remove under [Closed-schema triage: what stays in 3.3](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3).
