@@ -3280,6 +3280,12 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     plan.committedByType[purchaseType] = nextByType;
     return true;
   };
+  // The ledger before this outcome. A report rejected after the ledger
+  // addition restores it, so the rejection leaves the plan unchanged.
+  const ledgerBefore = {
+    committedBudget: plan.committedBudget,
+    committedByType: plan.committedByType ? { ...plan.committedByType } : undefined,
+  };
 
   let committedBudget = 0;
   let reportedCommittedBudget: number | undefined;
@@ -3540,6 +3546,24 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   // not a second commitment. Keep committedBudget at zero and never add spend
   // already covered by the completed outcome.
 
+  // A completed or failed outcome returns the plan's budget state after this
+  // outcome: the full plan budget summary, plus total_committed, this
+  // response's name for the ledger amount. This outcome is stored only below,
+  // so its amount is counted into gross_committed here.
+  let planSummary: Record<string, unknown> | undefined;
+  if (outcome === 'completed' || outcome === 'failed') {
+    try {
+      planSummary = {
+        total_committed: plan.committedBudget,
+        ...buildPlanBudgetSummary(session, plan, committedBudget),
+      };
+    } catch {
+      plan.committedBudget = ledgerBefore.committedBudget;
+      plan.committedByType = ledgerBefore.committedByType;
+      return validationError('Plan budget totals exceed numeric ledger limits');
+    }
+  }
+
   const outcomeId = `out_${randomUUID().slice(0, 8)}`;
   const outcomeStateValue = findings.length > 0 ? 'findings' : 'accepted';
   const response: Record<string, unknown> = {
@@ -3558,12 +3582,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
       delivery_reconciliation_status: deliveryReconciliationStatus,
     }),
     ...(deliveryPeriodState && { delivery_period_state: deliveryPeriodState }),
-    ...((outcome === 'completed' || outcome === 'failed') && {
-      plan_summary: {
-        total_committed: plan.committedBudget,
-        budget_remaining: plan.budget.total - plan.committedBudget,
-      },
-    }),
+    ...(planSummary && { plan_summary: planSummary }),
   };
   const outcomeState: GovernanceOutcomeState = {
     outcomeId,
@@ -3609,15 +3628,21 @@ function withOutcomeEnvelopeStatus(response: Record<string, unknown>): Record<st
   return { ...body, status: 'completed' };
 }
 
-function buildAdjustmentPlanSummary(
+/**
+ * The plan budget summary (core/plan-budget-summary.json) that
+ * report_plan_outcome and report_plan_adjustment return. `pendingCommitted`
+ * is the amount of an outcome not yet stored in the session.
+ */
+function buildPlanBudgetSummary(
   session: SessionState,
   plan: GovernancePlanState,
+  pendingCommitted = 0,
 ): Record<string, unknown> {
   const outcomes = [...session.governanceOutcomes.values()].filter(outcome =>
     outcome.planId === plan.planId && outcome.planOwnerAgentUrl === plan.ownerAgentUrl);
   const adjustments = [...session.governanceAdjustments.values()].filter(adjustment =>
     adjustment.planId === plan.planId && adjustment.planOwnerAgentUrl === plan.ownerAgentUrl);
-  const grossCommitted = outcomes.reduce((sum, outcome) => sum + outcome.committedBudget, 0);
+  const grossCommitted = outcomes.reduce((sum, outcome) => sum + outcome.committedBudget, pendingCommitted);
   const adjustmentsReported = adjustments.reduce((sum, adjustment) => sum + adjustment.amount, 0);
   const adjustmentsVerified = adjustments.reduce((sum, adjustment) => sum + adjustment.verifiedAmount, 0);
   const headroomRestored = adjustments.reduce((sum, adjustment) => sum + adjustment.headroomRestored, 0);
@@ -3837,7 +3862,7 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
     adjustment.verifiedAmount = verifiedAmount;
     adjustment.headroomRestored = headroomRestored;
 
-    // buildAdjustmentPlanSummary can throw on numeric-overflow ledger totals.
+    // buildPlanBudgetSummary can throw on numeric-overflow ledger totals.
     // Build the full response — including the plan summary — against a
     // candidate ledger snapshot before committing the real mutation, so a
     // thrown error leaves plan.committedBudget/committedByType and the review
@@ -3853,7 +3878,7 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
       adjustment_type: adjustment.adjustmentType,
       amount: { amount: adjustment.amount, currency: adjustment.currency },
       headroom_restored: headroomRestored,
-      plan_summary: buildAdjustmentPlanSummary(session, candidatePlan),
+      plan_summary: buildPlanBudgetSummary(session, candidatePlan),
     };
 
     plan.committedBudget = nextCommittedBudget;
@@ -4014,7 +4039,7 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
     adjustment_type: req.adjustment_type,
     amount: { amount: req.amount.amount, currency: req.amount.currency },
     headroom_restored: 0,
-    plan_summary: buildAdjustmentPlanSummary(session, plan),
+    plan_summary: buildPlanBudgetSummary(session, plan),
   };
   state.response = response;
   return response;

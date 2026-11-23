@@ -4371,6 +4371,22 @@ describe('tenant routing smoke', () => {
       expect(reported, JSON.stringify(reported)).toMatchObject({ status: 'completed', outcome_state: 'accepted' });
       const reportedValidation = validateSourceSchema('governance/report-plan-outcome-response.json', reported);
       expect(reportedValidation.valid, JSON.stringify(reportedValidation.errors)).toBe(true);
+      // A completed outcome returns the full plan budget summary, plus
+      // total_committed, counting the outcome it reports.
+      const summaryValidation = validateSourceSchema('core/plan-budget-summary.json', reported!.plan_summary);
+      expect(summaryValidation.valid, JSON.stringify(summaryValidation.errors)).toBe(true);
+      expect(reported!.plan_summary).toEqual({
+        total_committed: 1_000,
+        accounting_mode: 'gross_commitment',
+        gross_committed: 1_000,
+        adjustments_reported: 0,
+        adjustments_verified: 0,
+        net_cost: 1_000,
+        headroom_restored: 0,
+        ledger_committed: 1_000,
+        net_committed: 1_000,
+        budget_remaining: 99_000,
+      });
 
       const threeZero = await check(5, '3.0');
       expect(threeZero, JSON.stringify(threeZero)).toMatchObject({ status: 'approved' });
