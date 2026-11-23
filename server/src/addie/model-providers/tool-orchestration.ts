@@ -785,7 +785,8 @@ export function createAddieToolExecutor(
 
     // A provider continuation or recovery must never submit an identical
     // mutation twice. Record before dispatch so an ambiguous transport error
-    // is also fail-closed rather than silently retried.
+    // is also fail-closed rather than silently retried. A durable-handler
+    // mutation leaves the fence once its handler returns (see below).
     const sideEffectKey = (isSideEffectToolCall(call.name, call.input) || registered.definition.replaySafety === 'mutation')
       ? sideEffectReplayKey(call.name, call.input)
       : null;
@@ -878,6 +879,14 @@ export function createAddieToolExecutor(
     try {
       const handlerResult = await registered.handler(structuredClone(call.input));
       const durationMs = Date.now() - startTime;
+      // A normal return from an allowlisted local handler is a definitive
+      // outcome: a gate rejection wrote nothing, and a repeat after success
+      // reaches the handler's idempotent already-recorded path. Release the
+      // fence so the same call made again after fixing a prerequisite (a
+      // checkpoint saved after "NOT COMPLETED") re-checks the gates instead
+      // of being refused as a duplicate. A thrown handler stays fenced.
+      const durableOutcomeKnown = hasDurableHandlerOutcome(call.name);
+      if (durableOutcomeKnown && sideEffectKey) dispatchedSideEffects.delete(sideEffectKey);
       if (typeof handlerResult === 'string' && isMultimodalContent(handlerResult)) {
         const multimodal = extractMultimodalContent(handlerResult);
         const converted = multimodal ? buildMultimodalContent(multimodal) : null;
@@ -915,7 +924,7 @@ export function createAddieToolExecutor(
             duration_ms: durationMs,
             sequence,
             normalized_result: presentation,
-            ...(hasDurableHandlerOutcome(call.name) && { durable_outcome: 'known' as const }),
+            ...(durableOutcomeKnown && { durable_outcome: 'known' as const }),
           },
         };
       }
@@ -975,7 +984,7 @@ export function createAddieToolExecutor(
           duration_ms: durationMs,
           sequence,
           normalized_result: presentation,
-          ...(hasDurableHandlerOutcome(call.name) && { durable_outcome: 'known' as const }),
+          ...(durableOutcomeKnown && { durable_outcome: 'known' as const }),
           ...(githubIssueReceipt && { github_issue_receipt: githubIssueReceipt }),
         },
       };
