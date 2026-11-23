@@ -845,8 +845,8 @@ jobs:
             # Experimental 3.3 holds over seeded hold policies. terms_only:
             # the 4 skips are the hold_semantics inventory_hold-declared and
             # terms_only phases (this seller declares none). hold_extension
-            # grades every step since @adcp/sdk 17.0.0-beta.33 sends
-            # extend_hold (adcontextprotocol/adcp-client#3601).
+            # runs every step: the @adcp/sdk runner sends extend_hold from
+            # 17.0.0-beta.33 (adcontextprotocol/adcp-client#3601).
             "media_buy_seller/hold_policy_bounds:18:0"
             "media_buy_seller/hold_policy_terms_only:19:4"
             "media_buy_seller/hold_policy_version_gate:11:0"

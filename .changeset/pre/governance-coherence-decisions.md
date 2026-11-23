@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-Campaign governance (experimental `governance.campaign`): settle the rules the specification contradicted or left undefined (adcp#8733, PR 2 of 3). These are normative decisions of the Governance working group. No wire field, enum member or `plan_hash` rule changes. This is a change within the 3.3 pre-release.
+Campaign governance (experimental `governance.campaign`): settle the rules the specification contradicted or left undefined (adcp#8733, PR 2 of 3). These are normative decisions of the Governance working group. No wire field, enum member or `plan_hash` rule changes.
 
 - **Budget cut below committed spend.** A `sync_plans` that reduces `budget.total` (or a period `amount`) below the amount already committed is rejected with `VALIDATION_ERROR` and leaves the plan unchanged. Before, the specification said the sync was accepted and flagged on the next check, while the task page said it was rejected.
 - **Unapproved seller or undelegated caller on `check_governance`.** A failed `approved_sellers` or `delegations` evaluation for an authenticated caller is returned as a `denied` verdict with a finding and a `check_id`, so the attempt can be audited. This holds in every governance mode. A plan is accessible to its owner principal, to a current delegate, and to a caller that presents a `governance_context` or `consultation_context` issued for that plan. Any other caller receives `PLAN_NOT_FOUND`, the same response as for an unknown `plan_id`, and writes no audit entry. Before, the task page listed `PERMISSION_DENIED` for these cases. `check_governance` still returns `PERMISSION_DENIED` when the caller is unauthenticated or its authenticated identity does not match `caller`. Callers that branch on the error code for the authority cases must also handle the verdict.
@@ -13,5 +13,3 @@ Campaign governance (experimental `governance.campaign`): settle the rules the s
 - **Unresolvable registry policy ID.** `sync_plans` returns `REFERENCE_NOT_FOUND` when a registry policy ID in `policy_ids` cannot be resolved.
 - **Three re-call rule.** "The same action" means re-checks that carry the same `consultation_context`.
 - **Explicit `human_review_required: false`.** The `sync_plans` error table states that it is rejected with `VALIDATION_ERROR` on a plan that requires human review.
-
-Training agent: `sync_plans` now rejects a `budget.total` reduced below committed spend, and `check_governance` returns the `denied` verdict for an authenticated execution caller that is not the audience preserved from the approved intent, and for a buyer-side caller whose delegation has ended. It no longer approves a failed `approved_sellers` or `delegations` evaluation in advisory or audit mode. For a plan that does not exist or that the caller cannot access, `check_governance` now returns the `PLAN_NOT_FOUND` error; it returned a `denied` verdict with a `plan_lookup` finding.

@@ -359,17 +359,15 @@ export function evaluateTrainingProposal(
   evaluation: Evaluation
 ): ProposalRefinementResult {
   if (evaluation.refinement.action === "finalize") return finalize(evaluation);
-  // extend_hold never reaches this evaluator: the holds service
-  // (holds/service.ts) answers it first, and the SDK handler, built without
-  // hold_extension and called as 3.2, refuses it with VALIDATION_ERROR before
-  // evaluation. This branch only narrows the refinement type.
-  if (evaluation.refinement.action === "extend_hold") {
+  // extend_hold is served by holds/service.ts, and @adcp/sdk's
+  // createProposalRefinementHandler refuses it before evaluation, so this
+  // profile never receives one; the guard narrows the SDK's refinement union.
+  if (evaluation.refinement.action === "extend_hold")
     return unable(
       evaluation.refinement.proposal_id,
-      { hold_unavailable: true },
-      "The training agent does not extend proposal holds."
+      {},
+      "Hold extensions are not evaluated by this profile."
     );
-  }
   const sourceId = evaluation.refinement.proposal_id;
   const source = evaluation.source;
   if (!source)

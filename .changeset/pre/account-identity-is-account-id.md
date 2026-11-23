@@ -11,5 +11,3 @@ Make brand identity the domain and account identity the seller's `account_id` (#
 **Deprecated in 3.3, planned for removal in 4.0:** the `account.identity_updates` capability, `operator_identity` and `destination_billing_entity` on `sync_accounts`, `identity_change` and `identity_change_preview`, the `ACCOUNT_MOVED` and `ACCOUNT_IDENTITY_CONFLICT` error codes, `error-details/account-moved.json`, and `account.stable_account_id`. No wire field is removed.
 
 Compliance: `media_buy_seller/stable_account_id` re-sends its provisioning entry and checks, as an advisory SHOULD, that the seller returns the same `account_id`. `media_buy_seller/account_timezone_buyer_selected` drops the re-sync reconnect phases.
-
-Training agent: a settings-update entry that changes an account attribute returns `UNSUPPORTED_FEATURE`, and one that carries `operator` returns `INVALID_REQUEST`.
