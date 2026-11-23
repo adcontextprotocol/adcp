@@ -18,7 +18,7 @@
       },
       "minItems": 1,
       "uniqueItems": true,
-      "x-max-items-4.0": 10
+      "maxItems": 10
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

@@ -137,14 +137,8 @@
           "description": "HTTPS URL of the declaring agent or service."
         },
         "role": {
-          "type": "string",
-          "enum": [
-            "brand_agent",
-            "seller",
-            "network",
-            "platform"
-          ],
-          "description": "Role of the declaring party."
+          "description": "Role of the declaring party.",
+          "$ref": "#/definitions/declarer_role"
         }
       },
       "required": [
@@ -161,5 +155,17 @@
     "context_use",
     "disclosure_obligation"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "declarer_role": {
+      "title": "SI Sponsored Context Declarer Role",
+      "type": "string",
+      "enum": [
+        "brand_agent",
+        "seller",
+        "network",
+        "platform"
+      ]
+    }
+  }
 }

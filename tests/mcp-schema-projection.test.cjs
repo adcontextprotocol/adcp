@@ -176,8 +176,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // at 581 KiB.
 // One definition per pricing option field: 595,239 bytes (581.29 KiB); bound
 // it at 582 KiB.
+// Stating the bounds with no published text: 597,524 bytes (583.52 KiB);
+// bound it at 584 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 582,
+  'media-buy': 584,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
@@ -187,7 +189,8 @@ const MODEL_CONTEXT_BUDGET_KIB = {
   // placement, and pixel length field to 465,311 bytes / 454.41 KiB.
   // One definition per media buy field: 466,273 bytes / 455.34 KiB.
   // One definition per content standards field: 467,742 bytes / 456.78 KiB.
-  creative: 457,
+  // Stating the bounds with no published text: 469,944 bytes / 458.93 KiB.
+  creative: 459,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product

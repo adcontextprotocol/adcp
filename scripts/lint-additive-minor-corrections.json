@@ -4334,6 +4334,196 @@
         "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on code in core/error.json. original_error is a subset of the underlying error, and its code is an error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "account/sync-accounts-response.json",
+      "pointer": "/oneOf/0/properties/accounts/items/properties/setup/properties/message",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An account setup message is at most 1,000 characters**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An account setup message, which the pending action for the same onboarding step already caps at 1,000 characters."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/accent/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/background/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/primary/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/secondary/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/text/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/pagination/properties/total_artifacts",
+      "bound": "minimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An artifact webhook counts at least 1 batch and no negative artifacts.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. The artifact webhook artifact count, which is a count and never negative."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/pagination/properties/total_batches",
+      "bound": "minimum",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An artifact webhook counts at least 1 batch and no negative artifacts.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. The artifact webhook batch count: the payload that carries it is itself batch 1 or later."
+    },
+    {
+      "file": "core/account-status-changed-webhook.json",
+      "pointer": "/properties/setup/properties/message",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An account setup message is at most 1,000 characters**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An account setup message, which the pending action for the same onboarding step already caps at 1,000 characters."
+    },
+    {
+      "file": "core/account.json",
+      "pointer": "/properties/setup/properties/message",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An account setup message is at most 1,000 characters**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An account setup message, which the pending action for the same onboarding step already caps at 1,000 characters."
+    },
+    {
+      "file": "core/canonical-audience-evidence-selection.json",
+      "pointer": "/properties/verified_attestation_digests",
+      "bound": "maxItems",
+      "value": 10,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**Compact audience evidence lists at most 10 attestation digests**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A compact audience evidence digest list: each digest stands for one of at most 10 attestation references, and repeats are rejected."
+    },
+    {
+      "file": "core/canonical-audience-evidence.json",
+      "pointer": "/properties/attestation_digests",
+      "bound": "maxItems",
+      "value": 10,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**Compact audience evidence lists at most 10 attestation digests**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A compact audience evidence digest list: each digest stands for one of at most 10 attestation references, and repeats are rejected."
+    },
+    {
+      "file": "creative/list-creatives-response.json",
+      "pointer": "/properties/query_summary/properties/sort_applied",
+      "required": "direction",
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A creative listing's applied sort names its field and direction.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A creative listing applied sort: a seller that sorted did so by some field in some direction, as the task listing applied sort requires."
+    },
+    {
+      "file": "creative/list-creatives-response.json",
+      "pointer": "/properties/query_summary/properties/sort_applied",
+      "required": "field",
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A creative listing's applied sort names its field and direction.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A creative listing applied sort: a seller that sorted did so by some field in some direction, as the task listing applied sort requires."
+    },
+    {
+      "file": "media-buy/sync-audiences-request.json",
+      "pointer": "/properties/audiences/items/properties/audience_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An audience ID is non-empty.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An audience ID, the buyer key that sync_audiences upserts; an empty string names no audience."
+    },
+    {
+      "file": "media-buy/sync-audiences-response.json",
+      "pointer": "/oneOf/0/properties/audiences/items/properties/audience_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An audience ID is non-empty.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An audience ID, the buyer key that sync_audiences upserts; an empty string names no audience."
     }
   ]
 }

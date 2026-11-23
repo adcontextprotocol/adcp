@@ -2560,6 +2560,10 @@
           "$ref": "/schemas/core/account-setup.json",
           "description": "Next steps a human must complete before an account can activate."
         },
+        "account-setup-message": {
+          "$ref": "/schemas/core/account-setup-message.json",
+          "description": "Human-readable text that describes the next step of account onboarding."
+        },
         "applied-task-sort": {
           "$ref": "/schemas/core/applied-task-sort.json",
           "description": "The sort applied to a task list: field and direction."

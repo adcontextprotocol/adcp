@@ -39,8 +39,7 @@
         {
           "$ref": "/schemas/core/open-ended-numeric-range.json"
         }
-      ],
-      "minProperties": 1
+      ]
     },
     "taxonomy": {
       "title": "Audience Characteristic Taxonomy",

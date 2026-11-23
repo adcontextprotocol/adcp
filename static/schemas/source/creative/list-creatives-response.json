@@ -33,7 +33,17 @@
           }
         },
         "sort_applied": {
-          "$ref": "/schemas/core/creative-sort.json",
+          "allOf": [
+            {
+              "$ref": "/schemas/core/creative-sort.json"
+            },
+            {
+              "required": [
+                "field",
+                "direction"
+              ]
+            }
+          ],
           "description": "Sort order that was applied"
         }
       },

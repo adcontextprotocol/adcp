@@ -69,18 +69,6 @@
           "required": [
             "currency",
             "period"
-          ],
-          "anyOf": [
-            {
-              "required": [
-                "min"
-              ]
-            },
-            {
-              "required": [
-                "max"
-              ]
-            }
           ]
         }
       ]

@@ -17,7 +17,7 @@
         "$ref": "/schemas/core/hex-color.json"
       },
       "minItems": 1,
-      "x-max-items-4.0": 16
+      "maxItems": 16
     }
   ]
 }

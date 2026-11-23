@@ -14,5 +14,17 @@
       "description": "Maximum value, inclusive."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "anyOf": [
+    {
+      "required": [
+        "min"
+      ]
+    },
+    {
+      "required": [
+        "max"
+      ]
+    }
+  ]
 }

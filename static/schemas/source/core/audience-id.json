@@ -4,5 +4,6 @@
   "title": "Audience ID",
   "description": "Buyer-assigned identifier of an audience synced to a seller account with sync_audiences. Targeting overlays reference audiences by this identifier; it is not portable across sellers.",
   "type": "string",
-  "x-entity": "audience"
+  "x-entity": "audience",
+  "minLength": 1
 }

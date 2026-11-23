@@ -1,0 +1,171 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  Bounds with no published text: each rejects only a value that no conforming peer sends. The maintainer takes or drops this
+  commit as one decision.
+changes:
+- location: core/color-value.json#/oneOf/1
+  keyword: maxItems
+  new: 16
+  direction: tighten
+  side: both
+  note: >-
+    A brand_kit_override and get_brand_identity color role lists at most 16 hex colors: a role names the few colors a brand
+    uses for one purpose, and every published palette sends one per role, so no conforming peer sends 17 or more. No earlier
+    published text. Checked by hand with Ajv and ajv-formats: an array of 17 distinct hex colors (#000000 to #000010) is valid
+    for core/color-value.json at the base and invalid at the head (more than 16 items); removing maxItems makes it valid again.
+- location: core/https-url.json#
+  keyword: pattern
+  new: ^https://
+  direction: tighten
+  side: both
+  note: >-
+    core/provenance.json declared_by.agent_url references core/https-url.json in place of {type: string, format: uri}: every
+    AdCP agent is reached over HTTPS and every published example uses an https URL, so a conforming declarant sends no other
+    scheme. The published text names the transport for agents, not this field, so it is not a DR-0036 basis.
+- location: core/account-setup-message.json#
+  keyword: maxLength
+  new: 1000
+  direction: tighten
+  side: both
+  note: >-
+    The account setup message (on core/account.json, sync_accounts results, and the account status webhook) references the
+    new core/account-setup-message.json, which core/pending-action.json, the pending action for the same onboarding step,
+    also references and which keeps its 1,000-character cap, so no conforming seller sends a longer setup message. No earlier
+    published text.
+- location: core/open-ended-numeric-range.json#
+  keyword: minProperties
+  old: 1
+  direction: none
+  side: both
+  note: >-
+    The audience characteristic range drops its own minProperties 1 now that core/open-ended-numeric-range.json requires min
+    or max. Masked by the anyOf line: an object that has min or max has at least one property.
+- location: core/open-ended-numeric-range.json#
+  keyword: anyOf
+  new:
+  - required:
+    - min
+  - required:
+    - max
+  direction: tighten
+  side: both
+  note: >-
+    An open-ended numeric range states at least one end: the audience characteristic range and the capabilities matching_latency_hours
+    then require min or max, and the job salary range drops its own copy of the rule. A range with neither end states no interval,
+    so no conforming peer sends one. No earlier published text for these two sites.
+- location: core/daypart-target.json#/properties/days
+  keyword: uniqueItems
+  new: true
+  direction: tighten
+  side: both
+  note: >-
+    Daypart days are unique: each entry applies its window to a set of start days, so a day listed twice adds no window and
+    a conforming buyer has no reason to send it. No earlier published text. Checked by hand: {"days": ["monday", "monday"],
+    "start_hour": 9, "end_hour": 17} is valid for core/daypart-target.json at the base and invalid at the head (duplicate
+    items); removing uniqueItems makes it valid again.
+- location: >-
+    content-standards/artifact-webhook-payload.json#/properties/pagination/properties/total_artifacts
+  keyword: minimum
+  new: 0
+  direction: tighten
+  side: none
+  note: >-
+    total_artifacts counts the artifacts in the delivery period, and a count is never negative, so no conforming sales agent
+    sends a value below 0. No earlier published text.
+- location: >-
+    content-standards/artifact-webhook-payload.json#/properties/pagination/properties/total_batches
+  keyword: minimum
+  new: 1
+  direction: tighten
+  side: none
+  note: >-
+    The payload that carries total_batches is itself one batch of the period, numbered from 1, so a conforming sales agent
+    never reports fewer than 1. No earlier published text.
+- location: core/canonical-audience-evidence.json#/properties/attestation_digests
+  keyword: maxItems
+  new: 10
+  direction: tighten
+  side: response
+  note: >-
+    The compact evidence lists one digest per attestation reference of the same snapshot, which the full core/audience-evidence.json
+    caps at 10, and uniqueItems rejects repeats, so no conforming seller lists 11 or more. No earlier published text. Checked
+    by hand: 11 distinct sha256 digests are valid at the base for #/properties/attestation_digests and invalid at the head
+    (more than 10 items); removing maxItems makes them valid again.
+- location: >-
+    core/canonical-audience-evidence-selection.json#/properties/verified_attestation_digests
+  keyword: maxItems
+  new: 10
+  direction: tighten
+  side: response
+  note: >-
+    The compact selection lists the digests of the attestations the decision verified, which the full core/audience-evidence-selection.json
+    caps at 10, and uniqueItems rejects repeats, so no conforming seller lists 11 or more. No earlier published text. Checked
+    by hand: 11 distinct sha256 digests are valid at the base for #/properties/verified_attestation_digests and invalid at
+    the head (more than 10 items); removing maxItems makes them valid again.
+- location: core/audience-id.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    An audience ID is the buyer key that sync_audiences upserts and targeting names; an empty string names no audience, and
+    none in the docs, storyboards, fixtures, or training agent is empty. No earlier published text.
+- location: >-
+    creative/list-creatives-response.json#/properties/query_summary/properties/sort_applied/allOf/1
+  keyword: required
+  new:
+  - direction
+  - field
+  direction: tighten
+  side: response
+  note: >-
+    A creative listing's applied sort names its field and direction: a seller that sorted did so by some field in some direction,
+    as core/applied-task-sort.json already requires for the task listing. No earlier published text.
+- location: core/plan-budget-summary.json#
+  keyword: required
+  new:
+  - accounting_mode
+  - adjustments_reported
+  - adjustments_verified
+  - budget_remaining
+  - gross_committed
+  - headroom_restored
+  - ledger_committed
+  - net_committed
+  - net_cost
+  direction: tighten
+  side: response
+  note: >-
+    report_plan_outcome plan_summary composes core/plan-budget-summary.json, the summary report_plan_adjustment returns. The
+    response is experimental (governance.campaign), so lint:additive-minor does not compare it. A governance agent that settles
+    an outcome holds the plan ledger these fields report, and the reference training agent sends them; the 3.2.12 report_plan_outcome
+    examples show only total_committed and budget_remaining, so this is a change to the experimental contract, not a DR-0036
+    correction.
+- location: core/plan-budget-summary.json#
+  keyword: properties
+  new:
+    enum:
+    - gross_commitment
+    - verified_net_cost
+  direction: tighten
+  side: response
+  note: >-
+    report_plan_outcome plan_summary composes core/plan-budget-summary.json, the summary report_plan_adjustment returns. The
+    response is experimental (governance.campaign), so lint:additive-minor does not compare it. A governance agent that settles
+    an outcome holds the plan ledger these fields report, and the reference training agent sends them; the 3.2.12 report_plan_outcome
+    examples show only total_committed and budget_remaining, so this is a change to the experimental contract, not a DR-0036
+    correction.
+- location: core/plan-budget-summary.json#
+  keyword: properties
+  new:
+    minimum: 0
+    type:
+    - number
+  direction: tighten
+  side: response
+  note: >-
+    report_plan_outcome plan_summary composes core/plan-budget-summary.json, the summary report_plan_adjustment returns. The
+    response is experimental (governance.campaign), so lint:additive-minor does not compare it. A governance agent that settles
+    an outcome holds the plan ledger these fields report, and the reference training agent sends them; the 3.2.12 report_plan_outcome
+    examples show only total_committed and budget_remaining, so this is a change to the experimental contract, not a DR-0036
+    correction.

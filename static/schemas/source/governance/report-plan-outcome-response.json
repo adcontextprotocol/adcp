@@ -46,13 +46,17 @@
     "plan_summary": {
       "type": "object",
       "description": "Updated plan budget state. Present for 'completed' and 'failed' outcomes.",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/plan-budget-summary.json"
+        }
+      ],
       "properties": {
         "total_committed": {
           "type": "number",
           "description": "Total budget committed across all campaigns in the plan."
         },
         "budget_remaining": {
-          "type": "number",
           "description": "Authorized budget minus total committed."
         }
       },

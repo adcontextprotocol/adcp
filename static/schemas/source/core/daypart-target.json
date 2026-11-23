@@ -11,7 +11,8 @@
       "items": {
         "$ref": "/schemas/enums/day-of-week.json"
       },
-      "minItems": 1
+      "minItems": 1,
+      "uniqueItems": true
     },
     "start_hour": {
       "type": "integer",
