@@ -56,7 +56,9 @@ marker to get unblocked. Without it, `npm run version` refuses to generate
 5. **[H]** Audit every changeset that the exit cut will consume. That means
    the pending `.changeset/*.md` files **and** the archived
    `.changeset/pre/*.md` files. Use the loop in `cut-major.md` §2. Remove any
-   non-protocol changeset through a PR to `main`.
+   non-protocol changeset through a PR to `main` from a
+   `release-audit/<version>` branch. Apart from Version Packages, that is the
+   only branch the changeset scope check lets change `.changeset/pre/*.md`.
 6. **[H]** Confirm the withdrawn-release marker against the real history, the
    tag list, and GitHub Releases:
 
