@@ -444,7 +444,25 @@ describe('season bounds', () => {
     fs.writeFileSync(file, '');
     fs.truncateSync(file, MAX_SEASON_FILE_BYTES + 1);
     const message = invalidSeedMessage(() => readSeasonFile(file));
+    expect(MAX_SEASON_FILE_BYTES).toBe(5_000_000);
     expect(message).toContain(`the file is ${MAX_SEASON_FILE_BYTES + 1} bytes; season files are limited to 5 MB`);
+  });
+
+  it('refuses a path that is not a regular file', () => {
+    expect(invalidSeedMessage(() => readSeasonFile(dir))).toContain('not a regular file');
+  });
+
+  it('refuses a postponement to a date after the season ends', () => {
+    const seed = withCollection({ count: 2 });
+    seed.events = [
+      { type: 'installment_postponed', event_id: 'late', description: 'Late', installment_id: 'show_001', to_date: '2027-02-10' },
+      { type: 'installment_postponed', event_id: 'later', description: 'Later', installment_id: 'show_002', to_date: '2027-03-01' },
+      { type: 'installment_postponed', event_id: 'ok', description: 'Fine', installment_id: 'show_002', to_date: '2027-01-30' },
+    ];
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'postponed'));
+    expect(message).toContain('events[0].to_date: 2027-02-10 falls after the season ends (2027-01-30)');
+    expect(message).toContain('events[1].to_date: 2027-03-01 falls after the season ends (2027-01-30)');
+    expect(message).not.toContain('events[2]');
   });
 
   it('returns a YAML alias bomb as INVALID_SEED with the path', () => {

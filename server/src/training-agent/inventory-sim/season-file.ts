@@ -7,7 +7,7 @@
  *    (currency code, domains, formats present, floors), with the path of each problem.
  * 2. A reference pass checks what the engine leaves unchecked: product
  *    properties, product collections, the ids traffic events target, that
- *    every collection's installments fall inside the season and,
+ *    every collection's installments and postponements fall inside the season and,
  *    when the host lists the formats it supports, placement formats.
  * 3. The engine's own checks run through `trafficFor` (shares sum to 1, ids
  *    resolve), which also primes the traffic cache for the returned seed. Then
@@ -208,7 +208,7 @@ function dottedPath(path: ReadonlyArray<PropertyKey>): string {
 }
 
 /** The largest season file the loader reads. */
-export const MAX_SEASON_FILE_BYTES = 5 * 1024 * 1024;
+export const MAX_SEASON_FILE_BYTES = 5_000_000;
 
 /** What the host that loads a season can serve. */
 export interface SeasonFileOptions {
@@ -276,6 +276,9 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
     problems.push(`collections[${i}]: installment ${firstPast + 1} on ${date} falls after the season ends (${calendar.dateOf(seed.days - 1)})`);
   });
   (seed.events ?? []).forEach((event, i) => {
+    if (event.type === 'installment_postponed' && daysUsable && parseDate(event.to_date) - calendar.startMs >= seed.days * DAY_MS) {
+      problems.push(`events[${i}].to_date: ${event.to_date} falls after the season ends (${calendar.dateOf(seed.days - 1)})`);
+    }
     if (event.type !== 'traffic_multiplier') return;
     check(`events[${i}].placement_ids`, event.placement_ids, placementIds, 'placement');
     check(`events[${i}].property_ids`, event.property_ids, propertyIds, 'property');
@@ -311,7 +314,9 @@ export function parseSeasonSeed(input: unknown, source: string, options: SeasonF
 
 /** Read a YAML or JSON season file (JSON is valid YAML). */
 export function readSeasonFile(path: string, options: SeasonFileOptions = {}): SeasonSeed {
-  const { size } = fs.statSync(path);
+  const stat = fs.statSync(path);
+  if (!stat.isFile()) invalid(path, ['not a regular file']);
+  const { size } = stat;
   if (size > MAX_SEASON_FILE_BYTES) invalid(path, [`the file is ${size} bytes; season files are limited to 5 MB`]);
   const text = fs.readFileSync(path, 'utf8');
   const documents = parseAllDocuments(text, { schema: 'core' });
