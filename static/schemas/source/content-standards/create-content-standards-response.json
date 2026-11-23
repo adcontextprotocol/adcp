@@ -11,6 +11,7 @@
   ],
   "oneOf": [
     {
+      "title": "CreateContentStandardsSuccess",
       "type": "object",
       "description": "Success response - returns the created standards identifier",
       "properties": {
@@ -27,7 +28,8 @@
       },
       "required": [
         "standards_id"
-      ]
+      ],
+      "title": "CreateContentStandardsSuccess"
     },
     {
       "type": "object",

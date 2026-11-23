@@ -4202,6 +4202,114 @@
         "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/artifacts/items/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "content-standards/get-media-buy-artifacts-response.json",
+      "pointer": "/oneOf/0/properties/artifacts/items/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/pagination/properties/batch_number",
+      "bound": "minimum",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/content-standards/artifact-webhook-payload.json",
+        "quote": "\"description\": \"Current batch number (1-indexed)\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 numbers artifact webhook batches from 1, so no batch number is below 1."
+    },
+    {
+      "file": "content-standards/content-standards.json",
+      "pointer": "/properties/languages_any/items",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/content-standards.json",
+      "pointer": "/properties/languages_any/items",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
     }
   ]
 }

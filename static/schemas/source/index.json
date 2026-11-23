@@ -1448,6 +1448,10 @@
           "$ref": "/schemas/core/calendar-date.json",
           "description": "Calendar date in YYYY-MM-DD form, without a timezone."
         },
+        "calibration-exemplar": {
+          "$ref": "/schemas/core/calibration-exemplar.json",
+          "description": "One calibration example: a URL reference to fetch and evaluate, or a full content artifact."
+        },
         "hex-color": {
           "$ref": "/schemas/core/hex-color.json",
           "description": "Six-digit hexadecimal RGB color with a leading number sign, such as #FF6600."
@@ -2787,6 +2791,14 @@
         "content-macro-location": {
           "$ref": "/schemas/core/content-macro-location.json",
           "description": "Refines a macro declaration to a token occurrence in the asset's inline content field."
+        },
+        "content-standards-feature-check-result": {
+          "$ref": "/schemas/core/content-standards-feature-check-result.json",
+          "description": "A feature check result from a content standards evaluation, whose policy_id names a registry policy."
+        },
+        "content-standards-scope": {
+          "$ref": "/schemas/core/content-standards-scope.json",
+          "description": "Where a content standards configuration applies: the countries, channels, and languages it covers."
         },
         "country-subdivision-value-set": {
           "$ref": "/schemas/core/country-subdivision-value-set.json",

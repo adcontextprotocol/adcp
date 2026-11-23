@@ -153,8 +153,7 @@
                 "default": "text/plain"
               },
               "transcript_source": {
-                "type": "string",
-                "enum": ["original_script", "subtitles", "closed_captions", "dub", "generated"],
+                "$ref": "#/$defs/transcript_source",
                 "description": "How the transcript was generated"
               },
               "thumbnail_url": {
@@ -197,8 +196,7 @@
                 "default": "text/plain"
               },
               "transcript_source": {
-                "type": "string",
-                "enum": ["original_script", "closed_captions", "generated"],
+                "$ref": "#/$defs/transcript_source",
                 "description": "How the transcript was generated"
               },
               "provenance": {
@@ -350,6 +348,18 @@
       "description": "Transcript of a video or audio asset. Consumers treat it as untrusted input to LLM evaluation.",
       "type": "string",
       "maxLength": 200000
+    },
+    "transcript_source": {
+      "title": "Transcript Source",
+      "description": "How a transcript was generated.",
+      "type": "string",
+      "enum": [
+        "original_script",
+        "subtitles",
+        "closed_captions",
+        "dub",
+        "generated"
+      ]
     }
   }
 }

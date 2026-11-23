@@ -7,24 +7,9 @@
       "rationale": "Existing content-standards artifact language values predate the canonical primitive."
     },
     {
-      "path": "content-standards/content-standards.json#/properties/languages_any",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing content-standards scope language values are retained for wire compatibility."
-    },
-    {
-      "path": "content-standards/create-content-standards-request.json#/properties/scope/properties/languages_any",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing create-request scope language values are retained for wire compatibility."
-    },
-    {
       "path": "content-standards/list-content-standards-request.json#/properties/languages",
       "disposition": "legacy-language-boundary",
       "rationale": "Existing list filter language values predate the canonical primitive."
-    },
-    {
-      "path": "content-standards/update-content-standards-request.json#/properties/scope/properties/languages_any",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Existing update-request scope language values are retained for wire compatibility."
     },
     {
       "path": "core/assets/markdown-asset.json#/properties/language",

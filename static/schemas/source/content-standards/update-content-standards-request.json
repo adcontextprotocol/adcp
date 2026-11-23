@@ -22,7 +22,7 @@
         "countries_all": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "/schemas/core/country-code.json"
           },
           "minItems": 1,
           "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
@@ -38,7 +38,7 @@
         "languages_any": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "/schemas/core/locale-tag.json"
           },
           "minItems": 1,
           "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."

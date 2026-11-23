@@ -87,7 +87,12 @@
               },
               "description": "Artifacts exemplifying variants the buyer considers bad — the low end (≈0) of the calibrated prediction feature."
             }
-          }
+          },
+          "allOf": [
+            {
+              "$ref": "/schemas/core/calibration-exemplars.json"
+            }
+          ]
         }
       },
       "additionalProperties": true

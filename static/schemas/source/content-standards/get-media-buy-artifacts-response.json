@@ -34,7 +34,7 @@
                 "description": "When the delivery occurred"
               },
               "package_id": {
-                "type": "string",
+                "$ref": "/schemas/core/package-id.json",
                 "description": "Which package this delivery belongs to"
               },
               "artifact": {

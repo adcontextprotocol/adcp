@@ -185,7 +185,8 @@ const MODEL_CONTEXT_BUDGET_KIB = {
   // field to 460,899 bytes / 450.10 KiB, and one definition per DOOH,
   // placement, and pixel length field to 465,311 bytes / 454.41 KiB.
   // One definition per media buy field: 466,273 bytes / 455.34 KiB.
-  creative: 456,
+  // One definition per content standards field: 467,742 bytes / 456.78 KiB.
+  creative: 457,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
@@ -1476,7 +1477,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // the cap moves to 25 MiB. Replacing repeated inline object copies with
   // shared definitions takes it from 26,030,614 bytes (24.82 MiB) at the start
   // of this series to 26,317,378 bytes (25.10 MiB), so the cap moves to 26 MiB.
-  assert.ok(totalBytes < 26 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // Pointing the remaining object copies at their definitions, through the
+  // content standards fields, brings it to 27,268,533 bytes (26.01 MiB), so
+  // the cap moves to 27 MiB.
+  assert.ok(totalBytes < 27 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
