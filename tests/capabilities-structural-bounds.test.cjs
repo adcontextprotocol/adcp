@@ -29,7 +29,7 @@ const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const security = read('docs/building/by-layer/L1/security.mdx');
 
 // The documented worst case. Update security.mdx with this number.
-const DOCUMENTED_WORST_CASE_BYTES = 99_270_620;
+const DOCUMENTED_WORST_CASE_BYTES = 98_471_900;
 const DOCUMENTED_OPEN_POSITIONS = 189;
 
 const rows = bounds.coverage();

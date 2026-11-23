@@ -53,7 +53,9 @@
       "properties": {
         "asset_type": { "type": "string", "const": "display_tag" },
         "macro_declarations": {
-          "items": { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
+          "items": {
+            "$ref": "/schemas/core/url-macro-location.json"
+          }
         },
         "delivery_type": { "type": "string", "const": "tag_url", "default": "tag_url" },
         "url": {

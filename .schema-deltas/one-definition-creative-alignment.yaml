@@ -1,0 +1,382 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: creative alignment. Creative, format, preview, localization, and validation objects share
+  one definition each; the corrections rest on the published 3.x text.
+changes:
+  - location: core/country-code.json#
+    keyword: pattern
+    new: ^[A-Z]{2}$
+    direction: tighten
+    side: both
+    note: >-
+      core/provenance.json#/properties/disclosure/properties/jurisdictions/items/properties/country ->
+      core/country-code.json. Basis (DR-0036, an external standard the text names; lint:additive-minor does not see
+      pattern): 3.2.12 core/provenance.json: "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')"
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/provenance.json#L229
+  - location: core/format-option-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/format-option-ref.json#/oneOf/0 and /oneOf/1 format_option_id -> core/format-option-id.json. Basis (register
+      entries): 3.2.12 core/canonical-format-option.json, the format option a reference selects: "format_option_id": {
+      "type": "string", "minLength": 1
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-format-option.json#L8-L11
+  - location: enums/canonical-slot-asset-type.json#
+    keyword: enum
+    old:
+      - audio
+      - brief
+      - card
+      - catalog
+      - css
+      - daast
+      - daast_tracker
+      - html
+      - image
+      - javascript
+      - markdown
+      - object
+      - pixel_tracker
+      - published_post
+      - text
+      - url
+      - vast
+      - vast_tracker
+      - video
+      - video_brief
+      - webhook
+      - zip
+    new:
+      - audio
+      - brief
+      - card
+      - catalog
+      - css
+      - daast
+      - daast_tracker
+      - display_tag
+      - html
+      - image
+      - javascript
+      - markdown
+      - object
+      - pixel_tracker
+      - published_post
+      - text
+      - url
+      - vast
+      - vast_tracker
+      - video
+      - video_brief
+      - webhook
+      - zip
+    direction: loosen
+    side: both
+    note: >-
+      formats/canonical/coordinated_placements.json shared_slots[].asset_type -> new
+      enums/canonical-slot-asset-type.json, the slot asset type vocabulary that core/canonical-format-slot.json now
+      references. The inline copy lacked display_tag, which every canonical slot accepts (3.2.12
+      formats/canonical/_base.json slots[].asset_type lists it), so a shared slot consumed by a display_tag component
+      was rejected; lint-schema-enum-drift reports the copy as subset drift once the vocabulary has a name. Shared slots
+      now accept display_tag.
+  - location: core/custom-event-name.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/assets/pixel-tracker-asset.json#/properties/custom_event_name -> core/custom-event-name.json. Basis (DR-0036,
+      register entry): 3.2.12 core/tracker-execution-selector.json, the pixel_tracker selector that matches a tracker by
+      its custom event name: "custom_event_name": { "type": "string", "minLength": 1,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/tracker-execution-selector.json#L28-L32
+  - location: media-buy/build-creative-response.json#/oneOf/1/properties/preview
+    keyword: required
+    old:
+      - expires_at
+      - previews
+    new:
+      - previews
+    direction: loosen
+    side: response
+    note: >-
+      BuildCreativeMultiSuccess preview no longer requires expires_at, as 2a did for the single preview
+      (core/creative-preview.json), whose description names the preview_creative convention: omit expires_at for
+      non-expiring preview URLs. Its previews items move to core/capability-preview-variant.json (class 1).
+  - location: core/creative-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      core/creative-delivery-metrics.json#/allOf/1/properties/creative_id and
+      creative/creative-assignment-changed-webhook.json#/properties/creative_id -> core/creative-id.json. Basis
+      (register entries): 3.2.12 get-media-buy-delivery-response.json spot-row creative_id "minLength": 1
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/get-media-buy-delivery-response.json#L1018-L1022;
+      3.2.12 sync-creatives-request.json assign operation "creative_id": { "type": "string", "minLength": 1
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/creative/sync-creatives-request.json#L299-L308
+  - location: core/canonical-projection-slot-override.json#/properties/asset_type
+    keyword: type
+    old:
+      - string
+    direction: none
+    side: response
+    note: >-
+      asset_type now takes the open-enum form anyOf [enums/canonical-slot-asset-type.json, {type: string}], the
+      vocabulary core/canonical-format-slot.json now references. Masked: the {type: string} branch of the added anyOf
+      admits exactly the strings the removed type admitted. Hand check: 5 is rejected at base and head; "custom_slot" is
+      accepted at both.
+  - location: core/canonical-projection-slot-override.json#/properties/asset_type
+    keyword: anyOf
+    new:
+      - enum:
+          - audio
+          - brief
+          - card
+          - catalog
+          - css
+          - daast
+          - daast_tracker
+          - display_tag
+          - html
+          - image
+          - javascript
+          - markdown
+          - object
+          - pixel_tracker
+          - published_post
+          - text
+          - url
+          - vast
+          - vast_tracker
+          - video
+          - video_brief
+          - webhook
+          - zip
+      - type:
+          - string
+    direction: none
+    side: response
+    note: >-
+      Open-enum form anyOf [enums/canonical-slot-asset-type.json, {type: string}] replaces {type: string}; every string
+      matches the second branch and no non-string matches either, so the accepted set is unchanged (the narrowing to the
+      closed vocabulary stays a 4.0 matter, #9002).
+  - location: core/account-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: none
+    note: >-
+      creative/creative-assignment-changed-webhook.json#/properties/account_id -> core/account-id.json. Basis (register
+      entry): 3.2.12 core/account-change-recorded-webhook.json: "account_id": { "type": "string", "minLength": 1,
+      "maxLength": 255, "x-entity": "account"
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/account-change-recorded-webhook.json#L37-L42
+  - location: core/account-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
+    note: >-
+      creative/creative-assignment-changed-webhook.json#/properties/account_id -> core/account-id.json. Basis (register
+      entry): 3.2.12 core/account-change-recorded-webhook.json: "account_id": { "type": "string", "minLength": 1,
+      "maxLength": 255, "x-entity": "account"
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/account-change-recorded-webhook.json#L37-L42
+  - location: core/media-buy-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: none
+    note: >-
+      creative/creative-assignment-changed-webhook.json#/properties/media_buy_id -> core/media-buy-id.json. Basis
+      (register entry, reused): 3.3.0-beta.4 create-media-buy-request.json predecessor_media_buy_id "minLength": 1,
+      "maxLength": 255, "x-entity": "media_buy"
+      https://github.com/adcontextprotocol/adcp/blob/763c2d759b71ff5b01e68732489ed64762a7590f/dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json#L177-L183
+  - location: core/media-buy-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
+    note: >-
+      creative/creative-assignment-changed-webhook.json#/properties/media_buy_id -> core/media-buy-id.json. Basis
+      (register entry): 3.2.12 core/planned-delivery.json: "media_buy_id": { "type": "string", "minLength": 1
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/planned-delivery.json#L8-L11
+  - location: core/package-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
+    note: >-
+      creative/creative-assignment-changed-webhook.json#/properties/package_id -> core/package-id.json. Basis (register
+      entry): 3.2.12 sync-creatives-request.json assign operation, the package-creative assignment this webhook reports:
+      "package_id": { "type": "string", "minLength": 1
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/creative/sync-creatives-request.json#L299-L308
+  - location: creative/list-creatives-response.json#/properties/creatives/items
+    keyword: allOf
+    new:
+      else:
+        not:
+          required:
+            - component_assets
+      if:
+        required:
+          - format_kind
+        properties:
+          format_kind:
+            const: coordinated_placements
+    direction: tighten
+    side: response
+    note: >-
+      list_creatives creatives[] gains the component_assets guard of core/creative-asset.json, the creative a listing
+      reads back: component_assets is absent unless format_kind is coordinated_placements. The then-branch
+      (component_assets required for coordinated_placements) is not applied: the list_creatives fields projection
+      cannot select component_assets. Basis (DR-0036): 3.2.12 core/creative-asset.json component_assets: "This field is
+      preserved by creative-library sync and list readback; it MUST be absent for every other format kind."
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/creative-asset.json#L55-L57.
+      Hand check (creatives[] item): {creative_id, name, status, created_date, updated_date, format_kind: "image",
+      component_assets: {}} is valid at base, invalid at head (allOf/3/else/not); the same with format_kind
+      "coordinated_placements" is valid at both; removing the guard restores the base verdict.
+  - location: creative/list-creatives-response.json#/properties/creatives/items/allOf/0
+    keyword: not
+    new:
+      anyOf:
+        - required:
+            - capability_id
+        - required:
+            - capability_ref
+    direction: tighten
+    side: response
+    note: >-
+      list_creatives creatives[] gains the capability guard of core/creative-asset.json: capability_id and
+      capability_ref are absent on a creative a listing reads back. Basis (DR-0036): the schema of the major that
+      defines the creative: "not": { "anyOf": [ { "required": [ "capability_id" ] }, { "required": [ "capability_ref" ]
+      } ] } https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/creative-asset.json#L153-L166.
+      Hand check (creatives[] item): {creative_id, name, status, created_date, updated_date, format_kind: "image",
+      capability_id: "x"} is valid at base, invalid at head (allOf/3/not); removing the guard restores the base
+      verdict.
+  - location: enums/creative-sort-field.json#
+    keyword: enum
+    new:
+      - assignment_count
+      - created_date
+      - name
+      - status
+      - updated_date
+    direction: tighten
+    side: response
+    note: >-
+      list_creatives query_summary.sort_applied -> new core/creative-sort.json, the definition list_creatives-request
+      sort now references; its field is enums/creative-sort-field.json instead of a free string. Basis (DR-0036, a
+      schema of the major that defines the concept): 3.2.12 enums/creative-sort-field.json: "description": "Fields
+      available for sorting creative library listings"
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/enums/creative-sort-field.json#L4-L6.
+      lint:additive-minor does not report an enum narrowing.
+  - location: enums/creative-sort-field.json#
+    keyword: type
+    old:
+      - string
+    direction: none
+    side: response
+    note: >-
+      Masked by the enum line at the same node: every enum value is a string, so the removed {type: string} rejects
+      nothing the enum accepts.
+  - location: core/validation-target.json#
+    keyword: oneOf
+    new:
+      - required:
+          - id
+          - kind
+        properties:
+          id:
+            type:
+              - string
+          kind:
+            const: canonical
+      - required:
+          - id
+          - kind
+        properties:
+          id:
+            type:
+              - string
+          kind:
+            const: product
+      - required:
+          - id
+          - kind
+        properties:
+          id:
+            format: uri
+            type:
+              - string
+          kind:
+            const: third_party_format
+      - required:
+          - id
+          - kind
+        properties:
+          id:
+            pattern: ^[a-zA-Z0-9_-]+$
+            type:
+              - string
+          kind:
+            const: capability
+    direction: tighten
+    side: response
+    note: >-
+      creative/validate-input-result.json#/properties/target -> new core/validation-target.json, the tagged union
+      validate-input-request targets[] already used. Rewrite: the kind enum + id + if kind=capability then id pattern
+      becomes four kind-tagged branches; the tool has no rule for this rewrite, and the witness search cannot revert the
+      line (the discriminator needs oneOf), so it is hand-checked with the repo Ajv options against /properties/target:
+      {"kind":"capability","id":"a b"}, {"kind":"other","id":"x"} and {"kind":"canonical"} are invalid at base and head;
+      {"kind":"product","id":"p1"}, {"kind":"capability","id":"cap_1"} and
+      {"kind":"third_party_format","id":"https://v.example/f"} are valid at both. The one change:
+      {"kind":"third_party_format","id":"not a uri"} is valid at base and invalid at head (oneOf/2/properties/id
+      format); restoring the base target (kind enum, id string, the capability if/then) makes it valid again. Basis
+      (DR-0036): 3.2.12 validate-input-result.json id: "URI-form third-party format identifier"
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/creative/validate-input-result.json#L30;
+      3.2.12 validate-input-request.json: "Each entry mirrors the `target` shape on `validate-input-result.json` so the
+      request/response wire shapes match exactly."
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/creative/validate-input-request.json#L28
+      and its third-party id "format": "uri"
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/creative/validate-input-request.json#L80-L83.
+      lint:additive-minor does not see format.
+  - location: core/validation-target.json#
+    keyword: if
+    old:
+      required:
+        - kind
+      properties:
+        kind:
+          const: capability
+    direction: none
+    side: response
+    note: >-
+      Part of the target rewrite: the capability pattern now sits on the capability branch (id ->
+      core/creative-capability-id.json, the same pattern). Masked by the oneOf line.
+  - location: core/validation-target.json#
+    keyword: properties
+    old:
+      id:
+        type:
+          - string
+      kind:
+        enum:
+          - canonical
+          - capability
+          - product
+          - third_party_format
+    direction: none
+    side: response
+    note: >-
+      Part of the target rewrite: each branch pins kind to one of the four values and types id as a string. Masked by
+      the oneOf line.
+  - location: core/validation-target.json#
+    keyword: then
+    old:
+      properties:
+        id:
+          pattern: ^[a-zA-Z0-9_-]+$
+    direction: none
+    side: response
+    note: 'Part of the target rewrite: the capability pattern now sits on the capability branch. Masked by the oneOf line.'

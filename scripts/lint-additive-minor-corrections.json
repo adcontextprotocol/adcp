@@ -3110,6 +3110,126 @@
         "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "core/assets/pixel-tracker-asset.json",
+      "pointer": "/properties/custom_event_name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/tracker-execution-selector.json",
+        "quote": "\"custom_event_name\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Required only when event is custom.\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on custom_event_name in the pixel_tracker branch of core/tracker-execution-selector.json, which selects a pixel tracker by its event and custom event name. A pixel tracker's custom event name, which core/custom-event-name.json bounds."
+    },
+    {
+      "file": "core/creative-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/creative_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"minLength\": 1, \"description\": \"Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment."
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative ID of a get_media_buy_delivery spot row. The creative of a delivery metrics row, which core/creative-id.json bounds."
+    },
+    {
+      "file": "core/format-option-ref.json",
+      "pointer": "/oneOf/0/properties/format_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-format-option.json",
+        "quote": "\"format_option_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on format_option_id in core/canonical-format-option.json, the format option that a format option reference selects. A format option ID, which core/format-option-id.json bounds."
+    },
+    {
+      "file": "core/format-option-ref.json",
+      "pointer": "/oneOf/1/properties/format_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-format-option.json",
+        "quote": "\"format_option_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on format_option_id in core/canonical-format-option.json, the format option that a format option reference selects. A format option ID, which core/format-option-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/account-change-recorded-webhook.json",
+        "quote": "\"account_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the account ID of the account-change webhook, core/account-change-recorded-webhook.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/account-change-recorded-webhook.json",
+        "quote": "\"account_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the account ID of the account-change webhook, core/account-change-recorded-webhook.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/creative_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/creative/sync-creatives-request.json",
+        "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\" }, \"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative and package IDs of a sync_creatives assign operation, the package-creative assignment this webhook reports on. A creative ID, which core/creative-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site sets a maximum length on a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/planned-delivery.json",
+        "quote": "\"media_buy_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the media buy ID in core/planned-delivery.json. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/creative/sync-creatives-request.json",
+        "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\" }, \"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative and package IDs of a sync_creatives assign operation, the package-creative assignment this webhook reports on. A package ID, which core/package-id.json bounds."
     }
   ]
 }

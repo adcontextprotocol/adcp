@@ -6,12 +6,8 @@
   "type": "object",
   "properties": {
     "value": {
-      "description": "The feature value. Type depends on feature definition: boolean for binary, number for quantitative, string for categorical.",
-      "oneOf": [
-        { "type": "boolean" },
-        { "type": "number" },
-        { "type": "string" }
-      ]
+      "$ref": "/schemas/core/feature-value.json",
+      "description": "The feature value. Type depends on feature definition: boolean for binary, number for quantitative, string for categorical."
     },
     "unit": {
       "type": "string",

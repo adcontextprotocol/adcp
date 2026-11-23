@@ -65,7 +65,9 @@
           "description": "URL endpoint returning DAAST XML. Macro delimiters remain byte-preserved and are processed only under attached occurrence declarations."
         },
         "macro_declarations": {
-          "items": { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
+          "items": {
+            "$ref": "/schemas/core/url-macro-location.json"
+          }
         }
       },
       "required": [
@@ -86,7 +88,9 @@
           "description": "Inline DAAST XML content"
         },
         "macro_declarations": {
-          "items": { "properties": { "location": { "properties": { "field": { "const": "content" } } } } }
+          "items": {
+            "$ref": "/schemas/core/content-macro-location.json"
+          }
         }
       },
       "required": [

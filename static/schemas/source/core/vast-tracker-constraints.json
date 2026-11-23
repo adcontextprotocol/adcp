@@ -43,19 +43,15 @@
     },
     "vast_offset": {
       "$ref": "/schemas/core/tracker-offset.json"
-    },
-    "vast_versions": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/vast-version.json" },
-      "minItems": 1,
-      "uniqueItems": true
     }
   },
   "properties": {
     "vast_event": { "$ref": "#/definitions/vast_event" },
     "target": { "$ref": "#/definitions/vast_target" },
     "offset": { "$ref": "#/definitions/vast_offset" },
-    "vast_versions": { "$ref": "#/definitions/vast_versions" }
+    "vast_versions": {
+      "$ref": "/schemas/core/vast-versions.json"
+    }
   },
   "allOf": [
     {

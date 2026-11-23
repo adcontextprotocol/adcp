@@ -39,10 +39,7 @@
     "macro_declarations": {
       "type": "array",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/macro-declaration.json" },
-          { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
-        ]
+        "$ref": "/schemas/core/macro-declaration-in-url.json"
       },
       "minItems": 1,
       "description": "Exact tokens in `url` and their resolver/encoding contracts."

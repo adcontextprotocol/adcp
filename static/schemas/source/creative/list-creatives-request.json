@@ -46,21 +46,8 @@
       "$ref": "/schemas/core/creative-filters.json"
     },
     "sort": {
-      "type": "object",
-      "description": "Sorting parameters",
-      "properties": {
-        "field": {
-          "$ref": "/schemas/enums/creative-sort-field.json",
-          "default": "created_date",
-          "description": "Field to sort by"
-        },
-        "direction": {
-          "$ref": "/schemas/enums/sort-direction.json",
-          "default": "desc",
-          "description": "Sort direction"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/creative-sort.json",
+      "description": "Sorting parameters"
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"

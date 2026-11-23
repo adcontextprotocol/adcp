@@ -70,7 +70,7 @@
           "default": "vast_tracker"
         },
         "vast_versions": {
-          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_versions"
+          "$ref": "/schemas/core/vast-versions.json"
         },
         "vast_event": {
           "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_event"

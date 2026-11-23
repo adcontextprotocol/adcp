@@ -28,16 +28,13 @@
     "macro_declarations": {
       "type": "array",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/macro-declaration.json" },
-          { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
-        ]
+        "$ref": "/schemas/core/macro-declaration-in-url.json"
       },
       "minItems": 1,
       "description": "One declaration per token occurrence in `url`; declaration_id values MUST be unique and locations MUST resolve. When omitted, legacy behavior applies."
     },
     "custom_event_name": {
-      "type": "string",
+      "$ref": "/schemas/core/custom-event-name.json",
       "description": "REQUIRED when `event` is `custom`; otherwise MUST be absent. Adopter-defined event name. When tracker execution is undeclared, an unknown custom event is a forward-compatible probe and the seller silently no-ops instead of rejecting the creative. An effective tracker_execution_contract overrides that legacy fallback: with complete:true an unlisted custom selector is unsupported and rejects compatibility with tracker_contract_mismatch; a listed custom selector is an affirmative accept-and-initiate commitment."
     },
     "provenance": {

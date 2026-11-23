@@ -33,16 +33,8 @@
           }
         },
         "sort_applied": {
-          "type": "object",
-          "description": "Sort order that was applied",
-          "properties": {
-            "field": {
-              "type": "string"
-            },
-            "direction": {
-              "$ref": "/schemas/enums/sort-direction.json"
-            }
-          }
+          "$ref": "/schemas/core/creative-sort.json",
+          "description": "Sort order that was applied"
         }
       },
       "required": [
@@ -418,22 +410,7 @@
                       "$ref": "/schemas/core/indicator-bearing.json"
                     },
                     {
-                      "properties": {
-                        "indicator_types_evaluated": {
-                          "items": {
-                            "$ref": "/schemas/enums/creative-indicator-type.json"
-                          }
-                        },
-                        "indicators": {
-                          "items": {
-                            "properties": {
-                              "type": {
-                                "$ref": "/schemas/enums/creative-indicator-type.json"
-                              }
-                            }
-                          }
-                        }
-                      }
+                      "$ref": "/schemas/core/creative-indicator-types.json"
                     },
                     {
                       "if": {
@@ -643,6 +620,39 @@
             },
             "then": {
               "required": ["rights"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "format_kind": {
+                  "const": "coordinated_placements"
+                }
+              },
+              "required": [
+                "format_kind"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "component_assets"
+                ]
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "capability_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "capability_ref"
+                  ]
+                }
+              ]
             }
           }
         ],

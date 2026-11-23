@@ -10,11 +10,8 @@
       "description": "Action identifier"
     },
     "context": {
-      "type": "object",
-      "description": "Context data to include with action",
-      "additionalProperties": {
-        "$ref": "/schemas/a2ui/bound-value.json"
-      }
+      "$ref": "/schemas/a2ui/bound-action-context.json",
+      "description": "Context data to include with action"
     }
   },
   "required": [

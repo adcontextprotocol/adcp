@@ -2608,6 +2608,10 @@
           "$ref": "/schemas/core/canonical-format-slot.json",
           "description": "One asset slot in a canonical format: its asset group and asset type, whether it is required, item counts, and size, character, pixel-ratio, and logo constraints."
         },
+        "capability-preview-variant": {
+          "$ref": "/schemas/core/capability-preview-variant.json",
+          "description": "One preview of a multi-capability build: its renders, the default input, and the creative capability it was generated for."
+        },
         "catalog-match": {
           "$ref": "/schemas/core/catalog-match.json",
           "description": "Which submitted catalog items match a product: matched GTINs and item IDs, with matched and submitted counts."
@@ -2624,6 +2628,10 @@
           "$ref": "/schemas/core/contact.json",
           "description": "Contact information for an entity: its name, plus optional email, domain, and registry identifiers."
         },
+        "content-macro-location": {
+          "$ref": "/schemas/core/content-macro-location.json",
+          "description": "Refines a macro declaration to a token occurrence in the asset's inline content field."
+        },
         "country-subdivision-value-set": {
           "$ref": "/schemas/core/country-subdivision-value-set.json",
           "description": "A non-empty set of ISO 3166-2 country subdivision codes."
@@ -2632,6 +2640,10 @@
           "$ref": "/schemas/core/creative-agent-entry.json",
           "description": "A creative agent: its URL, name, and capabilities."
         },
+        "creative-indicator-types": {
+          "$ref": "/schemas/core/creative-indicator-types.json",
+          "description": "Refines an indicator-bearing object to the creative indicator types."
+        },
         "creative-multiplicity": {
           "$ref": "/schemas/core/creative-multiplicity.json",
           "description": "Creative fan-out limits: whether catalog fan-out, signal fan-out, and variants are supported, their ceilings, and the variant dimensions and selection strategies."
@@ -2639,6 +2651,10 @@
         "creative-preview": {
           "$ref": "/schemas/core/creative-preview.json",
           "description": "Preview content for a creative: one or more previews, an optional interactive URL, and an expiry time."
+        },
+        "creative-sort": {
+          "$ref": "/schemas/core/creative-sort.json",
+          "description": "How a creative library listing is sorted: a sort field and a direction."
         },
         "daily-delivery-row": {
           "$ref": "/schemas/core/daily-delivery-row.json",
@@ -2703,6 +2719,10 @@
         "feature-check-result": {
           "$ref": "/schemas/core/feature-check-result.json",
           "description": "The result of checking one feature against a policy: status, the requirement checked, an explanation, and a confidence."
+        },
+        "feature-value": {
+          "$ref": "/schemas/core/feature-value.json",
+          "description": "The value of an evaluated feature: a boolean, a number, or a string."
         },
         "fixed-duration": {
           "$ref": "/schemas/core/fixed-duration.json",
@@ -2831,6 +2851,10 @@
         "localized-creative-assets": {
           "$ref": "/schemas/core/localized-creative-assets.json",
           "description": "Locale-specific creative assets keyed by creative slot ID. Each slot holds one asset or a non-empty list of assets."
+        },
+        "macro-declaration-in-url": {
+          "$ref": "/schemas/core/macro-declaration-in-url.json",
+          "description": "A macro declaration for a token occurrence in the asset's url field."
         },
         "macro-values": {
           "$ref": "/schemas/core/macro-values.json",
@@ -3115,6 +3139,18 @@
         "universal-id": {
           "$ref": "/schemas/core/universal-id.json",
           "description": "A universal user ID: an ID type and its value."
+        },
+        "url-macro-location": {
+          "$ref": "/schemas/core/url-macro-location.json",
+          "description": "Refines a macro declaration to a token occurrence in the asset's url field."
+        },
+        "validation-target": {
+          "$ref": "/schemas/core/validation-target.json",
+          "description": "One validate_input target, discriminated by kind: canonical format, product, third-party format, or creative capability."
+        },
+        "vast-versions": {
+          "$ref": "/schemas/core/vast-versions.json",
+          "description": "A non-empty set of VAST versions."
         },
         "vendor-metric-definition": {
           "$ref": "/schemas/core/vendor-metric-definition.json",
@@ -4386,6 +4422,10 @@
         "content-artifact-identifier-type": {
           "$ref": "/schemas/enums/content-artifact-identifier-type.json",
           "description": "Public identifier types for a content artifact adjacent to an ad opportunity."
+        },
+        "canonical-slot-asset-type": {
+          "$ref": "/schemas/enums/canonical-slot-asset-type.json",
+          "description": "Asset type that a canonical format slot accepts."
         }
       }
     },

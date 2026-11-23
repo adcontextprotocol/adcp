@@ -23,10 +23,8 @@
           "description": "Action identifier (e.g., 'view_product', 'add_to_cart')"
         },
         "context": {
-          "title": "A2UI Action Context",
-          "type": "object",
-          "description": "Context data resolved from data model bindings",
-          "additionalProperties": true
+          "$ref": "/schemas/a2ui/action-context.json",
+          "description": "Context data resolved from data model bindings"
         }
       },
       "required": ["name"],
