@@ -481,16 +481,18 @@ curl -sS -X POST -H "Authorization: Bearer $ADMIN_API_KEY" -H "X-Admin-Operator:
   https://<host>/api/admin/training-agent/reporting/subscribers/<account_id>/<subscriber_id>/suspend
 ```
 
-`.../resume` turns it back on. Both need a `reason` of 5–500 characters,
-write a `registry_audit_log` row (`training_reporting_subscriber_suspended`
-or `_resumed`) and are idempotent. Suspension only clears the subscription's
-`active` flag, so its destination generation and proof survive and resuming
-needs no new challenge. A suspended subscriber gets no new deliveries; a
-pending notification settles it as undelivered on its next claim instead of
-retrying, and its outbox retries are suppressed. The whole subscription set is
-revalidated on write, so if any destination on the account, this one
-included, no longer validates (for example its host stopped resolving) the
-route answers 422 and the owning principal must replace the set.
+`.../resume` turns it back on. Both need a `reason` of 5–500 characters and
+are idempotent. Each request writes an attributed `registry_audit_log` row
+(`training_reporting_subscriber_suspend_requested` or `_resume_requested`)
+before anything changes, then its result (`_suspended`, `_resumed` or
+`_failed`). Suspension only clears the subscription's `active` flag, so its
+destination generation and proof survive and resuming needs no new
+challenge. It works even when the destination no longer resolves. A
+suspended subscriber gets no new deliveries; a pending notification settles
+it as undelivered on its next claim instead of retrying, and its outbox
+retries are suppressed. Resuming revalidates every destination on the
+account, so if one no longer validates the route answers 422 and the owning
+principal must replace the set.
 
 ## Rollout and failure recovery
 
