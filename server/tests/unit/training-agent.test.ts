@@ -2078,8 +2078,8 @@ describe('get_products handler', () => {
       buying_mode: 'wholesale',
     });
 
-    expect(first.wholesale_feed_version).toBe('training-products-feed-v1.public.base');
-    expect(first.pricing_version).toBe('training-products-pricing-v1.public.base');
+    expect(first.wholesale_feed_version).toMatch(/^training-products-feed-v1\.public\.[0-9a-f]{16}$/);
+    expect(first.pricing_version).toMatch(/^training-products-pricing-v1\.public\.[0-9a-f]{16}$/);
     expect(first.cache_scope).toBe('public');
 
     const { result: unchanged } = await simulateCallTool(server, 'get_products', {
@@ -2097,16 +2097,17 @@ describe('get_products handler', () => {
 
   it('returns products when only the pricing token is stale', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: first } = await simulateCallTool(server, 'get_products', { buying_mode: 'wholesale' });
     const { result } = await simulateCallTool(server, 'get_products', {
       buying_mode: 'wholesale',
-      if_wholesale_feed_version: 'training-products-feed-v1.public.base',
+      if_wholesale_feed_version: first.wholesale_feed_version,
       if_pricing_version: 'stale-pricing-token',
     });
 
     expect(result.unchanged).toBeUndefined();
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
-    expect(result.wholesale_feed_version).toBe('training-products-feed-v1.public.base');
-    expect(result.pricing_version).toBe('training-products-pricing-v1.public.base');
+    expect(result.wholesale_feed_version).toBe(first.wholesale_feed_version);
+    expect(result.pricing_version).toBe(first.pricing_version);
   });
 
   it('changes product wholesale version tokens when controller-seeded catalog state changes', async () => {
@@ -2137,7 +2138,8 @@ describe('get_products handler', () => {
 
     expect(afterSeed.unchanged).toBeUndefined();
     expect(afterSeed.wholesale_feed_version).not.toBe(first.wholesale_feed_version);
-    expect(afterSeed.pricing_version).toBe(first.pricing_version);
+    // The backfilled seeded product carries a default price, so the pricing layer moves too.
+    expect(afterSeed.pricing_version).not.toBe(first.pricing_version);
     expect((afterSeed.products as Array<Record<string, unknown>>).some(p => p.product_id === 'seeded_wholesale_product')).toBe(true);
   });
 
