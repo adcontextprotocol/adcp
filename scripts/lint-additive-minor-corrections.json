@@ -4524,6 +4524,18 @@
         "quote": "**An audience ID is non-empty.**"
       },
       "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An audience ID, the buyer key that sync_audiences upserts; an empty string names no audience."
+    },
+    {
+      "file": "media-buy/sync-catalogs-async-response-working.json",
+      "pointer": "/properties/current_step",
+      "bound": "maxLength",
+      "value": 500,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/compact-task-working.json",
+        "quote": "\"current_step\": { \"type\": \"string\", \"maxLength\": 500 },"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on current_step in core/compact-task-working.json, the progress payload of a working task. The current step of a working task, which core/task-current-step.json bounds."
     }
   ]
 }
