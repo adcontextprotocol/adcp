@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   getAdminWorkingGroupIdBySlug: vi.fn(),
   isAdminGroupMember: vi.fn(),
   poolQuery: vi.fn(),
+  logs: [] as unknown[][],
+  getReporting: vi.fn(),
   snapshotQuery: vi.fn(),
   runtime: undefined as undefined | {
     listNotificationSubscribers: ReturnType<typeof vi.fn>;
@@ -58,7 +60,14 @@ vi.mock('../../src/addie/mcp/admin-tools.js', async () => {
   const { isWebUserAAOAdmin } = await import('../../src/addie/admin-status-lookup.js');
   return { isWebUserAAOAdmin };
 });
-vi.mock('../../src/training-agent/gcs-reporting.js', () => ({ getTrainingGcsReporting: () => mocks.runtime }));
+vi.mock('../../src/training-agent/gcs-reporting.js', () => ({ getTrainingGcsReporting: () => mocks.getReporting() }));
+vi.mock('../../src/logger.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/logger.js')>();
+  const record = (...args: unknown[]) => { mocks.logs.push(args); };
+  const sink: Record<string, unknown> = { debug: record, info: record, warn: record, error: record, trace: record, fatal: record };
+  sink.child = () => sink;
+  return { ...original, createLogger: () => sink };
+});
 
 const { setupTrainingReportingRoutes } = await import('../../src/routes/admin/training-reporting.js');
 const { stopAuthTimers } = await import('../../src/middleware/auth.js');
@@ -82,6 +91,14 @@ function createApp() {
 function auditInserts() {
   return mocks.poolQuery.mock.calls.filter(([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO registry_audit_log'));
 }
+/** Audit rows in write order. */
+function auditRows() {
+  return auditInserts().map(([, params]) => {
+    const p = params as string[];
+    return { org: p[0], user: p[1], action: p[2], resource: p[3], details: JSON.parse(p[4]) as Record<string, any> };
+  });
+}
+const actions = () => auditRows().map(r => r.action);
 
 describe('admin training reporting subscriber routes', () => {
   const app = createApp();
@@ -89,10 +106,12 @@ describe('admin training reporting subscriber routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.logs.length = 0;
     mocks.runtime = {
       listNotificationSubscribers: vi.fn().mockResolvedValue([]),
       setNotificationSubscriberActive: vi.fn().mockResolvedValue('applied'),
     };
+    mocks.getReporting.mockImplementation(() => mocks.runtime);
     mocks.snapshotQuery.mockReset().mockImplementation((...args) => mocks.poolQuery(...args));
     mocks.createValidation.mockResolvedValue({
       apiKey: { id: 'key_1', owner: { type: 'organization', id: 'org_tenant' }, name: 'k', permissions: ['admin:*'] },
@@ -188,76 +207,87 @@ describe('admin training reporting subscriber routes', () => {
   });
 
   describe('suspend and resume', () => {
-    it('suspends, calls the runtime, and writes an attributed audit row', async () => {
+    it('suspends: intent row, runtime call, then an outcome row, all attributed', async () => {
+      const order: string[] = [];
+      mocks.runtime!.setNotificationSubscriberActive.mockImplementation(async () => { order.push('runtime'); return 'applied'; });
+      mocks.poolQuery.mockImplementation((sql: string, params: string[]) => {
+        if (sql.includes('INSERT INTO registry_audit_log')) order.push(params[2]);
+        return Promise.resolve({ rows: [], rowCount: 1 });
+      });
       const res = await request(app).post(SUSPEND).set('Authorization', ADMIN)
         .set('X-Admin-Operator', 'alice').send({ reason: `  ${REASON}  ` });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ account_id: 'acc-1', subscriber_id: 'sub-1', active: false, changed: true });
       expect(mocks.runtime!.setNotificationSubscriberActive).toHaveBeenCalledWith('acc-1', 'sub-1', false);
+      expect(order).toEqual([
+        'training_reporting_subscriber_suspend_requested', 'runtime', 'training_reporting_subscriber_suspended',
+      ]);
 
-      const inserts = auditInserts();
-      expect(inserts).toHaveLength(1);
-      const [sql, params] = inserts[0] as [string, string[]];
-      expect(sql).toContain('registry_audit_log');
-      expect(params[0]).toBe('system_training_agent');
-      expect(params[1]).toBe('admin_api_key');
-      expect(params[2]).toBe('training_reporting_subscriber_suspended');
-      expect(params[3]).toBe('acc-1/sub-1');
-      const details = JSON.parse(params[4]);
-      expect(details).toMatchObject({
-        account_id: 'acc-1', subscriber_id: 'sub-1', active: false, changed: true,
-        reason: REASON, operator: 'alice',
-      });
-      expect(typeof details.at).toBe('string');
-      expect(new Date(details.at).toISOString()).toBe(details.at);
-      expect(details.admin_key_fingerprint).toEqual(expect.any(String));
-      expect(details.ip_address).toEqual(expect.any(String));
+      const [intent, outcome] = auditRows();
+      for (const row of [intent, outcome]) {
+        expect(row).toMatchObject({ org: 'system_training_agent', user: 'admin_api_key', resource: 'acc-1/sub-1' });
+        expect(row.details).toMatchObject({
+          account_id: 'acc-1', subscriber_id: 'sub-1', active: false, reason: REASON,
+          admin_user_id: 'admin_api_key', operator: 'alice',
+        });
+        expect(typeof row.details.requested_at).toBe('string');
+        expect(row.details.admin_key_fingerprint).toEqual(expect.any(String));
+        expect(row.details.ip_address).toEqual(expect.any(String));
+      }
+      expect(intent.details.outcome).toBeUndefined();
+      expect(outcome.details).toMatchObject({ outcome: 'applied', changed: true });
+      expect(new Date(outcome.details.completed_at).toISOString()).toBe(outcome.details.completed_at);
     });
 
-    it('resumes with the resumed action', async () => {
+    it('resumes with the requested and resumed actions', async () => {
       const res = await request(app).post(RESUME).set('Authorization', ADMIN).send({ reason: REASON });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ account_id: 'acc-1', subscriber_id: 'sub-1', active: true, changed: true });
       expect(mocks.runtime!.setNotificationSubscriberActive).toHaveBeenCalledWith('acc-1', 'sub-1', true);
-      expect(auditInserts()[0][1][2]).toBe('training_reporting_subscriber_resumed');
+      expect(actions()).toEqual(['training_reporting_subscriber_resume_requested', 'training_reporting_subscriber_resumed']);
     });
 
-    it('is idempotent: unchanged gives 200 changed:false and still audits', async () => {
+    it('is idempotent: unchanged gives 200 changed:false with both rows', async () => {
       mocks.runtime!.setNotificationSubscriberActive.mockResolvedValue('unchanged');
       const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
       expect(res.status).toBe(200);
       expect(res.body.changed).toBe(false);
-      expect(auditInserts()).toHaveLength(1);
-      expect(JSON.parse(auditInserts()[0][1][4]).changed).toBe(false);
+      expect(actions()).toEqual(['training_reporting_subscriber_suspend_requested', 'training_reporting_subscriber_suspended']);
+      expect(auditRows()[1].details).toMatchObject({ outcome: 'unchanged', changed: false });
     });
 
-    it('returns 404 subscriber_not_found with no audit row', async () => {
+    it('404 subscriber_not_found: intent row plus a not_found _failed row', async () => {
       mocks.runtime!.setNotificationSubscriberActive.mockResolvedValue('not_found');
       const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
       expect(res.status).toBe(404);
       expect(res.body.error).toBe('subscriber_not_found');
-      expect(auditInserts()).toHaveLength(0);
+      expect(actions()).toEqual(['training_reporting_subscriber_suspend_requested', 'training_reporting_subscriber_suspend_failed']);
+      expect(auditRows()[1].details.outcome).toBe('not_found');
     });
 
-    it('returns 422 subscription_set_invalid on a validation error', async () => {
+    it('422 subscription_set_invalid: intent plus a _failed row', async () => {
       mocks.runtime!.setNotificationSubscriberActive.mockRejectedValue(
         new NotificationSubscriptionValidationError('bad destination', 0, 'url'));
-      const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
+      const res = await request(app).post(RESUME).set('Authorization', ADMIN).send({ reason: REASON });
       expect(res.status).toBe(422);
       expect(res.body.error).toBe('subscription_set_invalid');
-      expect(auditInserts()).toHaveLength(0);
+      expect(actions()).toEqual(['training_reporting_subscriber_resume_requested', 'training_reporting_subscriber_resume_failed']);
+      expect(auditRows()[1].details).toMatchObject({ outcome: 'subscription_set_invalid', error_name: 'NotificationSubscriptionValidationError' });
     });
 
-    it('returns 503 reporting_unavailable on any other error, without leaking it', async () => {
+    it('503 reporting_unavailable on any other error: intent plus a _failed row, nothing leaked', async () => {
       mocks.runtime!.setNotificationSubscriberActive.mockRejectedValue(new Error('pg: password=hunter2'));
       const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
       expect(res.status).toBe(503);
       expect(res.body).toEqual({ error: 'reporting_unavailable' });
       expect(JSON.stringify(res.body)).not.toContain('hunter2');
-      expect(auditInserts()).toHaveLength(0);
+      expect(actions()).toEqual(['training_reporting_subscriber_suspend_requested', 'training_reporting_subscriber_suspend_failed']);
+      const failed = auditRows()[1].details;
+      expect(failed).toMatchObject({ outcome: 'unavailable', error_name: 'Error' });
+      expect(JSON.stringify(failed)).not.toContain('hunter2');
     });
 
-    it('returns 503 reporting_disabled with no runtime', async () => {
+    it('503 reporting_disabled with no runtime, before any audit row', async () => {
       mocks.runtime = undefined;
       for (const url of [SUSPEND, RESUME]) {
         const res = await request(app).post(url).set('Authorization', ADMIN).send({ reason: REASON });
@@ -268,15 +298,102 @@ describe('admin training reporting subscriber routes', () => {
       expect(auditInserts()).toHaveLength(0);
     });
 
-    it('returns 500 audit_write_failed and says the change was applied', async () => {
+    it('503 reporting_unavailable when getTrainingGcsReporting throws, before any audit row', async () => {
+      mocks.getReporting.mockImplementation(() => { throw new Error('stopping'); });
+      const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
+      expect(res.status).toBe(503);
+      expect(res.body.error).toBe('reporting_unavailable');
+      expect(auditInserts()).toHaveLength(0);
+    });
+
+    it('intent insert failure gives 500 audit_write_failed and never calls the runtime', async () => {
       mocks.poolQuery.mockImplementation((sql: string) =>
         sql.includes('INSERT INTO registry_audit_log') ? Promise.reject(new Error('db down')) : Promise.resolve({ rows: [], rowCount: 1 }));
       const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
       expect(res.status).toBe(500);
       expect(res.body.error).toBe('audit_write_failed');
-      expect(res.body.message).toMatch(/applied/);
-      expect(res.body).toMatchObject({ account_id: 'acc-1', subscriber_id: 'sub-1', active: false });
-      expect(mocks.runtime!.setNotificationSubscriberActive).toHaveBeenCalledTimes(1);
+      expect(res.body.message).toMatch(/Nothing was changed/);
+      expect(mocks.runtime!.setNotificationSubscriberActive).not.toHaveBeenCalled();
+      expect(auditInserts()).toHaveLength(1);
+    });
+
+    it('outcome row failure is logged and does not change the response', async () => {
+      const failing = (outcomeAction: string) => mocks.poolQuery.mockImplementation((sql: string, params: string[]) =>
+        sql.includes('INSERT INTO registry_audit_log') && params[2] === outcomeAction
+          ? Promise.reject(new Error('db down')) : Promise.resolve({ rows: [], rowCount: 1 }));
+
+      failing('training_reporting_subscriber_suspended');
+      const ok = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
+      expect(ok.status).toBe(200);
+      expect(ok.body.changed).toBe(true);
+
+      failing('training_reporting_subscriber_suspend_failed');
+      mocks.runtime!.setNotificationSubscriberActive.mockResolvedValue('not_found');
+      expect((await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON })).status).toBe(404);
+      mocks.runtime!.setNotificationSubscriberActive.mockRejectedValue(
+        new NotificationSubscriptionValidationError('bad', 0, 'url'));
+      expect((await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON })).status).toBe(422);
+      mocks.runtime!.setNotificationSubscriberActive.mockRejectedValue(new Error('x'));
+      expect((await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON })).status).toBe(503);
+      expect(mocks.logs.some(args => String(args[args.length - 1]).includes('outcome audit write failed'))).toBe(true);
+    });
+  });
+
+  describe('logging never carries raw errors', () => {
+    const SECRET_URL = 'https://hooks.example.com/path?token=abc123';
+    function leaky() {
+      const root = Object.assign(new Error(`deadlock password=hunter2 ${SECRET_URL}`), { code: '40P01' });
+      const wrapped = new Error(`wrapped ${SECRET_URL} password=hunter2`, { cause: root });
+      wrapped.name = 'StorageError';
+      return wrapped;
+    }
+    const logged = () => JSON.stringify(mocks.logs, (_k, v) => (v instanceof Error ? { __error: v.name, stack: v.stack } : v));
+    const expectClean = () => {
+      const text = logged();
+      for (const forbidden of ['hunter2', 'hooks.example.com', 'abc123', 'stack', 'at /', '"err"', '__error']) {
+        expect(text).not.toContain(forbidden);
+      }
+      for (const args of mocks.logs) {
+        for (const arg of args) {
+          if (arg && typeof arg === 'object') expect(Object.keys(arg)).not.toContain('err');
+        }
+      }
+    };
+
+    it('a runtime failure logs only error_name and database_code', async () => {
+      mocks.runtime!.setNotificationSubscriberActive.mockRejectedValue(leaky());
+      const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
+      expect(res.status).toBe(503);
+      expectClean();
+      expect(mocks.logs.some(([facts]) => (facts as any)?.database_code === '40P01' && (facts as any)?.error_name === 'StorageError')).toBe(true);
+      expect(auditRows()[1].details).toMatchObject({ outcome: 'unavailable', error_name: 'StorageError', database_code: '40P01' });
+      expect(JSON.stringify(auditRows())).not.toContain('hunter2');
+    });
+
+    it('an audit insert failure logs only error_name and database_code', async () => {
+      mocks.poolQuery.mockImplementation((sql: string) =>
+        sql.includes('INSERT INTO registry_audit_log') ? Promise.reject(leaky()) : Promise.resolve({ rows: [], rowCount: 1 }));
+      const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
+      expect(res.status).toBe(500);
+      expect(JSON.stringify(res.body)).not.toMatch(/hunter2|abc123/);
+      expectClean();
+      expect(mocks.logs.some(([facts]) => (facts as any)?.database_code === '40P01' && (facts as any)?.error_name === 'StorageError')).toBe(true);
+    });
+
+    it('an outcome-row insert failure logs only error_name and database_code', async () => {
+      mocks.poolQuery.mockImplementation((sql: string, params: string[]) =>
+        sql.includes('INSERT INTO registry_audit_log') && params[2] === 'training_reporting_subscriber_suspended'
+          ? Promise.reject(leaky()) : Promise.resolve({ rows: [], rowCount: 1 }));
+      const res = await request(app).post(SUSPEND).set('Authorization', ADMIN).send({ reason: REASON });
+      expect(res.status).toBe(200);
+      expectClean();
+      expect(mocks.logs.some(([facts]) => (facts as any)?.database_code === '40P01')).toBe(true);
+    });
+
+    it('a list failure logs no raw error either', async () => {
+      mocks.runtime!.listNotificationSubscribers.mockRejectedValue(leaky());
+      expect((await request(app).get(BASE).set('Authorization', ADMIN)).status).toBe(503);
+      expectClean();
     });
   });
 

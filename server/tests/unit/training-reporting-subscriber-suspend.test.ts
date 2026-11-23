@@ -3,6 +3,7 @@ import {
   createPersistentNotificationRuntime,
   memoryNotificationSubscriptionStore,
   type NotificationSubscriptionScope,
+  NotificationSubscriptionValidationError,
   type PersistentNotificationRuntime,
 } from '@adcp/sdk/server';
 import { TrainingGcsReporting, setNotificationSubscriberActive } from '../../src/training-agent/gcs-reporting.js';
@@ -13,11 +14,12 @@ const EVENT = 'reporting.status_changed';
 function build() {
   const prove = vi.fn(async () => ({ proved: true as const }));
   const fetched: string[] = [];
+  const gate = { allowed: true };
   const contexts: Array<Record<string, unknown> | undefined> = [];
   const runtime: PersistentNotificationRuntime = createPersistentNotificationRuntime({
     store: memoryNotificationSubscriptionStore(),
     proofAdapter: { prove },
-    validateDestination: async () => ({ allowed: true }),
+    validateDestination: async () => ({ allowed: gate.allowed }),
     authorizeDelivery: async () => ({ authorized: true }),
     createEmitter: (authorize) => {
       // Stand-in for the SDK emitter: asks the runtime's live authorizer before every
@@ -38,7 +40,7 @@ function build() {
       return emitter;
     },
   });
-  return { runtime, prove, fetched, contexts };
+  return { runtime, prove, fetched, contexts, gate };
 }
 
 async function seed(runtime: PersistentNotificationRuntime) {
@@ -126,43 +128,114 @@ describe('setNotificationSubscriberActive against the SDK runtime', () => {
   });
 
   describe('compare-and-set', () => {
-    it('re-reads and applies after a conflicting replace', async () => {
-      const replace = vi.fn(h.runtime.replace.bind(h.runtime))
-        .mockResolvedValueOnce({ outcome: 'conflict' } as any);
-      const read = vi.fn(h.runtime.read.bind(h.runtime));
-      expect(await setNotificationSubscriberActive({ read, replace }, scope, 'a', false)).toBe('applied');
+    const ownerSet = [
+      { subscriber_id: 'a', url: 'https://a.example.com/hook?token=secret', event_types: [EVENT] },
+      { subscriber_id: 'c', url: 'https://c.example.com/hook', event_types: [EVENT] },
+    ];
+    /** The runtime with its store's `replace` wrapped, so a test can inject or observe store writes. */
+    function withStoreReplace(wrap: (real: any) => (input: any) => Promise<any>) {
+      const store = h.runtime.store;
+      const replace = vi.fn(wrap(store.replace.bind(store)));
+      const notifications = {
+        read: h.runtime.read.bind(h.runtime), replace: h.runtime.replace.bind(h.runtime),
+        store: { ...store, get: store.get.bind(store), replace } as typeof store,
+      };
+      return { notifications, replace };
+    }
+
+    it('suspend: re-reads and applies after a conflicting store replace', async () => {
+      const { notifications, replace } = withStoreReplace(real => {
+        let first = true;
+        return async input => { if (first) { first = false; return { outcome: 'conflict' }; } return real(input); };
+      });
+      expect(await setNotificationSubscriberActive(notifications, scope, 'a', false)).toBe('applied');
       expect(replace).toHaveBeenCalledTimes(2);
-      expect(read).toHaveBeenCalledTimes(2);
       expect((await find(h.runtime, 'a')).active).toBe(false);
     });
 
-    it('passes the generation it read and never overwrites a concurrent replacement', async () => {
-      const read = vi.fn(h.runtime.read.bind(h.runtime));
+    it('suspend: never overwrites a concurrent replacement by the owning principal', async () => {
       let interleaved = false;
-      const replace: PersistentNotificationRuntime['replace'] = async (s, configs, opts) => {
+      const { notifications, replace } = withStoreReplace(real => async input => {
         if (!interleaved) {
           interleaved = true;
-          // The owning principal replaces the set between our read and write.
-          await h.runtime.replace(s, [
-            { subscriber_id: 'a', url: 'https://a.example.com/hook?token=secret', event_types: [EVENT] },
-            { subscriber_id: 'c', url: 'https://c.example.com/hook', event_types: [EVENT] },
-          ]);
+          await h.runtime.replace(scope, ownerSet);
         }
-        return h.runtime.replace(s, configs, opts);
-      };
-      expect(await setNotificationSubscriberActive({ read, replace }, scope, 'a', false)).toBe('applied');
+        return real(input);
+      });
+      expect(await setNotificationSubscriberActive(notifications, scope, 'a', false)).toBe('applied');
+      // First write carried a stale generation and lost; the retry re-read the owner's set.
+      expect(replace).toHaveBeenCalledTimes(2);
       const configs = (await h.runtime.read(scope)).notificationConfigs;
       expect(configs.map(c => c.subscriber_id).sort()).toEqual(['a', 'c']);
       expect(configs.find(c => c.subscriber_id === 'a')!.active).toBe(false);
       expect(configs.find(c => c.subscriber_id === 'c')!.active).toBe(true);
     });
 
-    it('gives up with an error after 3 conflicts', async () => {
-      const replace = vi.fn(async () => ({ outcome: 'conflict' }) as any);
+    it('suspend: gives up with an error after 3 store conflicts', async () => {
+      const { notifications, replace } = withStoreReplace(() => async () => ({ outcome: 'conflict' }));
+      await expect(setNotificationSubscriberActive(notifications, scope, 'a', false)).rejects.toThrow(/conflicting/);
+      expect(replace).toHaveBeenCalledTimes(3);
+      expect((await find(h.runtime, 'a')).active).toBe(true);
+    });
+
+    it('resume: re-reads and applies after a conflicting runtime replace', async () => {
+      await setNotificationSubscriberActive(h.runtime, scope, 'a', false);
+      const replace = vi.fn(h.runtime.replace.bind(h.runtime)).mockResolvedValueOnce({ outcome: 'conflict' } as any);
       const read = vi.fn(h.runtime.read.bind(h.runtime));
-      await expect(setNotificationSubscriberActive({ read, replace }, scope, 'a', false))
+      expect(await setNotificationSubscriberActive({ read, replace, store: h.runtime.store }, scope, 'a', true)).toBe('applied');
+      expect(replace).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect((await find(h.runtime, 'a')).active).toBe(true);
+    });
+
+    it('resume: never overwrites a concurrent replacement', async () => {
+      await setNotificationSubscriberActive(h.runtime, scope, 'a', false);
+      let interleaved = false;
+      const replace: PersistentNotificationRuntime['replace'] = async (sc, configs, opts) => {
+        if (!interleaved) { interleaved = true; await h.runtime.replace(sc, ownerSet.map(c => c.subscriber_id === 'a' ? { ...c, active: false } : c)); }
+        return h.runtime.replace(sc, configs, opts);
+      };
+      expect(await setNotificationSubscriberActive({ read: h.runtime.read.bind(h.runtime), replace, store: h.runtime.store }, scope, 'a', true)).toBe('applied');
+      const configs = (await h.runtime.read(scope)).notificationConfigs;
+      expect(configs.map(c => c.subscriber_id).sort()).toEqual(['a', 'c']);
+      expect(configs.find(c => c.subscriber_id === 'a')!.active).toBe(true);
+    });
+
+    it('resume: gives up with an error after 3 runtime conflicts', async () => {
+      await setNotificationSubscriberActive(h.runtime, scope, 'a', false);
+      const replace = vi.fn(async () => ({ outcome: 'conflict' }) as any);
+      await expect(setNotificationSubscriberActive({ read: h.runtime.read.bind(h.runtime), replace, store: h.runtime.store }, scope, 'a', true))
         .rejects.toThrow(/conflicting/);
       expect(replace).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('a destination that no longer validates', () => {
+    it('can still be suspended, but only resumed once validation passes, with no new proof', async () => {
+      const before = await find(h.runtime, 'a');
+      await emitEvent(h.runtime, 'pre');
+      h.fetched.length = 0;
+      h.gate.allowed = false; // its host stopped resolving
+      const proveCalls = h.prove.mock.calls.length;
+
+      expect(await setNotificationSubscriberActive(h.runtime, scope, 'a', false)).toBe('applied');
+      const suspended = await find(h.runtime, 'a');
+      expect(suspended.active).toBe(false);
+      expect(suspended.destination_generation).toBe(before.destination_generation);
+      expect(suspended.proof_generation).toBe(before.proof_generation);
+      h.gate.allowed = true;
+      const during = await emitEvent(h.runtime, 'during');
+      expect(during.deliveries.map(d => d.subscriberId)).toEqual(['b']);
+      h.gate.allowed = false;
+
+      await expect(setNotificationSubscriberActive(h.runtime, scope, 'a', true))
+        .rejects.toBeInstanceOf(NotificationSubscriptionValidationError);
+      expect((await find(h.runtime, 'a')).active).toBe(false);
+
+      h.gate.allowed = true;
+      expect(await setNotificationSubscriberActive(h.runtime, scope, 'a', true)).toBe('applied');
+      expect((await find(h.runtime, 'a')).active).toBe(true);
+      expect(h.prove.mock.calls.length).toBe(proveCalls);
     });
   });
 });
