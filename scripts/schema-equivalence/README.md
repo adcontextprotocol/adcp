@@ -122,17 +122,23 @@ valid payloads the same, and each has a fixture under `test/fixtures/`:
   treats `allOf` members as a set. A one-member conjunction is its member.
 - Merges conjunction members (`allOf` members, or a `$ref` target and its
   siblings) into one schema object where the merge keeps the meaning, so a
-  schema split across members equals the same keywords in one object.
-  Keywords on different names merge; `required` is the union; the same
-  property in both becomes the conjunction of both schemas; the same bound
-  takes the tighter value (`maxLength`, `maxItems`, `maxProperties`,
-  `maximum`, `exclusiveMaximum`: the smaller; their `min` counterparts: the
-  larger); `type` is the intersection. Members stay separate when
-  `additionalProperties` or `patternProperties` in one would see the other's
-  `properties` or `patternProperties` (or `additionalItems` the other's
-  `items`), when either has `discriminator` or `nullable`, and when they
-  share any other keyword with different values (two patterns, two `not`s,
-  two `oneOf`s, two `if`/`then`/`else` groups). A merged node reports each
+  schema split across members equals the same keywords in one object. The
+  result does not depend on the order of the members or on how `allOf`
+  groups them. Each member is taken apart into its value keywords, its
+  `properties`, and its other subschema keywords. Value keywords combine:
+  `required` is the union; the same bound takes the tighter value
+  (`maxLength`, `maxItems`, `maxProperties`, `maximum`, `exclusiveMaximum`:
+  the smaller; their `min` counterparts: the larger); `type` is the
+  intersection. Values that do not combine (two patterns) stay separate
+  conjuncts. Properties combine by name, and the same property in several
+  members becomes the conjunction of their schemas. A subschema keyword joins
+  the merged object only when the conjunction has one of it; otherwise each
+  stays its own conjunct (two `not`s, two `oneOf`s, two `if`/`then`/`else`
+  groups). Keywords that read each other move together: `if` with `then` and
+  `else`, `additionalProperties` and `patternProperties` with the same
+  object's `properties` (which join the merged object only when no other
+  member declares properties), and `items` with `additionalItems`. A member
+  with `discriminator` or `nullable` stays whole. A merged node reports each
   keyword at the source object that writes it.
 - Treats a one-branch `anyOf` or `oneOf` as its branch, except a `oneOf`
   under `discriminator`.

@@ -40,8 +40,9 @@
  * object-only condition; `minItems` and `items` likewise need arrays only.
  * `additionalProperties` sees only the `properties` and `patternProperties`
  * of its own schema object, and the canonical form never merges another
- * member's `properties` into such an object (graph.cjs `_mergePlain`), so a
- * closed object is read one schema object at a time.
+ * member's `properties` into such an object (graph.cjs
+ * `_mergePlainMembers`), so a closed object is read one schema object at a
+ * time.
  */
 
 const { stableStringify, jsonType } = require('./json.cjs');

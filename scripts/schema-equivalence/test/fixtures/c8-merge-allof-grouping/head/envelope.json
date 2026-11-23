@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/envelope.json",
+  "type": "object",
+  "properties": {
+    "context": {
+      "$ref": "/schemas/context.json"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "completed"
+      ]
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "task_status"
+        ]
+      },
+      {
+        "required": [
+          "response_status"
+        ]
+      }
+    ]
+  }
+}

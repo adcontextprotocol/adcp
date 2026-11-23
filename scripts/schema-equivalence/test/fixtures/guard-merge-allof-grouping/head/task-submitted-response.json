@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/task-submitted-response.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/task-submitted.json"
+    }
+  ],
+  "properties": {
+    "status": {
+      "const": "submitted"
+    },
+    "errors": {
+      "$ref": "/schemas/task-errors.json"
+    },
+    "context": {
+      "$ref": "/schemas/context.json",
+      "required": [
+        "trace_id"
+      ]
+    }
+  },
+  "required": [
+    "status"
+  ]
+}

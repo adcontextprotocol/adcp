@@ -321,118 +321,194 @@ class Graph {
   }
 
   /**
-   * Merges plain members of a conjunction into one schema object where that
-   * keeps the meaning exactly, so a schema split across `allOf` members (or
-   * across `$ref` and its siblings) compares equal to the same keywords
-   * written in one object. Two members merge when every keyword they share
-   * combines exactly (see mergePlain); otherwise both stay separate members.
+   * Merges the plain members of a conjunction so that the same conjunction
+   * gets the same canonical form however its parts are grouped in `allOf`
+   * members (or split across `$ref` and its siblings), and in any order. A
+   * schema split across members compares equal to the same keywords written
+   * in one object.
+   *
+   * Each plain member is taken apart into its value keywords, its
+   * `properties`, its annotations, and its other subschema keywords, which
+   * stay in groups that read each other: `if`/`then`/`else`;
+   * `additionalProperties` and `patternProperties` with the `properties` of
+   * the same object; `items` with `additionalItems`. Value keywords combine
+   * when they combine exactly (bounds, `required`, `type`), and properties
+   * combine by name. A subschema group joins the combined object only when
+   * the conjunction has one such group (two `not`s stay two conjuncts, and a
+   * closed object joins only when no other member declares properties). The
+   * decisions read the whole conjunction, never the member order. A member
+   * with `discriminator` or `nullable` reads its own object, so it stays
+   * whole.
    */
   _mergeConjunctions() {
     for (let id = 0; id < this.nodes.length; id++) {
       const node = this.nodes[id];
       if (node.kind !== 'conj') continue;
       const members = this.conjMembers(node);
-      const out = [];
-      let changed = false;
-      for (const m of members) {
-        const target = this.nodes[m.n];
-        let merged = false;
-        if (target.kind === 'plain') {
-          for (let i = 0; i < out.length; i++) {
-            const prev = this.nodes[out[i].n];
-            if (prev.kind !== 'plain') continue;
-            const combined = this._mergePlain(prev, target);
-            if (combined === null) continue;
-            out[i] = { n: combined, via: out[i].via };
-            merged = true;
-            changed = true;
-            break;
-          }
-        }
-        if (!merged) out.push(m);
-      }
-      if (changed) {
-        node.members = out;
-        this._resolved = null;
-      }
+      const plain = members.filter(m => {
+        const x = this.nodes[m.n];
+        return x.kind === 'plain' && x.kw.discriminator === undefined && x.kw.nullable === undefined;
+      });
+      if (plain.length < 2) continue;
+      const others = members.filter(m => !plain.includes(m));
+      node.members = [...this._mergePlainMembers(plain), ...others];
+      this._resolved = null;
     }
   }
 
-  /** One plain node equal to the conjunction of a and b, or null. */
-  _mergePlain(a, b) {
+  /** The members equal to the conjunction of plain members `refs` (see _mergeConjunctions). */
+  _mergePlainMembers(refs) {
     const has = (n, k) => Object.prototype.hasOwnProperty.call(n.kids, k);
-    const objectSchemas = (n) => has(n, 'properties') || has(n, 'patternProperties');
-    // additionalProperties sees only its own object's properties and
-    // patternProperties; additionalItems only its own object's items.
-    if ((has(a, 'additionalProperties') || has(a, 'patternProperties')) && objectSchemas(b)) return null;
-    if ((has(b, 'additionalProperties') || has(b, 'patternProperties')) && objectSchemas(a)) return null;
-    if ((has(a, 'additionalItems') && has(b, 'items')) || (has(b, 'additionalItems') && has(a, 'items'))) return null;
-    // discriminator reads its own object's oneOf and required.
-    if (a.kw.discriminator !== undefined || b.kw.discriminator !== undefined) return null;
-    if (a.kw.nullable !== undefined || b.kw.nullable !== undefined) return null;
-    const kw = { ...a.kw };
-    for (const [k, v] of Object.entries(b.kw)) {
-      if (!Object.prototype.hasOwnProperty.call(kw, k)) {
+    const originOf = (n, k) => (n.kwOrigins && n.kwOrigins[k]) || n.origin;
+    const first = this.nodes[refs[0].n];
+    // A stable key for a subschema reference, by resolved node.
+    const refKey = (v) => {
+      if (v === null || typeof v !== 'object') return JSON.stringify(v);
+      if (v.n !== undefined) return `#${this.kid(v).n}`;
+      if (Array.isArray(v)) return `[${v.map(refKey).join(',')}]`;
+      return `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${refKey(v[k])}`).join(',')}}`;
+    };
+    const groupOf = (n, k) => {
+      if (k === 'if' || k === 'then' || k === 'else') return 'if';
+      if (k === 'additionalProperties' || k === 'patternProperties') return 'object';
+      if (k === 'properties') return has(n, 'additionalProperties') || has(n, 'patternProperties') ? 'object' : null;
+      if (k === 'items' || k === 'additionalItems') return 'items';
+      return k;
+    };
+    const free = { kw: new Map(), info: new Map(), props: new Map(), origins: {} };
+    const groups = new Map(); // group -> Map(key -> atom)
+    const atomOf = (n, ref, kw, kids, info) => ({ n, via: ref.via, kw, kids, info });
+    for (const ref of refs) {
+      const n = this.nodes[ref.n];
+      for (const [k, v] of Object.entries(n.kw)) {
+        if (!free.kw.has(k)) free.kw.set(k, []);
+        free.kw.get(k).push({ v, c: n.ckw[k], n });
+      }
+      for (const [k, v] of Object.entries(n.info)) {
+        if (!free.info.has(k)) free.info.set(k, []);
+        free.info.get(k).push({ v, n });
+      }
+      const byGroup = new Map();
+      for (const [k, v] of Object.entries(n.kids)) {
+        const g = groupOf(n, k);
+        if (g === null) {
+          for (const [name, r] of Object.entries(v)) {
+            if (!free.props.has(name)) free.props.set(name, []);
+            free.props.get(name).push(r);
+            if (!free.origins[`properties/${name}`]) free.origins[`properties/${name}`] = originOf(n, `properties/${name}`);
+          }
+          if (!free.origins.properties) free.origins.properties = originOf(n, 'properties');
+          continue;
+        }
+        if (!byGroup.has(g)) byGroup.set(g, {});
+        byGroup.get(g)[k] = v;
+      }
+      for (const [g, kids] of byGroup) {
+        if (!groups.has(g)) groups.set(g, new Map());
+        const key = refKey(kids);
+        if (!groups.get(g).has(key)) groups.get(g).set(key, atomOf(n, ref, {}, kids, {}));
+      }
+    }
+    const atoms = [];
+    // Value keywords: one combined value, or each value its own conjunct.
+    const kw = {};
+    const kwFrom = {};
+    for (const [k, vals] of free.kw) {
+      let v = vals[0].v;
+      let c = vals[0].c;
+      let ok = true;
+      for (const x of vals.slice(1)) {
+        const combined = combineValue(k, v, x.v, c, x.c);
+        if (combined === undefined) {
+          ok = false;
+          break;
+        }
+        v = combined;
+        c = canonicalKw({ [k]: combined })[k];
+      }
+      if (ok) {
         kw[k] = v;
+        kwFrom[k] = vals[0].n;
         continue;
       }
-      const combined = combineValue(k, kw[k], v, a.ckw[k], b.ckw[k]);
-      if (combined === undefined) return null;
-      kw[k] = combined;
+      const seen = new Set();
+      for (const x of vals) {
+        const key = stableStringify(x.c);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        atoms.push(atomOf(x.n, refs.find(r => r.n === x.n.id), { [k]: x.v }, {}, {}));
+      }
     }
-    const info = { ...a.info };
-    for (const [k, v] of Object.entries(b.info)) {
-      if (Object.prototype.hasOwnProperty.call(info, k) && stableStringify(info[k]) !== stableStringify(v)) return null;
-      info[k] = v;
+    const info = {};
+    const infoFrom = {};
+    for (const [k, vals] of free.info) {
+      const distinct = [...new Map(vals.map(x => [stableStringify(x.v), x])).values()];
+      if (distinct.length === 1) {
+        info[k] = vals[0].v;
+        infoFrom[k] = vals[0].n;
+      } else for (const x of distinct) atoms.push(atomOf(x.n, refs.find(r => r.n === x.n.id), {}, {}, { [k]: x.v }));
     }
     const kids = {};
-    for (const k of new Set([...Object.keys(a.kids), ...Object.keys(b.kids)])) {
-      const ka = a.kids[k];
-      const kb = b.kids[k];
-      if (!ka || !kb) {
-        kids[k] = ka || kb;
-        continue;
+    if (free.props.size) {
+      kids.properties = {};
+      for (const [name, rs] of free.props) {
+        const parts = [];
+        const add = (r) => {
+          const t = this.kid(r);
+          const x = this.nodes[t.n];
+          if (x.kind === 'conj' && !hasInfo(x)) for (const m of this.conjMembers(x)) add(m);
+          else if (!parts.some(p => p.n === t.n)) parts.push(t);
+        };
+        rs.forEach(add);
+        kids.properties[name] = parts.length === 1 ? rs.find(r => this.kid(r).n === parts[0].n)
+          : { n: this.add({ kind: 'conj', origin: free.origins[`properties/${name}`], members: parts, info: {} }), via: '' };
       }
-      if (k === 'properties') {
-        // The same property in both: its value must satisfy both schemas.
-        const merged = { ...ka };
-        for (const [name, ref] of Object.entries(kb)) {
-          if (!merged[name]) merged[name] = ref;
-          else if (this.kid(merged[name]).n !== this.kid(ref).n) {
-            merged[name] = { n: this.add({ kind: 'conj', origin: a.origin, members: [this.kid(merged[name]), this.kid(ref)], info: {} }), via: '' };
-          }
-        }
-        kids[k] = merged;
-        continue;
-      }
-      // Any other keyword in both members stays as separate conjuncts
-      // (two `not`s, two `oneOf`s, two `if`s, ...), unless it is the same node.
-      if ((SINGLE.has(k) || (k === 'items' && !ka.tuple && !kb.tuple)) && this.kid(ka).n === this.kid(kb).n) {
-        kids[k] = ka;
-        continue;
-      }
-      return null;
     }
-    // if/then/else form one group: never combine parts from two members.
-    const group = (n) => ['if', 'then', 'else'].some(k => has(n, k));
-    if (group(a) && group(b)) return null;
+    // A subschema group joins the combined object when it is the only one of
+    // its kind; a closed object also needs the other members to declare no
+    // properties, which its `additionalProperties` cannot see.
+    const kidFrom = {};
+    for (const [g, byKey] of groups) {
+      const list = [...byKey.values()];
+      const joins = list.length === 1 && !(g === 'object' && kids.properties);
+      if (!joins) {
+        atoms.push(...list);
+        continue;
+      }
+      for (const [k, v] of Object.entries(list[0].kids)) {
+        kids[k] = v;
+        kidFrom[k] = list[0].n;
+      }
+    }
     normalizeValues(kw);
     // Keep the form a single source object would get: no type split here.
-    if (Array.isArray(kw.type) && kw.type.length > 1 && (Object.keys(kw).some(k => KEYWORD_TYPE.has(k)) || Object.keys(kids).some(k => KEYWORD_TYPE.has(k)))) return null;
-    pruneByType(kw, kids);
-    const id = this.addPlain(a.origin, kw, kids, info);
-    // Where each keyword is written, for reports and witness reverts.
-    const origins = {};
-    for (const n of [b, a]) {
-      for (const k of [...Object.keys(n.kw), ...Object.keys(n.kids), ...Object.keys(n.info)]) {
-        origins[k] = (n.kwOrigins && n.kwOrigins[k]) || n.origin;
-      }
-      for (const name of Object.keys(n.kids.properties || {})) {
-        origins[`properties/${name}`] = (n.kwOrigins && n.kwOrigins[`properties/${name}`]) || n.origin;
-      }
+    // `type` then stays a conjunct of its own.
+    const typed = Array.isArray(kw.type) && kw.type.length > 1 && (Object.keys(kw).some(k => KEYWORD_TYPE.has(k)) || Object.keys(kids).some(k => KEYWORD_TYPE.has(k)));
+    if (typed) {
+      atoms.push(atomOf(kwFrom.type, refs.find(r => r.n === kwFrom.type.id), { type: kw.type }, {}, {}));
+      delete kw.type;
     }
-    this.nodes[id].kwOrigins = origins;
-    return id;
+    pruneByType(kw, kids);
+    const out = [];
+    // Where each keyword is written, for reports and witness reverts.
+    const build = (src, via, akw, akids, ainfo, originFor) => {
+      const id = this.addPlain(src.origin, akw, akids, ainfo);
+      const origins = {};
+      for (const k of [...Object.keys(akw), ...Object.keys(akids), ...Object.keys(ainfo)]) origins[k] = originFor(k);
+      for (const name of Object.keys(akids.properties || {})) origins[`properties/${name}`] = originFor(`properties/${name}`);
+      this.nodes[id].kwOrigins = origins;
+      out.push({ n: id, via });
+    };
+    if (Object.keys(kw).length || Object.keys(kids).length || Object.keys(info).length) {
+      const fromFree = !kidFrom.properties;
+      build(first, refs[0].via, kw, kids, info, (k) => {
+        if (fromFree && (k === 'properties' || k.startsWith('properties/'))) return free.origins[k] || first.origin;
+        const n = kwFrom[k] || infoFrom[k] || kidFrom[k.startsWith('properties/') ? 'properties' : k] || first;
+        return originOf(n, k);
+      });
+    }
+    for (const a of atoms) build(a.n, a.via, a.kw, a.kids, a.info, k => originOf(a.n, k));
+    return out;
   }
 
   _propagateTrue() {

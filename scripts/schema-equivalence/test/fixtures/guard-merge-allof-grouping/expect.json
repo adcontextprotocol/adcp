@@ -1,0 +1,6 @@
+{
+  "why": "The composed definition requires a key in `context` that the inline form did not: combining properties across conjuncts keeps the narrower schema, so the difference is reported.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "required"
+}

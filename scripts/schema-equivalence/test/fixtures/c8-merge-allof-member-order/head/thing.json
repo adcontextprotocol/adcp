@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/thing.json",
+  "allOf": [
+    {
+      "required": [
+        "id"
+      ],
+      "not": {
+        "required": [
+          "deprecated"
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "not": {
+        "required": [
+          "legacy_id"
+        ]
+      }
+    },
+    {
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  ]
+}

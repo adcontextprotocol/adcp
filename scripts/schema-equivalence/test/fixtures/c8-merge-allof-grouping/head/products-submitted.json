@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/products-submitted.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/envelope.json"
+    },
+    {
+      "$ref": "/schemas/task-submitted-response.json"
+    }
+  ],
+  "properties": {
+    "estimated_completion": {
+      "type": "string"
+    }
+  },
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "products"
+        ]
+      },
+      {
+        "required": [
+          "result"
+        ]
+      }
+    ]
+  }
+}

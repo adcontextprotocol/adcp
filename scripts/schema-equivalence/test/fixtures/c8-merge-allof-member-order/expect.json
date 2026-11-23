@@ -1,0 +1,5 @@
+{
+  "why": "allOf members in another order, two of them with their own `not`, equal the original order: the third member's properties no longer join whichever member came first.",
+  "exit": 0,
+  "class": 1
+}
