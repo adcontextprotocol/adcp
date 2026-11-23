@@ -591,6 +591,14 @@ The pre-mode file and pending 3.2 changesets belong only on `main`; the
 forward-merge workflow preserves main's copies. Do not cherry-pick them to
 `3.1.x`.
 
+Each prerelease cut moves the changesets it consumes into `.changeset/pre/`.
+The stable cut consumes that archive again into the GA changelog, so treat it
+as release history. Only Version Packages (`changeset-release/`) adds, moves
+or deletes archive files as part of a cut. To correct one before GA, open a PR
+from a `release-audit/<version>` branch that only edits or deletes existing
+`.changeset/*.md` and `.changeset/pre/*.md` files. The changeset scope check
+rejects any other change to the archive (`.agents/shortcuts/cut-beta.md`).
+
 After the latest accepted beta has landed, prepare the beta-to-RC phase
 transition with the guarded release command documented in `RELEASING.md`:
 
