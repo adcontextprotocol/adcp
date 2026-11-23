@@ -1310,9 +1310,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // grows it; the 23 MiB cap holds both.
   // Docs payload examples moved into the schema `examples`, so the docs
   // render from them. A shared definition such as core/error.json carries its
-  // examples into every tool that bundles it: `examples` grow from 448,527 to
-  // 1,057,793 bytes, and the projection measures 24,514,057 bytes, so the cap
-  // moves to 24 MiB. Model-context views strip `examples`.
+  // examples into every tool that bundles it: `examples` grow from 532,089 to
+  // 1,057,980 bytes, and the projection grows from 24,021,083 to 24,552,662
+  // bytes, so the cap moves to 24 MiB. Model-context views strip `examples`.
   assert.ok(totalBytes < 24 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
