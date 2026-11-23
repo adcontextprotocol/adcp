@@ -7905,6 +7905,8 @@ export function normalizeProductDiscoveryArgs(
         : {}),
       ...(ifFeedVersion !== undefined && { if_wholesale_feed_version: ifFeedVersion }),
       buying_mode: 'wholesale',
+      // Errors on expanded criteria report the compact path they arrived on.
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'request_proposals') {
@@ -7915,6 +7917,7 @@ export function normalizeProductDiscoveryArgs(
       buying_mode: 'brief',
       __compact_proposal_lifecycle: true,
       __require_proposals: true,
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'refine_proposals') {

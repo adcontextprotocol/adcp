@@ -183,16 +183,13 @@ describe('market filters on the unseeded training catalogue', () => {
       for (const product of response.products) expect(coverageOf(product)?.countries).toContain('US');
     });
 
-    it('list_products criteria.offer_filters.regions is refused as UNSUPPORTED_FEATURE', async () => {
+    it('list_products criteria.offer_filters.regions is refused as UNSUPPORTED_FEATURE at /criteria/offer_filters/regions', async () => {
       const server = createTrainingAgentServer({ mode: 'open' });
       const response = await call(server, 'list_products', { ...compact, criteria: { offer_filters: { regions: ['US-NY'] } } });
-      // Intended field is /criteria/offer_filters/regions; the handler never
-      // receives __adcp_operation, so it reports /filters/regions today.
-      expect(response.code).toBe('UNSUPPORTED_FEATURE');
-      expect(response.field).toMatch(/\/regions$/);
+      expect(response).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: '/criteria/offer_filters/regions' });
     });
 
-    it('request_proposals offer_filters.countries [US] is not refused; regions is refused as UNSUPPORTED_FEATURE', async () => {
+    it('request_proposals offer_filters.countries [US] proposes; regions is refused at /criteria/offer_filters/regions', async () => {
       const server = createTrainingAgentServer({ mode: 'open' });
       const request = {
         ...compact,
@@ -201,12 +198,13 @@ describe('market filters on the unseeded training catalogue', () => {
       const covered = await call(server, 'request_proposals', {
         ...request, criteria: { offer_filters: { countries: ['US'] } },
       });
-      expect(covered.code, JSON.stringify(covered)).not.toBe('UNSUPPORTED_FEATURE');
+      expect(covered.code, JSON.stringify(covered)).toBeUndefined();
+      expect(covered.outcome).toBe('proposed');
+      expect(covered.proposals.length).toBeGreaterThan(0);
       const unsupported = await call(server, 'request_proposals', {
         ...request, criteria: { offer_filters: { regions: ['US-NY'] } },
       });
-      expect(unsupported.code).toBe('UNSUPPORTED_FEATURE');
-      expect(unsupported.field).toMatch(/\/regions$/);
+      expect(unsupported).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: '/criteria/offer_filters/regions' });
     });
   });
 
