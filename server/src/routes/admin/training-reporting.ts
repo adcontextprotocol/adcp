@@ -74,14 +74,43 @@ async function setActive(req: Request, res: Response, active: boolean) {
     return res.status(400).json({ error: 'reason_too_long', message: `reason exceeds ${MAX_REASON_LENGTH} chars` });
   }
 
+  const runtime = (() => {
+    try { return getTrainingGcsReporting(); } catch { return null; }
+  })();
+  if (runtime === undefined) return res.status(503).json({ error: 'reporting_disabled' });
+  if (runtime === null) return res.status(503).json({ error: 'reporting_unavailable' });
+
+  // The intent is recorded, attributed, before anything changes, so no change
+  // can exist without an audit row; the outcome row follows it.
+  const verb = active ? 'resume' : 'suspend';
+  const attribution = { admin_user_id: req.user!.id, ...getStaticAdminAuditDetails(req) };
+  const request = { account_id: accountId, subscriber_id: subscriberId, active, reason, requested_at: new Date().toISOString() };
+  const audit = (action: string, details: Record<string, unknown>) => getPool().query(
+    `INSERT INTO registry_audit_log
+       (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+     VALUES ($1, $2, $3, 'training_reporting_subscriber', $4, $5)`,
+    [AUDIT_ORGANIZATION, req.user!.id, action, `${accountId}/${subscriberId}`,
+      JSON.stringify({ ...request, ...details, ...attribution, admin_email: req.user!.email })],
+  );
+  try {
+    await audit(`training_reporting_subscriber_${verb}_requested`, {});
+  } catch (error) {
+    logger.error({ ...errorFacts(error), ...request, ...attribution }, 'Training reporting subscriber audit write failed; nothing was changed');
+    return res.status(500).json({
+      error: 'audit_write_failed',
+      message: 'Nothing was changed: the audit record could not be written.',
+    });
+  }
+
   let outcome;
   try {
-    const runtime = getTrainingGcsReporting();
-    if (!runtime) return res.status(503).json({ error: 'reporting_disabled' });
     outcome = await runtime.setNotificationSubscriberActive(accountId, subscriberId, active);
   } catch (error) {
-    if (error instanceof NotificationSubscriptionValidationError) {
-      // The whole set is revalidated on write, for example a destination whose
+    const refused = error instanceof NotificationSubscriptionValidationError;
+    await recordOutcome(audit, `training_reporting_subscriber_${verb}_failed`,
+      { outcome: refused ? 'subscription_set_invalid' : 'unavailable', ...errorFacts(error) }, request, attribution);
+    if (refused) {
+      // Resuming revalidates the whole set, for example a destination whose
       // host no longer resolves. Only the owning principal can replace it.
       return res.status(422).json({
         error: 'subscription_set_invalid',
@@ -91,47 +120,58 @@ async function setActive(req: Request, res: Response, active: boolean) {
     return unavailable(res, error);
   }
   if (outcome === 'not_found') {
+    await recordOutcome(audit, `training_reporting_subscriber_${verb}_failed`, { outcome }, request, attribution);
     return res.status(404).json({ error: 'subscriber_not_found' });
   }
 
-  const action = active ? 'training_reporting_subscriber_resumed' : 'training_reporting_subscriber_suspended';
   const changed = outcome === 'applied';
-  const at = new Date().toISOString();
-  const record = { account_id: accountId, subscriber_id: subscriberId, active, changed, reason, at };
-  logger.info({ adminUserId: req.user!.id, ...record }, active
+  logger.info({ ...request, ...attribution, changed }, active
     ? 'Training reporting subscriber resumed by an administrator'
     : 'Training reporting subscriber suspended by an administrator');
-  try {
-    await getPool().query(
-      `INSERT INTO registry_audit_log
-         (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
-       VALUES ($1, $2, $3, 'training_reporting_subscriber', $4, $5)`,
-      [
-        AUDIT_ORGANIZATION,
-        req.user!.id,
-        action,
-        `${accountId}/${subscriberId}`,
-        JSON.stringify({ ...record, admin_email: req.user!.email, ...getStaticAdminAuditDetails(req) }),
-      ],
-    );
-  } catch (error) {
-    // The change is applied and the log line above records it. A retry is an
-    // idempotent no-op that records the audit row.
-    logger.error({ err: error, adminUserId: req.user!.id, ...record }, 'Training reporting subscriber audit write failed');
-    return res.status(500).json({
-      error: 'audit_write_failed',
-      message: 'The change was applied but its audit record was not written; retry to record it.',
-      account_id: accountId,
-      subscriber_id: subscriberId,
-      active,
-    });
-  }
+  await recordOutcome(audit, active ? 'training_reporting_subscriber_resumed' : 'training_reporting_subscriber_suspended',
+    { outcome, changed, completed_at: new Date().toISOString() }, request, attribution);
   return res.json({ account_id: accountId, subscriber_id: subscriberId, active, changed });
+}
+
+/** The intent row already attributes the action, so a lost outcome row is logged, not fatal. */
+async function recordOutcome(
+  audit: (action: string, details: Record<string, unknown>) => Promise<unknown>,
+  action: string, details: Record<string, unknown>,
+  request: Record<string, unknown>, attribution: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await audit(action, details);
+  } catch (error) {
+    logger.error({ ...errorFacts(error), action, ...details, ...request, ...attribution },
+      'Training reporting subscriber outcome audit write failed; its intent row is recorded');
+  }
+}
+
+/**
+ * Allowlisted facts about a failure. Messages, stacks and causes can carry
+ * destination URLs or backend values, so none of them is logged.
+ */
+function errorFacts(error: unknown): { error_name?: string; database_code?: string } {
+  const facts: { error_name?: string; database_code?: string } = {};
+  if (error instanceof Error && /^[A-Za-z]{1,64}$/.test(error.name)) facts.error_name = error.name;
+  let cause = error;
+  for (let depth = 0; depth < 8 && typeof cause === 'object' && cause !== null; depth++) {
+    try {
+      const code = Object.getOwnPropertyDescriptor(cause, 'code');
+      if (code && 'value' in code && typeof code.value === 'string' && /^[0-9A-Z]{5}$/.test(code.value)) {
+        facts.database_code = code.value;
+        break;
+      }
+      const next = Object.getOwnPropertyDescriptor(cause, 'cause');
+      cause = next && 'value' in next ? next.value : undefined;
+    } catch { break; }
+  }
+  return facts;
 }
 
 function unavailable(res: Response, error: unknown) {
   if (!(error instanceof AdcpError)) {
-    logger.error({ err: error }, 'Training reporting subscriber administration failed');
+    logger.error(errorFacts(error), 'Training reporting subscriber administration failed');
   }
   return res.status(503).json({ error: 'reporting_unavailable' });
 }

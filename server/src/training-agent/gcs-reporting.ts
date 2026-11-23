@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { Storage } from '@google-cloud/storage';
 import { canonicalize } from '@adcp/sdk';
@@ -63,21 +64,39 @@ export interface TrainingReportingSubscriber {
 export type TrainingReportingSubscriberUpdate = 'applied' | 'unchanged' | 'not_found';
 
 /**
- * Sets one subscriber's `active` flag through the notification runtime.
+ * Sets one subscriber's `active` flag.
  *
- * Only `active` changes, so the SDK keeps the destination generation and its
- * proof: resuming needs no new challenge. An inactive subscriber is not
- * resolved for new emissions, a pending activity settles it as terminal on its
- * next claim instead of retrying, and an outbox retry is suppressed as
- * `subscription_inactive`. Read and write are one compare-and-set on the set's
+ * Only `active` changes, so the destination generation and its proof survive:
+ * resuming needs no new challenge. An inactive subscriber is not resolved for
+ * new emissions, a pending activity settles it as terminal on its next claim
+ * instead of retrying, and an outbox retry is suppressed as
+ * `subscription_inactive`. Every write is a compare-and-set on the set's
  * generation, so a concurrent replacement by the owning principal is never
  * overwritten.
+ *
+ * Suspending writes the stored set directly, because stopping delivery must not
+ * depend on the destination still validating: the runtime's `replace`
+ * revalidates every destination, so a subscriber whose host stopped resolving
+ * could never be turned off. Resuming goes through `replace`, so a destination
+ * is revalidated before delivery to it restarts.
  */
 export async function setNotificationSubscriberActive(
-  notifications: Pick<PersistentNotificationRuntime, 'read' | 'replace'>,
+  notifications: Pick<PersistentNotificationRuntime, 'read' | 'replace' | 'store'>,
   scope: NotificationSubscriptionScope, subscriberId: string, active: boolean,
 ): Promise<TrainingReportingSubscriberUpdate> {
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (!active) {
+      const stored = await notifications.store.get(scope);
+      const subscriber = stored?.subscriptions.find(item => item.subscriberId === subscriberId);
+      if (!stored || !subscriber) return 'not_found';
+      if (!subscriber.active) return 'unchanged';
+      const written = await notifications.store.replace({
+        scope, expectedGeneration: stored.generation, nextGeneration: `cfg_${randomUUID()}`,
+        subscriptions: stored.subscriptions.map(item => item.subscriberId === subscriberId ? { ...item, active: false } : item),
+      });
+      if (written.outcome === 'conflict') continue;
+      return written.outcome === 'unchanged' ? 'unchanged' : 'applied';
+    }
     const current = await notifications.read(scope);
     const target = current.notificationConfigs.find(config => config.subscriber_id === subscriberId);
     if (!target || current.generation === undefined) return 'not_found';
