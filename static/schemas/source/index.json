@@ -405,6 +405,10 @@
           "$ref": "/schemas/core/attestation-issuer.json",
           "description": "Typed canonical identity of an attestation credential issuer"
         },
+        "attestation-issuer-key": {
+          "$ref": "/schemas/core/attestation-issuer-key.json",
+          "description": "Stable-key form of an attestation issuer identity: a brand by BrandKey, an agent by URL, or an HTTPS origin. It carries no brand assets or content provenance."
+        },
         "attestation-subject": {
           "$ref": "/schemas/core/attestation-subject.json",
           "description": "Typed identity of the entity or object an attestation concerns"
@@ -460,6 +464,10 @@
         "assignment-tracker": {
           "$ref": "/schemas/core/assignment-tracker.json",
           "description": "Assignment-scoped measurement tracker fired in addition to creative trackers"
+        },
+        "attestation-action-binding": {
+          "$ref": "/schemas/core/attestation-action-binding.json",
+          "description": "Binds an attestation evaluation to the consuming action or readback: an action type URI and an action ID or action digest, so the result cannot be transplanted to an unrelated decision."
         },
         "creative-assignment": {
           "$ref": "/schemas/core/creative-assignment.json",
@@ -604,6 +612,10 @@
         "signal-coverage-forecast": {
           "$ref": "/schemas/core/signal-coverage-forecast.json",
           "description": "Forecast-shaped availability guidance for a signal, without requiring monetary currency"
+        },
+        "signal-data-sources": {
+          "$ref": "/schemas/core/signal-data-sources.json",
+          "description": "Origin categories of the raw data used to compile a signal."
         },
         "forecast-range": {
           "$ref": "/schemas/core/forecast-range.json",
@@ -780,6 +792,10 @@
         "catchment": {
           "$ref": "/schemas/core/catchment.json",
           "description": "A catchment area definition using travel time (isochrone), simple radius, or pre-computed GeoJSON geometry"
+        },
+        "categorical-signal-values": {
+          "$ref": "/schemas/core/categorical-signal-values.json",
+          "description": "Values of a categorical signal to target. A user with any of these values matches."
         },
         "price": {
           "$ref": "/schemas/core/price.json",
@@ -1045,6 +1061,14 @@
           "$ref": "/schemas/core/deployment.json",
           "description": "A signal deployment to a specific destination platform with activation status and key"
         },
+        "deployment-account": {
+          "$ref": "/schemas/core/deployment-account.json",
+          "description": "Account identifier on the platform or agent that is a signal deployment target."
+        },
+        "deployment-platform": {
+          "$ref": "/schemas/core/deployment-platform.json",
+          "description": "Identifier of a DSP or other platform that is a signal deployment target, such as 'the-trade-desk' or 'amazon-dsp'."
+        },
         "publisher-property-selector": {
           "$ref": "/schemas/core/publisher-property-selector.json",
           "description": "Selects properties from a publisher's adagents.json - supports three patterns: all properties, specific IDs, or by tags"
@@ -1177,6 +1201,10 @@
         "signal-ref": {
           "$ref": "/schemas/core/signal-ref.json",
           "description": "Named signal reference for discovery, activation, and media-buy product targeting: scope 'product' for product-local signal options, scope 'data_provider' for published adagents.json signals[], or scope 'signal_source' for source-native signals"
+        },
+        "signal-restricted-attributes": {
+          "$ref": "/schemas/core/signal-restricted-attributes.json",
+          "description": "Restricted attribute categories a signal touches."
         },
         "signal-listing": {
           "$ref": "/schemas/core/signal-listing.json",
@@ -1411,6 +1439,10 @@
         "supported-mraid-version": {
           "$ref": "/schemas/core/supported-mraid-version.json",
           "description": "IAB MRAID version that a seller supports, in MAJOR.MINOR form, such as 1.0, 2.0, or 3.0."
+        },
+        "sync-audiences-method": {
+          "$ref": "/schemas/core/sync-audiences-method.json",
+          "description": "Audience membership moves through the AdCP sync_audiences task."
         },
         "canonical-adcp-minor-version": {
           "$ref": "/schemas/core/canonical-adcp-minor-version.json",
@@ -2264,6 +2296,10 @@
           "$ref": "/schemas/core/change-term-description.json",
           "description": "Display-only summary of a proposal-bound buyer change right."
         },
+        "clean-room-method": {
+          "$ref": "/schemas/core/clean-room-method.json",
+          "description": "Audience data meets in the named vendor's clean room; neither party sees the other's raw rows."
+        },
         "identity-change-impact-reason": {
           "$ref": "/schemas/core/identity-change-impact-reason.json",
           "description": "Explanation of how a previewed operator-identity change affects one area such as billing or reporting."
@@ -3028,9 +3064,25 @@
           "$ref": "/schemas/core/si-transaction-product.json",
           "description": "Details of the product or service in a transaction, as an open object."
         },
+        "signal-age-determination-bases": {
+          "$ref": "/schemas/core/signal-age-determination-bases.json",
+          "description": "User-level bases by which the ages of a signal's members were established."
+        },
+        "signal-agent-segment-id": {
+          "$ref": "/schemas/core/signal-agent-segment-id.json",
+          "description": "Opaque, provider-scoped handle that a signal agent issues for a resolved signal segment. Pass it verbatim; do not reconstruct it from the signal's values."
+        },
         "signal-catalog-entry": {
           "$ref": "/schemas/core/signal-catalog-entry.json",
           "description": "A signal in a signal catalog: identity, name and description, type, provider, coverage, deployments, and pricing options."
+        },
+        "signal-consent-basis": {
+          "$ref": "/schemas/core/signal-consent-basis.json",
+          "description": "Lawful bases or consent bases under which a signal's data is processed."
+        },
+        "signal-countries": {
+          "$ref": "/schemas/core/signal-countries.json",
+          "description": "ISO 3166-1 alpha-2 country codes where a signal is applicable."
         },
         "signal-modeling": {
           "$ref": "/schemas/core/signal-modeling.json",
@@ -3043,6 +3095,10 @@
         "signal-onboarder": {
           "$ref": "/schemas/core/signal-onboarder.json",
           "description": "A disclosure of how offline data is onboarded: match keys, and whether audience or device expansion was applied before onboarding and at what precision."
+        },
+        "signal-policy-categories": {
+          "$ref": "/schemas/core/signal-policy-categories.json",
+          "description": "Policy categories a signal is sensitive for, which governance agents match against policy rules."
         },
         "signal-taxonomy": {
           "$ref": "/schemas/core/signal-taxonomy.json",
@@ -4315,6 +4371,10 @@
           "$ref": "/schemas/enums/signal-data-source.json",
           "description": "Kind of data source behind a signal."
         },
+        "signal-delivery-pattern": {
+          "$ref": "/schemas/enums/signal-delivery-pattern.json",
+          "description": "A delivery pattern a signal agent can use to deliver to an agent destination (see core/signal-delivery-method.json)."
+        },
         "signal-match-key": {
           "$ref": "/schemas/enums/signal-match-key.json",
           "description": "Key that an onboarder matches records on, such as email or mobile_id."
@@ -4346,6 +4406,10 @@
         "signal-discovery-mode": {
           "$ref": "/schemas/enums/signal-discovery-mode.json",
           "description": "Caller intent for a signals discovery request: brief or wholesale."
+        },
+        "signal-incomplete-scope": {
+          "$ref": "/schemas/enums/signal-incomplete-scope.json",
+          "description": "Part of a get_signals response that a signal agent could not complete."
         },
         "reporting-subscription-page-list": {
           "$ref": "/schemas/enums/reporting-subscription-page-list.json",

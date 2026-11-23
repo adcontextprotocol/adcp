@@ -165,8 +165,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 569 KiB.
 // One definition per DOOH, placement, and pixel length field: 584,844 bytes
 // (571.14 KiB); bound it at 572 KiB.
+// One definition per signal and audience field: 587,018 bytes (573.26 KiB);
+// bound it at 574 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 572,
+  'media-buy': 574,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
@@ -295,7 +297,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // One definition per creative field: 1_463_396 bytes; bound at 1_464_000.
 // One definition per DOOH, placement, and pixel length field: 1_465_331
 // bytes; bound at 1_466_000.
-const PARITY_COMPILE_LIMIT = 1_466_000;
+// One definition per signal and audience field: 1_473_193 bytes; bound at
+// 1_474_000.
+const PARITY_COMPILE_LIMIT = 1_474_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

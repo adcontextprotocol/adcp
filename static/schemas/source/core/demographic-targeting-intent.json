@@ -6,6 +6,32 @@
   "type": "object",
   "properties": {
     "age": {
+      "$ref": "#/definitions/age_intent"
+    },
+    "gender": {
+      "$ref": "/schemas/core/demographic-gender.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
+    }
+  },
+  "additionalProperties": true,
+  "anyOf": [
+    {
+      "required": [
+        "age"
+      ]
+    },
+    {
+      "required": [
+        "gender"
+      ]
+    }
+  ],
+  "definitions": {
+    "age_intent": {
+      "title": "Age Targeting Intent",
+      "description": "Requested age range with optional age determination constraints.",
       "allOf": [
         {
           "$ref": "/schemas/core/demographic-age-range.json"
@@ -35,13 +61,19 @@
           "allOf": [
             {
               "if": {
-                "required": ["accepted_verification_methods"]
+                "required": [
+                  "accepted_verification_methods"
+                ]
               },
               "then": {
-                "required": ["accepted_bases"],
+                "required": [
+                  "accepted_bases"
+                ],
                 "properties": {
                   "accepted_bases": {
-                    "contains": { "const": "verified" }
+                    "contains": {
+                      "const": "verified"
+                    }
                   }
                 }
               }
@@ -50,25 +82,6 @@
           "additionalProperties": true
         }
       ]
-    },
-    "gender": {
-      "$ref": "/schemas/core/demographic-gender.json",
-      "x-status": "experimental",
-      "x-added-in": "3.3.0",
-      "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
     }
-  },
-  "additionalProperties": true,
-  "anyOf": [
-    {
-      "required": [
-        "age"
-      ]
-    },
-    {
-      "required": [
-        "gender"
-      ]
-    }
-  ]
+  }
 }

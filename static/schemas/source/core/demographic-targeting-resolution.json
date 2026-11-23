@@ -21,43 +21,10 @@
     "execution": {
       "oneOf": [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "continuous_bounds",
-              "default": "continuous_bounds"
-            },
-            "ext": {
-              "$ref": "/schemas/core/ext.json"
-            }
-          },
-          "required": ["type"],
-          "additionalProperties": true
+          "$ref": "#/definitions/continuous_bounds_execution"
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "enumerated_intervals",
-              "default": "enumerated_intervals"
-            },
-            "interval_ids": {
-              "type": "array",
-              "description": "Seller-scoped interval identifiers whose union produced applied.",
-              "items": {
-                "$ref": "#/definitions/demographic_interval_id"
-              },
-              "minItems": 1,
-              "uniqueItems": true
-            },
-            "ext": {
-              "$ref": "/schemas/core/ext.json"
-            }
-          },
-          "required": ["type", "interval_ids"],
-          "additionalProperties": true
+          "$ref": "#/definitions/enumerated_intervals_execution"
         },
         {
           "$ref": "/schemas/core/demographic-signals-execution.json"
@@ -80,58 +47,14 @@
             "age": {
               "oneOf": [
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "continuous_bounds",
-                      "default": "continuous_bounds",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "#/definitions/continuous_bounds_execution",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0"
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "enumerated_intervals",
-                      "default": "enumerated_intervals",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "interval_ids": {
-                      "type": "array",
-                      "description": "Seller-scoped interval identifiers whose union produced applied.",
-                      "items": {
-                        "$ref": "#/definitions/demographic_interval_id"
-                      },
-                      "minItems": 1,
-                      "uniqueItems": true,
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "interval_ids"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "#/definitions/enumerated_intervals_execution",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0"
                 },
                 {
                   "$ref": "/schemas/core/demographic-signals-execution.json",
@@ -448,6 +371,54 @@
       },
       "required": [
         "type"
+      ],
+      "additionalProperties": true
+    },
+    "continuous_bounds_execution": {
+      "title": "Continuous Bounds Execution",
+      "description": "A demographic targeting execution that applies the requested age bounds directly.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "continuous_bounds",
+          "default": "continuous_bounds"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true
+    },
+    "enumerated_intervals_execution": {
+      "title": "Enumerated Intervals Execution",
+      "description": "A demographic targeting execution that unions seller-scoped intervals.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "enumerated_intervals",
+          "default": "enumerated_intervals"
+        },
+        "interval_ids": {
+          "type": "array",
+          "description": "Seller-scoped interval identifiers whose union produced applied.",
+          "items": {
+            "$ref": "#/definitions/demographic_interval_id"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "interval_ids"
       ],
       "additionalProperties": true
     }

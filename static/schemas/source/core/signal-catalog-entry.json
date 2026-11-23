@@ -23,28 +23,21 @@
       "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Provider-published signals use scope 'data_provider'. Source-native custom signals that are not published in adagents.json signals[] use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
     },
     "signal_agent_segment_id": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-agent-segment-id.json",
       "description": "Opaque resolved-segment handle issued by this signal source. Pass this string verbatim to activate_signal.signal_agent_segment_id, and echo it in package signal targeting when the selected product option exposes the same handle. Treat the value as provider-scoped and opaque: providers MAY namespace it so two providers can expose similarly named signals without relying on a shared taxonomy. Do not pass the signal_id object as this handle, and do not reconstruct a segment handle from categorical values when get_signals returned a resolved segment.",
       "x-entity": "signal_activation_id"
     },
     "name": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-name.json",
       "description": "Human-readable signal name"
     },
     "description": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-description.json",
       "description": "Detailed signal description"
     },
     "value_type": {
       "$ref": "/schemas/enums/signal-value-type.json",
       "description": "The data type of this signal's values (binary, categorical, numeric)"
-    },
-    "categories": {
-      "type": "array",
-      "description": "Valid values for categorical signals. Present when value_type is 'categorical'. Buyers must use one of these values in SignalTargeting.values.",
-      "items": {
-        "type": "string"
-      }
     },
     "range": {
       "$ref": "/schemas/core/numeric-range.json",
@@ -56,7 +49,8 @@
     },
     "data_provider": {
       "type": "string",
-      "description": "Human-readable source name for the signal, when applicable. For data_provider-scoped signals this is the data provider name; for signal_source-scoped signals it may identify the signal source or proprietary origin."
+      "description": "Human-readable source name for the signal, when applicable. For data_provider-scoped signals this is the data provider name; for signal_source-scoped signals it may identify the signal source or proprietary origin.",
+      "minLength": 1
     },
     "coverage_percentage": {
       "$ref": "/schemas/core/percentage.json",
@@ -85,7 +79,8 @@
       "description": "Array of deployment targets",
       "items": {
         "$ref": "/schemas/core/deployment.json"
-      }
+      },
+      "minItems": 1
     },
     "pricing_options": {
       "type": "array",

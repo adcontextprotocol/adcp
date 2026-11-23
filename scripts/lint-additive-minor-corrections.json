@@ -3350,6 +3350,282 @@
         "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a structural pattern matches against. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "core/package-signal-targeting.json",
+      "pointer": "/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/product-signal-targeting-option.json",
+      "pointer": "/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "signals/activate-signal-request.json",
+      "pointer": "/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/4/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/5/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/6/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/7/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/wholesale-feed-event.json. A signal name, which core/signal-name.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/name",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1, \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/signal-definition.json. A signal name, which core/signal-name.json bounds."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/wholesale-feed-event.json. A signal name, which core/signal-name.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/name",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1, \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/signal-definition.json. A signal name, which core/signal-name.json bounds."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed signal description\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/wholesale-feed-event.json. A signal description, which core/signal-description.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/description",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed description of what this signal represents and how it's derived\", \"maxLength\": 2000 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/signal-definition.json. A signal description, which core/signal-description.json bounds."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed signal description\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/wholesale-feed-event.json. A signal description, which core/signal-description.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/description",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed description of what this signal represents and how it's derived\", \"maxLength\": 2000 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/signal-definition.json. A signal description, which core/signal-description.json bounds."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/data_provider",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"data_provider\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on data_provider in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. The get_signals catalog entry's data_provider, which core/signal-catalog-entry.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/deployments",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"deployments\": { \"type\": \"array\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/deployment.json\" }, \"minItems\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on deployments in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. The get_signals catalog entry's deployments, which core/signal-catalog-entry.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/0/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/1/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/2/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/3/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/incomplete/items/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/list-products-response.json",
+        "quote": "\"scope\": { \"type\": \"string\", \"enum\": [ \"products\", \"pricing\", \"forecast\", \"wholesale_feed\" ] }, \"description\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the incomplete-scope description in media-buy/list-products-response.json. An incomplete-scope description, which core/incomplete-scope-description.json keeps non-empty."
     }
   ]
 }

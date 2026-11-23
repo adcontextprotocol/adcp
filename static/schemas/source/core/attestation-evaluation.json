@@ -72,34 +72,8 @@
       "description": "Upper bound on reuse of this evaluation, considering credential expiry, revocation-cache TTL, and evaluator policy. Consumers MUST re-evaluate after this time."
     },
     "action_binding": {
-      "type": "object",
-      "description": "Optional binding to the consuming action or readback. Domain consumers that rely on an evaluation MUST carry either an action id or an action digest so the result cannot be transplanted to an unrelated decision.",
-      "properties": {
-        "action_type": {
-          "type": "string",
-          "format": "uri",
-          "description": "Absolute URI naming the action vocabulary, such as an AdCP governance-check or audience-evidence snapshot type."
-        },
-        "action_id": {
-          "$ref": "/schemas/core/attestation-action-id.json",
-          "description": "Stable identifier of the consuming action within the domain consumer's namespace.",
-          "$comment": "x-entity deliberately omitted because action_type determines which domain entity this identifier names."
-        },
-        "action_digest": {
-          "$ref": "/schemas/core/sha256-digest.json",
-          "description": "SHA-256 digest of the domain-defined canonical action preimage."
-        }
-      },
-      "required": ["action_type"],
-      "anyOf": [
-        {
-          "required": ["action_id"]
-        },
-        {
-          "required": ["action_digest"]
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/attestation-action-binding.json",
+      "description": "Optional binding to the consuming action or readback. Domain consumers that rely on an evaluation MUST carry either an action id or an action digest so the result cannot be transplanted to an unrelated decision."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

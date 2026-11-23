@@ -12,6 +12,19 @@ function readSchema(uri) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
 }
 
+// Follows a $ref (a local #/definitions pointer or a /schemas/ document) to the schema it names.
+function deref(node, doc) {
+  while (node && typeof node.$ref === 'string') {
+    if (node.$ref.startsWith('#/')) {
+      node = node.$ref.slice(2).split('/').reduce((n, key) => n[key], doc);
+    } else {
+      doc = readSchema(node.$ref);
+      node = doc;
+    }
+  }
+  return node;
+}
+
 async function compile(uri) {
   const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async ref => readSchema(ref) });
   addFormats(ajv);
@@ -47,11 +60,13 @@ describe('signal delivery methods (experimental)', () => {
   });
 
   it('keeps patterns in step with audience-activation-method minus tmp_identity_match', () => {
-    const receive = readSchema('/schemas/core/audience-activation-method.json').oneOf
-      .map(v => v.properties.pattern.const).filter(p => p !== 'tmp_identity_match').sort();
-    const send = readSchema('/schemas/core/signal-delivery-method.json').oneOf.map(v => v.properties.pattern.const).sort();
+    const receiveDoc = readSchema('/schemas/core/audience-activation-method.json');
+    const receive = receiveDoc.oneOf.map(v => deref(v, receiveDoc).properties.pattern.const)
+      .filter(p => p !== 'tmp_identity_match').sort();
+    const sendDoc = readSchema('/schemas/core/signal-delivery-method.json');
+    const send = sendDoc.oneOf.map(v => deref(v, sendDoc).properties.pattern.const).sort();
     assert.deepEqual(send, receive);
-    const pin = readSchema('/schemas/core/destination.json').oneOf[1].properties.delivery_method.properties.pattern.enum;
+    const pin = deref(readSchema('/schemas/core/destination.json').oneOf[1].properties.delivery_method.properties.pattern).enum;
     assert.deepEqual([...pin].sort(), receive);
   });
 

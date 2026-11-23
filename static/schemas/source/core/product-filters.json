@@ -183,13 +183,8 @@
       "items": {
         "oneOf": [
           {
-            "type": "object",
-            "description": "Filter by AdCP audience sync path.",
-            "properties": {
-              "pattern": { "type": "string", "const": "sync_audiences", "default": "sync_audiences" }
-            },
-            "required": ["pattern"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/sync-audiences-method.json",
+            "description": "Filter by AdCP audience sync path."
           },
           {
             "type": "object",

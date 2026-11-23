@@ -17,11 +17,11 @@
           "description": "Discriminator indicating this is a platform-based deployment"
         },
         "platform": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-platform.json",
           "description": "Platform identifier for DSPs"
         },
         "account": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-account.json",
           "description": "Account identifier if applicable"
         },
         "is_live": {
@@ -65,7 +65,7 @@
           "description": "URL identifying the deployment agent"
         },
         "account": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-account.json",
           "description": "Account identifier if applicable"
         },
         "is_live": {

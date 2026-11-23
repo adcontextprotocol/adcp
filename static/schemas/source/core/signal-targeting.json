@@ -58,12 +58,8 @@
           "description": "Discriminator for categorical signals"
         },
         "values": {
-          "type": "array",
-          "description": "Values to target. Users with any of these values will be included.",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1
+          "$ref": "/schemas/core/categorical-signal-values.json",
+          "description": "Values to target. Users with any of these values will be included."
         }
       },
       "required": ["value_type", "values"],

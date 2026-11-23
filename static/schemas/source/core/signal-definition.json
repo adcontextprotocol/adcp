@@ -37,32 +37,21 @@
       "minItems": 1
     },
     "restricted_attributes": {
-      "type": "array",
-      "description": "Restricted attribute categories this signal touches. Data providers SHOULD declare these so governance agents can structurally match signals against a plan's restricted_attributes without relying on semantic inference from the signal name or description.",
-      "items": {
-        "$ref": "/schemas/enums/restricted-attribute.json"
-      },
-      "minItems": 1
+      "$ref": "/schemas/core/signal-restricted-attributes.json",
+      "description": "Restricted attribute categories this signal touches. Data providers SHOULD declare these so governance agents can structurally match signals against a plan's restricted_attributes without relying on semantic inference from the signal name or description."
     },
     "demographic_predicate": {
       "$ref": "/schemas/core/demographic-predicate.json",
       "description": "Authoritative machine-readable age and/or gender meaning for this signal. Signal names and taxonomy labels alone never establish exact demographic equivalence. Signals MUST declare restricted_attributes containing age for age predicates and sex_gender for gender predicates; joint predicates require both."
     },
     "age_determination_bases": {
-      "type": "array",
+      "$ref": "/schemas/core/signal-age-determination-bases.json",
       "x-added-in": "3.3.0",
-      "description": "User-level bases by which the ages of this signal's members were established: verified, declared, and/or inferred. Sibling of demographic_predicate, not nested in it; only valid when demographic_predicate.age is present. Population estimates are out of scope (aggregate composition cannot establish an individual's age; use audience_evidence). Absent means the signal makes no basis claim (for a listing that projects a data_provider or signal_source definition, resolve the value from that definition; only the resolved value counts), and a buyer whose request names accepted_bases MUST NOT treat a signal with no resolved basis as satisfying the age predicate. A signal satisfies a requested age predicate with accepted_bases only when its demographic_predicate.age is within the request AND every value in age_determination_bases is in accepted_bases. The bases describe how known ages were established; unknown-age membership is governed only by include_unknown. Forward note: when gender targeting (#7925, experimental) graduates, gender will need an equivalent disclosure; this field is age-specific and the enum is not generalized. This definition is authoritative; listings that project it for data_provider and signal_source refs MUST match it exactly, the same rule demographic_predicate follows.",
-      "items": {
-        "$ref": "/schemas/enums/age-determination-basis.json"
-      },
-      "minItems": 1,
-      "uniqueItems": true
+      "description": "User-level bases by which the ages of this signal's members were established: verified, declared, and/or inferred. Sibling of demographic_predicate, not nested in it; only valid when demographic_predicate.age is present. Population estimates are out of scope (aggregate composition cannot establish an individual's age; use audience_evidence). Absent means the signal makes no basis claim (for a listing that projects a data_provider or signal_source definition, resolve the value from that definition; only the resolved value counts), and a buyer whose request names accepted_bases MUST NOT treat a signal with no resolved basis as satisfying the age predicate. A signal satisfies a requested age predicate with accepted_bases only when its demographic_predicate.age is within the request AND every value in age_determination_bases is in accepted_bases. The bases describe how known ages were established; unknown-age membership is governed only by include_unknown. Forward note: when gender targeting (#7925, experimental) graduates, gender will need an equivalent disclosure; this field is age-specific and the enum is not generalized. This definition is authoritative; listings that project it for data_provider and signal_source refs MUST match it exactly, the same rule demographic_predicate follows."
     },
     "policy_categories": {
-      "type": "array",
-      "description": "Policy categories this signal is sensitive for (e.g., a children's interest signal declares ['children_directed']). Governance agents match these against a plan's policy_categories to flag sensitive data usage.",
-      "items": { "type": "string" },
-      "minItems": 1
+      "$ref": "/schemas/core/signal-policy-categories.json",
+      "description": "Policy categories this signal is sensitive for (e.g., a children's interest signal declares ['children_directed']). Governance agents match these against a plan's policy_categories to flag sensitive data usage."
     },
     "range": {
       "$ref": "/schemas/core/numeric-value-range.json",
@@ -82,11 +71,7 @@
       "description": "Optional URL to a longer-form methodology or criteria document. This is a disclosure pointer; buyers should not branch programmatically on the linked content."
     },
     "data_sources": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "$ref": "/schemas/enums/signal-data-source.json"
-      },
+      "$ref": "/schemas/core/signal-data-sources.json",
       "description": "Origin categories of the raw data used to compile the signal, aligned with IAB Data Transparency Standard source disclosure. Use 'panel' for respondent-panel or JIC-style audience sources. Offline and public-record sources require onboarder disclosure. Co-viewing projection and reconciliation of seller claims against a JIC or measurement vendor belong in measurement reporting/vendor metrics rather than package signal targeting."
     },
     "methodology": {
@@ -141,19 +126,11 @@
       "description": "Domain of the digital property where the audience originates. Required when audience_scope is 'single_domain'."
     },
     "countries": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "$ref": "/schemas/core/country-code.json"
-      },
+      "$ref": "/schemas/core/signal-countries.json",
       "description": "ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must not expose a signal for media buys in countries outside this list. Federating agents that surface a peer's signal MUST treat the peer-published list as an upper bound, re-check it against the buyer's intended deployment countries, and may apply only narrower local policy."
     },
     "consent_basis": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "$ref": "/schemas/enums/consent-basis.json"
-      },
+      "$ref": "/schemas/core/signal-consent-basis.json",
       "description": "Declared GDPR Article 6 lawful basis or consent basis under which this signal's data is processed. For non-GDPR regimes, use countries, policy_categories, and disclosure fields to describe jurisdiction-specific obligations unless a future enum value applies."
     },
     "art9_basis": {
