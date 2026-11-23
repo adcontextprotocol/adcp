@@ -1,0 +1,295 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: pricing option alignment. The pricing option branches stay parallel members of the
+  core/pricing-option.json union, and their shared fields reference one definition each; the corrections below
+  follow published 3.2.12 text, and every other change is a $ref to an identical definition.
+changes:
+  - location: core/pricing-option-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      pricing_option_id in the cpm, vcpm, cpc, cpcv, cpv, cpp, cpa, flat_rate, and time branches
+      (pricing-options/*-option.json, was type string) -> core/pricing-option-id.json, as the revenue_share branch and
+      core/canonical-pricing-option.json already reference. Correction under DR-0036: 3.2.12 publishes the same product
+      pricing option ID, with the same description, with minLength 1 in the revenue_share branch ("pricing_option_id": {
+      "type": "string", "minLength": 1, "description": "Unique identifier for this pricing option within the product" },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/revenue-share-option.json#L8-L11)
+      and in the compact projection core/canonical-pricing-option.json. Register entries for the nine branch sites.
+  - location: core/custom-event-name.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpa-option.json#/properties/custom_event_name (was type string) -> core/custom-event-name.json, as
+      the revenue_share branch already references. Correction under DR-0036: 3.2.12 publishes the custom event name of a
+      conversion-billed pricing option with minLength 1 in the revenue_share branch ("custom_event_name": { "type":
+      "string", "minLength": 1, "description": "Name of the custom event when event_type is custom. Required for custom
+      events and absent otherwise." },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/revenue-share-option.json#L26-L29)
+      and in core/canonical-pricing-option.json, which covers cpa options. Register entry
+      pricing-options/cpa-option.json /properties/custom_event_name.
+  - location: core/event-source-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpa-option.json#/properties/event_source_id (was type string) -> core/event-source-id.json, as the
+      revenue_share branch already references. Correction under DR-0036: 3.2.12 publishes the billing event source of a
+      conversion-billed pricing option with minLength 1 in the revenue_share branch ("event_source_id": { "type":
+      "string", "minLength": 1, "description": "Event source whose attribution is authoritative for billing. Must match
+      an event source configured through sync_event_sources." },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/revenue-share-option.json#L31-L34)
+      and in core/canonical-pricing-option.json. Register entry pricing-options/cpa-option.json
+      /properties/event_source_id.
+  - location: pricing-options/cpm-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpm-option.json: an option that carries both fixed_price and floor_price is rejected. Correction
+      under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid for auction pricing (mutually
+      exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/cpm-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/vcpm-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/vcpm-option.json: an option that carries both fixed_price and floor_price is rejected. Correction
+      under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid for auction pricing (mutually
+      exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/vcpm-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/cpc-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpc-option.json: an option that carries both fixed_price and floor_price is rejected. Correction
+      under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid for auction pricing (mutually
+      exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/cpc-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/cpcv-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpcv-option.json: an option that carries both fixed_price and floor_price is rejected. Correction
+      under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid for auction pricing (mutually
+      exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/cpcv-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/cpv-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpv-option.json: an option that carries both fixed_price and floor_price is rejected. Correction
+      under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid for auction pricing (mutually
+      exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/cpv-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/cpp-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpp-option.json: an option that carries both fixed_price and floor_price is rejected. Correction
+      under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid for auction pricing (mutually
+      exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/cpp-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/flat-rate-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/flat-rate-option.json: an option that carries both fixed_price and floor_price is rejected.
+      Correction under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid for auction pricing
+      (mutually exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/flat-rate-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/time-option.json#/allOf/0
+    keyword: not
+    new:
+      required:
+        - fixed_price
+        - floor_price
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/time-option.json: an option that carries both fixed_price and floor_price is rejected. Correction
+      under DR-0036: the 3.2.12 floor_price of this branch reads "Minimum acceptable bid per time unit for auction
+      pricing (mutually exclusive with fixed_price)."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/time-option.json#L35),
+      and the 3.2.12 compact projection of every pricing option states the same guard ("not": { "required": [
+      "fixed_price", "floor_price" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L91-L96).
+      The lint does not read not; the quote is here.
+  - location: pricing-options/cpa-option.json#/allOf/0
+    keyword: if
+    new:
+      required:
+        - event_type
+      properties:
+        event_type:
+          const: custom
+    direction: tighten
+    side: both
+    note: >-
+      The condition of the cpa custom_event_name rule on the next line; the two keywords add one rule, so the same
+      payload witnesses both (an option with event_type custom and no custom_event_name). Basis on the next line.
+  - location: pricing-options/cpa-option.json#/allOf/0
+    keyword: then
+    new:
+      required:
+        - custom_event_name
+    direction: tighten
+    side: both
+    note: >-
+      pricing-options/cpa-option.json: a cpa option with event_type custom must carry custom_event_name. No else: the
+      cpa text says the name is "ignored otherwise", so it stays allowed. Correction under DR-0036: the 3.2.12 cpa
+      custom_event_name reads "Required when event_type is 'custom', ignored otherwise."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/cpa-option.json#L25-L28),
+      and the 3.2.12 compact projection states the rule for every pricing option ("if": { "properties": { "event_type":
+      { "const": "custom" } }, "required": [ "event_type" ] }, "then": { "required": [ "custom_event_name" ] },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-pricing-option.json#L157-L173).
+      The lint does not read if/then; the quote is here.
+  - location: core/canonical-pricing-option.json#/allOf/1/then
+    keyword: properties
+    new:
+      fixed_price:
+        exclusiveMinimum: 0
+    direction: tighten
+    side: both
+    note: >-
+      core/canonical-pricing-option.json: the compact form of a cpa option takes the cpa branch's fixed_price bound, so
+      a cpa fixed_price of 0 is rejected. Correction under DR-0036: 3.2.12 defines the cpa fixed price with
+      exclusiveMinimum 0 ("fixed_price": { "type": "number", "description": "Fixed price per acquisition in the
+      specified currency", "exclusiveMinimum": 0 },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/cpa-option.json#L44-L48).
+      The lint does not read bounds inside then; the quote is here. Hand-checked with Ajv and ajv-formats (repo options)
+      against core/canonical-pricing-option.json, the compact form that core/canonical-product.json,
+      media-buy/product-purchase.json, and core/wholesale-feed-event.json reference: {pricing_option_id: po_1,
+      pricing_model: cpa, currency: USD, event_type: purchase, fixed_price: 0} is valid at the base, invalid at the
+      head, and valid again with the then properties removed. The tool's search finds no witness through the
+      conditional.
+  - location: core/canonical-pricing-option.json#/allOf/2/then/allOf/0
+    keyword: if
+    new:
+      required:
+        - event_type
+      properties:
+        event_type:
+          const: custom
+    direction: tighten
+    side: both
+    note: >-
+      The condition of the revenue_share custom_event_name rule on the next line; the two keywords add one rule. Basis
+      on the next line. Hand-checked with Ajv and ajv-formats (repo options) against core/canonical-pricing-option.json:
+      the revenue_share object of the next line (event_type purchase, with custom_event_name) is valid at the base,
+      invalid at the head, and valid again with the if removed, since an else without its if has no effect. The tool's
+      search finds no witness through the nested conditional.
+  - location: core/canonical-pricing-option.json#/allOf/2/then/allOf/0
+    keyword: else
+    new:
+      not:
+        required:
+          - custom_event_name
+    direction: tighten
+    side: both
+    note: >-
+      core/canonical-pricing-option.json: the compact form of a revenue_share option whose event_type is not custom must
+      omit custom_event_name, as the revenue_share branch requires. Scoped to revenue_share; the cpa text keeps "ignored
+      otherwise". Correction under DR-0036: the 3.2.12 revenue_share branch states "else": { "not": { "required": [
+      "custom_event_name" ] } }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/revenue-share-option.json#L69-L93)
+      and describes the name as "Required for custom events and absent otherwise."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/revenue-share-option.json#L29).
+      The lint does not read if/else; the quote is here. Hand-checked with Ajv and ajv-formats (repo options) against
+      core/canonical-pricing-option.json, the compact form that core/canonical-product.json,
+      media-buy/product-purchase.json, and core/wholesale-feed-event.json reference: {pricing_option_id: po_1,
+      pricing_model: revenue_share, currency: USD, event_type: purchase, event_source_id: es_1, commission_rate: 0.04,
+      commission_basis_description: "Settled order value net of returns.", custom_event_name: loyalty_signup} is valid
+      at the base, invalid at the head, and valid again with the else removed. The same object with pricing_model cpa,
+      event_type purchase, fixed_price 5, and custom_event_name stays valid at the head. The tool's search finds no
+      witness through the nested conditional.
+  - location: core/canonical-pricing-option.json#/allOf/2/then/allOf/1
+    keyword: not
+    new:
+      anyOf:
+        - required:
+            - fixed_price
+        - required:
+            - floor_price
+        - required:
+            - price_guidance
+    direction: tighten
+    side: both
+    note: >-
+      core/canonical-pricing-option.json: the compact form of a revenue_share option rejects fixed_price, floor_price,
+      and price_guidance, as the revenue_share branch does (max_bid is not a property of the compact form, whose
+      additionalProperties false already rejects it). Correction under DR-0036: the 3.2.12 revenue_share branch states
+      "not": { "anyOf": [ { "required": [ "fixed_price" ] }, { "required": [ "floor_price" ] }, { "required": [
+      "price_guidance" ] }, { "required": [ "max_bid" ] } ] }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/pricing-options/revenue-share-option.json#L94-L118).
+      The lint does not read not; the quote is here. Hand-checked with Ajv and ajv-formats (repo options) against
+      core/canonical-pricing-option.json, the compact form that core/canonical-product.json,
+      media-buy/product-purchase.json, and core/wholesale-feed-event.json reference: the revenue_share object above
+      without custom_event_name and with price_guidance {p50: 1} is valid at the base, invalid at the head, and valid
+      again with the not removed. The tool's search finds no witness through the conditional.

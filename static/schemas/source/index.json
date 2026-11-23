@@ -853,6 +853,10 @@
           "$ref": "/schemas/core/flight-item.json",
           "description": "A flight route for flight-type catalogs"
         },
+        "floor-price": {
+          "$ref": "/schemas/core/floor-price.json",
+          "description": "Minimum acceptable bid for an auction-based pricing option, in the option's currency."
+        },
         "job-item": {
           "$ref": "/schemas/core/job-item.json",
           "description": "A job posting for job-type catalogs"
@@ -872,6 +876,10 @@
         "education-item": {
           "$ref": "/schemas/core/education-item.json",
           "description": "An educational program or course for education-type catalogs"
+        },
+        "eligible-adjustments": {
+          "$ref": "/schemas/core/eligible-adjustments.json",
+          "description": "Adjustment kinds that apply to a pricing option, declared before negotiation."
         },
         "destination-item": {
           "$ref": "/schemas/core/destination-item.json",
@@ -2876,6 +2884,10 @@
           "$ref": "/schemas/core/fixed-duration.json",
           "description": "A duration in a fixed time unit. The campaign unit is not allowed."
         },
+        "fixed-price": {
+          "$ref": "/schemas/core/fixed-price.json",
+          "description": "Fixed price of a pricing option, in the option's currency and for the unit its pricing model bills."
+        },
         "flight-endpoint": {
           "$ref": "/schemas/core/flight-endpoint.json",
           "description": "One end of a flight: an airport code and an optional city."
@@ -3051,6 +3063,10 @@
         "metro-systems": {
           "$ref": "/schemas/core/metro-systems.json",
           "description": "Metro classification systems, each listed once."
+        },
+        "min-spend-per-package": {
+          "$ref": "/schemas/core/min-spend-per-package.json",
+          "description": "Minimum spend for each package that uses a pricing option, in the option's currency."
         },
         "numeric-range": {
           "$ref": "/schemas/core/numeric-range.json",

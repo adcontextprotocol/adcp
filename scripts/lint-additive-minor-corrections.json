@@ -4070,6 +4070,138 @@
         "quote": "\"description\": \"Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/enums/event-type.json\" }, \"minItems\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on event_types in media-buy/sync-event-sources-request.json, the request item whose event source this result reports."
+    },
+    {
+      "file": "pricing-options/cpa-option.json",
+      "pointer": "/properties/custom_event_name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"custom_event_name\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Name of the custom event when event_type is custom. Required for custom events and absent otherwise.\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on custom_event_name in pricing-options/revenue-share-option.json, the custom event of a conversion-billed pricing option, and on the compact form in core/canonical-pricing-option.json. A custom event name, which core/custom-event-name.json defines."
+    },
+    {
+      "file": "pricing-options/cpa-option.json",
+      "pointer": "/properties/event_source_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"event_source_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Event source whose attribution is authoritative for billing. Must match an event source configured through sync_event_sources.\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on event_source_id in pricing-options/revenue-share-option.json, the event source a conversion-billed pricing option bills from, and on the compact form in core/canonical-pricing-option.json. An event source ID, which core/event-source-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpa-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpc-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpcv-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpm-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpp-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpv-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/flat-rate-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/time-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/vcpm-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
     }
   ]
 }

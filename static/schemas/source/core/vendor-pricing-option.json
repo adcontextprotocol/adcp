@@ -3,9 +3,9 @@
   "$id": "/schemas/core/vendor-pricing-option.json",
   "title": "Vendor Pricing Option",
   "description": "A pricing option offered by a vendor agent (signals, creative, governance). Combines pricing_option_id with the pricing model fields. Pass pricing_option_id in report_usage for billing verification. All vendor discovery responses return pricing_options as an array — vendors may offer multiple options (volume tiers, context-specific rates, different models per product line).",
+  "type": "object",
   "allOf": [
     {
-      "type": "object",
       "properties": {
         "pricing_option_id": {
           "type": "string",

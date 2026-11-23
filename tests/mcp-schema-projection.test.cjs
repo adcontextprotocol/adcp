@@ -173,8 +173,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // KiB); bound it at 580 KiB.
 // One definition per media buy field: 594,581 bytes (580.65 KiB); bound it
 // at 581 KiB.
+// One definition per pricing option field: 595,239 bytes (581.29 KiB); bound
+// it at 582 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 581,
+  'media-buy': 582,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
@@ -311,7 +313,8 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // One definition per delivery and reporting field: 1_480_723 bytes; bound at
 // 1_481_000.
 // One definition per media buy field: 1_482_889 bytes; bound at 1_483_000.
-const PARITY_COMPILE_LIMIT = 1_483_000;
+// One definition per pricing option field: 1_486_628 bytes; bound at 1_487_000.
+const PARITY_COMPILE_LIMIT = 1_487_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
