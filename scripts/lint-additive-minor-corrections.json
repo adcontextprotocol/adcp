@@ -4524,6 +4524,30 @@
         "quote": "**An audience ID is non-empty.**"
       },
       "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An audience ID, the buyer key that sync_audiences upserts; an empty string names no audience."
+    },
+    {
+      "file": "content-standards/create-content-standards-response.json",
+      "pointer": "/oneOf/1/properties/errors",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/create-media-buy-response.json",
+        "quote": "\"description\": \"Array of errors explaining why the operation failed\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/error.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. Every 3.2.12 task error branch that bounds errors sets minItems 1, as CreateMediaBuyError does, and error-handling.mdx says the payload errors[] reports one or more issues. The errors of a failed task response, which core/task-error-response.json bounds."
+    },
+    {
+      "file": "creative/get-creative-features-response.json",
+      "pointer": "/oneOf/1/properties/errors",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/create-media-buy-response.json",
+        "quote": "\"description\": \"Array of errors explaining why the operation failed\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/error.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. Every 3.2.12 task error branch that bounds errors sets minItems 1, as CreateMediaBuyError does, and error-handling.mdx says the payload errors[] reports one or more issues. The errors of a failed task response, which core/task-error-response.json bounds."
     }
   ]
 }

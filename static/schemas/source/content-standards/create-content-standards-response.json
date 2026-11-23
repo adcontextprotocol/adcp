@@ -42,7 +42,8 @@
           "type": "array",
           "items": {
             "$ref": "/schemas/core/error.json"
-          }
+          },
+          "minItems": 1
         },
         "conflicting_standards_id": {
           "type": "string",
