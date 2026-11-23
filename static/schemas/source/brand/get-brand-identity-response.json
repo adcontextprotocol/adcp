@@ -59,7 +59,11 @@
             "primary": {
               "oneOf": [
                 {
-                  "$ref": "/schemas/core/hex-color.json"
+                  "$ref": "/schemas/core/hex-color.json",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -73,7 +77,11 @@
             "secondary": {
               "oneOf": [
                 {
-                  "$ref": "/schemas/core/hex-color.json"
+                  "$ref": "/schemas/core/hex-color.json",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -87,7 +95,11 @@
             "accent": {
               "oneOf": [
                 {
-                  "$ref": "/schemas/core/hex-color.json"
+                  "$ref": "/schemas/core/hex-color.json",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -101,7 +113,11 @@
             "background": {
               "oneOf": [
                 {
-                  "$ref": "/schemas/core/hex-color.json"
+                  "$ref": "/schemas/core/hex-color.json",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -115,7 +131,11 @@
             "text": {
               "oneOf": [
                 {
-                  "$ref": "/schemas/core/hex-color.json"
+                  "$ref": "/schemas/core/hex-color.json",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",

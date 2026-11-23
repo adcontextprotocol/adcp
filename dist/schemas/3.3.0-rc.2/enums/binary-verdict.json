@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/enums/binary-verdict.json",
+  "title": "Binary Verdict",
+  "description": "Strictly two-outcome evaluation result used for overall record-level verdicts in content standards tasks. For per-feature breakdowns that include warning and unevaluated states, see feature-check-status. `passed` replaces `pass`, which is deprecated in 3.3 and removed in 4.0 (see `x-deprecated-enum-values`).",
+  "type": "string",
+  "x-deprecated-enum-values": [
+    "pass"
+  ],
+  "x-deprecated-enum-values-doc": "Deprecated in 3.3 and removed in 4.0 (#8791): `pass` is a Python keyword, so generated SDKs must rename it. Use `passed`. Receivers accept both values through 3.x. Send the replacement only when the release served is 3.3 or later; a 3.2 receiver treats it as an unknown value. A published file, such as `adagents.json`, keeps the original through 3.x.",
+  "enum": [
+    "pass",
+    "fail",
+    "passed"
+  ],
+  "enumDescriptions": {
+    "pass": "**Deprecated in 3.3**, removed in 4.0: use `passed`. The evaluated record meets all applicable content standards.",
+    "fail": "The evaluated record failed one or more content standard checks",
+    "passed": "The evaluated record meets all applicable content standards. Replaces the deprecated `pass`; a receiver on AdCP 3.2 or earlier treats it as an unknown value."
+  },
+  "enumMetadata": {
+    "pass": {
+      "deprecated": true,
+      "x-deprecated-in": "3.3.0",
+      "x-removed-in": "4.0.0",
+      "x-superseded-by": "passed"
+    }
+  }
+}

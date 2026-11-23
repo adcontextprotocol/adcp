@@ -533,12 +533,14 @@ test('a synchronous seller without declared webhook signing skips the declared J
   }
 });
 
-// Documents a known limitation: the runner records context.media_buy_id from
-// any create_media_buy response, so a working envelope that carries a
-// media_buy_id is classified as synchronous and its legitimate completion
-// webhook fails the silence check (adcontextprotocol/adcp-client#3682).
-test('a working envelope carrying media_buy_id is classified as synchronous', async () => {
+// @adcp/sdk 17.0.0-beta.31 no longer records context.media_buy_id from an
+// interim envelope (adcontextprotocol/adcp-client#3682), so a working
+// envelope that carries a media_buy_id is graded as asynchronous: the silence
+// check is skipped and its completion webhook is graded by the emitted-webhook
+// phases.
+test('a working envelope carrying media_buy_id is graded on its webhooks', async () => {
   const { steps, phases } = await runWebhookRun('working_with_id');
-  assert.deepEqual(phases.get('idempotency_key_presence').steps, []);
-  assert.equal(steps.get('expect_sync_trigger_silence').passed, false);
+  assert.deepEqual(phases.get('synchronous_trigger_silence').steps, []);
+  assert.notDeepEqual(phases.get('idempotency_key_presence').steps, []);
+  assert.equal(steps.get('expect_webhook_presence').skipped, undefined);
 });

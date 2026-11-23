@@ -16,9 +16,9 @@
     "value": {
       "description": "Scalar or set value for the dimension.",
       "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "boolean" },
+        { "type": "string", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "4.0.0", "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead." },
+        { "type": "number", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "4.0.0", "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead." },
+        { "type": "boolean", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "4.0.0", "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead." },
         {
           "type": "array",
           "items": {
@@ -75,7 +75,7 @@
         "properties": {
           "value": {
             "oneOf": [
-              { "type": "integer", "minimum": 0 },
+              { "type": "integer", "minimum": 0, "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "4.0.0", "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead." },
               {
                 "type": "array",
                 "items": { "type": "integer", "minimum": 0 },

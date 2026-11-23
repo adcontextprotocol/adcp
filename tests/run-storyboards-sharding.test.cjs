@@ -241,6 +241,29 @@ test('isolated shard coordinator fails closed on missing totals or a nonzero sha
   assert.match(inconsistent.stderr, /Isolated shard 2\/2 reported inconsistent capability selection/);
 });
 
+test('isolated shard coordinator runs and totals only its shard group', (t) => {
+  const { directory, runner } = makeFakeIsolatedRunner();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const run = (args) => spawnSync('bash', [ISOLATED_SHARDED_RUNNER, '--shard-count', '4', '--max-parallel', '2', ...args], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, STORYBOARD_ISOLATED_RUNNER_BIN: runner },
+  });
+
+  // Group 1 of 2 runs shards 1 and 3 (shard numbers 2/4 and 4/4).
+  const group = run(['--shard-group', '1', '--shard-groups', '2']);
+  assert.equal(group.status, 0, group.stderr);
+  assert.deepEqual([...group.stdout.matchAll(/Isolated storyboard shard (\d)\/4/g)].map(match => match[1]), ['2', '4']);
+  assert.match(group.stdout, /^  storyboards: 2\/2 clean$/m);
+  assert.match(group.stdout, /^  steps: 24 passed \| 4 failed \| 0 skipped \| 0 not applicable$/m);
+
+  for (const args of [['--shard-group', '2', '--shard-groups', '2'], ['--shard-groups', '5']]) {
+    const refused = run(args);
+    assert.equal(refused.status, 2);
+    assert.match(refused.stderr, /--shard-group/);
+  }
+});
+
 test('isolated shard coordinator rejects missing option values', () => {
   for (const option of ['--shard-count', '--max-parallel']) {
     const result = spawnSync('bash', [ISOLATED_SHARDED_RUNNER, option], {
@@ -277,6 +300,23 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(matrixRunner, /orchestrator_failure=1/);
   assert.match(workflow, /wholesale_feed_products_scope_isolation/);
   assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:9:0/);
+});
+
+test('the inventory tenants run two isolated orchestrators each behind one aggregate required check', () => {
+  const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
+
+  assert.match(workflow, /inventory_storyboard_orchestrators:\n\s+name: Inventory storyboard orchestrator \(\/\$\{\{ matrix\.tenant \}\} \$\{\{ matrix\.group \}\}\/2\)/);
+  assert.match(workflow, /tenant: \[inventory-adserver, inventory-content\]\n\s+group: \[0, 1\]/);
+  assert.match(workflow, /--shard-count 8 --max-parallel 4 \\\n\s+--shard-group "\$\{\{ matrix\.group \}\}" --shard-groups 2/);
+  assert.match(workflow, /inventory_storyboards:\n\s+name: Storyboards \(current \/\$\{\{ matrix\.tenant \}\}\)/);
+  assert.match(workflow, /needs: inventory_storyboard_orchestrators/);
+  // Each tenant's aggregate reads its own orchestrators' status, never the
+  // other tenant's.
+  assert.match(workflow, /echo "\$\{status\}" > "\$\{base\}\.status"/);
+  assert.match(workflow, /Expected 2 \/\$\{TENANT\} orchestrator logs/);
+  // The inventory tenants are not rows of the storyboards matrix.
+  const matrix = workflow.slice(workflow.indexOf('  storyboards:'), workflow.indexOf('  sales_storyboard_orchestrators:'));
+  assert.doesNotMatch(matrix, /inventory-/);
 });
 
 test('creative-builder uses bounded isolated children in local and CI matrices', () => {
@@ -351,4 +391,45 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
       ),
     );
   }
+});
+
+// The matrix runs a copy of itself from a temporary repository root whose
+// build scripts are stubs: each writes the output a partial build leaves
+// behind, then exits with the status the case gives it. `npx` is stubbed so
+// a runner that ignored the failure would reach the tenants and fail fast.
+function runMatrixWithBuildStatus(t, { schemaStatus, complianceStatus }) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-matrix-build-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'scripts'));
+  fs.mkdirSync(path.join(root, 'bin'));
+  fs.copyFileSync(MATRIX_RUNNER, path.join(root, 'scripts', 'run-storyboards-matrix.sh'));
+  const stubBuild = (name, tree, status) => fs.writeFileSync(path.join(root, 'scripts', name), `
+const fs = require('node:fs');
+const path = require('node:path');
+const dir = path.join(__dirname, '..', 'dist', ${JSON.stringify(tree)}, 'latest');
+fs.mkdirSync(dir, { recursive: true });
+fs.writeFileSync(path.join(dir, 'index.json'), '{"adcp_version":"latest"}');
+process.exit(${status});
+`);
+  stubBuild('build-schemas.cjs', 'schemas', schemaStatus);
+  stubBuild('build-compliance.cjs', 'compliance', complianceStatus);
+  fs.writeFileSync(path.join(root, 'bin', 'npx'), '#!/bin/sh\nexit 1\n');
+  fs.chmodSync(path.join(root, 'bin', 'npx'), 0o755);
+  return spawnSync('bash', [path.join(root, 'scripts', 'run-storyboards-matrix.sh')], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}` },
+  });
+}
+
+test('storyboard matrix stops before any tenant when a build fails', (t) => {
+  const schemaFailure = runMatrixWithBuildStatus(t, { schemaStatus: 1, complianceStatus: 0 });
+  assert.equal(schemaFailure.status, 1, schemaFailure.stdout);
+  assert.match(schemaFailure.stdout, /::error::The schema build failed/);
+  assert.doesNotMatch(schemaFailure.stdout, /Storyboards · \//);
+
+  const complianceFailure = runMatrixWithBuildStatus(t, { schemaStatus: 0, complianceStatus: 1 });
+  assert.equal(complianceFailure.status, 1, complianceFailure.stdout);
+  assert.match(complianceFailure.stdout, /::error::The compliance build failed/);
+  assert.doesNotMatch(complianceFailure.stdout, /Storyboards · \//);
 });

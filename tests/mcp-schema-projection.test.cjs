@@ -150,8 +150,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // Replacing repeated inline object copies with shared core definitions adds 31
 // definitions to the media-buy inputs, each with its own title and description:
 // 558,798 → 567,927 bytes (545.70 → 554.62 KiB measured); bound it at 555 KiB.
+// Merged with main's single-value deprecations (#9123) and
+// PROPOSAL_TERMS_CHANGED (#9171), the media-buy inputs measure 571,034 bytes
+// (557.65 KiB); bound it at 558 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 555,
+  'media-buy': 558,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
@@ -264,7 +267,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Replacing repeated inline object copies with shared definitions puts their
 // titles and descriptions in the controller closure: 1_452_389 bytes measured;
 // bound at 1_453_000.
-const PARITY_COMPILE_LIMIT = 1_453_000;
+// Merged with main's reporting dimension systems (#9049), single-value
+// deprecations (#9123), and PROPOSAL_TERMS_CHANGED (#9171), the controller
+// measures 1_456_358 bytes; bound at 1_457_000.
+const PARITY_COMPILE_LIMIT = 1_457_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

@@ -32,8 +32,21 @@
       "description": "Readback lineage to the complete CreativeRepresentationSet revision and representation selected before this seller-bound creative was synced."
     },
     "assets": {
-      "$ref": "/schemas/core/creative-assets.json",
-      "description": "Assets required by the format, keyed by asset_id or canonical asset_group_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema, including reference assets such as `published_post` when a product accepts already-published post references."
+      "type": "object",
+      "description": "Assets required by the format, keyed by asset_id or canonical asset_group_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema, including reference assets such as `published_post` when a product accepts already-published post references.",
+      "patternProperties": {
+        "^": {
+          "oneOf": [
+            { "$ref": "/schemas/core/assets/asset-union.json", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "4.0.0", "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead when the release in use with the counterparty is 3.1 or later. 3.0 accepts only the single value." },
+            {
+              "type": "array",
+              "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+              "minItems": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
     },
     "component_assets": {
       "$ref": "/schemas/core/component-assets.json",
