@@ -334,6 +334,55 @@ describe('createAddieToolExecutor', () => {
     expect(retried.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
   });
 
+  it('blocks replaying an earlier teaching checkpoint after a later one was saved in the same turn', async () => {
+    const checkpointTool: AddieTool = { ...tool, name: 'checkpoint_teaching_progress' };
+    const handler = vi.fn().mockResolvedValue('Teaching checkpoint saved. Evidence recorded.');
+    const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
+    const execute = createAddieToolExecutor(
+      [checkpointTool],
+      new Map([['checkpoint_teaching_progress', handler]]),
+      { executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect },
+    );
+    const checkpointA = { ...call({ id: 'checkpoint-a' }), id: 'call_checkpoint_a', name: 'checkpoint_teaching_progress' };
+    const checkpointB = { ...call({ id: 'checkpoint-b' }), id: 'call_checkpoint_b', name: 'checkpoint_teaching_progress' };
+
+    const savedA = await execute(checkpointA, 1);
+    const savedB = await execute(checkpointB, 2);
+    const replayA = await execute({ ...checkpointA, id: 'call_checkpoint_a_replay' }, 3);
+
+    expect(savedA.execution).toMatchObject({ is_error: false, durable_outcome: 'known' });
+    expect(savedB.execution).toMatchObject({ is_error: false, durable_outcome: 'known' });
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenNthCalledWith(1, { id: 'checkpoint-a' });
+    expect(handler).toHaveBeenNthCalledWith(2, { id: 'checkpoint-b' });
+    expect(reserveSideEffect).toHaveBeenCalledTimes(2);
+    expect(replayA.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
+  it('re-dispatches an identical module start after a prerequisite redirect result', async () => {
+    const startTool: AddieTool = { ...tool, name: 'start_certification_module' };
+    const handler = vi.fn()
+      .mockResolvedValueOnce('A3 (The AdCP landscape) teaches: the protocol map. Complete A2 first.')
+      .mockResolvedValueOnce('Module A3 started: The AdCP landscape.');
+    const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
+    const execute = createAddieToolExecutor(
+      [startTool],
+      new Map([['start_certification_module', handler]]),
+      { executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect },
+    );
+    const first = { ...call(), id: 'call_start_1', name: 'start_certification_module' };
+
+    const redirected = await execute(first, 1);
+    const started = await execute({ ...first, id: 'call_start_2' }, 2);
+
+    expect(redirected.execution.is_error).toBe(false);
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(reserveSideEffect).toHaveBeenCalledTimes(2);
+    expect(started.execution).toMatchObject({ is_error: false });
+    expect(started.execution.blocked_by_policy).toBeFalsy();
+    expect(String(started.result.content)).toContain('Module A3 started');
+  });
+
   it('keeps a non-durable mutation fenced after it returns a normal error result', async () => {
     const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
     const handler = vi.fn().mockResolvedValue({ status: 'error', model_context: 'x', user_summary: 'x' });
