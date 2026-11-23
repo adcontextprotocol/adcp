@@ -11,4 +11,4 @@ State that a seller accepts a creative that conforms to the format option it tar
 - The `CREATIVE_VALUE_NOT_ALLOWED` description and the `cta_values` descriptions on the `native_in_feed` and `image` canonicals now say the same. The canonical-formats and creative-formats docs carry the rule beside technical completeness.
 - New compliance scenario `media_buy_seller/declared_format_option_acceptance` (3.3, required by `media_buy_seller`, gated on `creative.has_creative_library`). It seeds a `native_in_feed` option that declares a 336x280 `main_image`, a 90-character title limit, no `cta_values` and `technical_requirements_complete: true`, then expects `sync_creatives` to accept a creative built exactly to it, with a free-text CTA and no icon.
 
-This tightens a seller obligation in the 3.3 beta. A seller that refused declared sizes or enforced an undeclared CTA list was already contradicting its own declaration; it now fails the new scenario.
+This tightens a seller obligation in 3.3. A seller that refused declared sizes or enforced an undeclared CTA list was already contradicting its own declaration; it now fails the new scenario.
