@@ -417,6 +417,20 @@ export interface EpisodeMaterialDeadline {
 }
 
 /**
+ * Where a product's inventory is, served as `ext.training.coverage` and read
+ * by the `countries` and `metros` discovery filters. Coverage is not
+ * targeting: a product can cover a market without offering geo targeting
+ * through `overlay_support`. `metros` is declared only for metro-scoped
+ * inventory; a national product lists countries alone and so does not match
+ * a metro filter.
+ */
+export interface InventoryCoverage {
+  /** ISO 3166-1 alpha-2 codes. */
+  countries: string[];
+  metros?: Array<{ system: 'nielsen_dma' | 'uk_itl1' | 'uk_itl2' | 'eurostat_nuts2'; code: string }>;
+}
+
+/**
  * Sellable offer a collection carries when the publisher sells it as its own
  * product (one product per collection, e.g. a creator-marketplace channel)
  * rather than bundling it into channel-level products.
@@ -443,6 +457,8 @@ export interface ShowOfferDefinition {
   audienceEvidence: Array<Record<string, unknown>>;
   /** Expected views per installment (forecast low/mid/high). */
   estimatedViews: { low: number; mid: number; high: number };
+  /** Where the creator's audience is; replaces the publisher's coverage. */
+  coverage: InventoryCoverage;
 }
 
 export interface ShowDefinition {
@@ -526,6 +542,8 @@ export interface PublisherProfile {
   audienceSummary?: string;
   /** Monthly volume estimate for product cards */
   estimatedVolume?: string;
+  /** Where this publisher's inventory is. */
+  coverage: InventoryCoverage;
 }
 
 export interface PropertyDefinition {
