@@ -24,7 +24,7 @@
       "additionalProperties": true
     },
     {
-      "title": "Audience file transfer",
+      "title": "File transfer",
       "description": "Bucket-addressed file exchange over a cloud storage protocol. The buyer moves the bytes; direction declares who hosts the bucket.",
       "type": "object",
       "properties": {

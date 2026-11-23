@@ -35,19 +35,12 @@
           "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration.",
           "minimum": 1
         },
-        "screen_resolution": {
-          "$ref": "/schemas/core/dooh-screen-resolution.json",
-          "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen."
-        },
+        "screen_resolution": { "$ref": "#/definitions/PublisherDoohScreenResolution" },
         "motion": {
           "$ref": "/schemas/enums/dooh-motion-type.json",
           "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
         },
-        "location": {
-          "$ref": "/schemas/core/dooh-location.json",
-          "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows.",
-          "x-added-in": "3.3.0"
-        }
+        "location": { "$ref": "#/definitions/PublisherDoohLocation", "x-added-in": "3.3.0" }
       },
       "x-adcp-validation": {
         "verifier_constraints": {

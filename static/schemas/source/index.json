@@ -1362,6 +1362,10 @@
           "$ref": "/schemas/core/event-custom-data.json",
           "description": "Event-specific data for attribution and reporting"
         },
+        "event-goal-target": {
+          "$ref": "/schemas/core/event-goal-target.json",
+          "description": "Target for an event goal: a deprecated cost per event, a deprecated return on ad spend, or maximize value."
+        },
         "event-surface": {
           "$ref": "/schemas/core/event-surface.json",
           "description": "Structured context for the surface where an event source or logged event originated"
@@ -2020,6 +2024,10 @@
           "$ref": "/schemas/core/age-in-years.json",
           "description": "Person age in completed years. Demographic age predicates and age capability bounds use this value."
         },
+        "age-targeting-intent": {
+          "$ref": "/schemas/core/age-targeting-intent.json",
+          "description": "Requested age range with optional age determination constraints."
+        },
         "webhook-activity-limit": {
           "$ref": "/schemas/core/webhook-activity-limit.json",
           "description": "Maximum number of webhook delivery records a read returns for each parent resource when it includes webhook activity."
@@ -2191,6 +2199,10 @@
         "provider-storage-locator": {
           "$ref": "/schemas/core/provider-storage-locator.json",
           "description": "Non-secret provider-native locator for stored reporting data, such as a bucket and prefix, dataset, table, or share. It never contains a credential or signed URL."
+        },
+        "publisher-domains": {
+          "$ref": "/schemas/core/publisher-domains.json",
+          "description": "Domains where the addressed publishers' adagents.json files are hosted, one entry per publisher, each listed once."
         },
         "signal-taxonomy-node-id": {
           "$ref": "/schemas/core/signal-taxonomy-node-id.json",

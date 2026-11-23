@@ -109,6 +109,23 @@ test('a field that references a different named definition tells two concepts ap
   }, (result) => assert.equal(result.status, 0, result.stderr));
 });
 
+test('a title-only alias names the definition it references, not a different one', () => {
+  const cloud = { title: 'Cloud', type: 'string', enum: ['aws', 'gcp'] };
+  const share = (cloudRef, region) => ({ type: 'object', properties: { cloud: { $ref: cloudRef }, region } });
+  withTree({
+    'enums/cloud.json': cloud,
+    'core/share.json': { title: 'Share', ...share('/schemas/enums/cloud.json', { type: 'string' }) },
+    'core/copy.json': {
+      title: 'Share',
+      definitions: { Cloud: { title: 'Copy Cloud', $ref: '/schemas/enums/cloud.json' } },
+      ...share('#/definitions/Cloud', { type: 'string', maxLength: 64 }),
+    },
+  }, (result) => {
+    assert.equal(result.status, 1, 'an alias of the same enum does not tell the two copies apart');
+    assert.match(result.stderr, /region maxLength/);
+  });
+});
+
 test('a distinct title separates only objects whose properties differ', () => {
   const props = { start: { type: 'string', format: 'date' }, end: { type: 'string', format: 'date' } };
   withTree({

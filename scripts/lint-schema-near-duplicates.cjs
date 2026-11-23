@@ -116,8 +116,30 @@ function getPointer(node, pointer) {
   return current;
 }
 
-/** The `file#pointer` a `$ref` written in `file` resolves to. */
+/** Documents of the tree being checked, so a reference can see through an alias. */
+let aliasDocuments = null;
+
+/**
+ * The `file#pointer` a `$ref` written in `file` resolves to. A target that is
+ * only a `$ref` with annotations (a title-only alias, or a document that only
+ * references another) names the same definition, so the chain is followed.
+ */
 function resolveRef(file, ref) {
+  let key = refTarget(file, ref);
+  const seen = new Set();
+  while (aliasDocuments && !seen.has(key)) {
+    seen.add(key);
+    const hash = key.indexOf('#');
+    const doc = aliasDocuments.get(key.slice(0, hash));
+    const node = doc === undefined ? undefined : getPointer(doc, key.slice(hash + 1));
+    if (!isObject(node) || typeof node.$ref !== 'string') break;
+    if (Object.keys(node).some((name) => name !== '$ref' && !isAnnotation(name))) break;
+    key = refTarget(key.slice(0, hash), node.$ref);
+  }
+  return key;
+}
+
+function refTarget(file, ref) {
   const hash = ref.indexOf('#');
   const resource = hash === -1 ? ref : ref.slice(0, hash);
   const fragment = hash === -1 ? '' : ref.slice(hash + 1);
@@ -191,6 +213,7 @@ function collectSites(documents) {
 }
 
 function checkTree(documents) {
+  aliasDocuments = documents;
   const sites = collectSites(documents);
   const byKey = new Map(sites.map((site) => [`${site.file}#${site.pointer}`, site]));
   const siteAt = (key) => {

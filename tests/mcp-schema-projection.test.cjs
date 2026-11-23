@@ -320,7 +320,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // One definition per media buy field: 1_482_889 bytes; bound at 1_483_000.
 // One definition per pricing option field: 1_486_628 bytes; bound at 1_487_000.
 // One definition per task and error field: 1_487_288 bytes; bound at 1_488_000.
-const PARITY_COMPILE_LIMIT = 1_488_000;
+// Giving three shared definitions their own documents: 1_488_278 bytes; bound
+// at 1_489_000.
+const PARITY_COMPILE_LIMIT = 1_489_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

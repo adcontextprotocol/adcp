@@ -675,7 +675,7 @@
   "oneOf": [
     {
       "type": "object",
-      "title": "Authoritative Location Redirect",
+      "title": "Brand Location Redirect",
       "description": "Redirects to a hosted brand.json file at another URL",
       "properties": {
         "$schema": { "type": "string" },
@@ -735,7 +735,7 @@
     },
     {
       "type": "object",
-      "title": "Brand Agent",
+      "title": "Agent-Represented Brand",
       "description": "Brand represented by agents that provide brand info via MCP",
       "properties": {
         "$schema": { "type": "string" },
