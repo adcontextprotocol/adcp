@@ -3,37 +3,146 @@ title: >-
   One definition per object: properties identifiers. The corrections the review chose; every other change is a $ref to
   an identical definition.
 changes:
-  - location: core/identifier.json#/allOf/0
-    keyword: if
+  - location: core/property.json#/properties/identifiers/items
+    keyword: allOf
     new:
-      required:
-        - type
-      properties:
-        type:
-          const: domain
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: response
+    note: >-
+      core/property.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member of
+      core/identifier.json's allOf beside the subdomain rule.
+  - location: core/placement-definition.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: none
+    note: >-
+      core/placement-definition.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member
+      of core/identifier.json's allOf beside the subdomain rule.
+  - location: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_property_delivery/items/properties/identifier
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_property_delivery/items/properties/identifier
+      -> core/identifier.json#. The domain rule, a member of core/identifier.json's allOf beside the subdomain rule.
+  - location: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/property_delivery/items/properties/identifier
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/property_delivery/items/properties/identifier
+      -> core/identifier.json#. The domain rule, a member of core/identifier.json's allOf beside the subdomain rule.
+  - location: core/placement.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
     direction: tighten
     side: both
     note: >-
-      core/property.json#/properties/identifiers/items -> core/identifier.json#. Verdict delta:
-      (object):if:tighten:correction. Witness: core/canonical-placement.json /identifiers/0 =
-      {"type":"domain","value":"a"} (tighten).
-  - location: core/identifier.json#/allOf/0
-    keyword: then
+      core/placement.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member of
+      core/identifier.json's allOf beside the subdomain rule.
+  - location: core/canonical-placement.json#/properties/identifiers/items
+    keyword: allOf
     new:
-      properties:
-        value:
-          maxLength: 255
-          pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
-          else:
-            maxLength: 253
-          if:
-            pattern: ^\*\.
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
     direction: tighten
-    side: both
+    side: response
     note: >-
-      core/property.json#/properties/identifiers/items -> core/identifier.json#. Verdict delta:
-      (object):then:tighten:correction. Witness: core/canonical-placement.json /identifiers/0 =
-      {"type":"domain","value":"a"} (tighten).
+      core/canonical-placement.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member of
+      core/identifier.json's allOf beside the subdomain rule.
   - location: core/property.json#/properties/identifiers/items
     keyword: allOf
     new:
