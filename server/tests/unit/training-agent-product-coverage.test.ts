@@ -95,3 +95,213 @@ describe('product coverage across retained and compact discovery', () => {
     expect(unsupported).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: '/filters/regions' });
   });
 });
+
+const METRO_SYSTEMS = ['nielsen_dma', 'uk_itl1', 'uk_itl2', 'eurostat_nuts2', 'custom'];
+const openAccount = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.example', sandbox: true };
+const briefBase = {
+  account: openAccount,
+  buying_mode: 'brief',
+  brief: 'Sponsored creator videos on YouTube and TikTok',
+};
+const coverageOf = (product: any) => product.ext?.training?.coverage;
+const ids = (response: any): string[] => (response.products ?? []).map((p: any) => p.product_id).sort();
+
+async function wholesale(server: Server, filters?: Record<string, unknown>) {
+  return call(server, 'get_products', { account: openAccount, buying_mode: 'wholesale', ...(filters && { filters }) });
+}
+
+describe('market filters on the unseeded training catalogue', () => {
+  beforeEach(() => { clearSessions(); invalidateCache(); clearTaskStore(); clearIdempotencyCache(); });
+
+  describe('A. creator brief discovery (issue #9177 repro table)', () => {
+    async function brief(filters: Record<string, unknown>) {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      return call(server, 'get_products', { ...briefBase, filters });
+    }
+
+    it('returns a non-empty list of creator products for filters: {}', async () => {
+      const response = await brief({});
+      expect(response.code, JSON.stringify(response)).toBeUndefined();
+      expect(ids(response).length).toBeGreaterThan(0);
+      for (const product of response.products) expect(product.product_id).toMatch(/^creatorloop_creator_/);
+    });
+
+    it('countries [US] succeeds with the same products as {}', async () => {
+      const base = await brief({});
+      const us = await brief({ countries: ['US'] });
+      expect(us.code, JSON.stringify(us)).toBeUndefined();
+      expect(ids(us)).toEqual(ids(base));
+    });
+
+    it('countries [GB] succeeds and returns only creators whose coverage includes GB', async () => {
+      // Brief results are relevance-ranked and capped, so the filtered list can
+      // admit products the unfiltered list ranked out; compare on coverage facts.
+      const base = await brief({});
+      const gb = await brief({ countries: ['GB'] });
+      expect(gb.code, JSON.stringify(gb)).toBeUndefined();
+      expect(ids(gb).length).toBeGreaterThan(0);
+      for (const product of gb.products) expect(coverageOf(product).countries, product.product_id).toContain('GB');
+      const baseWithoutGb = base.products
+        .filter((p: any) => !coverageOf(p).countries.includes('GB'))
+        .map((p: any) => p.product_id);
+      expect(baseWithoutGb.length).toBeGreaterThan(0);
+      for (const id of baseWithoutGb) expect(ids(gb)).not.toContain(id);
+      const baseWithGb = base.products
+        .filter((p: any) => coverageOf(p).countries.includes('GB'))
+        .map((p: any) => p.product_id);
+      for (const id of baseWithGb) expect(ids(gb)).toContain(id);
+    });
+
+    it('countries [US, CA] succeeds with the same products as {}', async () => {
+      const base = await brief({});
+      const both = await brief({ countries: ['US', 'CA'] });
+      expect(both.code, JSON.stringify(both)).toBeUndefined();
+      expect(ids(both)).toEqual(ids(base));
+    });
+
+    it('regions [US-NY] is refused as UNSUPPORTED_FEATURE at /filters/regions', async () => {
+      const response = await brief({ regions: ['US-NY'] });
+      expect(response).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: '/filters/regions' });
+    });
+
+    it('countries_exclude [CA] succeeds with the same products as {}', async () => {
+      const base = await brief({});
+      const excluded = await brief({ countries_exclude: ['CA'] });
+      expect(excluded.code, JSON.stringify(excluded)).toBeUndefined();
+      expect(ids(excluded)).toEqual(ids(base));
+    });
+  });
+
+  describe('B. compact discovery surfaces', () => {
+    const compact = { account: openAccount, adcp_version: '3.2-rc.7' };
+
+    it('list_products criteria.offer_filters.countries [US] returns products without an error', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      const response = await call(server, 'list_products', { ...compact, criteria: { offer_filters: { countries: ['US'] } } });
+      expect(response.code, JSON.stringify(response)).toBeUndefined();
+      expect(response.products.length).toBeGreaterThan(0);
+      for (const product of response.products) expect(coverageOf(product)?.countries).toContain('US');
+    });
+
+    it('list_products criteria.offer_filters.regions is refused as UNSUPPORTED_FEATURE', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      const response = await call(server, 'list_products', { ...compact, criteria: { offer_filters: { regions: ['US-NY'] } } });
+      // Intended field is /criteria/offer_filters/regions; the handler never
+      // receives __adcp_operation, so it reports /filters/regions today.
+      expect(response.code).toBe('UNSUPPORTED_FEATURE');
+      expect(response.field).toMatch(/\/regions$/);
+    });
+
+    it('request_proposals offer_filters.countries [US] is not refused; regions is refused as UNSUPPORTED_FEATURE', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      const request = {
+        ...compact,
+        brief: 'Sponsored creator videos on YouTube and TikTok',
+      };
+      const covered = await call(server, 'request_proposals', {
+        ...request, criteria: { offer_filters: { countries: ['US'] } },
+      });
+      expect(covered.code, JSON.stringify(covered)).not.toBe('UNSUPPORTED_FEATURE');
+      const unsupported = await call(server, 'request_proposals', {
+        ...request, criteria: { offer_filters: { regions: ['US-NY'] } },
+      });
+      expect(unsupported.code).toBe('UNSUPPORTED_FEATURE');
+      expect(unsupported.field).toMatch(/\/regions$/);
+    });
+  });
+
+  describe('C. products without coverage facts are left out, not refused', () => {
+    const seededAccount = storyboard.phases[0].steps[0].sample_request.account;
+    async function seedProduct(server: Server, product_id: string, fixture: Record<string, unknown>) {
+      const base = storyboard.fixtures.products[0];
+      const { product_id: _ignored, ext: _ext, ...template } = base;
+      expect(await call(server, 'comply_test_controller', {
+        account: seededAccount, scenario: 'seed_product',
+        params: { product_id, fixture: { ...template, ...fixture } },
+      })).toMatchObject({ success: true });
+      const pricing = storyboard.fixtures.pricing_options[0];
+      const { product_id: _p, pricing_option_id, ...pricingFixture } = pricing;
+      expect(await call(server, 'comply_test_controller', {
+        account: seededAccount, scenario: 'seed_pricing_option',
+        params: { product_id, pricing_option_id, fixture: pricingFixture },
+      })).toMatchObject({ success: true });
+    }
+    const query = (server: Server, filters: Record<string, unknown>) => call(server, 'get_products', {
+      account: seededAccount, buying_mode: 'wholesale', adcp_version: '3.2-rc.7',
+      filters: { pricing_currencies: ['USD'], ...filters },
+    });
+
+    it('countries [US] returns only the covered seeded product', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      await seedProduct(server, 'cov_us_only', { ext: { training: { coverage: { countries: ['US'] } } } });
+      await seedProduct(server, 'cov_none', {});
+      const response = await query(server, { countries: ['US'] });
+      expect(response.code, JSON.stringify(response)).toBeUndefined();
+      expect(ids(response)).toEqual(['cov_us_only']);
+    });
+
+    it('metros returns only the product that declares metros when another lacks them', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      const metro = { system: 'nielsen_dma', code: '501' };
+      await seedProduct(server, 'cov_metro', { ext: { training: { coverage: { countries: ['US'], metros: [metro] } } } });
+      await seedProduct(server, 'cov_national', { ext: { training: { coverage: { countries: ['US'] } } } });
+      const response = await query(server, { metros: [metro] });
+      expect(response.code, JSON.stringify(response)).toBeUndefined();
+      expect(ids(response)).toEqual(['cov_metro']);
+    });
+  });
+
+  describe('D. metros on the built-in catalogue', () => {
+    it('returns only products whose coverage lists DMA 501 and no error', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      const all = await wholesale(server);
+      const metro = { system: 'nielsen_dma', code: '501' };
+      const response = await wholesale(server, { metros: [metro] });
+      expect(response.code, JSON.stringify(response)).toBeUndefined();
+      const expected = all.products
+        .filter((p: any) => coverageOf(p)?.metros?.some((m: any) => m.system === 'nielsen_dma' && m.code === '501'))
+        .map((p: any) => p.product_id).sort();
+      expect(expected).toContain('streetlevel_premium');
+      expect(ids(response)).toEqual(expected);
+      expect(ids(response).length).toBeLessThan(ids(all).length);
+      for (const product of response.products) expect(coverageOf(product).metros).toBeDefined();
+    });
+  });
+
+  describe('E. catalogue invariants', () => {
+    // get_products drops overlay_support from its default projection; list_products keeps it.
+    async function listAll(server: Server) {
+      const response = await call(server, 'list_products', { account: openAccount, adcp_version: '3.2-rc.7', max_results: 100 });
+      expect(response.code, JSON.stringify(response)).toBeUndefined();
+      return response.products as any[];
+    }
+
+    it('every built-in product declares well-formed coverage', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      const response = await wholesale(server);
+      expect(response.code, JSON.stringify(response)).toBeUndefined();
+      expect(response.products.length).toBeGreaterThan(0);
+      for (const product of response.products) {
+        const coverage = coverageOf(product);
+        expect(coverage?.countries, product.product_id).toBeInstanceOf(Array);
+        expect(coverage.countries.length, product.product_id).toBeGreaterThan(0);
+        for (const country of coverage.countries) expect(country).toMatch(/^[A-Z]{2}$/);
+        for (const metro of coverage.metros ?? []) {
+          expect(METRO_SYSTEMS, product.product_id).toContain(metro.system);
+          expect(typeof metro.code, product.product_id).toBe('string');
+        }
+      }
+    });
+
+    it('creator products cover countries without offering geo_countries targeting', async () => {
+      const server = createTrainingAgentServer({ mode: 'open' });
+      const creators = (await listAll(server)).filter(p => p.product_id.startsWith('creatorloop_creator_'));
+      expect(creators.length).toBeGreaterThan(0);
+      for (const product of creators) {
+        expect(coverageOf(product).countries.length, product.product_id).toBeGreaterThan(0);
+        expect(product.overlay_support, product.product_id).toBeDefined();
+        expect(product.overlay_support, product.product_id).not.toHaveProperty('geo_countries');
+      }
+    });
+  });
+});
