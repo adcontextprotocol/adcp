@@ -3,38 +3,9 @@
   "$id": "/schemas/protocol/list-tasks-response.json",
   "title": "List Tasks Response",
   "description": "Response from the list_tasks AdCP tool, a 3.x protocol-namespace alias for legacy AdCP tasks/list. Contains filtered AdCP application-layer task results and reconciliation data while preserving the legacy 3.x domain field shape; distinct from transport-native MCP/A2A task responses.",
-  "type": "object",
   "allOf": [
     {
-      "$ref": "/schemas/core/protocol-envelope.json"
+      "$ref": "/schemas/core/tasks-list-response.json"
     }
-  ],
-  "properties": {
-    "query_summary": {
-      "$ref": "/schemas/core/task-list-query-summary.json",
-      "description": "Summary of the query that was executed"
-    },
-    "tasks": {
-      "type": "array",
-      "description": "Array of tasks matching the query criteria",
-      "items": {
-        "$ref": "/schemas/core/task-summary.json"
-      }
-    },
-    "pagination": {
-      "$ref": "/schemas/core/pagination-response.json"
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
-  },
-  "required": [
-    "query_summary",
-    "tasks",
-    "pagination"
-  ],
-  "additionalProperties": true
+  ]
 }

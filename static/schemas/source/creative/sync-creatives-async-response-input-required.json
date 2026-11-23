@@ -10,13 +10,8 @@
   ],
   "properties": {
     "reason": {
-      "type": "string",
-      "enum": [
-        "APPROVAL_REQUIRED",
-        "ASSET_CONFIRMATION",
-        "FORMAT_CLARIFICATION"
-      ],
-      "description": "Reason code indicating why buyer input is needed"
+      "description": "Reason code indicating why buyer input is needed",
+      "$ref": "#/definitions/reason"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -25,5 +20,15 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "reason": {
+      "type": "string",
+      "enum": [
+        "APPROVAL_REQUIRED",
+        "ASSET_CONFIRMATION",
+        "FORMAT_CLARIFICATION"
+      ]
+    }
+  }
 }

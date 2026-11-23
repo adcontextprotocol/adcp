@@ -35,6 +35,7 @@ const {
   buildRuntimeToolsList,
   collectExternalRefs,
   compactDraft07Schema,
+  followComposedRoot,
   inlineMarkedModelContextDefinitions,
   measureSchema,
   projectDraft07Node,
@@ -315,7 +316,8 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_481_000.
 // One definition per media buy field: 1_482_889 bytes; bound at 1_483_000.
 // One definition per pricing option field: 1_486_628 bytes; bound at 1_487_000.
-const PARITY_COMPILE_LIMIT = 1_487_000;
+// One definition per task and error field: 1_487_288 bytes; bound at 1_488_000.
+const PARITY_COMPILE_LIMIT = 1_488_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1523,7 +1525,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     }
 
     assert.ok(firstValidFixture, `${relativePath} needs at least one valid storyboard fixture`);
-    assert.equal(sourceSchema.type, 'object', `${relativePath} parity mutation assumes an object root`);
+    // A root-only composed tool document validates as the document it composes.
+    const { schema: rootSchema } = followComposedRoot(sourceSchema, sourcePath, SOURCE_DIR);
+    assert.equal(rootSchema.type, 'object', `${relativePath} parity mutation assumes an object root`);
     const invalidRootMutation = [structuredClone(firstValidFixture)];
     assert.equal(validateSource(invalidRootMutation), false, `${relativePath} root mutation must be invalid`);
     assert.equal(
@@ -1533,7 +1537,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     );
     invalidParityCaseCount++;
 
-    const requiredKey = sourceSchema.required?.find(key => Object.hasOwn(firstValidFixture, key));
+    const requiredKey = rootSchema.required?.find(key => Object.hasOwn(firstValidFixture, key));
     if (requiredKey) {
       const missingRequired = structuredClone(firstValidFixture);
       delete missingRequired[requiredKey];

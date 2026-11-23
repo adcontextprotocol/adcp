@@ -1,0 +1,356 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: tasks and errors alignment. Task error and submitted responses, error codes and messages, task
+  sorts and steps, notification config registration, and the four protocol task aliases each have one definition; the corrections
+  below follow published 3.2.12 text, and every other change is a $ref to an identical definition.
+changes:
+- location: core/domain-name.json#
+  keyword: maxLength
+  new: 253
+  direction: tighten
+  side: request
+  note: >-
+    compliance/comply-test-controller-request.json property_delivery[] and installment_property_delivery[] publisher_domain
+    -> core/domain-name.json. The controller's own text says each row MUST be a complete core/property-delivery-metrics.json
+    (or core/installment-property-delivery-metrics.json) row, and those rows reference core/domain-name.json for publisher_domain,
+    so a conforming harness already sends a domain name. Both sites are new in 3.3 (not in 3.2.12 compliance/comply-test-controller-request.json),
+    so no published contract changes.
+- location: core/domain-name.json#
+  keyword: pattern
+  new: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+  direction: tighten
+  side: request
+  note: >-
+    Same two controller sites as the maxLength line: publisher_domain takes the core/domain-name.json pattern of the delivery
+    rows it must match. New in 3.3.
+- location: core/task-error-response.json#/properties/errors
+  keyword: minItems
+  new: 1
+  direction: tighten
+  side: response
+  note: >-
+    core/task-error-response.json errors, composed by the error branches of list_content_standards, get_content_standards,
+    calibrate_content, validate_content_delivery, and get_media_buy_artifacts. Correction under DR-0036 (a schema of the major
+    that defines the concept; lint:additive-minor does not see the bound through the composed document): every 3.2.12 task
+    error branch that states the bound sets minItems 1, for example media-buy/create-media-buy-response.json CreateMediaBuyError,
+    "Error response - operation failed, no media buy created", "errors": { "type": "array", "description": "Array of errors
+    explaining why the operation failed", ... "minItems": 1 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/create-media-buy-response.json#L211-L221),
+    and docs/building/by-layer/L3/error-handling.mdx says the payload errors[] "reports one or more issues" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/docs/building/by-layer/L3/error-handling.mdx#L85).
+    The account, brand, creative, media buy, and signals error branches already carry it, so they and this definition are
+    now written the same.
+- location: enums/task-sort-field.json#
+  keyword: enum
+  new:
+  - created_at
+  - protocol
+  - status
+  - task_type
+  - updated_at
+  direction: tighten
+  side: response
+  note: >-
+    core/applied-task-sort.json field (list_tasks query_summary.sort_applied) -> enums/task-sort-field.json, as core/task-sort.json
+    field already is. Correction under DR-0036 (a schema of the major that defines the concept; lint:additive-minor does not
+    see it): the applied sort reports the field the task list was sorted by, and 3.2.12 core/tasks-list-request.json defines
+    that field as "sort": { ... "field": { "type": "string", "enum": [ "created_at", "updated_at", "status", "task_type",
+    "protocol" ], "default": "created_at", "description": "Field to sort by" } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/tasks-list-request.json#L97-L111).
+    A seller sorts only by a field the request can name, or by the default created_at.
+- location: enums/task-sort-field.json#
+  keyword: type
+  old:
+  - string
+  direction: none
+  side: response
+  note: >-
+    core/applied-task-sort.json field: type string is now stated by enums/task-sort-field.json beside its enum. No payload
+    changes verdict because of this line alone: the enum line rejects every non-string, so it masks this one.
+- location: core/task-current-step.json#
+  keyword: maxLength
+  new: 500
+  direction: tighten
+  side: response
+  note: >-
+    creative/sync-creatives-async-response-working.json current_step -> core/task-current-step.json, which core/compact-task-working.json
+    current_step now references too. Correction under DR-0036: 3.2.12 core/compact-task-working.json, the progress payload
+    of a working task, sets "current_step": { "type": "string", "maxLength": 500 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/compact-task-working.json#L13-L16).
+    Register entry creative/sync-creatives-async-response-working.json /properties/current_step.
+- location: core/compact-task-input-required.json#/properties/reason
+  keyword: maxLength
+  new: 200
+  direction: none
+  side: response
+  note: >-
+    The build_creative and create_media_buy input-required documents compose core/compact-task-input-required.json, whose
+    reason is 1 to 200 characters, and keep their own reason enums. Every code in those enums is 1 to 200 characters, so the
+    bounds reject nothing the enum accepts: masked by the enum.
+- location: core/compact-task-input-required.json#/properties/reason
+  keyword: minLength
+  new: 1
+  direction: none
+  side: response
+  note: >-
+    As the maxLength line: every reason code in the two enums is at least 1 character, so the minLength the composed document
+    brings is masked by the enum.
+- location: core/open-error-code.json#
+  keyword: maxLength
+  new: 64
+  direction: tighten
+  side: response
+  note: >-
+    error-details/stale-response.json original_error.code -> core/open-error-code.json. Correction under DR-0036: 3.2.12 core/error.json
+    sets "code": { "type": "string", "minLength": 1, "maxLength": 64 (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/error.json#L8-L11);
+    original_error is "Minimal subset of the underlying failure", and its code is an error code ("e.g., SERVICE_UNAVAILABLE").
+    Register entry error-details/stale-response.json /properties/original_error/properties/code. The same line also covers
+    core/catalog-item-reference-not-found-error.json code, which now references core/open-error-code.json beside its const
+    REFERENCE_NOT_FOUND; the const masks the bound there.
+- location: core/open-error-code.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: response
+  note: >-
+    Same sites and basis as the maxLength line: 3.2.12 core/error.json code minLength 1. Register entry error-details/stale-response.json
+    /properties/original_error/properties/code. At the catalog item reference error, the const REFERENCE_NOT_FOUND masks it.
+- location: enums/error-recovery.json#
+  keyword: enum
+  new:
+  - correctable
+  - terminal
+  - transient
+  direction: tighten
+  side: response
+  note: >-
+    core/catalog-item-reference-not-found-error.json recovery references enums/error-recovery.json beside its const correctable,
+    as core/error.json recovery does. The tool reads the added enum as a tightening, but the const masks it, so no witness
+    exists. Hand-checked with Ajv: recovery "correctable" is valid at base and head, recovery "transient" is invalid at both
+    (const), and removing the enum restores the base without changing either verdict.
+- location: core/reporting-subscription-id.json#
+  keyword: pattern
+  old: ^[A-Za-z0-9_.:-]{1,64}$
+  new: ^(?!\.{1,2}$)[A-Za-z0-9_.:-]{1,64}$
+  direction: tighten
+  side: both
+  note: >-
+    core/reporting-subscription.json subscription_id (sync_principal reporting_subscriptions[]) -> core/reporting-subscription-id.json,
+    and the definition takes the write form's guard: never . or .., "because it may appear in a destination path". The readback
+    sites (core/reporting-subscription-state.json, core/reporting-subscription-coverage.json, get_principal request and response)
+    now reject . and .., which the write schema already rejects, so no conforming seller holds such an ID. Every site is new
+    in 3.3 (no reporting subscription in 3.2.12). Hand-checked with Ajv (the witness search does not try . or ..): get_principal_request
+    reporting_subscription_page.subscription_id "." is valid at base and invalid at head; "sub_1" is valid at both; restoring
+    the old pattern makes "." valid again.
+- location: >-
+    media-buy/get-reporting-status-response.json#/definitions/ReportingStatusUnavailableError
+  keyword: required
+  old:
+  - code
+  - message
+  direction: none
+  side: response
+  note: >-
+    The unavailable error composes core/error.json, which requires code and message, so dropping its own copy of that required
+    list changes no payload's verdict.
+- location: >-
+    media-buy/get-reporting-status-response.json#/definitions/ReportingStatusUnavailableError
+  keyword: type
+  old:
+  - object
+  direction: none
+  side: response
+  note: >-
+    As the required line: core/error.json is type object, so dropping the definition's own type changes no payload's verdict.
+- location: >-
+    media-buy/get-reporting-status-response.json#/oneOf/1/oneOf/0/properties/adcp_error
+  keyword: allOf
+  new:
+    required:
+    - code
+    - message
+    type:
+    - object
+    dependencies:
+      buyer_reason:
+      - recovery
+    properties:
+      buyer_reason:
+        required:
+        - code
+        - message
+        type:
+        - object
+        properties:
+          code:
+            maxLength: 64
+            minLength: 1
+            type:
+            - string
+          message:
+            minLength: 1
+            type:
+            - string
+      code:
+        maxLength: 64
+        minLength: 1
+        type:
+        - string
+      details:
+        type:
+        - object
+      field:
+        type:
+        - string
+      issues:
+        type:
+        - array
+        items:
+          required:
+          - keyword
+          - message
+          - pointer
+          type:
+          - object
+          properties:
+            discriminator:
+              $at: core/error.json#/properties/issues/items/properties/discriminator
+            keyword:
+              $at: core/error.json#/properties/issues/items/properties/keyword
+            message:
+              $at: core/error.json#/properties/issues/items/properties/message
+            pointer:
+              $at: core/error.json#/properties/issues/items/properties/pointer
+            schemaPath:
+              $at: core/error.json#/properties/issues/items/properties/schemaPath
+            schema_id:
+              $at: core/error.json#/properties/issues/items/properties/schema_id
+      message:
+        type:
+        - string
+      mutation_outcome:
+        maxLength: 32
+        minLength: 1
+        type:
+        - string
+      recovery:
+        enum:
+        - correctable
+        - terminal
+        - transient
+      retry_after:
+        maximum: 3600
+        minimum: 1
+        type:
+        - number
+      sdk_id:
+        type:
+        - string
+      source:
+        enum:
+        - producer
+        - sdk
+      suggestion:
+        type:
+        - string
+  direction: none
+  side: response
+  note: >-
+    get_reporting_status unavailable lookup adcp_error and errors[] -> #/definitions/ReportingStatusUnavailableError, which
+    composes core/error.json. Hand-checked: the base accepts exactly { code: "NOT_FOUND", message: "Reporting status resource
+    is unavailable." } (closed, both required), and that payload is a valid core/error.json payload, so the head accepts it
+    too (base valid, head valid); any other payload fails the closed constant shape in both (base invalid, head invalid).
+    Removing the allOf restores the base without changing any verdict. The envelope's adcp_error already applies core/error.json
+    to this field.
+- location: >-
+    media-buy/get-reporting-status-response.json#/oneOf/1/oneOf/0/properties/errors/items
+  keyword: allOf
+  new:
+    required:
+    - code
+    - message
+    type:
+    - object
+    dependencies:
+      buyer_reason:
+      - recovery
+    properties:
+      buyer_reason:
+        required:
+        - code
+        - message
+        type:
+        - object
+        properties:
+          code:
+            maxLength: 64
+            minLength: 1
+            type:
+            - string
+          message:
+            minLength: 1
+            type:
+            - string
+      code:
+        maxLength: 64
+        minLength: 1
+        type:
+        - string
+      details:
+        type:
+        - object
+      field:
+        type:
+        - string
+      issues:
+        type:
+        - array
+        items:
+          required:
+          - keyword
+          - message
+          - pointer
+          type:
+          - object
+          properties:
+            discriminator:
+              $at: core/error.json#/properties/issues/items/properties/discriminator
+            keyword:
+              $at: core/error.json#/properties/issues/items/properties/keyword
+            message:
+              $at: core/error.json#/properties/issues/items/properties/message
+            pointer:
+              $at: core/error.json#/properties/issues/items/properties/pointer
+            schemaPath:
+              $at: core/error.json#/properties/issues/items/properties/schemaPath
+            schema_id:
+              $at: core/error.json#/properties/issues/items/properties/schema_id
+      message:
+        type:
+        - string
+      mutation_outcome:
+        maxLength: 32
+        minLength: 1
+        type:
+        - string
+      recovery:
+        enum:
+        - correctable
+        - terminal
+        - transient
+      retry_after:
+        maximum: 3600
+        minimum: 1
+        type:
+        - number
+      sdk_id:
+        type:
+        - string
+      source:
+        enum:
+        - producer
+        - sdk
+      suggestion:
+        type:
+        - string
+  direction: none
+  side: response
+  note: >-
+    Same definition and hand check as the adcp_error line, for the errors[] items of the unavailable lookup: every item the
+    base accepts is a valid core/error.json item, so no payload changes verdict.

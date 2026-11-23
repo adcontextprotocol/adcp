@@ -12,89 +12,7 @@
   ],
   "properties": {
     "result": {
-      "oneOf": [
-        {
-          "title": "Applied principal configuration",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "applied",
-              "default": "applied"
-            },
-            "action": {
-              "type": "string",
-              "enum": ["updated", "unchanged", "cleared"],
-              "description": "Persisted outcome for the submitted sections, computed solely against the caller's own prior state. cleared applies only when every submitted section was []; any other change is updated; unchanged means no submitted section differed."
-            },
-            "dry_run": {
-              "type": "boolean",
-              "const": false,
-              "default": false
-            },
-            "principal_id": {
-              "$ref": "/schemas/core/principal-id.json",
-              "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
-            },
-            "principal_kind": {
-              "$ref": "/schemas/enums/principal-kind.json",
-              "deprecated": true,
-              "x-deprecated-in": "3.3.0",
-              "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
-            },
-            "configuration_version": {
-              "$ref": "/schemas/core/principal-configuration-version.json",
-              "description": "Opaque version of the persisted configuration. Compare only for equality and return it as expected_configuration_version on a later guarded replacement."
-            },
-            "configuration": {
-              "$ref": "/schemas/core/principal-state.json"
-            },
-            "warnings": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/core/error.json"
-              },
-              "maxItems": 16
-            }
-          },
-          "required": ["kind", "action", "dry_run", "principal_id", "principal_kind", "configuration_version", "configuration"],
-          "additionalProperties": true
-        },
-        {
-          "description": "Rejects `destination_ref` and `configuration_version`: a dry run issues no durable identifier.",
-          "title": "Validated principal dry run",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "validated",
-              "default": "validated"
-            },
-            "action": {
-              "type": "string",
-              "enum": ["would_update", "would_be_unchanged", "would_clear"]
-            },
-            "dry_run": {
-              "type": "boolean",
-              "const": true,
-              "default": true
-            },
-            "warnings": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/core/error.json"
-              },
-              "maxItems": 16
-            }
-          },
-          "required": ["kind", "action", "dry_run"],
-          "not": { "anyOf": [{ "required": ["destination_ref"] }, { "required": ["configuration_version"] }] },
-          "additionalProperties": true
-        },
-        {
-          "$ref": "/schemas/core/principal-operation-failure.json"
-        }
-      ]
+      "$ref": "#/definitions/principal_result"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -157,5 +75,125 @@
         }
       }
     }
-  ]
+  ],
+  "definitions": {
+    "principal_result": {
+      "oneOf": [
+        {
+          "title": "Applied principal configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "applied",
+              "default": "applied"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "updated",
+                "unchanged",
+                "cleared"
+              ],
+              "description": "Persisted outcome for the submitted sections, computed solely against the caller's own prior state. cleared applies only when every submitted section was []; any other change is updated; unchanged means no submitted section differed."
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": false,
+              "default": false
+            },
+            "principal_id": {
+              "$ref": "/schemas/core/principal-id.json",
+              "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+            },
+            "principal_kind": {
+              "$ref": "/schemas/enums/principal-kind.json",
+              "deprecated": true,
+              "x-deprecated-in": "3.3.0",
+              "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
+            },
+            "configuration_version": {
+              "$ref": "/schemas/core/principal-configuration-version.json",
+              "description": "Opaque version of the persisted configuration. Compare only for equality and return it as expected_configuration_version on a later guarded replacement."
+            },
+            "configuration": {
+              "$ref": "/schemas/core/principal-state.json"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "dry_run",
+            "principal_id",
+            "principal_kind",
+            "configuration_version",
+            "configuration"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "description": "Rejects `destination_ref` and `configuration_version`: a dry run issues no durable identifier.",
+          "title": "Validated principal dry run",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "validated",
+              "default": "validated"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "would_update",
+                "would_be_unchanged",
+                "would_clear"
+              ]
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": true,
+              "default": true
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "dry_run"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "destination_ref"
+                ]
+              },
+              {
+                "required": [
+                  "configuration_version"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "$ref": "/schemas/core/principal-operation-failure.json"
+        }
+      ]
+    }
+  }
 }

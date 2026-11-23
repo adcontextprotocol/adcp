@@ -162,28 +162,12 @@
         "failure_kind": { "type": "string", "const": "lookup_unavailable", "default": "lookup_unavailable" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
-        "adcp_error": {
-          "type": "object",
-          "properties": {
-            "code": { "const": "NOT_FOUND" },
-            "message": { "const": "Reporting status resource is unavailable." }
-          },
-          "required": ["code", "message"],
-          "additionalProperties": false
-        },
+        "adcp_error": { "$ref": "#/definitions/ReportingStatusUnavailableError" },
         "errors": {
           "type": "array",
           "minItems": 1,
           "maxItems": 1,
-          "items": {
-            "type": "object",
-            "properties": {
-              "code": { "const": "NOT_FOUND" },
-              "message": { "const": "Reporting status resource is unavailable." }
-            },
-            "required": ["code", "message"],
-            "additionalProperties": false
-          }
+          "items": { "$ref": "#/definitions/ReportingStatusUnavailableError" }
         }
       },
       "required": ["status", "view", "failure_kind", "errors"],
@@ -220,5 +204,19 @@
     "subscription_coverage": "Obligations derived from a subscription carry delivery_config_id equal to subscription_id and the resolved offering_id and report_definition_id, and appear in scope.delivery_config_generations like any configuration generation. Which periods are owed is computable by the buyer by the coverage rule in reporting-subscription.json: visible confirmed buys, the resolved offering's published schedule, periods starting on or after the first boundary at or after the later of accepted_at and authorized_at, ending after the buy's confirmed_at, and overlapping the buy's flight, which ends at the cancellation's delivery stop (cancellation_effective_at) rather than when the cancellation was recorded, as resolved at each period's scope_resolved_at. A cutover onto a billing feed whose schedule has no boundary at E adds one stub obligation (stub true) for [E, first incoming boundary), so billing coverage has no unowed stretch. The obligation's offering_id and report_definition_id are authoritative for timing (alignment, anchor, delivery_sla, and so expected_at). subscription_coverage lists only exceptions, each removing the periods whose start falls in [from, until); a seller MUST NOT owe fewer periods than that rule implies without a matching exception, and exceptions never add periods. A resolution change is a cutover per reporting-subscription.json, so no period is owed under two offerings. Each obligation freezes media_buy_ids at its own scope_resolved_at. A period's owed set is frozen at its scope_resolved_at and is final in a snapshot whose ledger_as_of is later than period.end, where obligation_availability already requires its obligation; a period ending at or after ledger_as_of is not frozen, so the buyer treats its own projection, and next_expected_at, as provisional and reports nothing missing for it. A buyer reads the flight in force at each scope_resolved_at from the buy's flight_history, the offerings each package could resolve from its reporting_delivery_offering_ids snapshot and each offering's available_from and withdrawn_at, and re-grant timing from authorization.regranted_at. caller_isolation is unchanged: once the caller loses authority for the account, this task treats it as unknown, and the revocation is reported in get_principal reporting_subscriptions accounts_unauthorized instead.",
     "consumer_status_deadline": "A buyer owes a current consumer status for every elapsed expected period by expected_at plus automated_recovery_window_seconds, not merely before it closes the scope. Past that deadline with no current statement from the authenticated caller, the seller counts the obligation in obligation_counts.consumer_status_pending. Silence is a counted unknown only: it MUST NOT create an issue, change health, excuse a seller obligation, or appear in another caller's view."
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "ReportingStatusUnavailableError": {
+      "title": "Reporting Status Unavailable Error",
+      "description": "The one error an unknown or unauthorized reporting status identifier returns: NOT_FOUND with a constant message and no other field, so the response does not reveal whether the resource exists.",
+      "type": "object",
+      "allOf": [{ "$ref": "/schemas/core/error.json" }],
+      "properties": {
+        "code": { "const": "NOT_FOUND" },
+        "message": { "const": "Reporting status resource is unavailable." }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    }
+  }
 }

@@ -9,7 +9,8 @@
       "type": "array",
       "items": {
         "$ref": "/schemas/core/error.json"
-      }
+      },
+      "minItems": 1
     },
     "context": {
       "$ref": "/schemas/core/context.json"

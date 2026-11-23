@@ -14,7 +14,7 @@
       "description": "Completion percentage (0-100)"
     },
     "current_step": {
-      "type": "string",
+      "$ref": "/schemas/core/task-current-step.json",
       "description": "Current step or phase of the operation"
     },
     "total_steps": {

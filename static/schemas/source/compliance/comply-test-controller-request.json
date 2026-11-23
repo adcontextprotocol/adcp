@@ -1291,7 +1291,7 @@
             "type": "object",
             "required": ["publisher_domain", "identifier", "impressions", "spend"],
             "properties": {
-              "publisher_domain": { "type": "string" },
+              "publisher_domain": { "$ref": "/schemas/core/domain-name.json" },
               "identifier": { "$ref": "/schemas/core/identifier.json" },
               "impressions": { "type": "number", "minimum": 0 },
               "spend": { "type": "number", "minimum": 0 }
@@ -1308,7 +1308,7 @@
             "required": ["installment_ref", "publisher_domain", "identifier", "impressions", "spend"],
             "properties": {
               "installment_ref": { "$ref": "/schemas/core/installment-ref.json" },
-              "publisher_domain": { "type": "string" },
+              "publisher_domain": { "$ref": "/schemas/core/domain-name.json" },
               "identifier": { "$ref": "/schemas/core/identifier.json" },
               "impressions": { "type": "number", "minimum": 0 },
               "spend": { "type": "number", "minimum": 0 }

@@ -1467,6 +1467,7 @@ module.exports = {
   collectExternalRefs,
   compactDraft07Schema,
   enforceSchemaBounds,
+  followComposedRoot,
   generateMcpSchemaProjection,
   inlineMarkedModelContextDefinitions,
   measureSchema,

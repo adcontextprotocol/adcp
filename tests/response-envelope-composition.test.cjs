@@ -146,6 +146,15 @@ function pointerGet(root, pointer) {
   return pointer.slice(1).split('/').reduce((node, segment) => node?.[segment], root);
 }
 
+/** A node's declaration of a field, read through a `$ref` to a local definition of its document. */
+function declarationOf(rel, node, name) {
+  const declaration = node.properties?.[name];
+  if (typeof declaration?.$ref === 'string' && declaration.$ref.startsWith('#')) {
+    return pointerGet(readSource(rel), declaration.$ref.slice(1));
+  }
+  return declaration;
+}
+
 /**
  * The envelope's wire properties, in declaration order: its own properties,
  * then those of each schema it composes through its root `allOf`, each with
@@ -319,10 +328,10 @@ function completeControl(validate, control) {
  * pinned body fields, and a placeholder for other body fields, completed
  * against the node's conditions.
  */
-function nodeControl(node, validate) {
+function nodeControl(rel, node, validate) {
   const control = {};
   for (const name of new Set([...(node.required || []), 'status'])) {
-    const declaration = node.properties?.[name];
+    const declaration = declarationOf(rel, node, name);
     if (ENVELOPE_NAMES.has(name)) control[name] = fitValue(ENVELOPE_VALUES[name], declaration);
     else if (pins(declaration)) control[name] = has(declaration, 'const') ? declaration.const : declaration.enum[0];
     else control[name] = 'x';
@@ -414,7 +423,7 @@ test('response nodes declare only body fields and narrowing constraints', () => 
   const copied = [];
   for (const { rel, pointer, node } of RESPONSE_NODES) {
     for (const name of ENVELOPE_NAMES) {
-      const declaration = node.properties?.[name];
+      const declaration = declarationOf(rel, node, name);
       if (declaration && !permittedLocalDeclaration(name, declaration)) {
         copied.push(`${rel}#${pointer}/properties/${name}`);
       }
@@ -459,7 +468,7 @@ test('every response node accepts every envelope field, acceptance vectors', asy
   for (const { rel, pointer, node } of RESPONSE_NODES) {
     await t.test(`${rel}#${pointer}`, async () => {
       const validate = await nodeWithEnvelopeValidator(rel, pointer);
-      const control = nodeControl(node, validate);
+      const control = nodeControl(rel, node, validate);
       assert.equal(validate(control), true,
         `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)} ${JSON.stringify(control)}`);
 
@@ -470,7 +479,7 @@ test('every response node accepts every envelope field, acceptance vectors', asy
           excluded += 1;
           continue;
         }
-        const declaration = node.properties?.[name];
+        const declaration = declarationOf(rel, node, name);
         // A required envelope field is already in the control, with the value
         // the node's pins and conditions take; the vector keeps it.
         const fitted = fit && has(control, name) ? control[name]
@@ -491,7 +500,7 @@ test('an empty task_id is rejected on every response node, single fault', async 
   for (const { rel, pointer, node } of RESPONSE_NODES) {
     if (excludes(node, 'task_id')) continue;
     const validate = await nodeWithEnvelopeValidator(rel, pointer);
-    const control = { ...nodeControl(node, validate), task_id: ENVELOPE_VALUES.task_id };
+    const control = { ...nodeControl(rel, node, validate), task_id: ENVELOPE_VALUES.task_id };
     assert.equal(validate(control), true, `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)}`);
     assert.deepEqual(addedErrors(validate, control, { ...control, task_id: '' }),
       [{ instancePath: '/task_id', keyword: 'minLength', params: { limit: 1 } }],
@@ -523,7 +532,7 @@ test('a 2,001-character message is rejected on every response node, single fault
       continue;
     }
     const validate = await nodeWithEnvelopeValidator(rel, pointer);
-    const control = { ...nodeControl(node, validate), message: BOUNDARY_VALUES.message };
+    const control = { ...nodeControl(rel, node, validate), message: BOUNDARY_VALUES.message };
     assert.equal(validate(control), true, `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)}`);
     assert.deepEqual(addedErrors(validate, control, { ...control, message: OVERLONG_MESSAGE }), MESSAGE_FAULT,
       `${rel}#${pointer}: a 2,001-character message must fail only on core/task-message.json's maxLength`);
@@ -585,7 +594,8 @@ function composesTaskSubmitted(node) {
  */
 function statusOfBody({ rel, pointer, node }) {
   for (const status of STATUS_BODY_STATUSES) {
-    if (pointer === '' && (rel.endsWith(`-async-response-${status}.json`) || rel === `core/compact-task-${status}.json`)) return status;
+    if (pointer === '' && (rel.endsWith(`-async-response-${status}.json`) || rel === `core/compact-task-${status}.json`
+      || rel === `core/task-${status}-response.json`)) return status;
     const word = status.replace(/-/g, '');
     if (typeof node.title === 'string' && node.title.replace(/[\s-]+/g, '').toLowerCase().endsWith(word)) return status;
   }
@@ -615,7 +625,8 @@ test('every status body composes its core/task-<status>.json', () => {
 });
 
 test('every submitted body and branch composes core/task-submitted.json', () => {
-  assert.ok(SUBMITTED_NODES.length >= 15, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
+  // Branches that only reference core/task-submitted-response.json are checked once, through that document.
+  assert.ok(SUBMITTED_NODES.length >= 12, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
   assert.deepEqual(SUBMITTED_NODES.filter((entry) => !composesTaskSubmitted(entry.node)).map(({ rel, pointer }) => `${rel}#${pointer}`), [],
     'a submitted body or branch must compose core/task-submitted.json');
   // The rule lives in one place: no node restates it with a required task_id,
@@ -656,7 +667,7 @@ test('no schema keys task_id on status through if/then', () => {
 test('a submitted response without task_id fails through core/task-submitted.json', async () => {
   for (const { rel, pointer, node } of SUBMITTED_NODES) {
     const validate = await validatorFor(`${BUILT_ORIGIN}${rel}#${pointer}`);
-    const control = nodeControl(node, validate);
+    const control = nodeControl(rel, node, validate);
     assert.equal(control.status, 'submitted', `${rel}#${pointer}: the control must take status submitted`);
     assert.equal(control.task_id, ENVELOPE_VALUES.task_id, `${rel}#${pointer}: core/task-submitted.json must add task_id to the control`);
     assert.equal(validate(control), true, `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)}`);
@@ -737,7 +748,5 @@ test('every request that carries a task_id rejects an empty one, single fault', 
     'compliance/comply-test-controller-request.json /params/task_id',
     'core/tasks-get-request.json /task_id',
     'core/tasks-list-request.json /filters/task_ids/0',
-    'protocol/get-task-status-request.json /task_id',
-    'protocol/list-tasks-request.json /filters/task_ids/0',
   ], 'every request task_id carrier must run');
 });

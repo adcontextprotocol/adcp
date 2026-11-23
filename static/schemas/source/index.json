@@ -236,6 +236,10 @@
           "$ref": "/schemas/core/targeting-overlay-support.json",
           "description": "Product-scoped targeting dimensions whose values may be supplied on packages later"
         },
+        "task-current-step": {
+          "$ref": "/schemas/core/task-current-step.json",
+          "description": "The step or phase a working task is in, as short human-readable text."
+        },
         "targeting-overlay-requirements": {
           "$ref": "/schemas/core/targeting-overlay-requirements.json",
           "description": "Buyer requirements for product-scoped targeting dimensions that must remain selectable on packages"
@@ -905,6 +909,10 @@
           "$ref": "/schemas/core/task-submitted.json",
           "description": "Submitted task acknowledgement: status submitted with a task_id. Every submitted response body and branch composes it"
         },
+        "task-submitted-response": {
+          "$ref": "/schemas/core/task-submitted-response.json",
+          "description": "The submitted branch of a task response: the task acknowledgement, optional advisory errors, and the echoed context."
+        },
         "task-id": {
           "$ref": "/schemas/core/task-id.json",
           "description": "Unique, non-empty identifier of an asynchronous AdCP task: the one definition of task_id"
@@ -968,6 +976,10 @@
         "agent-notification-config": {
           "$ref": "/schemas/core/agent-notification-config.json",
           "description": "Agent-level webhook subscriber configuration for notifications such as capabilities.changed"
+        },
+        "agent-notification-config-registration": {
+          "$ref": "/schemas/core/agent-notification-config-registration.json",
+          "description": "An agent-level notification config as a caller registers it, with write-only credentials when authentication is present."
         },
         "agent-notification-config-state": {
           "$ref": "/schemas/core/agent-notification-config-state.json",
@@ -2879,6 +2891,10 @@
         "error-details": {
           "$ref": "/schemas/core/error-details.json",
           "description": "Additional error details as an open object. To report a value rejected against a closed set, use the `rejected_value` and `accepted_values` keys."
+        },
+        "error-message": {
+          "$ref": "/schemas/core/error-message.json",
+          "description": "Human-readable description of an error."
         },
         "evidence-max-age": {
           "$ref": "/schemas/core/evidence-max-age.json",

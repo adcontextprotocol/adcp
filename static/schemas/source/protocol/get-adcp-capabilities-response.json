@@ -43,6 +43,38 @@
         "hashed_email",
         "hashed_phone"
       ]
+    },
+    "OAuthProtectedResourceCapability": {
+      "title": "OAuth Protected-Resource Capability",
+      "description": "Whether an agent supports OAuth 2.0 protected-resource authentication for inbound requests.",
+      "type": "object",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether this agent accepts OAuth access tokens and publishes the discovery metadata needed to obtain and validate them. A true value is an explicit conformance claim: the RFC 9728 protected-resource document and every RFC 8414 authorization-server document it references MUST be reachable, internally consistent, and safe for clients to follow. False or absent means the OAuth metadata storyboard is not applicable; it does not weaken the universal requirement to implement at least one authentication mechanism."
+        }
+      },
+      "required": [
+        "supported"
+      ],
+      "additionalProperties": true
+    },
+    "GenderTargetingSupportRollup": {
+      "title": "Gender Targeting Support Rollup",
+      "description": "Whether at least one product supports core gender targeting.",
+      "type": "object",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether at least one product supports core gender targeting. Omission makes no core gender support commitment; inspect Product.demographic_targeting.gender before purchase.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        }
+      },
+      "required": [
+        "supported"
+      ],
+      "additionalProperties": true
     }
   },
   "allOf": [
@@ -2330,20 +2362,7 @@
                       "description": "Whether at least one seller product supports canonical demographic targeting."
                     },
                     "gender": {
-                      "title": "Gender Targeting Support Rollup",
-                      "type": "object",
-                      "properties": {
-                        "supported": {
-                          "type": "boolean",
-                          "description": "Whether at least one product supports core gender targeting. Omission makes no core gender support commitment; inspect Product.demographic_targeting.gender before purchase.",
-                          "x-status": "experimental",
-                          "x-added-in": "3.3.0"
-                        }
-                      },
-                      "required": [
-                        "supported"
-                      ],
-                      "additionalProperties": true,
+                      "$ref": "#/definitions/GenderTargetingSupportRollup",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0",
                       "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
@@ -3593,17 +3612,8 @@
       ]
     },
     "oauth": {
-      "title": "OAuth Protected-Resource Capability",
-      "type": "object",
-      "description": "Introduced in AdCP 3.2. OAuth 2.0 protected-resource support for inbound transport authentication. This is a capability claim, not a requirement that every caller use OAuth: `supported: true` means the agent publishes RFC 9728 protected-resource metadata for its advertised endpoint and RFC 8414 metadata for every referenced authorization server, and opts into the universal `oauth_setup` conformance storyboard. Agents that use only static Bearer, Basic, mTLS, or RFC 9421 authentication omit this block or declare `supported: false`. Operator credential acquisition remains separately described by `account.authorization_endpoint` when applicable.",
-      "properties": {
-        "supported": {
-          "type": "boolean",
-          "description": "Whether this agent accepts OAuth access tokens and publishes the discovery metadata needed to obtain and validate them. A true value is an explicit conformance claim: the RFC 9728 protected-resource document and every RFC 8414 authorization-server document it references MUST be reachable, internally consistent, and safe for clients to follow. False or absent means the OAuth metadata storyboard is not applicable; it does not weaken the universal requirement to implement at least one authentication mechanism."
-        }
-      },
-      "required": ["supported"],
-      "additionalProperties": true
+      "$ref": "#/definitions/OAuthProtectedResourceCapability",
+      "description": "Introduced in AdCP 3.2. OAuth 2.0 protected-resource support for inbound transport authentication. This is a capability claim, not a requirement that every caller use OAuth: `supported: true` means the agent publishes RFC 9728 protected-resource metadata for its advertised endpoint and RFC 8414 metadata for every referenced authorization server, and opts into the universal `oauth_setup` conformance storyboard. Agents that use only static Bearer, Basic, mTLS, or RFC 9421 authentication omit this block or declare `supported: false`. Operator credential acquisition remains separately described by `account.authorization_endpoint` when applicable."
     },
     "request_signing": {
       "type": "object",
