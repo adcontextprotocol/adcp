@@ -48,11 +48,11 @@
       "description": "Minimum rendered size needed for legibility.",
       "properties": {
         "width": {
-          "type": "string",
+          "$ref": "/schemas/core/css-length.json",
           "description": "Minimum width, such as 48px or 12mm."
         },
         "height": {
-          "type": "string",
+          "$ref": "/schemas/core/css-length.json",
           "description": "Minimum height, such as 18px or 6mm."
         }
       },

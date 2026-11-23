@@ -23,9 +23,8 @@
           "description": "Verification status. Not every status applies to every claim_type — see the task page for the applicable subset. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization (#4878)."
         },
         "details": {
-          "type": "object",
-          "description": "Per-claim-type response fields. Shape varies — see the task page for each claim_type's expected fields. Examples: subsidiary returns brand_id + first_observed_by_house_at + expected_resolution_window_days; parent returns house_domain; property returns relationship + regions + use_case_authorization; trademark returns matched_registration + licensor_domain + countries + nice_classes + use_case_authorization.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/brand-claim-verification-details.json",
+          "description": "Per-claim-type response fields. Shape varies — see the task page for each claim_type's expected fields. Examples: subsidiary returns brand_id + first_observed_by_house_at + expected_resolution_window_days; parent returns house_domain; property returns relationship + regions + use_case_authorization; trademark returns matched_registration + licensor_domain + countries + nice_classes + use_case_authorization."
         },
         "context_note": {
           "$ref": "/schemas/core/brand-claim-context-note.json",
@@ -137,8 +136,7 @@
           "$ref": "/schemas/brand/verification-status.json"
         },
         "details": {
-          "type": "object",
-          "additionalProperties": true
+          "$ref": "/schemas/core/brand-claim-verification-details.json"
         },
         "context_note": {
           "$ref": "/schemas/core/brand-claim-context-note.json"

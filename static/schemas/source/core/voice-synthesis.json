@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "provider": {
-      "type": "string"
+      "$ref": "/schemas/core/voice-provider.json"
     },
     "voice_id": {
       "type": "string"

@@ -15,14 +15,8 @@
       "description": "Brand within a brand.json that lists several brands. Optional for single-brand domains."
     },
     "countries": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/country-code.json"
-      },
-      "minItems": 1,
-      "uniqueItems": true,
-      "description": "ISO 3166-1 alpha-2 countries the advertiser account serves. This is an account attribute: it does not identify the brand or the account, and it is not delivery targeting. Omit when the account is not limited to particular countries. Array order is not meaningful.",
-      "x-max-items-4.0": 256
+      "$ref": "/schemas/core/account-countries.json",
+      "description": "ISO 3166-1 alpha-2 countries the advertiser account serves. This is an account attribute: it does not identify the brand or the account, and it is not delivery targeting. Omit when the account is not limited to particular countries. Array order is not meaningful."
     },
     "industries": {
       "type": "array",
@@ -44,11 +38,17 @@
         },
         "colors": {
           "type": "object",
-          "description": "Override brand colors (hex strings).",
+          "description": "Override brand colors. Each slot takes a non-empty array of hex colors, or a single hex color, the form deprecated in 3.3.",
           "properties": {
-            "primary": { "$ref": "/schemas/core/hex-color.json" },
-            "secondary": { "$ref": "/schemas/core/hex-color.json" },
-            "accent": { "$ref": "/schemas/core/hex-color.json" }
+            "primary": {
+              "$ref": "/schemas/core/color-value.json"
+            },
+            "secondary": {
+              "$ref": "/schemas/core/color-value.json"
+            },
+            "accent": {
+              "$ref": "/schemas/core/color-value.json"
+            }
           },
           "additionalProperties": true
         },

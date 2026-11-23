@@ -536,11 +536,7 @@ schema_removals_not_checked:
       is marked x-removed-in "5.0.0", not 4.0, because brand.json is read without
       version negotiation, so it is outside this 4.0 registry by design.
     sites:
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/primary/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/secondary/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/accent/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/background/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/text/oneOf/0"
+      - "core/color-value.json#/oneOf/0"
       - "error-details/requote-required.json#/properties/envelope_field/oneOf/0"
       - "core/creative-asset.json#/properties/assets/patternProperties/^/oneOf/0"
       - "core/creative-assets.json#/patternProperties/^/anyOf/0"

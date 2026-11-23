@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/attested-rights-constraint.json",
+  "title": "Attested Rights Constraint",
+  "description": "A rights constraint that carries its attestation: rights_holder, grant_status, content_digest, and attestation_refs are required.",
+  "allOf": [
+    { "$ref": "/schemas/core/rights-constraint.json" },
+    { "required": ["rights_holder", "grant_status", "content_digest", "attestation_refs"] }
+  ]
+}

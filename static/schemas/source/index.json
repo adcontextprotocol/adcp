@@ -3139,6 +3139,42 @@
         "webhook-delivery-auth": {
           "$ref": "/schemas/core/webhook-delivery-auth.json",
           "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config."
+        },
+        "color-value": {
+          "$ref": "/schemas/core/color-value.json",
+          "description": "The value of one brand color role in a task payload: a non-empty array of hex colors, or a single hex color, the form deprecated in 3.3."
+        },
+        "account-countries": {
+          "$ref": "/schemas/core/account-countries.json",
+          "description": "Non-empty set of ISO 3166-1 alpha-2 countries an advertiser account serves. An account attribute: it does not identify the brand or the account, and it is not delivery targeting. Array order is not meaningful."
+        },
+        "brand-localized-string-list-entry": {
+          "$ref": "/schemas/core/brand-localized-string-list-entry.json",
+          "description": "One locale mapped to a complete ordered string list. The list is selected as a unit so readers never assemble mixed-language output from independently localized elements."
+        },
+        "brand-localized-string-list": {
+          "$ref": "/schemas/core/brand-localized-string-list.json",
+          "description": "A legacy plain string list or an ordered set of one-locale maps whose values are complete string lists. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile."
+        },
+        "brand-tone": {
+          "$ref": "/schemas/core/brand-tone.json",
+          "description": "Structured brand voice and messaging guidelines for copy generation. Each field is a legacy plain value or localized values; localized lists are selected as a whole."
+        },
+        "brand-claim-verification-details": {
+          "$ref": "/schemas/core/brand-claim-verification-details.json",
+          "description": "Per-claim-type fields of a brand claim verification result, as an open object. The fields vary by claim_type; the verify_brand_claim task page lists each claim_type's expected fields."
+        },
+        "brand-claim-property": {
+          "$ref": "/schemas/core/brand-claim-property.json",
+          "description": "A brand claim that a digital property (website, app, podcast, and so on) belongs to the brand, with an optional caller-declared use case."
+        },
+        "attested-rights-constraint": {
+          "$ref": "/schemas/core/attested-rights-constraint.json",
+          "description": "A rights constraint that carries its attestation: rights_holder, grant_status, content_digest, and attestation_refs are required."
+        },
+        "css-length": {
+          "$ref": "/schemas/core/css-length.json",
+          "description": "A length written as a number with a CSS unit, such as 48px, 12mm, or 1.5em."
         }
       },
       "requirements": {

@@ -159,13 +159,16 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // (560.44 KiB); bound it at 561 KiB.
 // One definition per account and agent field: 575,653 bytes (562.16 KiB);
 // bound it at 563 KiB.
+// One definition per brand field: 581,252 bytes (567.63 KiB); bound it at
+// 568 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 563,
+  'media-buy': 568,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
-  // definition to 453,051 bytes / 442.43 KiB.
-  creative: 443,
+  // definition to 453,051 bytes / 442.43 KiB. One definition per brand field
+  // brings it to 459,046 bytes / 448.29 KiB.
+  creative: 449,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
@@ -282,7 +285,8 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // bound at 1_460_000.
 // One definition per account and agent field: 1_460_408 bytes; bound at
 // 1_461_000.
-const PARITY_COMPILE_LIMIT = 1_461_000;
+// One definition per brand field: 1_461_636 bytes; bound at 1_462_000.
+const PARITY_COMPILE_LIMIT = 1_462_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

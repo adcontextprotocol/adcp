@@ -1,0 +1,256 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: brand alignment. Brand claim details, property claims, tone, color values, account countries,
+  attested rights constraints, and agent references each have one definition; the corrections below bound them as the published
+  text does, and two loosenings let mirrors take the brand.json forms.
+changes:
+- location: core/color-value.json#
+  keyword: pattern
+  old: ^#[0-9A-Fa-f]{6}$
+  direction: none
+  side: both
+  note: >-
+    core/brand-ref.json#/properties/brand_kit_override/properties/colors primary, secondary, accent -> new:core/color-value.json
+    (loosening: each override slot also takes a non-empty array of hex colors). Masked by the oneOf: its single-color branch
+    states the same pattern, so restoring pattern beside the oneOf changes no payload's verdict.
+- location: core/color-value.json#
+  keyword: type
+  old:
+  - string
+  direction: loosen
+  side: both
+  note: >-
+    core/brand-ref.json#/properties/brand_kit_override/properties/colors primary, secondary, accent -> new:core/color-value.json.
+    Loosening: the override slot takes the brand palette's value, a non-empty array of hex colors or the single hex color
+    (deprecated in 3.3). Restoring type string rejects the array form again.
+- location: core/color-value.json#
+  keyword: oneOf
+  new:
+  - pattern: ^#[0-9A-Fa-f]{6}$
+    type:
+    - string
+  - minItems: 1
+    type:
+    - array
+    items:
+      pattern: ^#[0-9A-Fa-f]{6}$
+      type:
+      - string
+  direction: none
+  side: both
+  note: >-
+    core/brand-ref.json#/properties/brand_kit_override/properties/colors -> new:core/color-value.json. The oneOf restates
+    the hex pattern and adds the array branch; the type line carries the loosening. Removing the oneOf alone leaves the
+    slot unconstrained, which no payload the base accepts or rejects distinguishes from the head in the line's own direction
+    (the base rejects every non-hex value the hybrid would accept).
+- location: core/brand-agent-id.json#
+  keyword: maxLength
+  new: 100
+  direction: tighten
+  side: both
+  note: >-
+    core/brand-agent-id.json takes the bound the published brand.json agent entry sets (brand.json#/definitions/brand_agent_entry/properties/id
+    now references it), and so reaches brand.json brand_agent and rights_agent, core/transformer.json voice_synthesis_ref
+    brand_agent, and core/rights-constraint.json rights_agent (now core/brand-agent.json). Basis (DR-0036, a schema of the
+    major that defines the concept), 3.2.12 brand.json: "id": { "type": "string", "description": "Agent identifier (useful
+    for logging, multi-tenant platforms)", "pattern": "^[a-z0-9_]+$", "maxLength": 100 https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/brand.json#L1186-L1190.
+    Register entries record each reported pointer.
+- location: core/collection-id.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: response
+  note: >-
+    brand.json#/definitions/brand/properties/collections/items/properties/collection_id and brand/get-brand-identity-response.json#/oneOf/0/properties/collections/items/properties/collection_id
+    -> core/collection-id.json (the definition the properties and identifiers change names; this tree carries a verbatim
+    copy). Basis (DR-0036), 3.2.12 core/collection-ref.json: "collection_id": { "type": "string", "minLength": 1, https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/collection-ref.json#L13-L15.
+    Register entry for the brand.json site; the get_brand_identity site is new in 3.3. Hand-checked with Ajv and ajv-formats
+    (repo options): the Brand Canonical Document {id: acme, names: [{en_US: Acme}], collections: [{name: Show, collection_id:
+    ""}]} is valid at the base, invalid at the head, and valid again with minLength removed.
+- location: core/collection-id.json#
+  keyword: maxLength
+  new: 255
+  direction: tighten
+  side: response
+  note: >-
+    The same two collection_id sites -> core/collection-id.json. Basis (DR-0036, a collection ID bound the major published):
+    3.3.0-beta.1 through rc.3 core/canonical-installment-ref.json: "collection_id": { "type": "string", "minLength": 1,
+    "maxLength": 255, "x-entity": "collection" https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json#L19-L24.
+    Register entry for the brand.json site; the get_brand_identity site is new in 3.3.
+- location: core/email-address.json#
+  keyword: maxLength
+  new: 254
+  direction: tighten
+  side: none
+  note: >-
+    brand.json#/definitions/brand/properties/contact (Brand Contact) email -> core/email-address.json. Basis (DR-0036),
+    3.2.12 core/business-entity.json: "email": { "type": "string", "format": "email", "maxLength": 254 https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/business-entity.json#L91-L94.
+    Register entry. Hand-checked with Ajv and ajv-formats (repo options): the Brand Canonical Document {id: acme, names:
+    [{en_US: Acme}], contact: {email: a@<four labels of 63, 63, 63, 57 characters>.com}} (255 characters, format email)
+    is valid at the base, invalid at the head, and valid again with maxLength removed. The tool's length candidates are
+    not email-shaped, so its search finds none.
+- location: core/voice-provider.json#
+  keyword: maxLength
+  new: 128
+  direction: tighten
+  side: response
+  note: >-
+    core/voice-synthesis.json#/properties/provider -> core/voice-provider.json (brand.json and get_brand_identity voice_synthesis).
+    Basis (DR-0036, the same concept published in the major): 3.3.0-beta.1 through rc.3 si-capabilities voice "provider":
+    { "type": "string", "description": "TTS provider (elevenlabs, openai, etc.)", "maxLength": 128 https://github.com/adcontextprotocol/adcp/blob/763c2d759b71ff5b01e68732489ed64762a7590f/dist/schemas/3.3.0-beta.4/sponsored-intelligence/si-capabilities.json#L27-L29.
+    Register entries.
+- location: core/brand-agent-id.json#
+  keyword: pattern
+  new: ^[a-z0-9_]+$
+  direction: tighten
+  side: both
+  note: >-
+    core/rights-constraint.json#/properties/rights_agent -> core/brand-agent.json (id now core/brand-agent-id.json). The
+    rights agent is the brand.json agents[] entry with type rights (3.2.12 core/rights-constraint.json: "bind the credential
+    verification key to exactly one matching agents[] entry with type rights" https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/rights-constraint.json#L33).
+    Basis (DR-0036): the 3.2.12 brand.json agent entry id "pattern": "^[a-z0-9_]+$" https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/brand.json#L1186-L1190.
+    The lint does not see pattern; the quote is here.
+- location: core/https-url.json#
+  keyword: pattern
+  new: ^https://
+  direction: tighten
+  side: both
+  note: >-
+    core/rights-constraint.json#/properties/rights_agent -> core/brand-agent.json (url now core/https-url.json). The rights
+    agent is the brand.json agents[] entry with type rights (3.2.12 core/rights-constraint.json L33, and L247: "attestation_ref.subject.namespace
+    == rights_agent.url (canonical URL)" https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/rights-constraint.json#L247).
+    Basis (DR-0036): the 3.2.12 brand.json agent entry url "format": "uri", "pattern": "^https://" https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/brand.json#L1182-L1184.
+    The lint does not see pattern; the quote is here.
+- location: brand/get-brand-identity-response.json#/oneOf/0/properties/colors
+  keyword: additionalProperties
+  new:
+    oneOf:
+    - minItems: 1
+      type:
+      - array
+      items:
+        pattern: ^#[0-9A-Fa-f]{6}$
+        type:
+        - string
+    - pattern: ^#[0-9A-Fa-f]{6}$
+      type:
+      - string
+  direction: tighten
+  side: response
+  note: >-
+    get_brand_identity colors take the brand.json palette's open-role rule: every extra role is a color value (core/color-value.json,
+    the negotiated-wire form that keeps x-removed-in 4.0.0). Basis (DR-0036, prose plus the schema that defines the concept),
+    3.2.12 get-brand-identity-response.json: "Shape matches brand.json colors definition." https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/brand/get-brand-identity-response.json#L145,
+    and 3.2.12 brand.json colors: "additionalProperties": { "$ref": "#/definitions/color_value" } https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/brand.json#L414-L416.
+- location: brand/get-brand-identity-response.json#/oneOf/0/properties/colors
+  keyword: properties
+  new:
+    oneOf:
+    - minItems: 1
+      type:
+      - array
+      items:
+        pattern: ^#[0-9A-Fa-f]{6}$
+        type:
+        - string
+    - pattern: ^#[0-9A-Fa-f]{6}$
+      type:
+      - string
+  direction: none
+  side: response
+  note: >-
+    get_brand_identity colors declare the brand.json palette roles heading, body, label, border, divider, surface_1, and
+    surface_2, each a core/color-value.json, as the published text describes the palette (3.2.12 get-brand-identity-response.json:
+    "Shape matches brand.json colors definition." https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/brand/get-brand-identity-response.json#L145;
+    3.2.12 brand.json colors: "Beyond the core five roles, brands can provide additional color roles for finer granularity
+    — heading, body, label, border, divider, surface_1, surface_2, etc." https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/brand.json#L375).
+    Masked by the additionalProperties line at the same node: every undeclared role already takes core/color-value.json,
+    so removing the seven declarations changes no payload's verdict (hand-checked: colors {heading: red} is valid at the
+    base and invalid at the head both with and without the declarations).
+- location: core/brand-localized-string-list.json#
+  keyword: type
+  old:
+  - array
+  direction: none
+  side: response
+  note: >-
+    brand/get-brand-identity-response.json#/oneOf/0/properties/tone -> new:core/brand-tone.json (hoisted from brand.json#/definitions/brand/properties/tone/oneOf/1);
+    attributes, dos, donts -> new:core/brand-localized-string-list.json. Masked by the oneOf: both branches state type array,
+    so restoring type array changes no payload's verdict.
+- location: core/brand-localized-string-list.json#
+  keyword: oneOf
+  new:
+  - type:
+    - array
+    items:
+      type:
+      - string
+  - minItems: 1
+    type:
+    - array
+    items:
+      maxProperties: 1
+      minProperties: 1
+      type:
+      - object
+      additionalProperties:
+        minItems: 1
+        type:
+        - array
+        items:
+          $at: core/brand-localized-string-list-entry.json#/additionalProperties/items
+  direction: none
+  side: response
+  note: >-
+    get_brand_identity tone attributes, dos, donts -> new:core/brand-localized-string-list.json. The oneOf keeps the plain
+    string list as its first branch, so every list the base accepts stays valid (an empty list matches only the first branch);
+    the items line carries the loosening. Removing the oneOf alone gives no payload a base verdict in the line's direction.
+- location: core/brand-localized-string-list.json#
+  keyword: items
+  old:
+    type:
+    - string
+  direction: loosen
+  side: response
+  note: >-
+    get_brand_identity tone attributes, dos, donts -> new:core/brand-localized-string-list.json, the brand.json tone lists.
+    Loosening: the response mirror also takes the localized form brand.json publishes (one-locale maps of complete lists).
+    Restoring items type string rejects it again. Hand-checked with Ajv and ajv-formats (repo options): get_brand_identity
+    success {status: completed, brand_id, house, names, tone: {attributes: [{en_US: [warm, bold]}]}} is invalid at the base,
+    valid at the head, and invalid again with items {type: string} restored. The tool's type candidates are not one-locale
+    maps, so its search finds none.
+- location: core/brand-localized-scalar.json#
+  keyword: type
+  old:
+  - string
+  direction: loosen
+  side: response
+  note: >-
+    get_brand_identity tone voice -> core/brand-localized-scalar.json through new:core/brand-tone.json, the brand.json tone
+    voice. Loosening: the response mirror also takes localized voice values. Restoring type string rejects them again. Hand-checked
+    with Ajv and ajv-formats (repo options): get_brand_identity success {status: completed, brand_id, house, names, tone:
+    {voice: [{en_US: warm}]}} is invalid at the base, valid at the head, and invalid again with type string restored. The
+    tool's type candidates are not one-locale maps, so its search finds none.
+- location: core/brand-localized-scalar.json#
+  keyword: oneOf
+  new:
+  - type:
+    - string
+  - minItems: 1
+    type:
+    - array
+    items:
+      maxProperties: 1
+      minProperties: 1
+      type:
+      - object
+      additionalProperties:
+        minLength: 1
+        type:
+        - string
+  direction: none
+  side: response
+  note: >-
+    get_brand_identity tone voice -> core/brand-localized-scalar.json. The oneOf keeps the plain string as its first branch,
+    so every base value stays valid; the type line carries the loosening. Removing the oneOf alone gives no payload a base
+    verdict in the line's direction.

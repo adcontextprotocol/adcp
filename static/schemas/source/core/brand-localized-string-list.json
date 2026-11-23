@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-localized-string-list.json",
+  "title": "Brand Localized String List",
+  "description": "A legacy plain string list or an ordered set of one-locale maps whose values are complete string lists. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile.",
+  "oneOf": [
+    {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/brand-localized-string-list-entry.json" },
+      "minItems": 1
+    }
+  ]
+}

@@ -2,11 +2,6 @@
   "$comment": "Reviewed exceptions for scripts/lint-language-tag-refs.cjs. Legacy language boundaries are migration debt; name collisions are structural fields selected by the deliberately broad matcher.",
   "entries": [
     {
-      "path": "brand.json#/definitions/localized_string_list_entry",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Legacy localized list maps use underscore-separated keys and the brand.json bridge contract."
-    },
-    {
       "path": "content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/language",
       "disposition": "legacy-language-boundary",
       "rationale": "Existing content-standards artifact language values predate the canonical primitive."

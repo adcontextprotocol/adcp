@@ -3002,6 +3002,114 @@
         "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\","
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative ID in core/creative-representation-set.json. A creative ID, which core/creative-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/collections/items/properties/collection_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on collection_id in core/collection-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/collections/items/properties/collection_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a collection ID's length; 3.3.0-beta.1 through rc.3 published this bound on collection_id in core/canonical-installment-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/contact/properties/email",
+      "bound": "maxLength",
+      "value": 254,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"email\": { \"type\": \"string\", \"format\": \"email\", \"maxLength\": 254"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on email in core/business-entity.json. An email address, which core/email-address.json bounds at 254 characters (RFC 5321)."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/voice_synthesis/properties/provider",
+      "bound": "maxLength",
+      "value": 128,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/sponsored-intelligence/si-capabilities.json",
+        "quote": "\"provider\": { \"type\": \"string\", \"description\": \"TTS provider (elevenlabs, openai, etc.)\", \"maxLength\": 128"
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a TTS provider; 3.3.0-beta.1 through rc.3 published this bound on the si-capabilities voice provider. A text-to-speech provider, which core/voice-provider.json bounds."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/voice_synthesis/properties/provider",
+      "bound": "maxLength",
+      "value": 128,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/sponsored-intelligence/si-capabilities.json",
+        "quote": "\"provider\": { \"type\": \"string\", \"description\": \"TTS provider (elevenlabs, openai, etc.)\", \"maxLength\": 128"
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a TTS provider; 3.3.0-beta.1 through rc.3 published this bound on the si-capabilities voice provider. A text-to-speech provider, which core/voice-provider.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/rights_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "core/rights-constraint.json",
+      "pointer": "/properties/rights_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "core/transformer.json",
+      "pointer": "/properties/voice_synthesis_ref/items/properties/brand_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
     }
   ]
 }
