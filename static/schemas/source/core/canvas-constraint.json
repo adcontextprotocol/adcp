@@ -17,9 +17,16 @@
       "properties": {
         "x": { "type": "number", "minimum": 0 },
         "y": { "type": "number", "minimum": 0 },
-        "width": { "type": "number", "exclusiveMinimum": 0 },
-        "height": { "type": "number", "exclusiveMinimum": 0 },
-        "unit": { "type": "string", "enum": ["px", "percent"], "default": "px" }
+        "width": {
+          "$ref": "/schemas/core/dimension-length.json"
+        },
+        "height": {
+          "$ref": "/schemas/core/dimension-length.json"
+        },
+        "unit": {
+          "default": "px",
+          "$ref": "/schemas/enums/canvas-region-unit.json"
+        }
       },
       "required": ["x", "y", "width", "height"],
       "allOf": [

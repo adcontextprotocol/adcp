@@ -17,13 +17,11 @@
       "description": "URL to the image asset"
     },
     "width": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Width in pixels"
     },
     "height": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Height in pixels"
     },
     "file_size_bytes": {

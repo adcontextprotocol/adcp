@@ -81,7 +81,9 @@
                   "$ref": "/schemas/core/canvas-breakpoint-id.json",
                   "description": "Stable identifier used by `state_canvases[].breakpoint_id`."
                 },
-                "width": { "type": "integer", "minimum": 1 },
+                "width": {
+                  "$ref": "/schemas/core/pixel-length.json"
+                },
                 "width_range": {
                   "type": "array",
                   "items": { "type": "integer", "minimum": 1 },
@@ -94,7 +96,9 @@
                   "enum": ["full_bleed", "gutter_residual"],
                   "description": "Fluid width classes. `full_bleed`: edge-to-edge viewport width (IAB adhesion, topscroll). `gutter_residual`: the margin remaining beside the page content column (desktop skins). Fluid breakpoints cannot be targeted by `rendered_canvases` supply — semantic validation rejects that pairing."
                 },
-                "height": { "type": "integer", "minimum": 1 },
+                "height": {
+                  "$ref": "/schemas/core/pixel-length.json"
+                },
                 "height_range": {
                   "type": "array",
                   "items": { "type": "integer", "minimum": 1 },

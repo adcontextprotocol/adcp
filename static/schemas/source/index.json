@@ -2688,6 +2688,10 @@
           "$ref": "/schemas/core/diagnostic-value-labels.json",
           "description": "Human-readable diagnostic labels keyed by values present in the value list; extra keys are a conformance error. Labels are non-authoritative and must not be used to resolve or apply targeting."
         },
+        "dimension-length": {
+          "$ref": "/schemas/core/dimension-length.json",
+          "description": "A positive length along one axis, such as a width or a height. It is measured in the unit the enclosing object declares, pixels when it declares none."
+        },
         "distribution-identifier": {
           "$ref": "/schemas/core/distribution-identifier.json",
           "description": "An identifier for a distribution: a type and a value."
@@ -2920,6 +2924,10 @@
           "$ref": "/schemas/core/paged-delivery-breakdown-controls.json",
           "description": "Controls for a delivery breakdown that pages: row limit, sort, and a page cursor."
         },
+        "pixel-length": {
+          "$ref": "/schemas/core/pixel-length.json",
+          "description": "A whole number of pixels along one axis, such as a width or a height. The smallest length is one pixel."
+        },
         "pixel-size": {
           "$ref": "/schemas/core/pixel-size.json",
           "description": "A width and height in pixels."
@@ -2995,6 +3003,10 @@
         "reporting-source-provider": {
           "$ref": "/schemas/core/reporting-source-provider.json",
           "description": "The provider of a report source, identified by domain."
+        },
+        "responsive-flag": {
+          "$ref": "/schemas/core/responsive-flag.json",
+          "description": "Whether a rendered piece's size along one axis is responsive (fluid) rather than fixed."
         },
         "rights-availability-summary": {
           "$ref": "/schemas/core/rights-availability-summary.json",
@@ -3425,6 +3437,10 @@
         "outcome-target-cost-strength": {
           "$ref": "/schemas/enums/outcome-target-cost-strength.json",
           "description": "Strength of an outcome_target cost_per (cap or target), identical to BiddingPolicy.cost_per strength"
+        },
+        "overlay-bounds-unit": {
+          "$ref": "/schemas/enums/overlay-bounds-unit.json",
+          "description": "Unit in which overlay bounds are measured."
         },
         "frequency-cap-scope": {
           "$ref": "/schemas/enums/frequency-cap-scope.json",
@@ -4366,6 +4382,10 @@
         "canonicalization-contract-version": {
           "$ref": "/schemas/enums/canonicalization-contract-version.json",
           "description": "Version of a reporting canonicalization contract."
+        },
+        "canvas-region-unit": {
+          "$ref": "/schemas/enums/canvas-region-unit.json",
+          "description": "Unit in which a canvas constraint region is measured."
         },
         "host-receipt-status": {
           "$ref": "/schemas/enums/host-receipt-status.json",

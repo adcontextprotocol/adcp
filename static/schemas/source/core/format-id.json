@@ -18,13 +18,11 @@
       "x-max-length-4.0": 128
     },
     "width": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
     },
     "height": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
     },
     "duration_ms": {

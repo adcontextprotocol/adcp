@@ -3230,6 +3230,126 @@
         "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\" }, \"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
       },
       "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative and package IDs of a sync_creatives assign operation, the package-creative assignment this webhook reports on. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "core/placement.json",
+      "pointer": "/properties/placement_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-placement.json",
+        "quote": "\"placement_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"placement\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on placement_id in core/canonical-placement.json, the compact form of the same product placement. A placement ID, which core/placement-id.json keeps non-empty."
+    },
+    {
+      "file": "core/placement.json",
+      "pointer": "/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-placement.json",
+        "quote": "\"name\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on name in core/canonical-placement.json, the compact form of the same product placement. A placement name, which core/placement-name.json keeps non-empty."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/0/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/0/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/1/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/1/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/2/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/2/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "registries/v1-canonical-mapping.json",
+      "pointer": "/properties/mappings/items/properties/v1_pattern/oneOf/1/properties/structural/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a structural pattern matches against. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "registries/v1-canonical-mapping.json",
+      "pointer": "/properties/mappings/items/properties/v1_pattern/oneOf/1/properties/structural/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a structural pattern matches against. A dimension length, which core/dimension-length.json bounds."
     }
   ]
 }

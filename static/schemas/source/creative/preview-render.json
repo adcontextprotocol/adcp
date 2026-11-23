@@ -6,6 +6,25 @@
   "discriminator": {
     "propertyName": "output_format"
   },
+  "definitions": {
+    "dimensions": {
+      "title": "Preview Render Dimensions",
+      "type": "object",
+      "description": "Width and height of a rendered preview piece.",
+      "properties": {
+        "width": {
+          "$ref": "/schemas/core/dimension-length.json"
+        },
+        "height": {
+          "$ref": "/schemas/core/dimension-length.json"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ]
+    }
+  },
   "oneOf": [
     {
       "type": "object",
@@ -31,22 +50,8 @@
           "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
         },
         "dimensions": {
-          "type": "object",
-          "description": "Dimensions for this rendered piece",
-          "properties": {
-            "width": {
-              "type": "number",
-              "minimum": 0
-            },
-            "height": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": [
-            "width",
-            "height"
-          ]
+          "$ref": "#/definitions/dimensions",
+          "description": "Dimensions for this rendered piece"
         },
         "embedding": {
           "$ref": "/schemas/core/preview-embedding-metadata.json",
@@ -88,22 +93,8 @@
           "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
         },
         "dimensions": {
-          "type": "object",
-          "description": "Dimensions for this rendered piece",
-          "properties": {
-            "width": {
-              "type": "number",
-              "minimum": 0
-            },
-            "height": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": [
-            "width",
-            "height"
-          ]
+          "$ref": "#/definitions/dimensions",
+          "description": "Dimensions for this rendered piece"
         },
         "embedding": {
           "$ref": "/schemas/core/preview-embedding-metadata.json",
@@ -150,22 +141,8 @@
           "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
         },
         "dimensions": {
-          "type": "object",
-          "description": "Dimensions for this rendered piece",
-          "properties": {
-            "width": {
-              "type": "number",
-              "minimum": 0
-            },
-            "height": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": [
-            "width",
-            "height"
-          ]
+          "$ref": "#/definitions/dimensions",
+          "description": "Dimensions for this rendered piece"
         },
         "embedding": {
           "$ref": "/schemas/core/preview-embedding-metadata.json",

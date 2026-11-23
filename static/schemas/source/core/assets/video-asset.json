@@ -18,13 +18,11 @@
       "description": "URL to the video asset"
     },
     "width": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Width in pixels — the video file's intrinsic native width. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no width; see the `vast` asset.)"
     },
     "height": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Height in pixels — the video file's intrinsic native height. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no height; see the `vast` asset.)"
     },
     "duration_ms": {

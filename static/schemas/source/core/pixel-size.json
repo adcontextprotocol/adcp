@@ -10,12 +10,10 @@
   ],
   "properties": {
     "width": {
-      "type": "integer",
-      "minimum": 1
+      "$ref": "/schemas/core/pixel-length.json"
     },
     "height": {
-      "type": "integer",
-      "minimum": 1
+      "$ref": "/schemas/core/pixel-length.json"
     }
   },
   "additionalProperties": true,

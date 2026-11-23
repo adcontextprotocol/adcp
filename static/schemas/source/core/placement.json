@@ -55,7 +55,7 @@
       "description": "Placement authority discriminator. `publisher_ref` is publisher-catalog identity; `seller_inline` is sales-agent-authored identity."
     },
     "placement_id": {
-      "type": "string",
+      "$ref": "/schemas/core/placement-id.json",
       "description": "Placement identifier. For publisher_ref it is scoped by publisher_domain and resolves in adagents.json. For seller_inline it is scoped by seller_agent, or by the enclosing seller and product for legacy rows.",
       "x-entity": "placement"
     },
@@ -68,7 +68,7 @@
       "description": "Sales agent that defines a seller_inline placement. Together with placement_id this is its self-contained identity. New 3.2 sellers SHOULD populate it; legacy product-context inline placements may omit it. Not used for publisher_ref."
     },
     "name": {
-      "type": "string",
+      "$ref": "/schemas/core/placement-name.json",
       "description": "Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar'). Required for `kind: \"seller_inline\"`. May be omitted for publisher-referenced placements because buyers resolve the name from the publisher declaration identified by `{publisher_domain, placement_id}`."
     },
     "description": {

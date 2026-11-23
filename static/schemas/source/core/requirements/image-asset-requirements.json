@@ -6,23 +6,19 @@
   "type": "object",
   "properties": {
     "min_width": {
-      "type": "number",
-      "exclusiveMinimum": 0,
+      "$ref": "/schemas/core/dimension-length.json",
       "description": "Minimum width. Interpretation depends on unit (default: pixels). For exact dimensions, set min_width = max_width."
     },
     "max_width": {
-      "type": "number",
-      "exclusiveMinimum": 0,
+      "$ref": "/schemas/core/dimension-length.json",
       "description": "Maximum width. Interpretation depends on unit (default: pixels). For exact dimensions, set min_width = max_width."
     },
     "min_height": {
-      "type": "number",
-      "exclusiveMinimum": 0,
+      "$ref": "/schemas/core/dimension-length.json",
       "description": "Minimum height. Interpretation depends on unit (default: pixels). For exact dimensions, set min_height = max_height."
     },
     "max_height": {
-      "type": "number",
-      "exclusiveMinimum": 0,
+      "$ref": "/schemas/core/dimension-length.json",
       "description": "Maximum height. Interpretation depends on unit (default: pixels). For exact dimensions, set min_height = max_height."
     },
     "pixel_ratios": {
