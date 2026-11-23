@@ -13,3 +13,5 @@ The input-required payloads of `sync_creatives`, `sync_catalogs`, `update_media_
 Submitted and working payloads have one definition each. `core/media-buy-submitted.json` and the `sync_audiences` submitted branch compose `core/task-submitted-response.json`; the `get_products` and `get_signals` submitted documents compose `core/compact-task-submitted.json`; and the `sync_creatives` and `sync_catalogs` working payloads compose `core/compact-task-working.json`. Each keeps its own fields and guards. No payload's validity changes.
 
 `success` on the `update_content_standards` and `provide_performance_feedback` responses is deprecated (`x-deprecated-in: 3.3.0`, `x-removed-in: 4.0.0`): the envelope `status` is the single authoritative response state. Senders keep sending it through 3.x.
+
+Each request-signing error code's `enumMetadata` names the header that carries it (`http_header`: `WWW-Authenticate`, scheme `Signature`, parameter `error`), and the compliance catalog lists every request-signing code with that header, its recovery, and its suggested action, generated from `enums/request-signing-error-code.json`.

@@ -67,35 +67,151 @@
     "request_signature_jwks_untrusted": "The JWKS URL or resolved network destination failed SSRF and trust-boundary validation. Recovery: terminal (the signer operator must publish a trusted HTTPS JWKS location)."
   },
   "enumMetadata": {
-    "$comment": "Normative recovery classification for request-signing transport errors. SDKs MUST consume this block instead of parsing enumDescriptions or inferring from code names. correctable means the signer can change the request or credential before retrying; transient means bounded automatic retry with backoff; terminal means stop autonomous retries and surface to an operator.",
-    "request_signature_brand_json_url_missing": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish a valid HTTPS identity.brand_json_url; do not auto-retry" },
-    "request_signature_capabilities_unreachable": { "recovery": "transient", "suggestion": "retry once after 1–5 seconds of jittered backoff; do not negative-cache for more than 60 seconds" },
-    "request_signature_brand_json_unreachable": { "recovery": "transient", "suggestion": "retry once after 1–5 seconds of jittered backoff; do not negative-cache for more than 60 seconds" },
-    "request_signature_brand_json_malformed": { "recovery": "terminal", "suggestion": "surface to the signer operator to repair strict JSON parsing or body-size failures; do not auto-retry" },
-    "request_signature_brand_origin_mismatch": { "recovery": "terminal", "suggestion": "surface to the signer operator to correct the Agent origin or authorized_operators delegation" },
-    "request_signature_agent_not_in_brand_json": { "recovery": "terminal", "suggestion": "surface to the signer operator to add or correct the canonical Agent URL in brand.json" },
-    "request_signature_brand_json_ambiguous": { "recovery": "terminal", "suggestion": "surface to the signer operator to deduplicate canonical Agent URL entries in brand.json" },
-    "request_signature_key_origin_mismatch": { "recovery": "terminal", "suggestion": "surface to the signer operator to align identity.key_origins with the resolved JWKS origin" },
-    "request_signature_key_origin_missing": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish the missing identity.key_origins purpose" },
-    "request_signature_required": { "recovery": "correctable", "suggestion": "sign the request with an accepted key or use an independently valid advertised fallback credential" },
-    "request_target_uri_malformed": { "recovery": "correctable", "suggestion": "construct a canonical target URI whose authority matches the signed request authority, then re-sign" },
-    "request_signature_header_malformed": { "recovery": "correctable", "suggestion": "rebuild Signature and Signature-Input as one valid RFC 9421/RFC 8941 pair" },
-    "request_signature_params_incomplete": { "recovery": "correctable", "suggestion": "include created, expires, nonce, keyid, alg, and tag, then re-sign" },
-    "request_signature_tag_invalid": { "recovery": "correctable", "suggestion": "use the negotiated adcp/request-signing/v1 tag and re-sign" },
-    "request_signature_alg_not_allowed": { "recovery": "correctable", "suggestion": "use ed25519 or ecdsa-p256-sha256 with matching JWK metadata" },
-    "request_signature_window_invalid": { "recovery": "correctable", "suggestion": "generate a fresh signature with valid created and expires parameters and at most a five-minute window" },
-    "request_signature_components_incomplete": { "recovery": "correctable", "suggestion": "cover every component required by the negotiated profile, including content-digest for a 3.2 body" },
-    "request_signature_components_unexpected": { "recovery": "correctable", "suggestion": "follow the negotiated legacy component policy or select the 3.2 request-signing profile" },
-    "request_signature_key_unknown": { "recovery": "correctable", "suggestion": "sign with a currently published keyid or publish the intended key before retrying" },
-    "request_signature_key_purpose_invalid": { "recovery": "correctable", "suggestion": "select or publish a JWK with valid use, key_ops, adcp_use, algorithm, key type, and curve metadata" },
-    "request_signature_key_revoked": { "recovery": "correctable", "suggestion": "rotate to a non-revoked published request-signing key; never retry with the revoked key" },
-    "request_signature_revocation_stale": { "recovery": "terminal", "suggestion": "stop autonomous retries and surface to the verifier operator until revocation state is refreshed" },
-    "request_signature_invalid": { "recovery": "correctable", "suggestion": "recompute the canonical signature base and sign with the private key matching the published JWK" },
-    "request_signature_digest_mismatch": { "recovery": "correctable", "suggestion": "recompute content-digest over the exact transmitted body bytes and re-sign" },
-    "request_body_malformed": { "recovery": "correctable", "suggestion": "emit strict unambiguous JSON without duplicate keys, with exactly one A2A DataPart carrying a skill, and sign the body again if the request is signed" },
-    "request_signature_replayed": { "recovery": "correctable", "suggestion": "reconcile the prior attempt and use a fresh nonce only when a new request is required" },
-    "request_signature_rate_abuse": { "recovery": "terminal", "suggestion": "stop automated requests and alert operators; investigate a compromised key or abusive signer" },
-    "request_signature_jwks_unavailable": { "recovery": "transient", "suggestion": "retry with bounded exponential backoff" },
-    "request_signature_jwks_untrusted": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish a trusted HTTPS JWKS location that passes SSRF validation" }
+    "$comment": "Normative recovery classification for request-signing transport errors. SDKs MUST consume this block instead of parsing enumDescriptions or inferring from code names. correctable means the signer can change the request or credential before retrying; transient means bounded automatic retry with backoff; terminal means stop autonomous retries and surface to an operator. Each entry also carries http_header, the header that carries the code: { name, scheme, param }, here WWW-Authenticate with scheme Signature and parameter error, as in WWW-Authenticate: Signature error=\"<code>\".",
+    "request_signature_brand_json_url_missing": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish a valid HTTPS identity.brand_json_url; do not auto-retry", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_capabilities_unreachable": { "recovery": "transient", "suggestion": "retry once after 1–5 seconds of jittered backoff; do not negative-cache for more than 60 seconds", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_brand_json_unreachable": { "recovery": "transient", "suggestion": "retry once after 1–5 seconds of jittered backoff; do not negative-cache for more than 60 seconds", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_brand_json_malformed": { "recovery": "terminal", "suggestion": "surface to the signer operator to repair strict JSON parsing or body-size failures; do not auto-retry", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_brand_origin_mismatch": { "recovery": "terminal", "suggestion": "surface to the signer operator to correct the Agent origin or authorized_operators delegation", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_agent_not_in_brand_json": { "recovery": "terminal", "suggestion": "surface to the signer operator to add or correct the canonical Agent URL in brand.json", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_brand_json_ambiguous": { "recovery": "terminal", "suggestion": "surface to the signer operator to deduplicate canonical Agent URL entries in brand.json", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_key_origin_mismatch": { "recovery": "terminal", "suggestion": "surface to the signer operator to align identity.key_origins with the resolved JWKS origin", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_key_origin_missing": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish the missing identity.key_origins purpose", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_required": { "recovery": "correctable", "suggestion": "sign the request with an accepted key or use an independently valid advertised fallback credential", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_target_uri_malformed": { "recovery": "correctable", "suggestion": "construct a canonical target URI whose authority matches the signed request authority, then re-sign", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_header_malformed": { "recovery": "correctable", "suggestion": "rebuild Signature and Signature-Input as one valid RFC 9421/RFC 8941 pair", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_params_incomplete": { "recovery": "correctable", "suggestion": "include created, expires, nonce, keyid, alg, and tag, then re-sign", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_tag_invalid": { "recovery": "correctable", "suggestion": "use the negotiated adcp/request-signing/v1 tag and re-sign", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_alg_not_allowed": { "recovery": "correctable", "suggestion": "use ed25519 or ecdsa-p256-sha256 with matching JWK metadata", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_window_invalid": { "recovery": "correctable", "suggestion": "generate a fresh signature with valid created and expires parameters and at most a five-minute window", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_components_incomplete": { "recovery": "correctable", "suggestion": "cover every component required by the negotiated profile, including content-digest for a 3.2 body", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_components_unexpected": { "recovery": "correctable", "suggestion": "follow the negotiated legacy component policy or select the 3.2 request-signing profile", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_key_unknown": { "recovery": "correctable", "suggestion": "sign with a currently published keyid or publish the intended key before retrying", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_key_purpose_invalid": { "recovery": "correctable", "suggestion": "select or publish a JWK with valid use, key_ops, adcp_use, algorithm, key type, and curve metadata", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_key_revoked": { "recovery": "correctable", "suggestion": "rotate to a non-revoked published request-signing key; never retry with the revoked key", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_revocation_stale": { "recovery": "terminal", "suggestion": "stop autonomous retries and surface to the verifier operator until revocation state is refreshed", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_invalid": { "recovery": "correctable", "suggestion": "recompute the canonical signature base and sign with the private key matching the published JWK", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_digest_mismatch": { "recovery": "correctable", "suggestion": "recompute content-digest over the exact transmitted body bytes and re-sign", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_body_malformed": { "recovery": "correctable", "suggestion": "emit strict unambiguous JSON without duplicate keys, with exactly one A2A DataPart carrying a skill, and sign the body again if the request is signed", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_replayed": { "recovery": "correctable", "suggestion": "reconcile the prior attempt and use a fresh nonce only when a new request is required", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_rate_abuse": { "recovery": "terminal", "suggestion": "stop automated requests and alert operators; investigate a compromised key or abusive signer", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_jwks_unavailable": { "recovery": "transient", "suggestion": "retry with bounded exponential backoff", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } },
+    "request_signature_jwks_untrusted": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish a trusted HTTPS JWKS location that passes SSRF validation", "http_header": {
+      "name": "WWW-Authenticate",
+      "scheme": "Signature",
+      "param": "error"
+    } }
   }
 }
