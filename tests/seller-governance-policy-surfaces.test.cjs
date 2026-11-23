@@ -480,11 +480,12 @@ test('governance-agent acceptance is an any-of matcher with a typed rejection', 
   assert.ok(catalogSchema['x-adcp-validation'].unique_across.some(rule => rule.field === 'profile_id'));
 
   const productFields = readSchema('/schemas/media-buy/product-fields.json');
-  assert.ok(productFields.items.enum.includes('acceptance_policy_profile_ids'));
+  assert.equal(productFields.items.$ref, '/schemas/media-buy/product-field.json');
+  assert.ok(readSchema('/schemas/media-buy/product-field.json').enum.includes('acceptance_policy_profile_ids'));
   const legacyProductRequest = readSchema('/schemas/media-buy/get-products-request.json');
   assert.equal(
     legacyProductRequest.properties.fields.items.anyOf[0].$ref,
-    '/schemas/media-buy/product-fields.json#/items',
+    '/schemas/media-buy/product-field.json',
   );
   const validateLegacyProductRequest = await validator('/schemas/media-buy/get-products-request.json');
   assert.equal(validateLegacyProductRequest({

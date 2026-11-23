@@ -441,23 +441,8 @@ schema_removals_not_checked:
       VERSION_UNSUPPORTED error, which the suite does not provoke yet.
       Trusted Match requests are outside seller runs.
     sites:
-      - "account/list-account-changes-request.json#/properties/adcp_major_version"
-      - "account/request-account-request.json#/properties/adcp_major_version"
-      - "core/version-envelope.json#/properties/adcp_major_version"
+      - "core/version-envelope-adcp-major-version.json#"
       - "error-details/version-unsupported.json#/properties/supported_majors"
-      - "media-buy/accept-proposal-request.json#/properties/adcp_major_version"
-      - "media-buy/buy-products-request.json#/properties/adcp_major_version"
-      - "media-buy/control-media-buy-request.json#/properties/adcp_major_version"
-      - "media-buy/decline-proposals-request.json#/properties/adcp_major_version"
-      - "media-buy/get-media-buy-issue-request.json#/properties/adcp_major_version"
-      - "media-buy/list-collections-request.json#/properties/adcp_major_version"
-      - "media-buy/list-products-request.json#/properties/adcp_major_version"
-      - "media-buy/list-proposals-request.json#/properties/adcp_major_version"
-      - "media-buy/refine-proposals-request.json#/properties/adcp_major_version"
-      - "media-buy/report-media-buy-issue-request.json#/properties/adcp_major_version"
-      - "media-buy/request-proposals-request.json#/properties/adcp_major_version"
-      - "media-buy/sync-reporting-receipts-request.json#/properties/adcp_major_version"
-      - "media-buy/sync-reporting-status-request.json#/properties/adcp_major_version"
       - "trusted-match/context-match-request.json#/properties/adcp_major_version"
       - "trusted-match/identity-match-request.json#/properties/adcp_major_version"
 

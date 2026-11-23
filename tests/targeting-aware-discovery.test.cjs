@@ -2272,8 +2272,12 @@ test("canonical products carry targeting resolution and reporting offerings with
   const fields = JSON.parse(
     fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "product-fields.json"), "utf8")
   );
-  assert.ok(fields.items.enum.includes("targeting_resolution"));
-  assert.ok(!fields.items.enum.includes("is_custom"));
+  assert.equal(fields.items.$ref, "/schemas/media-buy/product-field.json");
+  const field = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "product-field.json"), "utf8")
+  );
+  assert.ok(field.enum.includes("targeting_resolution"));
+  assert.ok(!field.enum.includes("is_custom"));
 });
 
 test("named-place targeting supports known-now and declared-later discovery", async () => {

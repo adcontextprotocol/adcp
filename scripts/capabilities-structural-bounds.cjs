@@ -180,8 +180,17 @@ function resolveRef(ref, currentFile) {
  * A site that references a named scalar document, overlaid with the annotations
  * it keeps, such as `x-max-length-4.0`. The site is the position, so the bound
  * it declares counts, exactly as it did when the constraint was stated inline.
+ * A one-member `allOf` of a bare `$ref` is the same site: a document root that
+ * names a field's schema composes it that way, because draft-07 ignores the
+ * siblings of a `$ref`.
  */
 function overlayScalarRef(node, file) {
+  if (node && !node.$ref && Array.isArray(node.allOf) && node.allOf.length === 1
+    && node.allOf[0] && typeof node.allOf[0].$ref === 'string' && Object.keys(node.allOf[0]).length === 1) {
+    const { allOf: [only], ...rest } = node;
+    const overlaid = overlayScalarRef({ ...rest, $ref: only.$ref }, file);
+    if (!overlaid.$ref) return overlaid;
+  }
   if (!node || !node.$ref) return node;
   const { node: target } = resolveRef(node.$ref, file);
   if (!target || !['string', 'number', 'integer'].includes(target.type) || target.properties) return node;

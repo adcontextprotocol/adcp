@@ -49,8 +49,11 @@
       }
     },
     "geo_metros": {
-      "$ref": "/schemas/core/targeting-geo-metros.json",
-      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities."
+      "title": "Targeting Geo Metros",
+      "type": "array",
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": { "$ref": "/schemas/core/geo-metro.json" },
+      "minItems": 1
     },
     "geo_metros_exclude": {
       "$ref": "/schemas/core/targeting-geo-metros.json",

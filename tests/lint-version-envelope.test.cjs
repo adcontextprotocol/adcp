@@ -100,8 +100,17 @@ test('release-precision version grammar stays aligned across inlined negotiation
     fs.readFileSync(path.join(SOURCE_DIR, relativePath), 'utf8'),
   );
   // Each surface declares its own property so it can stay closed, and the
-  // property references the one grammar document.
-  const patternOf = (node) => (node.$ref ? readJson(node.$ref.replace('/schemas/', '')) : node).pattern;
+  // property references the one grammar document, directly or through the
+  // envelope's field schema (core/version-envelope-adcp-version.json).
+  const patternOf = (node) => {
+    let current = node;
+    while (current.pattern === undefined) {
+      if (current.$ref) current = readJson(current.$ref.replace('/schemas/', ''));
+      else if (Array.isArray(current.allOf) && current.allOf.length === 1) current = current.allOf[0];
+      else break;
+    }
+    return current.pattern;
+  };
   const canonicalPattern = patternOf(readJson('core/version-envelope.json').properties.adcp_version);
   assert.ok(canonicalPattern, 'the version envelope states a release-precision grammar');
 

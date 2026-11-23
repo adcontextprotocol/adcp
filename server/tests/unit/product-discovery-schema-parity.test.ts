@@ -87,10 +87,11 @@ describe('product discovery MCP schema parity', () => {
     const brand = resolveLocalRef(list, list.properties.brand);
     expect(brand).toMatchObject({ required: ['domain'] });
     expect(openness(brand)).toBe(true);
-    expect(resolveLocalRef(list, list.properties.fields)).toMatchObject({
-      minItems: 1,
-      uniqueItems: true,
-      items: { enum: expect.arrayContaining(['product_id', 'format_options', 'pricing_options']) },
+    const fields = resolveLocalRef(list, list.properties.fields);
+    expect(fields).toMatchObject({ minItems: 1, uniqueItems: true });
+    // The field names are media-buy/product-field.json, bundled as its own definition.
+    expect(resolveLocalRef(list, fields.items)).toMatchObject({
+      enum: expect.arrayContaining(['product_id', 'format_options', 'pricing_options']),
     });
     expect(openness(resolveLocalRef(list, list.properties.criteria)))
       .toBe(openness(sourceSchema('product-discovery-criteria')));
@@ -174,7 +175,8 @@ describe('product discovery MCP schema parity', () => {
     expect(criteria.properties.targeting_overlay).toBeDefined();
     expect(criteria.properties.required_overlay_support).toBeDefined();
     const targeting = resolveLocalRef(list, criteria.properties.targeting_overlay);
-    expect(targeting.properties.geo_places.items).toMatchObject({
+    // geo_places is core/targeting-geo-places.json, bundled as its own definition.
+    expect(resolveLocalRef(list, targeting.properties.geo_places).items).toMatchObject({
       type: 'object',
       'x-adcp-schema-uri': '/schemas/core/geo-place-area.json',
       additionalProperties: true,
