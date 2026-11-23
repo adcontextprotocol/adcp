@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/quote-request.json",
+  "type": "object",
+  "definitions": {
+    "amount": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "properties": {
+    "price": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "$ref": "#/definitions/amount"
+        }
+      }
+    }
+  }
+}

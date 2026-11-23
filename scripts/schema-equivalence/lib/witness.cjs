@@ -19,11 +19,11 @@
  */
 
 const { TreeValidator } = require('./corpus.cjs');
-const { refTarget, readDoc } = require('./graph.cjs');
-const { getPointer, unescapePointer, stableStringify } = require('./json.cjs');
+const { refTarget, readDoc, originLabel } = require('./graph.cjs');
+const { getPointer, escapePointer, unescapePointer, stableStringify } = require('./json.cjs');
 const { sampleRegex } = require('./sample-regex.cjs');
 const { siteOf } = require('./manifest.cjs');
-const { VALUE, SINGLE } = require('./keywords.cjs');
+const { VALUE, SINGLE, MAP, UNION } = require('./keywords.cjs');
 
 const FAIL = Symbol('fail');
 const DELETE = Symbol('delete');
@@ -121,6 +121,34 @@ function without(s, keys) {
   return out;
 }
 
+/**
+ * The property schemas that conjunction members (written in `doc`) declare,
+ * by name, including members reached through `$ref` and their own `allOf`
+ * members. A property behind a `$ref` is given as a `$ref` to its location,
+ * so it resolves in its own document.
+ */
+function memberProperties(tree, doc, members, depth = 0) {
+  const out = {};
+  const visit = (d, ptr, s, level) => {
+    if (level > 4 || !isObj(s)) return;
+    if (typeof s.$ref === 'string') {
+      const t = refTarget(d, s.$ref);
+      const target = t && rawAt(tree, t);
+      if (target !== undefined) visit(t.doc, t.ptr, target, level + 1);
+    }
+    if (isObj(s.properties)) {
+      for (const [name, ps] of Object.entries(s.properties)) {
+        if (name in out) continue;
+        out[name] = ptr === null ? ps : { $ref: refUrl(d, `${ptr}/properties/${escapePointer(name)}`) };
+      }
+    }
+    if (Array.isArray(s.allOf)) s.allOf.forEach((m, j) => visit(d, ptr === null ? null : `${ptr}/allOf/${j}`, m, level + 1));
+  };
+  // An inline member has no known pointer: its schemas stay raw, in `doc`.
+  for (const m of members) visit(doc, null, m, depth);
+  return out;
+}
+
 /** An instance of raw schema `s` (in document `doc`), guided along pointer segments `segs`. */
 function synth(tree, doc, s, segs, depth = 0, choice = 0, props0 = {}) {
   if (depth > MAX_DEPTH) return segs.length ? FAIL : null;
@@ -148,9 +176,13 @@ function synth(tree, doc, s, segs, depth = 0, choice = 0, props0 = {}) {
   }
   if (Array.isArray(s.allOf)) {
     const guided = segs[0] === 'allOf' ? Number(segs[1]) : -1;
-    const parts = s.allOf.map((m, j) => synth(tree, doc, m, j === guided ? segs.slice(2) : [], depth + 1, choice, ctxProps));
+    // A property one member declares, also behind the member's `$ref`, is
+    // the schema of that name in every member (a member that only says
+    // `required: [spend]` takes spend's schema from a referenced sibling).
+    const shared = { ...memberProperties(tree, doc, s.allOf), ...ctxProps };
+    const parts = s.allOf.map((m, j) => synth(tree, doc, m, j === guided ? segs.slice(2) : [], depth + 1, choice, shared));
     if (parts.some(p => p === FAIL && guided >= 0)) return FAIL;
-    const rest = synth(tree, doc, without(s, ['allOf']), guided >= 0 ? [] : segs, depth + 1, choice, ctxProps);
+    const rest = synth(tree, doc, without(s, ['allOf']), guided >= 0 ? [] : segs, depth + 1, choice, shared);
     // Earlier wins on conflicts: the guided member, then the node's own
     // keywords (unions, pinned values), then the other members.
     const ordered = guided >= 0 ? [parts[guided], rest, ...parts.filter((_, j) => j !== guided)] : [rest, ...parts];
@@ -508,15 +540,28 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
     const reasons = [];
     const found = { tighten: null, loosen: null };
     const declared = change.direction === 'both' ? ['tighten', 'loosen'] : change.direction === 'none' ? [] : [change.direction];
-    // Every entry of a line shares its site, so one reverted head and one
-    // lazily compiling Ajv serve all of the line's roots.
-    const hybrid = entries.length ? revertedHead(trees, entries[0]) : { reason: 'no entries' };
-    if (!hybrid.tree) reasons.push(`cannot attribute: ${hybrid.reason}`);
-    const hv = hybrid.tree ? new TreeValidator(hybrid.tree, { lazy: true }) : null;
+    // Every entry of a line shares its site. A revert at the site itself
+    // serves all of the line's roots; a revert that reaches the site through
+    // a `$ref` holds for one referencing site, so roots that reach the site
+    // from another one get their own reverted head. Each reverted head has
+    // one lazily compiling Ajv.
+    const hybrids = new Map();
+    const hybridFor = (entry) => {
+      const hybrid = revertedHead(trees, entry);
+      if (!hybrid.tree) return hybrid;
+      if (!hybrids.has(hybrid.tree.label)) hybrids.set(hybrid.tree.label, new TreeValidator(hybrid.tree, { lazy: true }));
+      return { hv: hybrids.get(hybrid.tree.label) };
+    };
+    if (!entries.length) reasons.push('cannot attribute: no entries');
     let firstCompiled = true;
     let compileError = null;
-    for (const entry of hv ? entries : []) {
-      const h = await hv.get(`${entry.root}#`);
+    for (const entry of entries) {
+      const hybrid = hybridFor(entry);
+      if (!hybrid.hv) {
+        reasons.push(`cannot attribute: ${hybrid.reason}`);
+        continue;
+      }
+      const h = await hybrid.hv.get(`${entry.root}#`);
       if (typeof h !== 'function') {
         compileError = h.error;
         continue;
@@ -536,7 +581,7 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
       if (declared.every(d => found[d])) break;
     }
     const observed = ['tighten', 'loosen'].filter(d => found[d]);
-    if (hv && firstCompiled && compileError) reasons.push(`cannot attribute: the head with this line reverted does not compile (${compileError})`);
+    if (firstCompiled && compileError) reasons.push(`cannot attribute: the head with this line reverted does not compile (${compileError})`);
     res.observed = observed;
     res.payloads = observed.map(d => payloadRecord(d, found[d]));
     const missing = declared.filter(d => !found[d]);
@@ -591,40 +636,188 @@ function payloadRecord(dir, found) {
   };
 }
 
+const PRIVATE_SUFFIX = '.witness-revert.json';
+const BASE_SUFFIX = '.witness-base.json';
+
+/**
+ * Whether a map keyword's entry (`properties`, `patternProperties`,
+ * `dependencies`) names one member: its pointer ends at a member that the
+ * side with the value writes. Otherwise the whole map was added or removed,
+ * as when a site now names a definition with `properties`; such an entry
+ * renders the map itself, so a pointer that happens to end at a name of the
+ * map is told apart by the rendered keys. `head` and `base` are the raw
+ * schemas at the entry's locations.
+ */
+function mapMember(entry, head, base) {
+  const kw = entry.keyword;
+  if (!MAP.has(kw) && kw !== 'dependencies') return false;
+  const segs = entry.pointer.split('/').map(unescapePointer);
+  const name = segs[segs.length - 1];
+  if (segs[segs.length - 2] !== kw) return false;
+  const added = Object.prototype.hasOwnProperty.call(entry, 'new');
+  const side = added ? head : base;
+  if (!isObj(side) || !isObj(side[kw]) || side[kw][name] === undefined) return false;
+  const value = added ? entry.new : entry.old;
+  const keys = (o) => Object.keys(o).sort().join('\u0000');
+  return !(isObj(value) && keys(value) === keys(side[kw]));
+}
+
+/**
+ * The `$ref`s an entry's pointer follows through the head source, in order:
+ * where each `$ref` is written (`holder`) and the location it names
+ * (`target`). The walk stops at the first segment the source does not have.
+ */
+function refHops(tree, entry) {
+  const hops = [];
+  let doc = `src:${entry.root}`;
+  let ptr = '';
+  for (const seg of entry.pointer.split('/').slice(1).map(unescapePointer)) {
+    const node = rawAt(tree, { doc, ptr });
+    if (node === null || typeof node !== 'object') break;
+    if (seg === '$ref') {
+      const t = typeof node.$ref === 'string' ? refTarget(doc, node.$ref) : null;
+      if (!t) break;
+      hops.push({ holder: { doc, ptr }, target: t });
+      doc = t.doc;
+      ptr = t.ptr;
+    } else {
+      if (!Object.prototype.hasOwnProperty.call(node, seg)) break;
+      ptr = `${ptr}/${escapePointer(seg)}`;
+    }
+  }
+  return hops;
+}
+
+/**
+ * The hops to copy so that a revert at `loc` reaches only this entry's
+ * referencing site: the last hop into `loc`'s document whose target holds
+ * `loc`, and the `$ref`s that lead straight to it (a `$ref` to a schema that
+ * is itself a `$ref`). Empty when no `$ref` leads to the location.
+ */
+function siteHops(hops, loc) {
+  let k = -1;
+  for (let i = hops.length - 1; i >= 0; i--) {
+    const t = hops[i].target;
+    if (t.doc === loc.doc && (loc.ptr === t.ptr || loc.ptr.startsWith(`${t.ptr}/`))) {
+      k = i;
+      break;
+    }
+  }
+  if (k < 0) return [];
+  let first = k;
+  while (first > 0 && hops[first - 1].target.doc === hops[first].holder.doc && hops[first - 1].target.ptr === hops[first].holder.ptr) first--;
+  return hops.slice(first, k + 1);
+}
+
+function refUrl(docKey, ptr) {
+  const rel = docKey.slice(docKey.indexOf(':') + 1);
+  return `/schemas/${rel}${ptr ? `#${ptr.split('/').map(s => encodeURIComponent(s)).join('/')}` : ''}`;
+}
+
+/**
+ * A copy of raw schema `s`, written in document `docKey`, whose `$ref`s name
+ * the same locations from any document: `url(target)` gives each one's new
+ * value. Data keywords are left as they are.
+ */
+function absoluteRefs(s, docKey, url) {
+  if (Array.isArray(s)) return s.map(x => absoluteRefs(x, docKey, url));
+  if (!isObj(s)) return s;
+  const out = {};
+  for (const [k, v] of Object.entries(s)) {
+    if (k === '$ref' && typeof v === 'string') {
+      const t = refTarget(docKey, v);
+      out[k] = t ? url(t) : v;
+    } else if (['const', 'enum', 'default', 'examples'].includes(k)) out[k] = structuredClone(v);
+    else out[k] = absoluteRefs(v, docKey, url);
+  }
+  return out;
+}
+
 /**
  * The head tree with one difference entry reverted at its site: the entry's
  * keyword at head_location gets the base value back, or is removed when the
  * base lacks it. Returns { tree }, or { reason } when the keyword as the
  * source writes it cannot be mapped back (it came from a normalization).
+ *
+ * When the constraint reaches the entry through a `$ref` (the head location
+ * is a definition the entry's referencing site now names, and the base wrote
+ * the constraint elsewhere), the revert edits a private copy of the
+ * definition's document, and only that site's `$ref` (and the `$ref`s of a
+ * chain that leads to it) names the copy. The definition's other users keep
+ * the head's schema. A base value copied into another document keeps naming
+ * what it named in the base: its `$ref`s become absolute.
  */
 function revertedHead(trees, entry) {
   const loc = parseLocation(entry.head_location);
   if (!loc || !loc.doc.startsWith('src:')) return { reason: `site ${entry.head_location} is not a source schema` };
-  const rel = loc.doc.slice(4);
-  const doc = structuredClone(trees.head.files.get(rel));
+  const baseLoc = parseLocation(entry.base_location);
+  const edits = new Map(); // source path -> the document the hybrid uses
+  const editable = (docKey) => {
+    const r = docKey.slice(4);
+    if (!edits.has(r)) edits.set(r, structuredClone(trees.head.files.get(r)));
+    return edits.get(r);
+  };
+  const privateRels = new Set();
+  let rel = loc.doc.slice(4);
+  const hops = baseLoc && entry.base_location !== entry.head_location ? siteHops(refHops(trees.head, entry), loc) : [];
+  if (hops.some(h => !h.target.doc.startsWith('src:') || !h.holder.doc.startsWith('src:'))) return { reason: `cannot copy a released schema on the way to ${entry.head_location}` };
+  if (hops.length) {
+    // Copies are made from the last hop back, so each holder in a copied
+    // document is edited in its copy.
+    const copyOf = (docKey) => {
+      const r = docKey.slice(4);
+      const copy = r.replace(/\.json$/, '') + PRIVATE_SUFFIX;
+      if (!edits.has(copy)) {
+        edits.set(copy, structuredClone(trees.head.files.get(r)));
+        privateRels.add(copy);
+      }
+      return copy;
+    };
+    for (let i = hops.length - 1; i >= 0; i--) {
+      const { holder, target } = hops[i];
+      const holderDoc = i > 0 ? edits.get(copyOf(holder.doc)) : editable(holder.doc);
+      getPointer(holderDoc, holder.ptr).$ref = refUrl(`src:${copyOf(target.doc)}`, target.ptr);
+    }
+    rel = copyOf(loc.doc);
+  }
+  const docKey = `src:${rel}`;
+  const doc = edits.has(rel) ? edits.get(rel) : editable(loc.doc);
   const raw = getPointer(doc, loc.ptr);
   if (!isObj(raw)) return { reason: `no schema object at ${entry.head_location}` };
-  const baseRaw = rawAt(trees.base, parseLocation(entry.base_location));
+  const baseRaw = rawAt(trees.base, baseLoc);
+  // A base value keeps naming what it named where the base wrote it: the
+  // head's schema at that location, or, when the head no longer has it (a
+  // local definition the change moved out), a copy of the base document.
+  const baseTarget = (t) => {
+    if (!t.doc.startsWith('src:') || rawAt(trees.head, t) !== undefined) return refUrl(t.doc, t.ptr);
+    const r = t.doc.slice(4);
+    const copy = r.replace(/\.json$/, '') + BASE_SUFFIX;
+    if (!edits.has(copy)) {
+      edits.set(copy, structuredClone(trees.base.files.get(r)));
+      privateRels.add(copy);
+    }
+    return refUrl(`src:${copy}`, t.ptr);
+  };
+  const fromBase = (v) => (baseLoc && (baseLoc.doc !== loc.doc || hops.length) ? absoluteRefs(v, baseLoc.doc, baseTarget) : structuredClone(v));
   const kw = entry.keyword;
   const has = (f) => Object.prototype.hasOwnProperty.call(entry, f);
   const written = (k) => Object.prototype.hasOwnProperty.call(raw, k);
   const segs = entry.pointer.split('/').map(unescapePointer);
   const last = segs[segs.length - 1];
   const UNIONS = ['anyOf', 'oneOf', 'allOf'];
-  const extra = new Map(); // other source files the revert edits
   const branch = /^\d+$/.test(last) && UNIONS.includes(segs[segs.length - 2]) && UNIONS.includes(kw);
   if (kw === '(schema)') {
     // The whole node changed (for example `true` became a schema).
     // A synthetic base node (`true`) has no source location: use the base
     // file at the same path, or the rendered value.
-    const before = baseRaw !== undefined ? baseRaw
-      : rawAt(trees.base, { doc: loc.doc, ptr: loc.ptr }) !== undefined ? rawAt(trees.base, { doc: loc.doc, ptr: loc.ptr })
+    const atSite = rawAt(trees.base, { doc: loc.doc, ptr: loc.ptr });
+    const before = baseRaw !== undefined ? fromBase(baseRaw)
+      : atSite !== undefined ? structuredClone(atSite)
         : typeof entry.old === 'boolean' ? entry.old : undefined;
     if (before === undefined) return { reason: `no base schema at ${entry.base_location}` };
-    const files = new Map(trees.head.files);
-    const copy = structuredClone(trees.head.files.get(rel));
-    files.set(rel, loc.ptr === '' ? structuredClone(before) : setPointer(copy, loc.ptr, structuredClone(before)));
-    return { tree: { label: `${trees.head.label} with the schema at ${entry.head_location} reverted`, commit: null, files, readDist: trees.head.readDist } };
+    if (loc.ptr === '') edits.set(rel, before);
+    else setPointer(doc, loc.ptr, before);
+    return finish(`the schema at ${entry.head_location} reverted`);
   }
   if (branch) {
     const key = segs[segs.length - 2];
@@ -638,18 +831,17 @@ function revertedHead(trees, entry) {
       else break;
     }
     if (!(Array.isArray(raw[key]) && raw[key][idx] !== undefined) && trail.length) {
-      let docKey = loc.doc;
+      let at = docKey;
       let ptr = loc.ptr;
       let node = raw;
       for (const step of trail) {
         if (step === '$ref') {
-          const t = isObj(node) && typeof node.$ref === 'string' ? refTarget(docKey, node.$ref) : null;
+          const t = isObj(node) && typeof node.$ref === 'string' ? refTarget(at, node.$ref) : null;
           if (!t || !t.doc.startsWith('src:')) return { reason: `cannot follow $ref from ${entry.head_location}` };
-          docKey = t.doc;
+          at = t.doc;
           ptr = t.ptr;
         } else ptr = `${ptr}/${step}`;
-        const d = docKey.slice(4) === rel ? doc : (extra.get(docKey.slice(4)) || extra.set(docKey.slice(4), structuredClone(trees.head.files.get(docKey.slice(4)))).get(docKey.slice(4)));
-        node = getPointer(d, ptr);
+        node = getPointer(edits.has(at.slice(4)) ? edits.get(at.slice(4)) : editable(at), ptr);
       }
       if (!isObj(node)) return { reason: `no schema object behind ${entry.head_location}` };
       return revertBranch(node, key, idx);
@@ -667,47 +859,46 @@ function revertedHead(trees, entry) {
     } else if (has('old') && !has('new')) {
       const b = isObj(baseRaw) && Array.isArray(baseRaw[key]) ? baseRaw[key][idx] : undefined;
       if (b === undefined) return { reason: `${key}/${idx} is not written at ${entry.base_location}` };
-      target[key] = [...(Array.isArray(target[key]) ? target[key] : []), structuredClone(b)];
+      target[key] = [...(Array.isArray(target[key]) ? target[key] : []), fromBase(b)];
     } else return { reason: `cannot revert a ${key} branch change` };
-    return finish();
+    return finish(`${kw} reverted at ${entry.head_location}`);
   }
 
   function revertKeyword() {
-  if (kw === 'properties' || kw === 'patternProperties' || kw === 'dependencies') {
-    if (has('new') && !has('old')) {
-      if (!isObj(raw[kw]) || raw[kw][last] === undefined) return { reason: `${kw}/${last} is not written at ${entry.head_location}` };
-      delete raw[kw][last];
+    if (mapMember(entry, raw, baseRaw)) {
+      if (has('new') && !has('old')) delete raw[kw][last];
+      else raw[kw] = { ...raw[kw], [last]: fromBase(baseRaw[kw][last]) };
+    } else if (VALUE.has(kw)) {
+      // `const` may be written as a one-value `enum`.
+      const oneValueEnum = kw === 'const' && Array.isArray(raw.enum) && raw.enum.length === 1;
+      if (has('new') && !written(kw) && !oneValueEnum) return { reason: `${kw} at ${entry.head_location} comes from a normalization, not the source` };
+      if (oneValueEnum) delete raw.enum;
+      if (kw === 'enum' && written('const')) delete raw.const;
+      if (has('old')) raw[kw] = structuredClone(entry.old);
+      else delete raw[kw];
+    } else if (SINGLE.has(kw) || MAP.has(kw) || UNION.has(kw) || kw === 'items' || kw === 'dependencies') {
+      // A keyword whose value holds subschemas comes back as the base wrote it.
+      if (has('new') && !written(kw)) return { reason: `${kw} at ${entry.head_location} comes from a normalization, not the source` };
+      if (has('old')) {
+        const b = isObj(baseRaw) ? baseRaw[kw] : undefined;
+        if (b === undefined) return { reason: `${kw} is not written at ${entry.base_location}` };
+        raw[kw] = fromBase(b);
+      } else delete raw[kw];
     } else {
-      const b = isObj(baseRaw) && isObj(baseRaw[kw]) ? baseRaw[kw][last] : undefined;
-      if (b === undefined) return { reason: `${kw}/${last} is not written at ${entry.base_location}` };
-      raw[kw] = { ...(isObj(raw[kw]) ? raw[kw] : {}), [last]: structuredClone(b) };
+      return { reason: `no revert for keyword ${kw}` };
     }
-  } else if (VALUE.has(kw)) {
-    // `const` may be written as a one-value `enum`.
-    const oneValueEnum = kw === 'const' && Array.isArray(raw.enum) && raw.enum.length === 1;
-    if (has('new') && !written(kw) && !oneValueEnum) return { reason: `${kw} at ${entry.head_location} comes from a normalization, not the source` };
-    if (oneValueEnum) delete raw.enum;
-    if (kw === 'enum' && written('const')) delete raw.const;
-    if (has('old')) raw[kw] = structuredClone(entry.old);
-    else delete raw[kw];
-  } else if (SINGLE.has(kw) || kw === 'items') {
-    if (has('new') && !written(kw)) return { reason: `${kw} at ${entry.head_location} comes from a normalization, not the source` };
-    if (has('old')) {
-      const b = isObj(baseRaw) ? baseRaw[kw] : undefined;
-      if (b === undefined) return { reason: `${kw} is not written at ${entry.base_location}` };
-      raw[kw] = structuredClone(b);
-    } else delete raw[kw];
-  } else {
-    return { reason: `no revert for keyword ${kw}` };
-  }
-  return finish();
+    return finish(`${kw} reverted at ${entry.head_location}`);
   }
 
-  function finish() {
+  function finish(what) {
     const files = new Map(trees.head.files);
-    files.set(rel, doc);
-    for (const [r, d] of extra) files.set(r, d);
-    return { tree: { label: `${trees.head.label} with ${kw} reverted at ${entry.head_location}`, commit: null, files, readDist: trees.head.readDist } };
+    for (const [r, d] of edits) {
+      // A private copy is its own document.
+      if (privateRels.has(r) && isObj(d) && typeof d.$id === 'string') d.$id = `/schemas/${r}`;
+      files.set(r, d);
+    }
+    const via = hops.length ? ` for ${originLabel(hops[0].holder)} only` : '';
+    return { tree: { label: `${trees.head.label} with ${what}${via}`, commit: null, files, readDist: trees.head.readDist } };
   }
 }
 
@@ -731,6 +922,8 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
   // A branch/member entry (…/anyOf/3) and a property-presence entry name a
   // location below the node; `required` names the object itself.
   const branchEntry = /\/(anyOf|oneOf|allOf)\/\d+$/.test(entry.pointer) && ['anyOf', 'oneOf', 'allOf'].includes(entry.keyword);
+  const wholeMap = entry.keyword === 'properties'
+    && !mapMember(entry, rawAt(trees.head, parseLocation(entry.head_location)), rawAt(trees.base, parseLocation(entry.base_location)));
 
   const seeds = [];
   if (corpus) for (const b of corpus.bound) if (b.schema === location) seeds.push(b.instance);
@@ -759,11 +952,14 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
       const holder = branchHolder(trees[side], loc, segs);
       raw = holder && Array.isArray(holder.node[key]) ? holder.node[key][idx] : undefined;
       if (holder) loc.doc = holder.doc;
-    } else if (entry.keyword === 'properties') {
+    } else if (entry.keyword === 'properties' && !wholeMap) {
       const name = unescapePointer(entry.pointer.split('/').pop());
       raw = isObj(raw) && isObj(raw.properties) ? raw.properties[name] : undefined;
     }
     if (raw === undefined) continue;
+    // A whole map: objects whose properties take values the map's schemas
+    // may reject, merged into the valid instance.
+    if (wholeMap && isObj(raw)) for (const bad of violations(trees[side], loc.doc, raw)) if (isObj(bad)) overlays.push(bad);
     if (isObj(raw) && typeof raw.pattern === 'string') patterns.push(raw.pattern);
     // Candidates built from the constraint itself, merged into the valid
     // instance at the location: what a `not` excludes, and an instance that

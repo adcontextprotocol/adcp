@@ -1,0 +1,11 @@
+{
+  "why": "A site that now names a shared definition with a different required list gets both witnesses: the base list comes back for that site only, so the definition's other user (a required seller with a name and no email) stays valid.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

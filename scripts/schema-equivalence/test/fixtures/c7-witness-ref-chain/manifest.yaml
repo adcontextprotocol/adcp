@@ -1,0 +1,9 @@
+changes:
+  - location: party.json#
+    keyword: properties
+    new:
+      name:
+        type:
+          - string
+    direction: tighten
+    side: request

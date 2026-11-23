@@ -1,0 +1,10 @@
+changes:
+  - location: budget-range.json#
+    keyword: anyOf
+    new:
+      - required:
+          - min
+      - required:
+          - max
+    direction: tighten
+    side: request

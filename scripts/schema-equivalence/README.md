@@ -386,12 +386,31 @@ finds no witness. A line declared `none` passes only when no witness is
 attributed to it. A line whose keyword comes from a normalization rather than
 the source cannot be reverted, and fails with that reason.
 
+A line's constraint can reach its site through a `$ref`: a site that wrote a
+schema inline now names a definition that carries the constraint, so the
+line's location is the definition and the base location is the inline
+schema. The revert then holds for that referencing site only. The hybrid head
+gets a private copy of the definition's document with the keyword reverted,
+and only the site's `$ref` names the copy; for a chain of `$ref`s that leads
+to the definition, each document of the chain is copied. The definition's
+other users keep the head's schema. A keyword whose value holds subschemas
+(`properties`, `anyOf`, `oneOf`, `not`, and the others) comes back as the base
+wrote it, and its `$ref`s keep naming what they named in the base: each
+becomes an absolute `/schemas/...` reference, to a copy of the base document
+when the head no longer has the target (a local definition the change moved
+out). A `properties` entry whose pointer ends at the node, not at one
+property, adds or removes the whole map.
+
 The search starts from corpus instances of the root and from an instance
-synthesized from the raw schema along the entry's pointer. Pattern candidates
+synthesized from the raw schema along the entry's pointer. A property that one
+`allOf` member declares, also behind the member's `$ref`, gives its schema to
+the other members, so a member that only requires the property gets a valid
+value. Pattern candidates
 come from both patterns: minimal and extended samples, one optional part at a
 time (a duration pattern gives `PT` and `P0D`), and long repetitions.
 Lookaheads and lookbehinds generate nothing; the real `RegExp` filters the
-samples. One reverted head, compiled lazily, serves all of a line's roots.
+samples. One reverted head per referencing site, compiled lazily, serves the
+line's roots that reach the site from there.
 
 The search also builds candidates from the changed constraint itself and
 merges them into the valid instance at the location:
@@ -402,6 +421,8 @@ merges them into the valid instance at the location:
 - For an added `if`/`then`, an instance that satisfies `if` and violates
   `then`: wrong-typed values, and values that another branch of the
   property's own schema accepts (video requirements on an image).
+- For a `properties` map added or removed as a whole, objects whose
+  properties take a value of each JSON type.
 - For a schema that gains constraints where it had none, a value of each JSON
   type. At the location the pointer names, it tries
 values derived from the change (values around a bound, the values an enum

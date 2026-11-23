@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/budget-range.json",
+  "type": "object",
+  "properties": {
+    "min": {
+      "type": "number"
+    },
+    "max": {
+      "type": "number"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "min"
+      ]
+    },
+    {
+      "required": [
+        "max"
+      ]
+    }
+  ]
+}
