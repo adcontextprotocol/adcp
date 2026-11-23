@@ -22,7 +22,7 @@
             "type": "object",
             "properties": {
               "audience_id": {
-                "type": "string",
+                "$ref": "/schemas/core/audience-id.json",
                 "description": "Audience ID from the request (buyer's identifier)",
                 "x-entity": "audience"
               },
@@ -138,11 +138,11 @@
                     "description": "Vendor, echoed from the request."
                   },
                   "locator": {
-                    "type": "string",
+                    "$ref": "/schemas/core/audience-source-locator.json",
                     "description": "Dataset locator, echoed from the request (kind: dataset)."
                   },
                   "segment_ref": {
-                    "type": "string",
+                    "$ref": "/schemas/core/audience-source-segment-ref.json",
                     "description": "Segment reference, echoed from the request (kind: platform_segment)."
                   },
                   "columns_read": {

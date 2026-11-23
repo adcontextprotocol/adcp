@@ -3806,6 +3806,270 @@
         "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/allowed_actions",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/product-allowed-action.json\" }, \"minItems\": 1, \"uniqueItems\": true"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on allowed_actions in core/product.json, the full form of the product that core/canonical-product.json projects."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/max_optimization_goals",
+      "bound": "minimum",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/product.json",
+        "quote": "\"max_optimization_goals\": { \"type\": \"integer\", \"minimum\": 1,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on max_optimization_goals in core/product.json, the full form of the product that core/canonical-product.json projects."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/placements",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/placement.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on placements in core/product.json, the full form of the product that core/canonical-product.json projects."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/item_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Exact canonical item key used by Catalog.ids."
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the catalog item ID in core/catalog-item-availability-update.json, the update this result echoes. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/item_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Exact canonical item key used by Catalog.ids."
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the catalog item ID in core/catalog-item-availability-update.json, the update this result echoes. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "core/catalog-selection.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/installments",
+      "bound": "maxItems",
+      "value": 500,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-installment.json\" }, \"minItems\": 1, \"maxItems\": 500,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 bounds no product installment list; 3.3.0-beta.1 published this bound on installments in core/canonical-product.json, the compact form of the same product."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/installments",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-installment.json\" }, \"minItems\": 1, \"maxItems\": 500,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 bounds no product installment list; 3.3.0-beta.1 published this bound on installments in core/canonical-product.json, the compact form of the same product."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"name\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on name in core/canonical-product.json, the compact form of the same product. A product name, which core/product-name.json keeps non-empty."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, the compact form of the same product. A product ID, which core/product-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/windows/items/properties/by_package/items/allOf/1/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-products-response.json",
+      "pointer": "/properties/incomplete/items/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/list-products-response.json",
+        "quote": "\"description\": { \"type\": \"string\", \"minLength\": 1 }, \"estimated_wait\":"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on incomplete[].description in media-buy/list-products-response.json, the same incomplete scope entry on the product list. An incomplete scope description, which core/incomplete-scope-description.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-products-response.json",
+      "pointer": "/properties/suggestions",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/get-products-rejected.json",
+        "quote": "If absent, the seller is not offering a protocol-level alternative for this brief.\", \"minItems\": 1, \"maxItems\": 20,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on suggestions in media-buy/get-products-rejected.json, the GetProductsRejected arm that is the only arm carrying suggestions."
+    },
+    {
+      "file": "media-buy/sync-event-sources-request.json",
+      "pointer": "/properties/event_sources/items/properties/event_source_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/optimization-goal.json",
+        "quote": "\"event_source_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Event source to include (must be configured on this account via sync_event_sources)\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the event source ID that optimization goals reference in core/optimization-goal.json, the ID sync_event_sources configures. An event source ID, which core/event-source-id.json bounds."
+    },
+    {
+      "file": "media-buy/sync-event-sources-response.json",
+      "pointer": "/oneOf/0/properties/event_sources/items/properties/event_source_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/optimization-goal.json",
+        "quote": "\"event_source_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Event source to include (must be configured on this account via sync_event_sources)\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the event source ID that optimization goals reference in core/optimization-goal.json, the ID sync_event_sources configures. An event source ID, which core/event-source-id.json bounds."
+    },
+    {
+      "file": "media-buy/sync-event-sources-response.json",
+      "pointer": "/oneOf/0/properties/event_sources/items/properties/event_types",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/sync-event-sources-request.json",
+        "quote": "\"description\": \"Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/enums/event-type.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on event_types in media-buy/sync-event-sources-request.json, the request item whose event source this result reports."
     }
   ]
 }

@@ -312,6 +312,14 @@
           "$ref": "/schemas/core/audience-size.json",
           "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
         },
+        "audience-source-locator": {
+          "$ref": "/schemas/core/audience-source-locator.json",
+          "description": "Vendor-native reference to the shared object a dataset audience source reads from."
+        },
+        "audience-source-segment-ref": {
+          "$ref": "/schemas/core/audience-source-segment-ref.json",
+          "description": "The vendor's identifier for a platform segment that feeds an audience."
+        },
         "audience-evidence-pin": {
           "$ref": "/schemas/core/audience-evidence-pin.json",
           "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
@@ -1234,6 +1242,10 @@
           "$ref": "/schemas/core/catalog-selection.json",
           "description": "Catalog reference and item selectors without ingestion configuration"
         },
+        "catalog-sync-error": {
+          "$ref": "/schemas/core/catalog-sync-error.json",
+          "description": "An operation-level sync_catalogs error, with the catalog item reference variant for REFERENCE_NOT_FOUND."
+        },
         "seller-agent-ref": {
           "$ref": "/schemas/core/seller-agent-ref.json",
           "description": "Reference to a seller agent by its adagents.json-declared URL. Used on TMP AvailablePackage and echoed on Offer."
@@ -2020,6 +2032,10 @@
           "$ref": "/schemas/core/audience-evidence-version.json",
           "description": "Provider version of one immutable audience-evidence snapshot. Pins and selection readbacks match it exactly."
         },
+        "audience-id": {
+          "$ref": "/schemas/core/audience-id.json",
+          "description": "Buyer-assigned identifier of an audience synced to a seller account."
+        },
         "reference-population-version": {
           "$ref": "/schemas/core/reference-population-version.json",
           "description": "Version of the reference population against which an audience estimate is calculated."
@@ -2463,6 +2479,10 @@
         "apple-app-id": {
           "$ref": "/schemas/core/apple-app-id.json",
           "description": "Numeric Apple App Store identifier."
+        },
+        "applicable-package-ids": {
+          "$ref": "/schemas/core/applicable-package-ids.json",
+          "description": "The packages of a media buy that a package-scoped action currently applies to."
         },
         "numeric-place-id": {
           "$ref": "/schemas/core/numeric-place-id.json",

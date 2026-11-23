@@ -123,7 +123,8 @@
       "maxItems": 20,
       "items": {
         "$ref": "/schemas/core/seller-suggestion.json"
-      }
+      },
+      "minItems": 1
     },
     "property_list_applied": {
       "type": "boolean",
@@ -229,30 +230,7 @@
       "description": "Declares what the seller could not finish within the buyer's time_budget or due to internal limits while still returning a usable response. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete. This field does not classify the condition as retryable; retryability is carried by error.recovery on the error channel.",
       "minItems": 1,
       "items": {
-        "type": "object",
-        "properties": {
-          "scope": {
-            "$ref": "/schemas/enums/incomplete-scope.json",
-            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete. 'wholesale_feed': in wholesale mode, full feed enumeration could not complete in the time budget — symmetric with get_signals' 'wholesale_feed' scope so sellers have a precise way to declare wholesale-incomplete on the products surface."
-          },
-          "description": {
-            "type": "string",
-            "description": "Human-readable explanation of what is missing and why."
-          },
-          "estimated_wait": {
-            "allOf": [
-              {
-                "$ref": "/schemas/core/duration.json"
-              }
-            ],
-            "description": "How much additional time is expected to resolve this scope. Allows the buyer to decide whether to make a new attempt with a larger time_budget; its presence is not an automatic-retry instruction."
-          }
-        },
-        "required": [
-          "scope",
-          "description"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/incomplete-scope-entry.json"
       }
     },
     "filter_diagnostics": {

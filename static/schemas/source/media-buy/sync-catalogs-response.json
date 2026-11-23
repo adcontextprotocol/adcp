@@ -206,28 +206,7 @@
           "type": "array",
           "description": "Operation-level errors that prevented processing any catalogs (e.g., authentication failure, service unavailable, invalid request format)",
           "items": {
-            "allOf": [
-              { "$ref": "/schemas/core/error.json" },
-              {
-                "if": {
-                  "properties": { "code": { "const": "REFERENCE_NOT_FOUND" } },
-                  "required": ["code"]
-                },
-                "then": {
-                  "description": "Availability lookups use the closed error variant; the field-qualified branch preserves the established catalog_ids filter error.",
-                  "anyOf": [
-                    { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "field": { "const": "catalog_ids" }
-                    },
-                    "required": ["field"]
-                  }
-                  ]
-                }
-              }
-            ]
+            "$ref": "/schemas/core/catalog-sync-error.json"
           },
           "minItems": 1
         },

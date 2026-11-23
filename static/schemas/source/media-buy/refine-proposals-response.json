@@ -99,8 +99,7 @@
               "outcome": { "type": "string", "const": "revised", "default": "revised" },
               "proposals": {
                 "items": {
-                  "properties": { "proposal_status": { "type": "string", "const": "draft" } },
-                  "required": ["proposal_status", "parent_proposal_id"]
+                  "$ref": "#/definitions/draft_successor"
                 }
               }
             },
@@ -121,8 +120,7 @@
               "outcome": { "type": "string", "const": "partial", "default": "partial" },
               "proposals": {
                 "items": {
-                  "properties": { "proposal_status": { "type": "string", "const": "draft" } },
-                  "required": ["proposal_status", "parent_proposal_id"]
+                  "$ref": "#/definitions/draft_successor"
                 }
               }
             },
@@ -230,5 +228,23 @@
       { "required": ["pagination"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "draft_successor": {
+      "description": "A proposal returned as a draft successor of the result's source proposal: it is a draft and names its parent proposal.",
+      "properties": {
+        "proposal_status": {
+          "type": "string",
+          "const": "draft"
+        },
+        "parent_proposal_id": {
+          "$ref": "/schemas/core/proposal-id.json"
+        }
+      },
+      "required": [
+        "proposal_status",
+        "parent_proposal_id"
+      ]
+    }
+  }
 }

@@ -17,9 +17,7 @@
           "description": "Data-sharing platform hosting the shared object."
         },
         "locator": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512,
+          "$ref": "/schemas/core/audience-source-locator.json",
           "description": "Vendor-native reference to the shared object (share/database/table path). Opaque to AdCP; meaningful to the vendor. Never a credential. For the Databricks path, the locator convention is share://<provider-sharing-identifier>/<share-name>/<schema>.<object>; this identifies what to read and is distinct from the seller's recipient identity in consumer_identities[]."
         },
         "access_expires_at": {
@@ -43,9 +41,7 @@
           "description": "Distribution platform delivering the segment."
         },
         "segment_ref": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 256,
+          "$ref": "/schemas/core/audience-source-segment-ref.json",
           "description": "The vendor's segment identifier as issued to the buyer (the ID observable in the vendor's console/API). The seller owns the mapping to whatever identifier its ingest minted — it configured the destination and is the only party that can see both sides."
         }
       },

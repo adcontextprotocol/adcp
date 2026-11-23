@@ -15,11 +15,8 @@
     "change_term_id": { "$ref": "/schemas/core/media-buy-change-term-id.json" },
     "terms_ref": { "$ref": "/schemas/core/media-buy-legacy-terms-ref.json" },
     "applicable_package_ids": {
-      "type": "array",
-      "description": "Exact eligible packages for a package-scoped action; omission means all relevant packages.",
-      "items": { "$ref": "/schemas/core/applicable-package-id.json" },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/applicable-package-ids.json",
+      "description": "Exact eligible packages for a package-scoped action; omission means all relevant packages."
     }
   },
   "required": ["task", "action", "mode"],

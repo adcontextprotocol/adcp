@@ -28,7 +28,7 @@
         "type": "object",
         "properties": {
           "audience_id": {
-            "type": "string",
+            "$ref": "/schemas/core/audience-id.json",
             "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays.",
             "x-entity": "audience"
           },
