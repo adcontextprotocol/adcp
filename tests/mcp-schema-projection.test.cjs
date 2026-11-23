@@ -836,6 +836,87 @@ test('MCP discovery defers omitted root constraints to canonical call validation
   assert.equal(validateCanonical(discoveryValidCanonicalInvalid), false);
 });
 
+test('MCP discovery reads a root-only composed request as the document it composes', () => {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-mcp-composed-root-'));
+  try {
+    const write = (relativePath, schema) => {
+      const file = path.join(sourceDir, relativePath);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(schema));
+      return file;
+    };
+    write('core/task-id.json', {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/task-id.json',
+      type: 'string',
+      minLength: 1,
+    });
+    const task = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/task-request.json',
+      title: 'Task Request',
+      description: 'The composed document.',
+      type: 'object',
+      definitions: { Depth: { type: 'integer', minimum: 1 } },
+      properties: {
+        task_id: { $ref: 'task-id.json' },
+        depth: { $ref: '#/definitions/Depth' },
+      },
+      required: ['task_id'],
+      anyOf: [{ required: ['depth'] }, { not: { required: ['depth'] } }],
+      additionalProperties: false,
+      examples: [{ data: { task_id: 'composed' } }],
+    };
+    write('core/task-request.json', task);
+    const annotations = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/protocol/get-task-request.json',
+      title: 'Get Task Request',
+      description: 'The tool document.',
+      'x-tool-summary': 'Get a task.',
+    };
+    const examples = [{ data: { task_id: 'tool' } }];
+    const fullCopy = write('protocol/full-copy.json', {
+      ...annotations,
+      ...Object.fromEntries(Object.entries(task).filter(([key]) => !['$schema', '$id', 'title', 'description', 'examples'].includes(key))),
+      properties: { task_id: { $ref: '/schemas/core/task-id.json' }, depth: task.properties.depth },
+      examples,
+    });
+    const composedByAllOf = write('protocol/by-all-of.json', {
+      ...annotations,
+      allOf: [{ $ref: '/schemas/core/task-request.json' }],
+      examples,
+    });
+    const composedByRef = write('protocol/by-ref.json', {
+      ...annotations,
+      $ref: '/schemas/core/task-request.json',
+      examples,
+    });
+    const project = (file, annotationMode, discoveryInput) => projectSourceSchema(
+      readJson(file),
+      file,
+      sourceDir,
+      '3.3.0',
+      'protocol/get-task-request.json',
+      annotationMode,
+      undefined,
+      discoveryInput,
+    );
+
+    for (const annotationMode of ['full', 'structural', 'model-context']) {
+      const expected = project(fullCopy, annotationMode, true);
+      assert.equal(expected.type, 'object', annotationMode);
+      for (const composed of [composedByAllOf, composedByRef]) {
+        assert.deepEqual(project(composed, annotationMode, true), expected, `${annotationMode} ${composed}`);
+      }
+    }
+    // An output projection keeps the composition it already preserves.
+    assert.deepEqual(project(composedByAllOf, 'full', false).allOf.length, 1);
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
+});
+
 test('projection rewrites only definitions keyword segments in local refs', () => {
   const projected = projectDraft07Node({
     $schema: 'http://json-schema.org/draft-07/schema#',
