@@ -24,6 +24,7 @@ const { getPointer, escapePointer, unescapePointer, stableStringify } = require(
 const { sampleRegex } = require('./sample-regex.cjs');
 const { siteOf } = require('./manifest.cjs');
 const { VALUE, SINGLE, MAP, UNION } = require('./keywords.cjs');
+const { accepts } = require('./raw-eval.cjs');
 
 const FAIL = Symbol('fail');
 const DELETE = Symbol('delete');
@@ -108,6 +109,7 @@ function pickType(s) {
   }
   if (s.properties || s.required || s.additionalProperties !== undefined || s.patternProperties) return 'object';
   if (s.items || s.minItems !== undefined) return 'array';
+  if (s.minProperties !== undefined || s.maxProperties !== undefined) return 'object';
   if (s.pattern || s.minLength !== undefined || s.maxLength !== undefined || s.format) return 'string';
   if (s.minimum !== undefined || s.maximum !== undefined) return 'number';
   return 'object';
@@ -157,14 +159,7 @@ function synth(tree, doc, s, segs, depth = 0, choice = 0, props0 = {}) {
   const ctxProps = isObj(s) && isObj(s.properties) ? { ...props0, ...s.properties } : props0;
   if (s === true || s === undefined) return segs.length ? FAIL : {};
   if (s === false || !isObj(s)) return FAIL;
-  // The pointer comes from one side; skip combinator steps the other side's
-  // schema does not have here (an inline subschema where the head has a $ref).
-  while (segs.length) {
-    if (segs[0] === '$ref' && typeof s.$ref !== 'string') segs = segs.slice(1);
-    else if (segs[0] === 'allOf' && !Array.isArray(s.allOf)) segs = segs.slice(2);
-    else if ((segs[0] === 'anyOf' || segs[0] === 'oneOf') && !Array.isArray(s.anyOf) && !Array.isArray(s.oneOf)) segs = segs.slice(2);
-    else break;
-  }
+  segs = alignSegs(s, segs);
   if (typeof s.$ref === 'string') {
     const t = refTarget(doc, s.$ref);
     const target = t && rawAt(tree, t);
@@ -245,7 +240,7 @@ function synth(tree, doc, s, segs, depth = 0, choice = 0, props0 = {}) {
         for (const d of dep) if (!(d in o)) o[d] = synth(tree, doc, props[d], [], depth + 1, choice, {});
       }
     }
-    return o;
+    return fillProperties(tree, doc, s, o, props, depth, choice);
   }
   if (type === 'array') {
     const guided = segs[0] === 'items' || segs[0] === 'contains';
@@ -274,6 +269,307 @@ function synth(tree, doc, s, segs, depth = 0, choice = 0, props0 = {}) {
   if (type === 'integer' || type === 'number') return synthNumber(s, type === 'integer');
   if (type === 'boolean') return true;
   return null;
+}
+
+/**
+ * Object `o` with properties added until it has `minProperties`: the
+ * schema's optional properties first, then names its `patternProperties` or
+ * open `additionalProperties` admit.
+ */
+function fillProperties(tree, doc, s, o, props, depth, choice = 0) {
+  const min = typeof s.minProperties === 'number' ? s.minProperties : 0;
+  const count = () => Object.keys(o).length;
+  for (const [name, ps] of Object.entries(props)) {
+    if (count() >= min) return o;
+    if (name in o) continue;
+    const v = synth(tree, doc, ps, [], depth + 1, choice, {});
+    if (v !== FAIL) o[name] = v;
+  }
+  const open = [];
+  for (const [p, ps] of Object.entries(isObj(s.patternProperties) ? s.patternProperties : {})) {
+    for (const name of sampleRegex(p)) open.push([name, ps]);
+  }
+  if (s.additionalProperties !== false) {
+    for (let i = 0; i < 26; i++) open.push([String.fromCharCode(97 + i), isObj(s.additionalProperties) ? s.additionalProperties : true]);
+  }
+  for (const [name, ps] of open) {
+    if (count() >= min) break;
+    if (name in o) continue;
+    const v = synth(tree, doc, ps, [], depth + 1, choice, {});
+    if (v !== FAIL) o[name] = v;
+  }
+  return o;
+}
+
+/**
+ * The pointer comes from one side: pointer segments without the leading
+ * combinator steps that schema `s` does not have (an inline subschema where
+ * the head has a `$ref`).
+ */
+function alignSegs(s, segs) {
+  while (segs.length) {
+    if (segs[0] === '$ref' && typeof s.$ref !== 'string') segs = segs.slice(1);
+    else if (segs[0] === 'allOf' && !Array.isArray(s.allOf)) segs = segs.slice(2);
+    else if ((segs[0] === 'anyOf' || segs[0] === 'oneOf') && !Array.isArray(s.anyOf) && !Array.isArray(s.oneOf)) segs = segs.slice(2);
+    else break;
+  }
+  return segs;
+}
+
+/** Pointer segments from the first step into the instance (a property, an item), past combinator steps. */
+function instanceSegs(segs) {
+  let i = 0;
+  while (i < segs.length) {
+    if (['allOf', 'anyOf', 'oneOf'].includes(segs[i])) i += 2;
+    else if (['$ref', 'then', 'else'].includes(segs[i])) i += 1;
+    else break;
+  }
+  return segs.slice(i);
+}
+
+const sameJson = (a, b) => stableStringify(a) === stableStringify(b);
+const omit = (o, k) => {
+  const out = { ...o };
+  delete out[k];
+  return out;
+};
+
+/**
+ * How many values branch `b` pins (its own or its properties' `const` and
+ * `enum`, and its `type`) that instance `v` contradicts. Union branches are
+ * tried in this order, so a value another conjunct already pinned keeps the
+ * branch it selects.
+ */
+function conflicts(tree, doc, b, v) {
+  const { doc: d, schema } = derefRaw(tree, doc, b);
+  if (!isObj(schema)) return 0;
+  let n = 0;
+  if (schema.type !== undefined && accepts(tree, d, { type: schema.type }, v) === false) n += 10;
+  if (isObj(v) && isObj(schema.properties)) {
+    for (const [k, ps] of Object.entries(schema.properties)) {
+      if (!(k in v) || !isObj(ps)) continue;
+      const pin = {};
+      if (Object.prototype.hasOwnProperty.call(ps, 'const')) pin.const = ps.const;
+      if (Array.isArray(ps.enum)) pin.enum = ps.enum;
+      if (Object.keys(pin).length && accepts(tree, d, pin, v[k]) === false) n += 1;
+    }
+  }
+  return n;
+}
+
+/**
+ * Instance `v` made to satisfy raw schema `s` (in document `doc`) where a
+ * local edit can: the values `const` and `enum` pin, the properties
+ * `required` and `minProperties` ask for, a valid value for a property of the
+ * wrong type, the union branch the instance fits, the `then` or `else` its
+ * `if` selects (or the other one, by making the `if` fail or hold), and no
+ * property a closed object forbids. Each step is checked with the raw
+ * evaluator; Ajv still confirms the result. The location pointer segments
+ * `segs` lead to keeps its path. Returns a new value.
+ */
+function conform(tree, doc, s, v, segs, depth = 0, props0 = {}) {
+  if (depth > MAX_DEPTH || !isObj(s) || v === FAIL || v === undefined) return v;
+  if (accepts(tree, doc, s, v) === true) return v;
+  segs = alignSegs(s, segs);
+  // Conjuncts the pointer does not name still see the same instance: they
+  // keep the instance path, not the combinator steps.
+  const here = instanceSegs(segs);
+  const ctxProps = isObj(s.properties) ? { ...props0, ...s.properties } : props0;
+  const sub = (schema, value, rest = [], d = doc, props = {}) => conform(tree, d, schema, value, rest, depth + 1, props);
+  let out = v;
+  if (typeof s.$ref === 'string') {
+    const t = refTarget(doc, s.$ref);
+    const target = t && rawAt(tree, t);
+    if (target !== undefined) out = sub(target, out, segs[0] === '$ref' ? segs.slice(1) : segs, t.doc, ctxProps);
+  }
+  if (!segs.length) {
+    if (Object.prototype.hasOwnProperty.call(s, 'const')) return structuredClone(s.const);
+    if (Array.isArray(s.enum) && s.enum.length && !s.enum.some(x => sameJson(x, out))) return structuredClone(s.enum[0]);
+    if (s.type !== undefined && accepts(tree, doc, { type: s.type }, out) === false) {
+      const fresh = synth(tree, doc, s, [], depth + 1, 0, props0);
+      if (fresh !== FAIL) out = fresh;
+    }
+    const scalar = {};
+    for (const k of ['minLength', 'maxLength', 'pattern', 'format', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf']) if (k in s) scalar[k] = s[k];
+    if (typeof out === 'string' && accepts(tree, doc, scalar, out) === false) out = synthString(s);
+    else if (typeof out === 'number' && accepts(tree, doc, scalar, out) === false) out = synthNumber(s, Number.isInteger(out));
+  }
+  if (isObj(out)) out = conformObject(tree, doc, s, out, segs, depth, ctxProps);
+  else if (Array.isArray(out)) out = conformArray(tree, doc, s, out, segs, depth);
+  if (Array.isArray(s.allOf)) {
+    const guided = segs[0] === 'allOf' ? Number(segs[1]) : -1;
+    const shared = { ...memberProperties(tree, doc, s.allOf), ...ctxProps };
+    s.allOf.forEach((m, j) => {
+      out = sub(m, out, j === guided ? segs.slice(2) : here, doc, shared);
+    });
+  }
+  for (const key of ['anyOf', 'oneOf']) {
+    if (!Array.isArray(s[key]) || !s[key].length) continue;
+    const union = { [key]: s[key] };
+    if (accepts(tree, doc, union, out) === true) continue;
+    // The branch the pointer names first, then the others by how few of
+    // their pinned values the instance contradicts.
+    const guided = segs[0] === 'anyOf' || segs[0] === 'oneOf' ? Number(segs[1]) : -1;
+    const order = s[key].map((b, i) => ({ i, n: i === guided ? -1 : conflicts(tree, doc, b, out) })).sort((a, b) => a.n - b.n || a.i - b.i);
+    for (const { i } of order) {
+      // A branch can take a few passes: a value one conjunct pins changes
+      // which branch of a nested union fits.
+      let cand = out;
+      for (let pass = 0; pass < 3; pass++) {
+        const next = sub(s[key][i], cand, i === guided ? segs.slice(2) : here, doc, ctxProps);
+        const done = sameJson(next, cand);
+        cand = next;
+        if (done || accepts(tree, doc, union, cand) !== false) break;
+      }
+      if (accepts(tree, doc, union, cand) !== false) {
+        out = cand;
+        break;
+      }
+    }
+  }
+  if (segs[0] === 'then' || segs[0] === 'else') {
+    if (s[segs[0]] !== undefined) out = sub(s[segs[0]], out, segs.slice(1), doc, ctxProps);
+  } else if (s.if !== undefined) out = conformConditional(tree, doc, s, out, here, depth, ctxProps);
+  if (s.not !== undefined && accepts(tree, doc, s.not, out) === true && isObj(out)) {
+    // Drop a property the negated schema requires.
+    const keys = requiredKeys(tree, doc, s.not).filter(k => k in out && !(here[0] === 'properties' && here[1] === k));
+    for (const k of keys) {
+      const cand = omit(out, k);
+      if (accepts(tree, doc, s.not, cand) === false) {
+        out = cand;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** Property names a raw schema requires, its own and those of its union branches. */
+function requiredKeys(tree, doc, s, depth = 0) {
+  const { doc: d, schema } = derefRaw(tree, doc, s);
+  if (!isObj(schema) || depth > 4) return [];
+  const out = Array.isArray(schema.required) ? schema.required.filter(k => typeof k === 'string') : [];
+  for (const key of ['anyOf', 'oneOf', 'allOf']) {
+    if (Array.isArray(schema[key])) for (const b of schema[key]) out.push(...requiredKeys(tree, d, b, depth + 1));
+  }
+  return [...new Set(out)];
+}
+
+function conformObject(tree, doc, s, o0, segs, depth, ctxProps) {
+  const o = { ...o0 };
+  const guided = segs[0] === 'properties' ? segs[1] : segs[0] === 'additionalProperties' ? '__witness_extra' : null;
+  const own = isObj(s.properties) ? s.properties : {};
+  const patterns = Object.entries(isObj(s.patternProperties) ? s.patternProperties : {}).map(([p, ps]) => {
+    try {
+      return [new RegExp(p, 'u'), ps];
+    } catch {
+      return [null, ps];
+    }
+  });
+  const extra = isObj(s.additionalProperties) ? s.additionalProperties : true;
+  const schemaOf = k => (ctxProps[k] !== undefined ? ctxProps[k] : (patterns.find(([re]) => re && re.test(k)) || [])[1] || extra);
+  for (const r of Array.isArray(s.required) ? s.required : []) {
+    if (r in o) continue;
+    const v = synth(tree, doc, schemaOf(r), [], depth + 1, 0, {});
+    if (v !== FAIL) o[r] = v;
+  }
+  for (const k of Object.keys(o)) {
+    const rest = k === guided ? (guided === '__witness_extra' ? segs.slice(1) : segs.slice(2)) : [];
+    let covered = false;
+    if (Object.prototype.hasOwnProperty.call(own, k)) {
+      covered = true;
+      o[k] = conform(tree, doc, own[k], o[k], rest, depth + 1, {});
+    }
+    for (const [re, ps] of patterns) {
+      if (re && re.test(k)) {
+        covered = true;
+        o[k] = conform(tree, doc, ps, o[k], rest, depth + 1, {});
+      }
+    }
+    if (covered || s.additionalProperties === undefined) continue;
+    if (s.additionalProperties === false) {
+      if (k !== guided) delete o[k];
+    } else o[k] = conform(tree, doc, s.additionalProperties, o[k], rest, depth + 1, {});
+  }
+  if (isObj(s.dependencies)) {
+    for (const [name, dep] of Object.entries(s.dependencies)) {
+      if (!(name in o)) continue;
+      if (Array.isArray(dep)) {
+        for (const d of dep) {
+          if (d in o) continue;
+          const v = synth(tree, doc, schemaOf(d), [], depth + 1, 0, {});
+          if (v !== FAIL) o[d] = v;
+        }
+      }
+    }
+  }
+  fillProperties(tree, doc, s, o, own, depth);
+  if (typeof s.maxProperties === 'number') {
+    const required = new Set(Array.isArray(s.required) ? s.required : []);
+    for (const k of Object.keys(o).reverse()) {
+      if (Object.keys(o).length <= s.maxProperties) break;
+      if (!required.has(k) && k !== guided) delete o[k];
+    }
+  }
+  return o;
+}
+
+function conformArray(tree, doc, s, a0, segs, depth) {
+  const a = [...a0];
+  const tuple = Array.isArray(s.items);
+  const guided = segs[0] === 'items' ? (tuple ? Number(segs[1]) : 0) : segs[0] === 'contains' ? 0 : -1;
+  const rest = segs[0] === 'items' && tuple ? segs.slice(2) : segs.slice(1);
+  const itemSchema = i => (tuple ? (s.items[i] === undefined ? (s.additionalItems === undefined ? true : s.additionalItems) : s.items[i]) : s.items === undefined ? true : s.items);
+  for (let i = 0; i < a.length; i++) a[i] = conform(tree, doc, itemSchema(i), a[i], i === guided ? rest : [], depth + 1, {});
+  while (typeof s.minItems === 'number' && a.length < s.minItems) {
+    const v = synth(tree, doc, itemSchema(a.length), [], depth + 1, a.length, {});
+    if (v === FAIL) break;
+    a.push(v);
+  }
+  if (typeof s.maxItems === 'number' && a.length > s.maxItems) a.length = Math.max(s.maxItems, guided + 1);
+  return a;
+}
+
+/**
+ * Instance `out` with the `then` or `else` that its `if` selects applied.
+ * When that branch cannot be satisfied, the condition is flipped: a property
+ * the `if` requires is dropped (so `else` applies), or the instance is made to
+ * satisfy the `if` (so `then` applies).
+ */
+function conformConditional(tree, doc, s, out, segs, depth, ctxProps) {
+  const holds = accepts(tree, doc, s.if, out);
+  if (holds === undefined) return out;
+  const apply = (cond, inst) => {
+    const b = cond ? s.then : s.else;
+    if (b === undefined) return inst;
+    const r = conform(tree, doc, b, inst, segs, depth + 1, ctxProps);
+    return accepts(tree, doc, b, r) === false ? null : r;
+  };
+  const kept = apply(holds, out);
+  if (kept) return kept;
+  const flips = [];
+  if (holds && isObj(out)) {
+    const guided = segs[0] === 'properties' ? segs[1] : null;
+    for (const k of requiredKeys(tree, doc, s.if)) if (k in out && k !== guided) flips.push(omit(out, k));
+  } else if (!holds) flips.push(conform(tree, doc, s.if, out, segs, depth + 1, ctxProps));
+  for (const f of flips) {
+    if (accepts(tree, doc, s.if, f) !== !holds) continue;
+    const r = apply(!holds, f);
+    if (r) return r;
+  }
+  return out;
+}
+
+/** Instance `v` conformed to root schema `s` in a few passes, until the evaluator accepts it. */
+function conformRoot(tree, doc, s, v, segs) {
+  let out = v;
+  for (let pass = 0; pass < 3 && out !== FAIL; pass++) {
+    if (accepts(tree, doc, s, out) === true) break;
+    const next = conform(tree, doc, s, out, segs);
+    if (sameJson(next, out)) break;
+    out = next;
+  }
+  return out;
 }
 
 /**
@@ -441,9 +737,34 @@ function stringMutations(s) {
     `${s}\u00e9`, `${s}\n`, `${s}\u2014`, `${s}_`, `${s}/`, `${s}:`];
 }
 
-function lengthVariants(cur, lengths) {
+/**
+ * Strings of the given lengths: the current string repeated and cut, and,
+ * when the location has a `format` or `pattern` (`keep` holds them), the
+ * current string with one of its characters repeated or removed at each
+ * position, kept only when every format and pattern still accepts it (an
+ * email address made long in its local part).
+ */
+function lengthVariants(cur, lengths, keep = null) {
   const base = typeof cur === 'string' && cur.length ? cur : 'a';
-  return lengths.filter(n => Number.isInteger(n) && n >= 0 && n < 20000).map(n => base.repeat(Math.ceil((n + 1) / base.length)).slice(0, n));
+  const sizes = lengths.filter(n => Number.isInteger(n) && n >= 0 && n < 20000);
+  const out = sizes.map(n => base.repeat(Math.ceil((n + 1) / base.length)).slice(0, n));
+  if (!keep) return out;
+  const chars = [...base];
+  for (const n of sizes) {
+    const d = n - chars.length;
+    for (let i = 0; i < chars.length && i < 128; i++) {
+      const s = d >= 0 ? [...chars.slice(0, i + 1), chars[i].repeat(d), ...chars.slice(i + 1)].join('') : [...chars.slice(0, i), ...chars.slice(i - d)].join('');
+      if ([...s].length === n && keep(s)) out.push(s);
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** A test that every format and pattern in `formats` / `patterns` accepts a string, or null when there are none. */
+function formatKeeper(formats, patterns) {
+  if (!formats.length && !patterns.length) return null;
+  const schemas = [...formats.map(f => ({ format: f })), ...patterns.map(p => ({ pattern: p }))];
+  return s => schemas.every(sc => accepts(null, 'src:', sc, s) !== false);
 }
 
 /** Candidate values (or edits) at the instance location for one difference entry. */
@@ -457,7 +778,7 @@ function candidates(entry, ctx) {
   if (isObj(cur)) for (const o of ctx.overlays || []) out.push({ ...cur, ...o });
   const nums = [o, n].filter(x => typeof x === 'number');
   const around = [...new Set(nums.flatMap(x => [x - 1, x, x + 1, x + 0.5]).concat(nums.length === 2 ? [(nums[0] + nums[1]) / 2] : []))].sort((p, q) => p - q);
-  if (['maxLength', 'minLength'].includes(k)) out.push(...lengthVariants(cur, around));
+  if (['maxLength', 'minLength'].includes(k)) out.push(...lengthVariants(cur, around, formatKeeper(ctx.formats || [], ctx.patterns)));
   if (['maxItems', 'minItems'].includes(k)) {
     const item = Array.isArray(cur) && cur.length ? cur[0] : 'a';
     for (const len of around) if (Number.isInteger(len) && len >= 0 && len < 1000) out.push(Array.from({ length: len }, (_, i) => (typeof item === 'string' ? `${item}${i || ''}` : structuredClone(item))));
@@ -474,6 +795,34 @@ function candidates(entry, ctx) {
     const a = new Set(o || []);
     const b = new Set(n || []);
     for (const p of [...b].filter(x => !a.has(x)).concat([...a].filter(x => !b.has(x)))) out.push({ deleteKey: p });
+  }
+  // A union added or removed as a whole: the instance without the properties
+  // its branches require, one at a time and all of them.
+  if ((k === 'anyOf' || k === 'oneOf') && isObj(cur) && (Array.isArray(o) !== Array.isArray(n))) {
+    const keys = [...new Set((Array.isArray(o) ? o : n).flatMap(b => (isObj(b) && Array.isArray(b.required) ? b.required : [])).filter(p => p in cur))];
+    for (const p of keys) out.push({ deleteKey: p });
+    if (keys.length > 1) out.push(keys.reduce((acc, p) => omit(acc, p), cur));
+  }
+  // `uniqueItems` added or removed: the array with its first item repeated.
+  if (k === 'uniqueItems' && Array.isArray(cur) && cur.length) out.push([...cur, structuredClone(cur[0])]);
+  // `additionalProperties` added, removed or changed: the object with one
+  // more property, of each JSON type.
+  if (k === 'additionalProperties' && isObj(cur)) {
+    for (const v of ['a', 1, true, null, {}, []]) out.push({ ...cur, __witness_extra: v });
+  }
+  // `minProperties` or `maxProperties`: objects with property counts around
+  // the bounds, from the instance's own properties and copies of its first
+  // value under new names.
+  if ((k === 'minProperties' || k === 'maxProperties') && isObj(cur)) {
+    const keys = Object.keys(cur);
+    const filler = keys.length ? cur[keys[0]] : 'a';
+    for (const count of around) {
+      if (!Number.isInteger(count) || count < 0 || count > 64) continue;
+      const obj = {};
+      for (const key of keys.slice(0, count)) obj[key] = cur[key];
+      for (let i = 0; Object.keys(obj).length < count; i++) obj[`x${i}`] = structuredClone(filler);
+      out.push(obj);
+    }
   }
   if (k === 'pattern' || ctx.patterns.length) {
     const pats = k === 'pattern' && typeof o === 'string' && typeof n === 'string' ? [o, n, ...ctx.patterns] : [...ctx.patterns, ...[o, n].filter(x => typeof x === 'string' && k === 'pattern')];
@@ -930,15 +1279,18 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
   for (const side of [accept, reject]) {
     const doc = `src:${entry.root}`;
     const root = rawAt(trees[side], { doc, ptr: '' });
+    // Each instance as synthesized, and conformed to the whole root (an
+    // `if` elsewhere in the root, a union branch, a pinned value).
     for (const choice of [0, 1, 2, 3, 4, 5]) {
       const guided = synth(trees[side], doc, root, path.segs, 0, choice);
-      if (guided !== FAIL) seeds.push(guided);
+      if (guided !== FAIL) seeds.push(guided, conformRoot(trees[side], doc, root, guided, path.segs));
     }
     const plain = synth(trees[side], doc, root, [], 0, 0);
-    if (plain !== FAIL) seeds.push(plain);
+    if (plain !== FAIL) seeds.push(plain, conformRoot(trees[side], doc, root, plain, []));
   }
   const synthesized = [];
   const patterns = [];
+  const formats = [];
   const overlays = [];
   for (const [side, label] of [['base', entry.base_location], ['head', entry.head_location]]) {
     const loc = parseLocation(label);
@@ -961,6 +1313,8 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
     // may reject, merged into the valid instance.
     if (wholeMap && isObj(raw)) for (const bad of violations(trees[side], loc.doc, raw)) if (isObj(bad)) overlays.push(bad);
     if (isObj(raw) && typeof raw.pattern === 'string') patterns.push(raw.pattern);
+    const fmt = derefRaw(trees[side], loc.doc, raw).schema;
+    if (isObj(fmt) && typeof fmt.format === 'string') formats.push(fmt.format);
     // Candidates built from the constraint itself, merged into the valid
     // instance at the location: what a `not` excludes, and an instance that
     // satisfies an `if` and violates its `then`.
@@ -1017,7 +1371,7 @@ async function search(entry, accept, reject, { trees, validators, corpus, corpus
     if (!va(seed)) continue;
     if (ok(seed)) return { root: entry.root, payload: seed, at: steps };
     const current = getAt(seed, steps);
-    const ctx = { current, synthesized, patterns, corpusStrings, overlays };
+    const ctx = { current, synthesized, patterns, formats, corpusStrings, overlays };
     for (const cand of candidates(entry, ctx)) {
       let payload;
       if (cand && typeof cand === 'object' && cand.deleteKey !== undefined) {

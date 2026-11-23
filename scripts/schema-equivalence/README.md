@@ -405,7 +405,22 @@ The search starts from corpus instances of the root and from an instance
 synthesized from the raw schema along the entry's pointer. A property that one
 `allOf` member declares, also behind the member's `$ref`, gives its schema to
 the other members, so a member that only requires the property gets a valid
-value. Pattern candidates
+value. An object with `minProperties` gets optional properties, then names
+its `patternProperties` or `additionalProperties` admit.
+
+Each synthesized instance is also conformed to the whole root, and both
+versions are tried. Conforming evaluates the raw schema (draft-07, as the
+repo's Ajv configuration applies it) and edits the instance where a local edit
+can satisfy it: the values `const` and `enum` pin, the properties `required`
+asks for, a valid value for a property of the wrong type, no property a
+closed object forbids, and the union branch the instance fits. Branches are
+tried with the one the pointer names first, then by how few of their pinned
+values the instance contradicts, so a value an `allOf` member pins keeps the
+branch it selects in the other member's `oneOf`. An `if` elsewhere in the
+root gets the `then` or `else` it selects; when that branch cannot hold (a
+`then` that forbids the property on the path), the condition is flipped by
+dropping a property the `if` requires, or by satisfying the `if`. The
+instance path the pointer names is never dropped. Pattern candidates
 come from both patterns: minimal and extended samples, one optional part at a
 time (a duration pattern gives `PT` and `P0D`), and long repetitions.
 Lookaheads and lookbehinds generate nothing; the real `RegExp` filters the
@@ -428,8 +443,22 @@ merges them into the valid instance at the location:
 values derived from the change (values around a bound, the values an enum
 gained or lost, strings that one pattern accepts and the other rejects, a
 property that became required removed, the added or removed branch), then
-values of every JSON type. Ajv with the repo configuration confirms every
-witness on both roots.
+values of every JSON type. More candidates come from the changed keyword:
+
+- For `maxLength` or `minLength` at a location with a `format` or `pattern`,
+  strings of the lengths around the bound that keep the format: one character
+  of the valid string repeated or removed at each position (an email address
+  made long in its local part).
+- For a union added or removed as a whole, the instance without each
+  property a branch requires, and without all of them.
+- For `uniqueItems`, the array with its first item repeated.
+- For `additionalProperties`, the object with one more property, of each
+  JSON type.
+- For `minProperties` or `maxProperties`, objects with property counts
+  around the bound, made from the instance's properties and copies of its
+  first value.
+
+Ajv with the repo configuration confirms every witness on both roots.
 
 Each site is also searched in both directions without attribution. A
 direction found there that no line at the site declares fails every line at

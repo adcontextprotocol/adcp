@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/proposal.json",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string"
+    },
+    "budget": {
+      "$ref": "/schemas/budget-guidance.json"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "budget"
+  ]
+}

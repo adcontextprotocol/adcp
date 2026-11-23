@@ -1,0 +1,7 @@
+title: c7-witness-max-properties
+changes:
+  - location: localized-name.json#
+    keyword: maxProperties
+    new: 1
+    direction: tighten
+    side: response

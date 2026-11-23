@@ -1,0 +1,7 @@
+title: c7-witness-unique-items
+changes:
+  - location: keyword-capabilities.json#/properties/match_types
+    keyword: uniqueItems
+    new: true
+    direction: tighten
+    side: none

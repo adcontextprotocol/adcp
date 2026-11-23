@@ -1,0 +1,11 @@
+{
+  "why": "An added maxProperties gets a witness: an object with one more property than the bound, a copy of its first value under a new name.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

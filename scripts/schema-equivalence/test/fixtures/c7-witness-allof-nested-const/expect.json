@@ -1,0 +1,11 @@
+{
+  "why": "A line beside an allOf whose member pins two nested properties to different branches of the other member's oneOf gets a witness: each property takes the pinned values and the branch they select.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

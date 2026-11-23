@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/email-address.json",
+  "type": "string",
+  "format": "email",
+  "maxLength": 254
+}

@@ -1,0 +1,11 @@
+{
+  "why": "An anyOf of required-only branches, added together with a required property, gets its own witness: the valid object without the properties the branches require, so only the anyOf rejects it.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 2
+}

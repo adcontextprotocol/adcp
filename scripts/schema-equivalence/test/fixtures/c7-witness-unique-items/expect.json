@@ -1,0 +1,11 @@
+{
+  "why": "An added uniqueItems gets a witness: the valid array with its first item repeated.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

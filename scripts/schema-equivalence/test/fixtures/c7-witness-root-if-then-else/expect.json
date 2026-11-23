@@ -1,0 +1,11 @@
+{
+  "why": "A line inside a root with an if/then/else elsewhere gets a witness: the instance takes the else branch, which allows the property on the path, instead of the then that the optional unchanged: true selects.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

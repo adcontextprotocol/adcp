@@ -1,0 +1,11 @@
+{
+  "why": "A line inside a branch of a closed root oneOf gets a witness although a required item has minProperties: the synthesized item gets a property its additionalProperties admits.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

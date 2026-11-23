@@ -1,0 +1,11 @@
+title: c7-witness-root-if-then-else
+changes:
+  - location: order-response.json#/properties/lines/items
+    keyword: required
+    new:
+      - currency
+      - product_id
+    old:
+      - product_id
+    direction: tighten
+    side: response

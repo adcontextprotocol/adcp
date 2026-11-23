@@ -1,0 +1,17 @@
+title: c7-witness-union-required-keys
+changes:
+  - location: budget-guidance.json#
+    keyword: required
+    new:
+      - currency
+    direction: tighten
+    side: none
+  - location: budget-guidance.json#
+    keyword: anyOf
+    new:
+      - required:
+          - min
+      - required:
+          - max
+    direction: tighten
+    side: none

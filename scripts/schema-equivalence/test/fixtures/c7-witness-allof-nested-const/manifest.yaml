@@ -1,0 +1,7 @@
+title: c7-witness-allof-nested-const
+changes:
+  - location: rights-response.json#/oneOf/0/properties/disclosure/properties/text
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response

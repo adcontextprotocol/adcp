@@ -1,0 +1,7 @@
+title: c7-witness-min-properties
+changes:
+  - location: brand.json#/oneOf/1/properties/voice/properties/voice_id
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: none
