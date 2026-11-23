@@ -96,6 +96,15 @@ function keepDefinitionKey(key: string, value?: unknown): boolean {
     && !(key === 'additionalProperties' && value === true);
 }
 
+/** Example payloads document a schema; they are not contract. Definitions
+ * already drop them with their other annotations, and the root document drops
+ * them too, so tools/list carries no example payloads into model context. */
+const exampleKeys = new Set(['example', 'examples']);
+
+function keepKey(key: string, value: unknown, definitionPath?: string): boolean {
+  return definitionPath ? keepDefinitionKey(key, value) : !exampleKeys.has(key);
+}
+
 /** Build one self-contained schema without duplicating referenced schemas or
  * their absolute $ids. External AdCP refs become local refs into a shared
  * $defs map; refs local to a referenced document stay scoped to that entry. */
@@ -159,7 +168,7 @@ function bundleSchema(root: JsonSchema): JsonSchema {
 
       const siblings = Object.fromEntries(
         Object.entries(record)
-          .filter(([key, entry]) => key !== '$ref' && (!definitionPath || keepDefinitionKey(key, entry)))
+          .filter(([key, entry]) => key !== '$ref' && keepKey(key, entry, definitionPath))
           .map(([key, entry]) => [key, rewrite(entry, definitionPath)]),
       );
       if (Object.keys(siblings).length === 0) return { $ref: rewrittenRef };
@@ -170,7 +179,7 @@ function bundleSchema(root: JsonSchema): JsonSchema {
 
     return Object.fromEntries(
       Object.entries(record)
-        .filter(([key, entry]) => !definitionPath || keepDefinitionKey(key, entry))
+        .filter(([key, entry]) => keepKey(key, entry, definitionPath))
         .map(([key, entry]) => [key, rewrite(entry, definitionPath)]),
     );
   }
