@@ -208,9 +208,25 @@
           "$ref": "/schemas/core/targeting.json",
           "description": "Strict non-null targeting criteria and effective state"
         },
+        "targeting-capability-flag": {
+          "$ref": "/schemas/core/targeting-capability-flag.json",
+          "description": "A targeting capability that is either declared or omitted. The only valid value is true: in product overlay support it means the dimension or feature can be selected on packages later, and in a buyer requirement it means it must remain selectable. Omit the field otherwise."
+        },
+        "targeting-geo-metros": {
+          "$ref": "/schemas/core/targeting-geo-metros.json",
+          "description": "Metro areas to target. Each entry names its classification system and values."
+        },
         "targeting-input": {
           "$ref": "/schemas/core/targeting-input.json",
           "description": "Request-only per-dimension targeting mutations with null-clear semantics"
+        },
+        "targeting-keywords": {
+          "$ref": "/schemas/core/targeting-keywords.json",
+          "description": "Keyword targets, each identified by its keyword and match type."
+        },
+        "targeting-languages": {
+          "$ref": "/schemas/core/targeting-languages.json",
+          "description": "Canonical BCP 47 language ranges to target, matched against a user's language-preference tag."
         },
         "targeting-overlay-support": {
           "$ref": "/schemas/core/targeting-overlay-support.json",
@@ -223,6 +239,10 @@
         "iana-timezone": {
           "$ref": "/schemas/core/iana-timezone.json",
           "description": "Concrete IANA Time Zone Database identifier"
+        },
+        "iana-timezones": {
+          "$ref": "/schemas/core/iana-timezones.json",
+          "description": "Concrete IANA timezone identifiers, each listed once."
         },
         "geo-region-requirement": {
           "$ref": "/schemas/core/geo-region-requirement.json",
@@ -243,6 +263,10 @@
         "targeting-modification": {
           "$ref": "/schemas/core/targeting-modification.json",
           "description": "One buyer-reviewable targeting modification on a configured product"
+        },
+        "targeting-negative-keywords": {
+          "$ref": "/schemas/core/targeting-negative-keywords.json",
+          "description": "Excluded keywords, each identified by its keyword and match type."
         },
         "placement-selection": {
           "$ref": "/schemas/core/placement-selection.json",
@@ -360,6 +384,10 @@
         "keyword-delivery-metrics": {
           "$ref": "/schemas/core/keyword-delivery-metrics.json",
           "description": "Delivery metrics row for one keyword and match type"
+        },
+        "keyword-match": {
+          "$ref": "/schemas/core/keyword-match.json",
+          "description": "A keyword and the match type it is matched with."
         },
         "geo-delivery-metrics": {
           "$ref": "/schemas/core/geo-delivery-metrics.json",
@@ -1126,6 +1154,10 @@
           "$ref": "/schemas/core/transformer-param.json",
           "description": "Descriptor for one configuration knob a transformer exposes (field, type, value_source inline|range|enumerable, allowed values/range/account-scoped options, default)."
         },
+        "transport-modes": {
+          "$ref": "/schemas/core/transport-modes.json",
+          "description": "Travel-time transport modes, each listed once."
+        },
         "evaluator-spec": {
           "$ref": "/schemas/core/evaluator-spec.json",
           "description": "Advisory buyer-attached evaluator input for build_creative — the rank-side of the get_creative_features feature oracle, driving a gate-then-rank pipeline. Declares the SOURCE of feature evaluation via one of two forms (inline pass/fail exemplars calibrating a single predicted_performance feature, or an external get_creative_features-capable agent_url), an optional hard feature_requirement[] GATE (drop fails — internal best_of_n pruning), an explicit rank_by ordering ({feature_id, direction}), an allowlisted feature_agent pointer (accepted_verifiers; off-list → EVALUATOR_AGENT_NOT_ACCEPTED), plus an optional soft eval_budget. Informs best_of_n recommended/rank; never blocks an already-produced billable leaf."
@@ -1234,6 +1266,10 @@
           "$ref": "/schemas/core/daypart-target.json",
           "description": "A time window for daypart targeting with days of week and a whole-hour or (experimental) HH:MM time-of-day range"
         },
+        "daypart-timezone-modes": {
+          "$ref": "/schemas/core/daypart-timezone-modes.json",
+          "description": "Daypart timezone modes, each listed once."
+        },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
           "description": "Signals Protocol targeting constraint using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
@@ -1249,6 +1285,10 @@
         "signal-targeting-expression": {
           "$ref": "/schemas/core/signal-targeting-expression.json",
           "description": "Media-buy product targeting expression using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "signal-targeting-list": {
+          "$ref": "/schemas/core/signal-targeting-list.json",
+          "description": "Flat list of signal targeting entries, the form that signal_targeting_groups replaces."
         },
         "package-signal-targeting": {
           "$ref": "/schemas/core/package-signal-targeting.json",
@@ -1744,6 +1784,10 @@
           "$ref": "/schemas/core/trusted-match-provider-id.json",
           "description": "Publisher-assigned identifier of a provider registration in Trusted Match."
         },
+        "trusted-match-segments": {
+          "$ref": "/schemas/core/trusted-match-segments.json",
+          "description": "Contextual segment identifiers."
+        },
         "signal-tag": {
           "$ref": "/schemas/core/signal-tag.json",
           "description": "Tag that groups signals in a data provider's or publisher's signal set."
@@ -1967,6 +2011,10 @@
         "brief-rejection-reason": {
           "$ref": "/schemas/core/brief-rejection-reason.json",
           "description": "Buyer-facing plain-text explanation a seller gives when it declines a brief or refinement request. It does not name confidential rules or inventory."
+        },
+        "browser-families": {
+          "$ref": "/schemas/core/browser-families.json",
+          "description": "Canonical browser families, each listed once."
         },
         "seller-suggestion": {
           "$ref": "/schemas/core/seller-suggestion.json",
@@ -2880,6 +2928,10 @@
           "$ref": "/schemas/core/keyword-match-capabilities.json",
           "description": "Keyword match-type capabilities."
         },
+        "keyword-match-types": {
+          "$ref": "/schemas/core/keyword-match-types.json",
+          "description": "Keyword match types, each listed once."
+        },
         "legacy-cost-per-target": {
           "$ref": "/schemas/core/legacy-cost-per-target.json",
           "description": "A deprecated optimization target that sets a cost per unit of the goal's metric. Normalize it to `bidding.cost_per` with strength `target`."
@@ -2935,6 +2987,10 @@
         "metro-area": {
           "$ref": "/schemas/core/metro-area.json",
           "description": "A metro area, identified by a metro system and a code in that system."
+        },
+        "metro-systems": {
+          "$ref": "/schemas/core/metro-systems.json",
+          "description": "Metro classification systems, each listed once."
         },
         "numeric-range": {
           "$ref": "/schemas/core/numeric-range.json",
@@ -3203,6 +3259,10 @@
         "trusted-match-targeting-kv": {
           "$ref": "/schemas/core/trusted-match-targeting-kv.json",
           "description": "A targeting key-value pair."
+        },
+        "trusted-match-targeting-kvs": {
+          "$ref": "/schemas/core/trusted-match-targeting-kvs.json",
+          "description": "Provider-local key-value pairs for ad-server targeting."
         },
         "universal-id": {
           "$ref": "/schemas/core/universal-id.json",

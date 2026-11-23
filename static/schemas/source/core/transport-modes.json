@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/transport-modes.json",
+  "title": "Transport Modes",
+  "description": "Travel-time transport modes, each listed once.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/transport-mode.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

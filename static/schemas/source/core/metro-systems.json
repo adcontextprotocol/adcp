@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/metro-systems.json",
+  "title": "Metro Systems",
+  "description": "Metro classification systems, each listed once.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/metro-system.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

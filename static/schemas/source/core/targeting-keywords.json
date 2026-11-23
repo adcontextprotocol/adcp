@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-keywords.json",
+  "title": "Targeting Keywords",
+  "description": "Keyword targets, each identified by its keyword and match type.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/keyword-target.json"
+  },
+  "minItems": 1
+}

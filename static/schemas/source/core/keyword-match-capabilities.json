@@ -6,14 +6,9 @@
   "type": "object",
   "properties": {
     "supported_match_types": {
-      "type": "array",
-      "description": "Match types this seller supports. Sellers must reject goals with unsupported match types.",
-      "items": {
-        "$ref": "/schemas/enums/match-type.json"
-      },
-      "minItems": 1,
-      "x-max-items-4.0": 16,
-      "uniqueItems": true
+      "$ref": "/schemas/core/keyword-match-types.json",
+      "description": "Match types this seller supports. Sellers must reject goals with unsupported match types. In a buyer requirement, the match types the product must support.",
+      "x-max-items-4.0": 16
     }
   },
   "required": [

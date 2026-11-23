@@ -24,7 +24,7 @@
       "type": "array",
       "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
       "items": {
-        "type": "string"
+        "$ref": "/schemas/core/package-id.json"
       }
     },
     "serve_window_sec": {
