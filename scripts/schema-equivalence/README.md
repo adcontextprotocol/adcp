@@ -131,7 +131,14 @@ valid payloads the same, and each has a fixture under `test/fixtures/`:
   the smaller; their `min` counterparts: the larger); `type` is the
   intersection. Values that do not combine (two patterns) stay separate
   conjuncts. Properties combine by name, and the same property in several
-  members becomes the conjunction of their schemas. A subschema keyword joins
+  members becomes the conjunction of their schemas. `items` (one schema, no
+  `additionalItems`), `propertyNames`, and an `additionalProperties` that no
+  `properties` or `patternProperties` sits beside conjoin the same way:
+  `items: A` and `items: B` are `items: allOf[A, B]`. A conjunction keeps
+  each schema once, so when B already composes A (an item definition that
+  builds on `core/error.json`), its members are B's and it compares equal to
+  B. `contains` does not conjoin:
+  two items can each satisfy one of two `contains`. A subschema keyword joins
   the merged object only when the conjunction has one of it; otherwise each
   stays its own conjunct (two `not`s, two `oneOf`s, two `if`/`then`/`else`
   groups). Keywords that read each other move together: `if` with `then` and

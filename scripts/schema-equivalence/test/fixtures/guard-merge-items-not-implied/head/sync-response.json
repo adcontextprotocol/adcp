@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sync-response.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/task-error-response.json"
+    },
+    {
+      "properties": {
+        "errors": {
+          "items": {
+            "$ref": "/schemas/issue.json"
+          }
+        }
+      }
+    }
+  ]
+}

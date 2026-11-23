@@ -1,0 +1,5 @@
+{
+  "why": "A failed response that composes a shared error response and narrows its errors items to a definition that builds on error.json equals the inline form: items conjoin, and the narrower definition already composes error.json.",
+  "exit": 0,
+  "class": 1
+}

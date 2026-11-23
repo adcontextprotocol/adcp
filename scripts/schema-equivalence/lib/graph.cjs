@@ -448,21 +448,42 @@ class Graph {
         infoFrom[k] = vals[0].n;
       } else for (const x of distinct) atoms.push(atomOf(x.n, refs.find(r => r.n === x.n.id), {}, {}, { [k]: x.v }));
     }
+    // The conjunction of subschema references: their members, flattened and
+    // without duplicates, so when one schema already composes another (an
+    // item definition that builds on core/error.json), the conjunction has
+    // its members and compares equal to it.
+    const conjoin = (rs, origin) => {
+      const parts = [];
+      const add = (r) => {
+        const t = this.kid(r);
+        const x = this.nodes[t.n];
+        if (x.kind === 'conj' && !hasInfo(x)) for (const m of this.conjMembers(x)) add(m);
+        else if (!parts.some(p => p.n === t.n)) parts.push(t);
+      };
+      rs.forEach(add);
+      if (parts.length === 1) return rs.find(r => this.kid(r).n === parts[0].n) || parts[0];
+      return { n: this.add({ kind: 'conj', origin, members: parts, info: {} }), via: '' };
+    };
     const kids = {};
     if (free.props.size) {
       kids.properties = {};
-      for (const [name, rs] of free.props) {
-        const parts = [];
-        const add = (r) => {
-          const t = this.kid(r);
-          const x = this.nodes[t.n];
-          if (x.kind === 'conj' && !hasInfo(x)) for (const m of this.conjMembers(x)) add(m);
-          else if (!parts.some(p => p.n === t.n)) parts.push(t);
-        };
-        rs.forEach(add);
-        kids.properties[name] = parts.length === 1 ? rs.find(r => this.kid(r).n === parts[0].n)
-          : { n: this.add({ kind: 'conj', origin: free.origins[`properties/${name}`], members: parts, info: {} }), via: '' };
-      }
+      for (const [name, rs] of free.props) kids.properties[name] = conjoin(rs, free.origins[`properties/${name}`]);
+    }
+    // Keywords whose value applies to the same instances in every member
+    // conjoin: `items` (a single schema, no `additionalItems`) for every
+    // item, `propertyNames` for every name, and `additionalProperties` when
+    // no member declares `properties` or `patternProperties` beside it, so it
+    // applies to every property. `items: A` and `items: B` are `items:
+    // allOf[A, B]`. `contains` does not conjoin this way: two items can each
+    // satisfy one of two `contains`.
+    const CONJOINS = { items: ['items'], propertyNames: ['propertyNames'], object: ['additionalProperties'] };
+    for (const [g, keys] of Object.entries(CONJOINS)) {
+      const list = groups.has(g) ? [...groups.get(g).values()] : [];
+      if (list.length < 2) continue;
+      const only = list.every(a => Object.keys(a.kids).length === 1 && a.kids[keys[0]] && !a.kids[keys[0]].tuple);
+      if (!only) continue;
+      const ref = conjoin(list.map(a => a.kids[keys[0]]), list[0].n.origin);
+      groups.set(g, new Map([['conjoined', { ...list[0], kids: { [keys[0]]: ref } }]]));
     }
     // A subschema group joins the combined object when it is the only one of
     // its kind; a closed object also needs the other members to declare no
