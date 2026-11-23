@@ -1,0 +1,15 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: sponsored intelligence alignment. The SI sponsored context disclosure jurisdiction country
+  references the one country code definition; the correction rests on the published 3.2.12 text.
+changes:
+  - location: core/country-code.json#
+    keyword: pattern
+    new: ^[A-Z]{2}$
+    direction: tighten
+    side: both
+    note: >-
+      sponsored-intelligence/si-sponsored-context.json#/properties/disclosure_obligation/properties/jurisdictions/items/properties/country
+      -> core/country-code.json. Basis (DR-0036, an external standard the text names; lint:additive-minor does not see
+      pattern): 3.2.12 sponsored-intelligence/si-sponsored-context.json: "description": "ISO 3166-1 alpha-2 country code."
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/sponsored-intelligence/si-sponsored-context.json#L100
