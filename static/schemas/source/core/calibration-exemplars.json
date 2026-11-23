@@ -10,8 +10,15 @@
       "items": {
         "oneOf": [
           {
-            "$ref": "/schemas/core/calibration-url-reference.json",
-            "description": "URL reference - specific page to fetch and evaluate"
+            "allOf": [
+              {
+                "$ref": "/schemas/core/calibration-url-reference.json"
+              }
+            ],
+            "description": "URL reference - specific page to fetch and evaluate. An entry that is also a valid artifact is the artifact.",
+            "not": {
+              "$ref": "/schemas/content-standards/artifact.json"
+            }
           },
           {
             "$ref": "/schemas/content-standards/artifact.json",
@@ -26,8 +33,15 @@
       "items": {
         "oneOf": [
           {
-            "$ref": "/schemas/core/calibration-url-reference.json",
-            "description": "URL reference - specific page to fetch and evaluate"
+            "allOf": [
+              {
+                "$ref": "/schemas/core/calibration-url-reference.json"
+              }
+            ],
+            "description": "URL reference - specific page to fetch and evaluate. An entry that is also a valid artifact is the artifact.",
+            "not": {
+              "$ref": "/schemas/content-standards/artifact.json"
+            }
           },
           {
             "$ref": "/schemas/content-standards/artifact.json",

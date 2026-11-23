@@ -29,7 +29,10 @@
     },
     {
       "type": "object",
-      "description": "Inline structure variant - contains full agent authorization data",
+      "description": "Inline structure variant - contains full agent authorization data. A file that is also a valid URL reference variant is the URL reference: validators follow `authoritative_location`.",
+      "not": {
+        "$ref": "#/oneOf/0"
+      },
       "properties": {
         "$schema": {
           "type": "string",
