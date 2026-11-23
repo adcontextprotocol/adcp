@@ -452,6 +452,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -1224,6 +1225,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -1603,6 +1605,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -1845,6 +1848,7 @@ changes:
           identifier:
             allOf:
               - $at: core/identifier.json#/allOf/0
+              - $at: core/identifier.json#/allOf/0
               - $at: core/identifier.json#/allOf/1
           impressions:
             minimum: 0
@@ -2006,6 +2010,7 @@ changes:
               $at: core/vendor-metric-value.json#
           viewability:
             allOf:
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
@@ -2377,6 +2382,7 @@ changes:
               $at: core/vendor-metric-value.json#
           viewability:
             allOf:
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
@@ -2780,6 +2786,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -3159,6 +3166,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -3531,6 +3539,7 @@ changes:
               $at: core/vendor-metric-value.json#
           viewability:
             allOf:
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
@@ -3915,6 +3924,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -4016,8 +4026,6 @@ changes:
             dependencies:
               reach:
                 - reach_unit
-            if:
-              $at: core/geo-delivery-metrics.json#/allOf/1/allOf/0/if
             properties:
               brand_lift:
                 $at: core/delivery-metrics.json#/properties/brand_lift
@@ -4120,9 +4128,11 @@ changes:
               vendor_metric_values:
                 $at: core/delivery-metrics.json#/properties/vendor_metric_values
               viewability:
-                $at: core/delivery-metrics.json#/properties/viewability
+                $at: core/delivery-metrics.json#
               views:
                 $at: core/delivery-metrics.json#/properties/views
+          - if:
+              $at: core/geo-delivery-metrics.json#/allOf/1/allOf/0/if
             then:
               $at: core/geo-delivery-metrics.json#/allOf/1/allOf/0/then
           - if:
@@ -4545,6 +4555,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -4776,6 +4787,7 @@ changes:
           identifier:
             allOf:
               - $at: core/identifier.json#/allOf/0
+              - $at: core/identifier.json#/allOf/0
               - $at: core/identifier.json#/allOf/1
           impressions:
             minimum: 0
@@ -4955,6 +4967,7 @@ changes:
               $at: core/vendor-metric-value.json#
           viewability:
             allOf:
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
@@ -5330,6 +5343,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -5709,6 +5723,7 @@ changes:
               $at: core/vendor-metric-value.json#
           viewability:
             allOf:
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
@@ -5939,6 +5954,7 @@ changes:
           identifier:
             allOf:
               - $at: core/identifier.json#/allOf/0
+              - $at: core/identifier.json#/allOf/0
               - $at: core/identifier.json#/allOf/1
           impressions:
             minimum: 0
@@ -6110,6 +6126,7 @@ changes:
               $at: core/vendor-metric-value.json#
           viewability:
             allOf:
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
@@ -6338,6 +6355,7 @@ changes:
           identifier:
             allOf:
               - $at: core/identifier.json#/allOf/0
+              - $at: core/identifier.json#/allOf/0
               - $at: core/identifier.json#/allOf/1
           impressions:
             minimum: 0
@@ -6500,6 +6518,7 @@ changes:
           viewability:
             allOf:
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
+              - $at: core/delivery-metrics.json#/properties/viewability/allOf/0
               - $at: core/delivery-metrics.json#/properties/viewability/allOf/1
           views:
             minimum: 0
@@ -6599,12 +6618,6 @@ changes:
             dependencies:
               reach:
                 - reach_unit
-            else:
-              $at: >-
-                core/media-buy-delivery.json#/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/allOf/0/else
-            if:
-              $at: >-
-                core/media-buy-delivery.json#/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/allOf/0/if
             properties:
               aired_at:
                 $at: >-
@@ -6725,9 +6738,15 @@ changes:
               vendor_metric_values:
                 $at: core/delivery-metrics.json#/properties/vendor_metric_values
               viewability:
-                $at: core/delivery-metrics.json#/properties/viewability
+                $at: core/delivery-metrics.json#
               views:
                 $at: core/delivery-metrics.json#/properties/views
+          - else:
+              $at: >-
+                core/media-buy-delivery.json#/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/allOf/0/else
+            if:
+              $at: >-
+                core/media-buy-delivery.json#/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/allOf/0/if
             then:
               $at: >-
                 core/media-buy-delivery.json#/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/allOf/0/then
@@ -7428,7 +7447,7 @@ changes:
               vendor_metric_values:
                 $at: core/delivery-metrics.json#/properties/vendor_metric_values
               viewability:
-                $at: core/delivery-metrics.json#/properties/viewability
+                $at: core/delivery-metrics.json#
               views:
                 $at: core/delivery-metrics.json#/properties/views
           window_end:
