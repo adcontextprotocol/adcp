@@ -16,7 +16,7 @@ For AdCP 3.3, `core/error.json` gains an optional, open-typed
 `mutation_outcome` (`not_applied`, `unknown`, `applied`). It is independent of
 `code` and `recovery`. Sellers declaring 3.3 or later in `supported_versions`
 SHOULD set `unknown` (or `applied`) on the error for a fenced idempotency claim
-(a MUST from 3.4),
+(a MUST from 4.0; see Amendments),
 MUST NOT emit `unknown` without a fence, and MUST NOT set `not_applied` without
 pre-commit evidence: a failure raised before the claim row was inserted and
 before any write, or a typed rejection from validation that runs strictly before
@@ -39,5 +39,12 @@ gives buyers the matching machine-readable signal.
 ## Implications
 
 Settles the field's location and semantics. Does not settle per-item outcomes
-for partially applied compound mutations (3.4), nor any change to `recovery`
+for partially applied compound mutations (a later release), nor any change to `recovery`
 values or retry rules (4.0 if ever).
+
+## Amendments
+
+- 2026-11-23: The MUST takes effect in 4.0, not 3.4. The 3.4 line was retired
+  on 2026-11-08 (#8756), 3.3 is the last 3.x minor, and the next release is
+  4.0, so "from 3.4" could never take effect. The 3.3 obligation (SHOULD) is
+  unchanged. Maintainer decision, recorded in #9191.
