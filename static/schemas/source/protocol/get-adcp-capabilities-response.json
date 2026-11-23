@@ -2521,19 +2521,24 @@
             },
             "matching_latency_hours": {
               "title": "Matching Latency Range",
-              "type": "object",
               "description": "Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring push_notification_config.",
-              "properties": {
-                "min": {
-                  "type": "integer",
-                  "minimum": 0
+              "allOf": [
+                {
+                  "$ref": "/schemas/core/open-ended-numeric-range.json"
                 },
-                "max": {
-                  "type": "integer",
-                  "minimum": 0
+                {
+                  "properties": {
+                    "min": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "max": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
                 }
-              },
-              "additionalProperties": true
+              ]
             }
           },
           "if": {

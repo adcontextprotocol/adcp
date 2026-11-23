@@ -77,10 +77,12 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // definition: 1,193, 308 and 207.
   // Replacing repeated inline object copies with shared core definitions adds
   // 31 definitions the media-buy inputs reach, 27 of them repeated, and 103
-  // instances: 1,296, 339 and 234.
-  assert.equal(report.definition_instances, 1296);
-  assert.equal(report.unique_definitions, 339);
-  assert.equal(report.repeated_definitions, 234);
+  // instances: 1,296, 339 and 234. Giving the money, range, distance, and
+  // postal address fields one definition each adds 9 instances and 5 unique
+  // definitions, 1 of them repeated: 1,305, 344 and 235.
+  assert.equal(report.definition_instances, 1305);
+  assert.equal(report.unique_definitions, 344);
+  assert.equal(report.repeated_definitions, 235);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -207,7 +209,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 339);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 344);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

@@ -48,6 +48,12 @@
                 { "required": ["system"] },
                 { "required": ["country"] }
               ]
+            },
+            "properties": {
+              "geo_code": {
+                "$ref": "/schemas/core/country-code.json",
+                "description": "ISO 3166-1 alpha-2 country code."
+              }
             }
           }
         },
@@ -62,6 +68,12 @@
                 { "required": ["system"] },
                 { "required": ["country"] }
               ]
+            },
+            "properties": {
+              "geo_code": {
+                "$ref": "/schemas/core/country-subdivision-code.json",
+                "description": "ISO 3166-2 country subdivision code with the country prefix."
+              }
             }
           }
         },

@@ -1720,6 +1720,22 @@
           "$ref": "/schemas/core/adcp-task-name.json",
           "description": "Canonical snake_case AdCP task name, such as create_media_buy."
         },
+        "address-city": {
+          "$ref": "/schemas/core/address-city.json",
+          "description": "The city of a postal address."
+        },
+        "address-postal-code": {
+          "$ref": "/schemas/core/address-postal-code.json",
+          "description": "The postal or ZIP code of a postal address."
+        },
+        "address-region": {
+          "$ref": "/schemas/core/address-region.json",
+          "description": "The state, province, or region of a postal address."
+        },
+        "address-street": {
+          "$ref": "/schemas/core/address-street.json",
+          "description": "The street line of a postal address, including the building number."
+        },
         "media-buy-name": {
           "$ref": "/schemas/core/media-buy-name.json",
           "description": "Human-readable media buy name for trafficking UI display and operational communication. It contains at least one non-whitespace character."
@@ -2055,6 +2071,10 @@
         "display-transition-id": {
           "$ref": "/schemas/core/display-transition-id.json",
           "description": "Identifier of a state transition in a stateful display."
+        },
+        "distance": {
+          "$ref": "/schemas/core/distance.json",
+          "description": "A non-negative distance, with its unit."
         },
         "governance-attribute-id": {
           "$ref": "/schemas/core/governance-attribute-id.json",
@@ -2827,6 +2847,10 @@
         "opaque-creative-accessibility": {
           "$ref": "/schemas/core/opaque-creative-accessibility.json",
           "description": "Self-declared accessibility properties for this opaque creative"
+        },
+        "open-ended-numeric-range": {
+          "$ref": "/schemas/core/open-ended-numeric-range.json",
+          "description": "A range of numeric values with an inclusive minimum, an inclusive maximum, or both."
         },
         "optimization-event-source": {
           "$ref": "/schemas/core/optimization-event-source.json",
@@ -4050,6 +4074,10 @@
         "app-store": {
           "$ref": "/schemas/enums/app-store.json",
           "description": "Application store that lists an app."
+        },
+        "area-unit": {
+          "$ref": "/schemas/enums/area-unit.json",
+          "description": "Units of area measurement (sqft, sqm)"
         },
         "webhook-delivery-auth-mode": {
           "$ref": "/schemas/enums/webhook-delivery-auth-mode.json",

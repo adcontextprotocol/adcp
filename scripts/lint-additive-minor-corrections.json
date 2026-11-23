@@ -2558,6 +2558,150 @@
         "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on code in core/error.json. An error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/city",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"city\": { \"type\": \"string\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the city of the postal address in core/business-entity.json. A postal address city, which core/address-city.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/postal_code",
+      "bound": "maxLength",
+      "value": 20,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"postal_code\": { \"type\": \"string\", \"maxLength\": 20 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the postal_code of the postal address in core/business-entity.json. A postal address postal code, which core/address-postal-code.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/region",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"region\": { \"type\": \"string\", \"description\": \"State, province, or region\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the region of the postal address in core/business-entity.json. A postal address region, which core/address-region.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/street",
+      "bound": "maxLength",
+      "value": 200,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"street\": { \"type\": \"string\", \"description\": \"Street address including building number\", \"maxLength\": 200 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the street of the postal address in core/business-entity.json. A postal address street, which core/address-street.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/city",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"city\": { \"type\": \"string\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the city of the postal address in core/business-entity.json. A postal address city, which core/address-city.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/postal_code",
+      "bound": "maxLength",
+      "value": 20,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"postal_code\": { \"type\": \"string\", \"maxLength\": 20 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the postal_code of the postal address in core/business-entity.json. A postal address postal code, which core/address-postal-code.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/region",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"region\": { \"type\": \"string\", \"description\": \"State, province, or region\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the region of the postal address in core/business-entity.json. A postal address region, which core/address-region.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/street",
+      "bound": "maxLength",
+      "value": 200,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"street\": { \"type\": \"string\", \"description\": \"Street address including building number\", \"maxLength\": 200 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the street of the postal address in core/business-entity.json. A postal address street, which core/address-street.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/city",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"city\": { \"type\": \"string\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the city of the postal address in core/business-entity.json. A postal address city, which core/address-city.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/postal_code",
+      "bound": "maxLength",
+      "value": 20,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"postal_code\": { \"type\": \"string\", \"maxLength\": 20 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the postal_code of the postal address in core/business-entity.json. A postal address postal code, which core/address-postal-code.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/region",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"region\": { \"type\": \"string\", \"description\": \"State, province, or region\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the region of the postal address in core/business-entity.json. A postal address region, which core/address-region.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/street",
+      "bound": "maxLength",
+      "value": 200,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"street\": { \"type\": \"string\", \"description\": \"Street address including building number\", \"maxLength\": 200 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the street of the postal address in core/business-entity.json. A postal address street, which core/address-street.json bounds."
     }
   ]
 }

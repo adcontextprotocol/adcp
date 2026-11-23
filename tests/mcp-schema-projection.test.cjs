@@ -152,9 +152,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 558,798 → 567,927 bytes (545.70 → 554.62 KiB measured); bound it at 555 KiB.
 // Merged with main's single-value deprecations (#9123) and
 // PROPOSAL_TERMS_CHANGED (#9171), the media-buy inputs measure 571,034 bytes
-// (557.65 KiB); bound it at 558 KiB.
+// (557.65 KiB); bound it at 558 KiB. One definition per money, range,
+// distance, and postal address field brings them to 572,722 bytes
+// (559.30 KiB); bound it at 560 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 558,
+  'media-buy': 560,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
   // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
   // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
@@ -269,8 +271,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // bound at 1_453_000.
 // Merged with main's reporting dimension systems (#9049), single-value
 // deprecations (#9123), and PROPOSAL_TERMS_CHANGED (#9171), the controller
-// measures 1_456_358 bytes; bound at 1_457_000.
-const PARITY_COMPILE_LIMIT = 1_457_000;
+// measures 1_456_358 bytes; bound at 1_457_000. One definition per money,
+// range, distance, and postal address field: 1_458_268 bytes; bound at
+// 1_459_000.
+const PARITY_COMPILE_LIMIT = 1_459_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

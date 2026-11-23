@@ -52,8 +52,7 @@
           "description": "Area value."
         },
         "unit": {
-          "type": "string",
-          "enum": ["sqft", "sqm"],
+          "$ref": "/schemas/enums/area-unit.json",
           "description": "Area unit."
         }
       },
