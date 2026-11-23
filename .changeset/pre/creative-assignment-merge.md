@@ -11,3 +11,5 @@ Merge a seller-created copy into the buyer's creative on a package. When a selle
 - New capability `creative.supports_assignment_merge` (requires `has_creative_library: true` and `creative.stable_creative_ids: true`). Sellers that do not declare it reject `merge` with `UNSUPPORTED_FEATURE`, and buyers MUST NOT send it.
 
 All additions are optional, so 3.2 payloads remain valid.
+
+Later in 3.3 (#8997), `creative.assignment_operations` became the authoritative declaration: buyers send `merge` only when it is listed, and `supports_assignment_merge` is kept for compatibility.

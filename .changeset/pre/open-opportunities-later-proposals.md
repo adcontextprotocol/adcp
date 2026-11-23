@@ -14,4 +14,4 @@ Experimental open opportunities (`media_buy.open_opportunities`, RFC #8096). A b
 - `media_buy.open_opportunities` capability block with separately advertised `list_proposals`, `keep_open_after_purchase`, and `later_proposals` (with required `max_open_duration`); `list_proposals` added to `lifecycle_tools`.
 - `comply_test_controller` scenario `simulate_later_proposal` with an `opportunity_id` param.
 
-Buyers MUST NOT use a part the seller does not advertise; 3.2 sellers reject the new values. Certification: the proposal-lifecycle module may want a later-proposal lesson once the surface graduates.
+Buyers MUST NOT use a part the seller does not advertise; 3.2 sellers reject the new values.

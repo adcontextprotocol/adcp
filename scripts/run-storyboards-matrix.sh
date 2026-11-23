@@ -105,19 +105,34 @@ NODE
       fi
       if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/compliance/${latest_3_0}/index.json" 2>/dev/null; then
         bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
-        git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}"
+        git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}" || {
+          echo "::error::Failed to extract dist/compliance/${latest_3_0} from ${RELEASE_GIT_REF}"
+          exit 1
+        }
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
-        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}"
+        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}" || {
+          echo "::error::Failed to patch the 3.0 compliance bundle at ${COMPLIANCE_DIR}"
+          exit 1
+        }
         if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/schemas/${latest_3_0}/index.json" 2>/dev/null; then
-          git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/schemas/${latest_3_0}" | tar -x -C "${bundle_tmp}"
+          git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/schemas/${latest_3_0}" | tar -x -C "${bundle_tmp}" || {
+            echo "::error::Failed to extract dist/schemas/${latest_3_0} from ${RELEASE_GIT_REF}"
+            exit 1
+          }
           SCHEMA_ROOT="${bundle_tmp}/dist/schemas/${latest_3_0}"
         fi
       else
         bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
         mkdir -p "${bundle_tmp}/dist/compliance"
-        cp -R "${REPO_ROOT}/dist/compliance/${latest_3_0}" "${bundle_tmp}/dist/compliance/${latest_3_0}"
+        cp -R "${REPO_ROOT}/dist/compliance/${latest_3_0}" "${bundle_tmp}/dist/compliance/${latest_3_0}" || {
+          echo "::error::Failed to copy dist/compliance/${latest_3_0} into ${bundle_tmp}"
+          exit 1
+        }
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
-        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}"
+        node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}" || {
+          echo "::error::Failed to patch the 3.0 compliance bundle at ${COMPLIANCE_DIR}"
+          exit 1
+        }
         if [ -f "${REPO_ROOT}/dist/schemas/${latest_3_0}/index.json" ]; then
           SCHEMA_ROOT="${REPO_ROOT}/dist/schemas/${latest_3_0}"
         fi
@@ -145,8 +160,16 @@ done
 
 if [ "${CURRENT_SOURCE}" -eq 1 ]; then
   echo "Building current compliance and schema bundles."
-  node "${REPO_ROOT}/scripts/build-schemas.cjs"
-  node "${REPO_ROOT}/scripts/build-compliance.cjs"
+  # A failed build leaves incomplete bundles behind; testing against them
+  # would grade the wrong inputs, so stop here.
+  node "${REPO_ROOT}/scripts/build-schemas.cjs" || {
+    echo "::error::The schema build failed; not running storyboards against incomplete schemas"
+    exit 1
+  }
+  node "${REPO_ROOT}/scripts/build-compliance.cjs" || {
+    echo "::error::The compliance build failed; not running storyboards against an incomplete bundle"
+    exit 1
+  }
   COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/latest"
   if [ -z "${SCHEMA_ROOT}" ]; then
     # Snapshot the freshly built schema bundle. The SDK's schema loader
@@ -190,7 +213,10 @@ const dir = process.argv[2];
 const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
 process.stdout.write(index.adcp_version || '');
 NODE
-)
+) || {
+    echo "::error::Cannot read adcp_version from ${COMPLIANCE_DIR}/index.json"
+    exit 1
+  }
   if [ -z "${SCHEMA_ROOT}" ]; then
     SCHEMA_ROOT=$(node - <<'NODE' "${COMPLIANCE_DIR}" "${bundle_version}" "${REPO_ROOT}"
 const fs = require('node:fs');
@@ -307,7 +333,8 @@ REQUIRED_CLEAN_CURRENT_SALES=(
 REQUIRED_EXACT_CURRENT_SALES=(
   # 9 steps since 1.1.0 added the assignment_operations check (#8933).
   "media_buy_seller/compact_direct_buy_lifecycle:9:0"
-  "media_buy_seller/compact_product_lifecycle:10:0"
+  # 11 steps since 1.3.0 added the terms-digest mismatch refusal (#9168).
+  "media_buy_seller/compact_product_lifecycle:11:0"
   "media_buy_seller/declined_proposal_refinement:7:0"
   "media_buy_seller/declined_proposal_execution:9:0"
   "media_buy_seller/expired_proposal_execution:9:0"
@@ -329,14 +356,14 @@ REQUIRED_EXACT_CURRENT_SALES=(
   # Experimental 3.3 reporting subscriptions over the sandbox clock.
   "media_buy_seller/reporting_subscription_coverage:46:1"
   "media_buy_seller/reporting_subscription_capacity:16:0"
-  # Experimental 3.3 holds over seeded hold policies. The hold_extension
-  # skips are the extend_hold steps the @adcp/sdk runner cannot send yet
-  # (adcontextprotocol/adcp-client#3601) and their dependents.
+  # Experimental 3.3 holds over seeded hold policies. hold_extension runs
+  # every step: the @adcp/sdk runner sends extend_hold from 17.0.0-beta.33
+  # (adcontextprotocol/adcp-client#3601).
   "media_buy_seller/hold_policy_bounds:18:0"
   "media_buy_seller/hold_policy_terms_only:19:4"
   "media_buy_seller/hold_policy_version_gate:11:0"
   "media_buy_seller/hold_unavailable_batch:12:0"
-  "media_buy_seller/hold_extension:22:10"
+  "media_buy_seller/hold_extension:32:0"
   "media_buy_seller/hold_ranking:11:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(

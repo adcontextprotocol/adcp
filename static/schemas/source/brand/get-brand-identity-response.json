@@ -145,7 +145,11 @@
               "oneOf": [
                 {
                   "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "pattern": "^#[0-9A-Fa-f]{6}$",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -161,7 +165,11 @@
               "oneOf": [
                 {
                   "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "pattern": "^#[0-9A-Fa-f]{6}$",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -177,7 +185,11 @@
               "oneOf": [
                 {
                   "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "pattern": "^#[0-9A-Fa-f]{6}$",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -193,7 +205,11 @@
               "oneOf": [
                 {
                   "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "pattern": "^#[0-9A-Fa-f]{6}$",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
@@ -209,7 +225,11 @@
               "oneOf": [
                 {
                   "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "pattern": "^#[0-9A-Fa-f]{6}$",
+                  "deprecated": true,
+                  "x-deprecated-in": "3.3.0",
+                  "x-removed-in": "4.0.0",
+                  "description": "Deprecated in 3.3, removed in 4.0. The single-value form: send a one-item array instead."
                 },
                 {
                   "type": "array",
