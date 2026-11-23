@@ -71,16 +71,22 @@ vi.mock('../../src/logger.js', async (importOriginal) => {
 
 const { setupTrainingReportingRoutes } = await import('../../src/routes/admin/training-reporting.js');
 const { stopAuthTimers } = await import('../../src/middleware/auth.js');
+const { csrfProtection } = await import('../../src/middleware/csrf.js');
 
 const ADMIN = 'Bearer static-training-reporting-admin-key';
 const BASE = '/api/admin/training-agent/reporting/subscribers';
 const SUSPEND = `${BASE}/acc-1/sub-1/suspend`;
 const RESUME = `${BASE}/acc-1/sub-1/resume`;
 const REASON = 'Subscriber returns 500s';
+/** A valid double-submit pair, so cookie-session requests reach requireAuth and requireAdmin. */
+const CSRF_TOKEN = 'a'.repeat(64);
+const SESSION = { Cookie: `wos-session=plain-user; csrf-token=${CSRF_TOKEN}`, 'X-CSRF-Token': CSRF_TOKEN };
+const CSRF_ONLY = { Cookie: `csrf-token=${CSRF_TOKEN}`, 'X-CSRF-Token': CSRF_TOKEN };
 
 function createApp() {
   const app = express();
   app.use(cookieParser());
+  app.use(csrfProtection);
   app.use(express.json());
   const router = express.Router();
   setupTrainingReportingRoutes(router);
@@ -152,16 +158,22 @@ describe('admin training reporting subscriber routes', () => {
       ['list', 'get', BASE], ['suspend', 'post', SUSPEND], ['resume', 'post', RESUME],
     ];
     it.each(cases)('%s: no credentials gives 401', async (_n, method, url) => {
-      const res = await request(app)[method](url).send({ reason: REASON });
+      const res = await request(app)[method](url).set(CSRF_ONLY).send({ reason: REASON });
       expect(res.status).toBe(401);
       expect(mocks.runtime!.listNotificationSubscribers).not.toHaveBeenCalled();
       expect(mocks.runtime!.setNotificationSubscriberActive).not.toHaveBeenCalled();
     });
     it.each(cases)('%s: an authenticated non-admin gives 403', async (_n, method, url) => {
-      const res = await request(app)[method](url).set('Cookie', 'wos-session=plain-user').send({ reason: REASON });
+      const res = await request(app)[method](url).set(SESSION).send({ reason: REASON });
       expect(res.status).toBe(403);
       expect(mocks.runtime!.listNotificationSubscribers).not.toHaveBeenCalled();
       expect(mocks.runtime!.setNotificationSubscriberActive).not.toHaveBeenCalled();
+    });
+    it.each(cases.filter(([, method]) => method === 'post'))('%s: a cookie session without the CSRF token is refused', async (_n, method, url) => {
+      const res = await request(app)[method](url).set('Cookie', 'wos-session=plain-user').send({ reason: REASON });
+      expect(res.status).toBe(403);
+      expect(mocks.runtime!.setNotificationSubscriberActive).not.toHaveBeenCalled();
+      expect(auditRows()).toHaveLength(0);
     });
     it.each(cases)('%s: a WorkOS API key is refused by requireAdmin', async (_n, method, url) => {
       const res = await request(app)[method](url).set('Authorization', 'Bearer sk_tenant_full').send({ reason: REASON });
