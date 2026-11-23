@@ -68,6 +68,11 @@ describe('inventory tenant on a season file', () => {
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;
     const offset = Date.parse(WALL_CLOCK) - Date.now();
     setSandboxWallClockForTesting(() => Date.now() + offset);
+    const synced = await call('inventory-adserver', 'sync_accounts', {
+      idempotency_key: 'inventory-season-file-provision-01',
+      accounts: [{ ...ACCOUNT, billing: 'operator' }],
+    });
+    if (synced.adcp_error || synced.__envelope) throw new Error(`sync_accounts failed: ${JSON.stringify(synced).slice(0, 500)}`);
   }, 90_000);
 
   afterAll(async () => {
