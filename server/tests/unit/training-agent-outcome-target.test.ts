@@ -1261,6 +1261,34 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         expect(result.totalBudgetGuidance.min * 0.45).toBeGreaterThanOrEqual(5_000);
         expect(Math.round(result.totalBudgetGuidance.recommended * 100)).toBeCloseTo(result.totalBudgetGuidance.recommended * 100, 6);
       });
+
+      it('does not step past a total that already clears the minimum under the canonical purchase expression', () => {
+        const splitProposal = {
+          proposal_id: 'split-ceiling',
+          name: 'Split ceiling',
+          allocations: [
+            { product_id: 'p1', allocation_percentage: 60, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+            { product_id: 'p2', allocation_percentage: 40, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+          ],
+        } as unknown as PlanProposal;
+        const splitProducts = new Map([
+          ['p1', { product_id: 'p1', pricing_options: [{ ...USD_FIXED_CPM_40, min_spend_per_package: 199.8 }] }],
+          ['p2', { product_id: 'p2', pricing_options: [USD_FIXED_CPM_40] }],
+        ]) as unknown as PlanProducts;
+        const result = computeOutcomeTargetCostPlan(
+          { kind: 'metric', metric: 'clicks' },
+          clicksOptimizationGoal,
+          { amount: 100, currency: 'USD', strength: 'target' },
+          1,
+          { max: 333 },
+          splitProposal,
+          splitProducts,
+        )!;
+        // 199.8 / 0.6 is 333 exactly; a float-naive check would step to 333.01 and exceed the ceiling.
+        expect(result.totalBudgetGuidance.recommended).toBe(333);
+        expect(result.totalBudgetGuidance.recommended * 60 / 100).toBeGreaterThanOrEqual(199.8);
+        expect(result.plannedVolume).toBeGreaterThanOrEqual(1);
+      });
     });
   });
 
