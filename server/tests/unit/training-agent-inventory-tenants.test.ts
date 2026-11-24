@@ -1049,6 +1049,78 @@ describe('inventory tenants', () => {
       });
     });
 
+    describe('/inventory-adserver multi-package updates', () => {
+      const tenant = 'inventory-adserver';
+      const TOKEN_GOAL = 'demo-inventory-goal-update-v1';
+      const product = 'ros_display_guaranteed';
+      const option = 'ros_display_guaranteed_cpm';
+      beforeAll(() => prepare(tenant, TOKEN_GOAL));
+      const update = (key: string, patch: Record<string, unknown>) =>
+        call(tenant, 'update_media_buy', { idempotency_key: key, account: ACCOUNT, ...patch }, TOKEN_GOAL);
+      const reread = async (id: string) =>
+        (await call(tenant, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [id] }, TOKEN_GOAL)).media_buys[0] as Structured;
+      const pair = async (key: string, goals: number[]) => {
+        const created = await call(tenant, 'create_media_buy', {
+          idempotency_key: key, account: ACCOUNT, brand: BRAND, ...times,
+          packages: goals.map(impressions => ({ product_id: product, pricing_option_id: option, budget: 1_000_000, impressions })),
+        }, TOKEN_GOAL);
+        expectCanonical('create_media_buy', created);
+        return created;
+      };
+
+      it('applies raises after the decreases of the same request, in either package order', async () => {
+        const open = await available(tenant, TOKEN_GOAL, product);
+        const a = Math.floor(open / 2);
+        const b = open - a;
+        const created = await pair('inventory-goal-update-pair-001', [a, b]);
+        const [idA, idB] = created.packages.map((pkg: Structured) => pkg.package_id);
+        expect(await available(tenant, TOKEN_GOAL, product)).toBe(0);
+
+        const swap = await update('inventory-goal-update-swap-001', {
+          media_buy_id: created.media_buy_id,
+          packages: [{ package_id: idA, impressions: a + 100 }, { package_id: idB, impressions: b - 100 }],
+        });
+        expectCanonical('update_media_buy', swap);
+        const back = await update('inventory-goal-update-swap-002', {
+          media_buy_id: created.media_buy_id,
+          packages: [{ package_id: idB, impressions: b }, { package_id: idA, impressions: a }],
+        });
+        expectCanonical('update_media_buy', back);
+        expect((await reread(created.media_buy_id)).packages.map((pkg: Structured) => pkg.impressions)).toEqual([a, b]);
+
+        const both = await update('inventory-goal-update-both-0001', {
+          media_buy_id: created.media_buy_id,
+          packages: [{ package_id: idA, impressions: a + 100 }, { package_id: idB, impressions: b + 100 }],
+        });
+        expect(errorOf(both)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE' });
+        expect((await reread(created.media_buy_id)).packages.map((pkg: Structured) => pkg.impressions)).toEqual([a, b]);
+        expect(await available(tenant, TOKEN_GOAL, product)).toBe(0);
+        // Free the market for the next test.
+        expectCanonical('update_media_buy', await update('inventory-goal-update-free-0001', { media_buy_id: created.media_buy_id, canceled: true }));
+      });
+
+      it('lets a cancellation take precedence over the other fields of its level', async () => {
+        const open = await available(tenant, TOKEN_GOAL, product);
+        const rootBuy = await pair('inventory-goal-update-root-0001', [1000]);
+        const root = await update('inventory-goal-update-root-0002', {
+          media_buy_id: rootBuy.media_buy_id, canceled: true,
+          packages: [{ package_id: rootBuy.packages[0].package_id, impressions: open * 10 }],
+        });
+        expectCanonical('update_media_buy', root);
+        expect((await reread(rootBuy.media_buy_id)).status).toBe('canceled');
+
+        const pkgBuy = await pair('inventory-goal-update-pkg-00001', [1000, 1000]);
+        const [x, y] = pkgBuy.packages.map((pkg: Structured) => pkg.package_id);
+        const pkgCancel = await update('inventory-goal-update-pkg-00002', {
+          media_buy_id: pkgBuy.media_buy_id, packages: [{ package_id: x, canceled: true, impressions: open * 10 }],
+        });
+        expectCanonical('update_media_buy', pkgCancel);
+        const packages = (await reread(pkgBuy.media_buy_id)).packages as Structured[];
+        expect(packages.find(pkg => pkg.package_id === x)).toMatchObject({ canceled: true });
+        expect(packages.find(pkg => pkg.package_id === y)?.canceled).not.toBe(true);
+      });
+    });
+
     describe('/inventory-adserver mid-flight window', () => {
       const tenant = 'inventory-adserver';
       const TOKEN_GOAL = 'demo-inventory-goal-window-v1';

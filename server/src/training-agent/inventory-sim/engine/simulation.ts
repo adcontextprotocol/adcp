@@ -385,22 +385,23 @@ export class InventorySimulation {
     return record;
   }
 
-  /** The days a booking still serves, as of `tomorrow`, inside the season. */
-  private servingDays(booking: Pick<Booking, 'flight_start_day' | 'flight_end_day'>, tomorrow: number): { first: number; last: number } {
+  /** The days a booking still serves, inside the season. `today` has not run
+   * yet, so a booking confirmed before it serves it too. */
+  private servingDays(booking: Pick<Booking, 'confirmed_day' | 'flight_start_day' | 'flight_end_day'>, today: number): { first: number; last: number } {
     return {
-      first: Math.max(tomorrow, booking.flight_start_day, 0),
+      first: Math.max(today, booking.confirmed_day + 1, booking.flight_start_day, 0),
       last: Math.min(booking.flight_end_day, this.traffic.calendar.days),
     };
   }
 
   /**
    * Reserved impressions per day and cell over the days [first, last), from
-   * the guaranteed bookings still to serve from `tomorrow`, less `except`. A
-   * goal booking spreads what is left of its goal over its own serving days
-   * wherever the window starts, so a window that opens mid-flight holds only
-   * the part that falls inside it.
+   * the guaranteed bookings still to serve, less `except`. A goal booking
+   * spreads what is left of its goal over its own serving days wherever the
+   * window starts, so a window that opens mid-flight holds only the part
+   * that falls inside it.
    */
-  private reservations(tomorrow: number, first: number, last: number, except?: string): Map<number, CellCounts> {
+  private reservations(today: number, first: number, last: number, except?: string): Map<number, CellCounts> {
     const reserved = new Map<number, CellCounts>();
     const add = (day: number, cell: number, value: number) => {
       let counts = reserved.get(day);
@@ -409,7 +410,7 @@ export class InventorySimulation {
     };
     for (const booking of this.state.bookings) {
       if (booking.status === 'canceled' || booking.kind === 'auction' || booking.booking_id === except) continue;
-      const own = this.servingDays(booking, tomorrow);
+      const own = this.servingDays(booking, today);
       const from = Math.max(first, own.first);
       const to = Math.min(last, own.last);
       const cells = this.cellsFor(booking);
@@ -442,11 +443,11 @@ export class InventorySimulation {
     cells: readonly number[],
     first: number,
     last: number,
-    tomorrow: number,
+    today: number,
     except?: string,
     free?: (day: number, cell: number, impressions: number) => void,
   ): { capacity: number; booked: number; available: number } {
-    const reserved = this.reservations(tomorrow, first, last, except);
+    const reserved = this.reservations(today, first, last, except);
     let capacity = 0;
     let booked = 0;
     for (let day = first; day < last; day++) {
@@ -471,14 +472,24 @@ export class InventorySimulation {
    * reports. A guarantee the market cannot cover is refused, never capped.
    */
   private requireAvailable(booking: Booking, cells: readonly number[], goal: number, nowMs: number): void {
-    const tomorrow = this.today(nowMs) + 1;
-    const { first, last } = this.servingDays(booking, tomorrow);
-    const { available } = this.netForecast(cells, first, last, tomorrow, booking.booking_id);
+    const today = this.today(nowMs);
+    const { first, last } = this.servingDays(booking, today);
+    const { available } = this.netForecast(cells, first, last, today, booking.booking_id);
     const left = goal - booking.delivered.impressions;
     if (left <= available) return;
     const delivered = booking.delivered.impressions > 0 ? ` (${left} still to deliver)` : '';
     throw new EngineError('INSUFFICIENT_INVENTORY',
       `Requested ${goal} impressions${delivered}, but only ${available} are available on ${booking.product_id} for this flight and targeting`);
+  }
+
+  /** Refuse a goal booking whose undelivered goal the forecast no longer
+   * covers: the check `update` runs on a raise. A host that applies several
+   * changes as one runs it on each goal they raised, once all are in. */
+  requireGoalAvailable(bookingId: string, nowMs: number): void {
+    this.advanceTo(nowMs);
+    const booking = this.booking(bookingId);
+    if (booking.kind !== 'goal' || booking.status === 'canceled') return;
+    this.requireAvailable(booking, this.cellsFor(booking), booking.impression_goal ?? 0, nowMs);
   }
 
   /**
@@ -491,13 +502,14 @@ export class InventorySimulation {
     const product = this.traffic.requireProduct(query.product_id);
     const { start, end } = this.flightDays(query.flight_start_ms, query.flight_end_ms);
     const cells = this.traffic.eligibleCells(product.product_id, query.targeting);
-    const tomorrow = this.today(nowMs) + 1;
-    const { first, last } = this.servingDays({ flight_start_day: start, flight_end_day: end }, tomorrow);
+    const today = this.today(nowMs);
+    // The days a booking confirmed now would serve.
+    const { first, last } = this.servingDays({ confirmed_day: today, flight_start_day: start, flight_end_day: end }, today);
     let clicks = 0;
     let viewable = 0;
     let completed = 0;
     let conversions = 0;
-    const { capacity, booked, available } = this.netForecast(cells, first, last, tomorrow, undefined, (day, cell, free) => {
+    const { capacity, booked, available } = this.netForecast(cells, first, last, today, undefined, (day, cell, free) => {
       const rates = this.traffic.rates(day, cell);
       clicks += free * rates.click_rate;
       viewable += free * rates.viewability;
