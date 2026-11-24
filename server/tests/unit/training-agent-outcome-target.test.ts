@@ -1209,6 +1209,31 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         productsById,
       )).toBeUndefined();
     });
+
+    describe('minimum spend per package', () => {
+      const minSpendProducts = new Map([
+        ['p1', { product_id: 'p1', pricing_options: [{ ...USD_FIXED_CPM_40, min_spend_per_package: 25_000 }] }],
+      ]) as unknown as PlanProducts;
+      const plan = (budgetRange: { max?: number } | undefined, volume = 1) => computeOutcomeTargetCostPlan(
+        CLICKS_GOAL,
+        clicksOptimizationGoal,
+        { amount: 40, currency: 'USD', strength: 'target' },
+        volume,
+        budgetRange,
+        proposal,
+        minSpendProducts,
+      );
+
+      it('raises the total to clear the purchase minimum when no range limits it', () => {
+        const result = plan(undefined);
+        expect(result?.totalBudgetGuidance.recommended).toBeGreaterThanOrEqual(25_000);
+        expect(result?.totalBudgetGuidance.min).toBeGreaterThanOrEqual(25_000);
+      });
+
+      it('plans no volume when the buyer ceiling is below the minimum', () => {
+        expect(plan({ max: 20_000 })?.plannedVolume).toBe(0);
+      });
+    });
   });
 
   describe('no outcome_target', () => {

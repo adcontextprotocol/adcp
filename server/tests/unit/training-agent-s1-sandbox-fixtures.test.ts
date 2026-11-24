@@ -583,3 +583,44 @@ describe.each(COMPACT_VERSIONS)('list_products open calendar with a sub-day hori
     }
   });
 });
+
+describe.each(COMPACT_VERSIONS)('outcome_target cost plans clear minimum spend (%s)', version => {
+  const request = (server: Server, offerFilters: Json) => callTool(server, 'request_proposals', {
+    account: ACCOUNT, adcp_version: version, brief: 'Demonstrate the requested criteria',
+    criteria: {
+      offer_filters: offerFilters,
+      targeting_overlay: { geo_countries: ['US'] },
+      outcome_target: {
+        goal: { kind: 'metric', metric: 'completed_views' },
+        volume: 1,
+        cost_per: { amount: 100, currency: 'USD', strength: 'target' },
+      },
+    },
+  });
+
+  it('sizes a one-result plan over linear TV to each purchase minimum and accepts it', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const response = await request(server, { channels: ['linear_tv'] });
+    expect(response.outcome, JSON.stringify(response).slice(0, 500)).toBe('proposed');
+    const draft = response.proposals[0] as Json;
+    const items = draft.commercial_terms.purchases as Json[];
+    expect(items.length).toBeGreaterThan(0);
+    for (const purchase of items) {
+      expect(purchase.pricing.min_spend_per_package).toBe(25_000);
+      expect(purchase.budget).toBeGreaterThanOrEqual(purchase.pricing.min_spend_per_package);
+    }
+    const minimumSum = items.reduce((sum, purchase) => sum + purchase.pricing.min_spend_per_package, 0);
+    expect(draft.total_budget_guidance.min).toBeGreaterThanOrEqual(minimumSum);
+
+    const accepted = await finalizeAndAccept(server, version, draft);
+    expect(accepted.code, JSON.stringify(accepted).slice(0, 500)).toBeUndefined();
+    expect(accepted.media_buy_id).toEqual(expect.any(String));
+  });
+
+  it('rejects, naming criteria.offer_filters.budget_range, when the ceiling is below the minimum', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const response = await request(server, { channels: ['linear_tv'], budget_range: { max: 20_000, currency: 'USD' } });
+    expect(response.outcome).toBe('rejected');
+    expect(response.reason).toContain('criteria.offer_filters.budget_range');
+  });
+});
