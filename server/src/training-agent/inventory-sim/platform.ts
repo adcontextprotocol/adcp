@@ -137,12 +137,6 @@ function reportsAllMetrics(product: { reporting_capabilities?: unknown }, requir
   return required.every(metric => reportingMetricIsAvailable(metric, declared));
 }
 
-/** A forecast with no price to spend at: what is available, without spend. */
-function unpriced(forecast: ForecastResult): ForecastResult {
-  const { cpm: _cpm, ...rest } = forecast;
-  return { ...rest, spend: 0 };
-}
-
 function parseDateStart(value: unknown, field: string): number {
   const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : Number.NaN;
   if (!Number.isFinite(ms)) throw invalid(`${field} must be a YYYY-MM-DD date`, field);
@@ -403,14 +397,13 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     const properties = seed.properties.filter(property => propertyIds.has(property.property_id));
     const lag = Math.max(...placements.map(placement => placement.reporting_lag_days));
     const guaranteed = product.delivery_type === 'guaranteed';
-    // Each pricing option books at its own CPM. A forecast priced at one of
-    // several would misstate what the others buy, so a product whose options
-    // book at different rates forecasts its availability alone, unpriced.
-    const rates = new Set(seeded?.pricing.length
-      ? seeded.pricing.map(option => this.optionCpm(product, option))
-      : [this.optionCpm(product, undefined)]);
-    const rate = rates.size === 1 ? [...rates][0] : undefined;
-    const priced = rate !== undefined;
+    // Each pricing option books at its own CPM. The forecast is priced at the
+    // first option's, and when another option books at a different rate its
+    // point is labelled with the option it is for: the forecast schema has no
+    // field that references one.
+    const options = seeded?.pricing ?? [];
+    const rate = this.optionCpm(product, options[0]);
+    const label = options.some(option => this.optionCpm(product, option) !== rate) ? `Priced at pricing option ${options[0].pricing_option_id}` : undefined;
     const forecast: ForecastResult = installments?.length === 0
       ? { ...sim.forecast({ product_id: product.product_id, flight_start_ms: flight.startMs, flight_end_ms: flight.endMs }, nowMs), available: 0, impressions: 0, low: 0, high: 0, spend: 0, clicks: 0, viewable_impressions: 0, completed_views: 0, conversions: 0 }
       : sim.forecast({
@@ -419,8 +412,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         flight_start_ms: flight.startMs,
         // A sponsorship's audience keeps arriving after the flight.
         flight_end_ms: installments ? Math.max(flight.endMs, this.audienceEndMs(installments, sim)) : flight.endMs,
-        ...(priced && budget !== undefined && { budget }),
-        ...(!guaranteed && priced && { bid_cpm: rate }),
+        ...(budget !== undefined && { budget }),
+        ...(guaranteed ? { rate_cpm: rate } : { bid_cpm: rate }),
       }, nowMs);
     const agentUrl = getAgentUrl();
     return {
@@ -438,9 +431,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         currency: seed.currency,
         ...(guaranteed ? { fixed_price: product.rate_cpm! } : { floor_price: this.optionCpm(product, undefined) }),
       }],
-      forecast: toAdcpForecast(priced ? forecast : unpriced(forecast), {
+      forecast: toAdcpForecast(forecast, {
         guaranteed,
-        ...(priced && budget !== undefined && { budget }),
+        ...(budget !== undefined && { budget }),
+        ...(label !== undefined && { label }),
         generatedAt: new Date(nowMs).toISOString(),
         validUntil: new Date(nowMs + DAY_MS).toISOString(),
       }),
@@ -641,7 +635,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         const seededOption = this.seededProduct(market, product.product_id)?.pricing
           .find(option => option.pricing_option_id === pricingOptionId);
         // A booking pays the price of the option chosen, not the first one the
-        // product lists: the rate get_products forecasts for it.
+        // product lists.
         const rate = this.optionCpm(product, seededOption);
         const startMs = pkg.start_time !== undefined ? parseInstant(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
         const endMs = pkg.end_time !== undefined ? parseInstant(pkg.end_time, `${field}.end_time`, market.nowMs) : buyEnd;
