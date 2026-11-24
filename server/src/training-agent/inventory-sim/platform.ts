@@ -179,8 +179,8 @@ function controllerCount(params: Record<string, unknown>, key: string): number {
 
 /** The finality simulate_delivery sets on a buy's reported delivery, or the
  * buy's current finality when it sends none of is_final, finalized_at and
- * measurement_window. finalized_at implies final; a final buy without one is
- * final as of now. */
+ * measurement_window. finalized_at implies final; a buy made final without
+ * one keeps the time it was already final at, or is final as of now. */
 function finalityFrom(params: Record<string, unknown>, previous: DeliveryFinality | undefined, nowIso: string): DeliveryFinality | undefined {
   const { is_final: isFinal, finalized_at: finalizedAt, measurement_window: windowId } = params;
   if (isFinal === undefined && finalizedAt === undefined && windowId === undefined) return previous;
@@ -196,7 +196,7 @@ function finalityFrom(params: Record<string, unknown>, previous: DeliveryFinalit
   const window = windowId ?? previous?.measurement_window;
   return {
     is_final: final,
-    ...(final && { finalized_at: finalizedAt ?? nowIso }),
+    ...(final && { finalized_at: (finalizedAt as string | undefined) ?? previous?.finalized_at ?? nowIso }),
     ...(window !== undefined && { measurement_window: window }),
   };
 }
