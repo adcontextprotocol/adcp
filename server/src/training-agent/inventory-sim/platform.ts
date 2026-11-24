@@ -103,6 +103,7 @@ function fromEngine(error: unknown, field?: string): never {
     case 'UNKNOWN_PRODUCT':
       throw new AdcpError('PRODUCT_NOT_FOUND', { recovery: 'correctable', message: error.message, ...(field && { field }) });
     case 'SOLD_OUT':
+    case 'INSUFFICIENT_INVENTORY':
       throw new AdcpError('PRODUCT_UNAVAILABLE', { recovery: 'correctable', message: error.message, ...(field && { field }) });
     case 'BOOKING_NOT_FOUND':
       throw new AdcpError('PACKAGE_NOT_FOUND', { recovery: 'correctable', message: error.message, ...(field && { field }) });
@@ -645,7 +646,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? (seededOption && floorPrice(seededOption)) ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
           }, market.nowMs);
         } catch (error) {
-          fromEngine(error, field);
+          // A goal the forecast cannot cover is the impressions asked for, or
+          // what the budget buys when none were.
+          const goalField = impressions !== undefined ? `${field}.impressions` : `${field}.budget`;
+          fromEngine(error, error instanceof EngineError && error.code === 'INSUFFICIENT_INVENTORY' ? goalField : field);
         }
         const booking = market.sim.booking(packageId);
         records.push({

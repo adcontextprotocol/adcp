@@ -978,4 +978,137 @@ describe('inventory tenants', () => {
       expect(refused.success).toBe(false);
     });
   });
+
+  // A goal the forecast cannot cover is refused, not capped (#9198).
+  describe('goals over the forecast', () => {
+    const flight = { start_date: '2027-02-01', end_date: '2027-02-28' };
+    const times = { start_time: '2027-02-01T00:00:00Z', end_time: '2027-03-01T00:00:00Z' };
+    const errorOf = (result: Structured): Structured => (result.adcp_error ?? result.errors?.[0] ?? {}) as Structured;
+
+    const prepare = async (tenant: string, token: string) => {
+      await provision(token);
+      const clock = await call(tenant, 'comply_test_controller', {
+        scenario: 'sandbox_clock', account: ACCOUNT, params: { operation: 'advance_time', to: '2026-12-31T12:00:00Z' },
+      }, token);
+      expect(clock.success, JSON.stringify(clock).slice(0, 500)).toBe(true);
+    };
+    const available = async (tenant: string, token: string, productId: string) => {
+      const offer = await call(tenant, 'get_products', { buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: flight }, token);
+      return offer.products.find((product: Structured) => product.product_id === productId).forecast.points[0].metrics.impressions.mid as number;
+    };
+    const book = (tenant: string, token: string, key: string, productId: string, pricingOptionId: string, impressions: number) =>
+      call(tenant, 'create_media_buy', {
+        idempotency_key: key, account: ACCOUNT, brand: BRAND, ...times,
+        packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 1_000_000, impressions }],
+      }, token);
+
+    describe('/inventory-adserver', () => {
+      const tenant = 'inventory-adserver';
+      const TOKEN_GOAL = 'demo-inventory-goal-adserver-v1';
+      const product = 'ros_display_guaranteed';
+      const option = 'ros_display_guaranteed_cpm';
+      beforeAll(() => prepare(tenant, TOKEN_GOAL));
+
+      it('refuses a second 75% goal and a raise past what is left, and accepts a decrease', async () => {
+        const open = await available(tenant, TOKEN_GOAL, product);
+        const share = Math.floor(open * 0.75);
+        const first = await book(tenant, TOKEN_GOAL, 'inventory-goal-adserver-a-0001', product, option, share);
+        expectCanonical('create_media_buy', first);
+        const left = await available(tenant, TOKEN_GOAL, product);
+        expect(left).toBe(open - share);
+
+        const second = await book(tenant, TOKEN_GOAL, 'inventory-goal-adserver-b-0001', product, option, share);
+        expect(errorOf(second)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE', field: 'packages[0].impressions', recovery: 'correctable' });
+        expect(errorOf(second).message).toContain(String(share));
+        expect(errorOf(second).message).toContain(String(left));
+        // The refusal books nothing.
+        expect(await available(tenant, TOKEN_GOAL, product)).toBe(left);
+
+        const update = (key: string, impressions: number) => call(tenant, 'update_media_buy', {
+          idempotency_key: key, account: ACCOUNT, media_buy_id: first.media_buy_id,
+          packages: [{ package_id: first.packages[0].package_id, impressions }],
+        }, TOKEN_GOAL);
+        const raised = await update('inventory-goal-adserver-raise-01', open + 1);
+        expect(errorOf(raised)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE', field: 'packages[0].impressions' });
+        expect(await available(tenant, TOKEN_GOAL, product)).toBe(left);
+
+        const lowered = await update('inventory-goal-adserver-lower-01', Math.floor(share / 2));
+        expectCanonical('update_media_buy', lowered);
+        expect(await available(tenant, TOKEN_GOAL, product)).toBeGreaterThan(left);
+      });
+
+      it('names the budget when the goal came from it', async () => {
+        const open = await available(tenant, TOKEN_GOAL, product);
+        // The rate is $9 CPM, so a budget this size buys more than is open.
+        const budget = Math.ceil(((open + 1_000_000) * 9) / 1000);
+        const result = await call(tenant, 'create_media_buy', {
+          idempotency_key: 'inventory-goal-adserver-budget-1', account: ACCOUNT, brand: BRAND, ...times,
+          packages: [{ product_id: product, pricing_option_id: option, budget }],
+        }, TOKEN_GOAL);
+        expect(errorOf(result)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE', field: 'packages[0].budget' });
+      });
+    });
+
+    describe('/inventory-adserver mid-flight window', () => {
+      const tenant = 'inventory-adserver';
+      const TOKEN_GOAL = 'demo-inventory-goal-window-v1';
+      const product = 'ros_display_guaranteed';
+      beforeAll(() => prepare(tenant, TOKEN_GOAL));
+
+      it('holds only the in-window part of a booking when the forecast opens mid-flight', async () => {
+        const mid = async (window: Record<string, string>) => {
+          const offer = await call(tenant, 'get_products', { buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: window }, TOKEN_GOAL);
+          return offer.products.find((p: Structured) => p.product_id === product).forecast.points[0].metrics.impressions.mid as number;
+        };
+        const late = { start_date: '2027-02-15', end_date: '2027-02-28' };
+        const open = await available(tenant, TOKEN_GOAL, product);
+        const lateBefore = await mid(late);
+        const share = Math.floor(open * 0.75);
+        expectCanonical('create_media_buy', await book(tenant, TOKEN_GOAL, 'inventory-goal-window-a-00001', product, 'ros_display_guaranteed_cpm', share));
+
+        const lateAfter = await mid(late);
+        // The whole goal used to land in the late window, leaving nothing.
+        expect(lateAfter).toBeGreaterThan(0);
+        expect(lateAfter).toBeGreaterThan(lateBefore - share);
+        expect(lateAfter).toBeLessThan(lateBefore);
+      });
+    });
+
+    describe('/inventory-content', () => {
+      const tenant = 'inventory-content';
+      const TOKEN_GOAL = 'demo-inventory-goal-content-v1';
+      const product = 'seeded_goal_display';
+      const option = 'seeded_goal_display_cpm';
+      beforeAll(async () => {
+        await prepare(tenant, TOKEN_GOAL);
+        // Every built-in product here is an exclusive sponsorship; a seeded
+        // guaranteed product is the one that books against an impression goal.
+        const seeded = await call(tenant, 'comply_test_controller', {
+          scenario: 'seed_product', account: ACCOUNT,
+          params: {
+            product_id: product,
+            fixture: {
+              delivery_type: 'guaranteed',
+              channels: ['display'],
+              name: 'Seeded goal display',
+              format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+            },
+          },
+        }, TOKEN_GOAL);
+        expect(seeded.success, JSON.stringify(seeded).slice(0, 500)).toBe(true);
+      });
+
+      it('refuses a goal over the forecast and a second 75% goal', async () => {
+        const open = await available(tenant, TOKEN_GOAL, product);
+        expect(open).toBeGreaterThan(0);
+        const over = await book(tenant, TOKEN_GOAL, 'inventory-goal-content-over-0001', product, option, open + 1);
+        expect(errorOf(over)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE', field: 'packages[0].impressions' });
+
+        const share = Math.floor(open * 0.75);
+        expectCanonical('create_media_buy', await book(tenant, TOKEN_GOAL, 'inventory-goal-content-a-00001', product, option, share));
+        const second = await book(tenant, TOKEN_GOAL, 'inventory-goal-content-b-00001', product, option, share);
+        expect(errorOf(second)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE', field: 'packages[0].impressions' });
+      });
+    });
+  });
 });
