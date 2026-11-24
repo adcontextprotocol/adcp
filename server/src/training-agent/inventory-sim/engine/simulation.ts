@@ -321,8 +321,8 @@ export class InventorySimulation {
       const left = Math.max(0, (booking.impression_goal ?? 0) - booking.delivered.impressions);
       const affordable = Math.floor(((booking.budget - booking.delivered.spend) * 1000) / booking.cpm + 1e-9);
       // What is left is spread over the days [day, end) in proportion to forecast
-      // traffic. Installment cells can have no forecast on days they actually
-      // serve, so a window with none falls back to an even split.
+      // traffic. The even split when the window has no forecast is defensive: no
+      // seed reaches it, but installment cells can have none on days they serve.
       const prefix = this.forecastTotals(booking);
       const end = Math.min(booking.flight_end_day, calendar.days);
       const forecastToday = prefix[day + 1] - prefix[day];

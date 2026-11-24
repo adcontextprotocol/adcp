@@ -567,7 +567,7 @@ describe('simulation', () => {
       expect(booking.delivered.impressions).toBe(200_000);
     });
 
-    it('delivers all that is left on the last in-season day, and falls back to a flat rule past the season', () => {
+    it('targets everything left on the last in-season day of a flight that runs past the season', () => {
       const sim = InventorySimulation.create(scarceSeed(), at('2027-02-20T12:00:00Z'));
       const bookNow = at('2027-02-20T12:00:00Z');
       sim.book({
