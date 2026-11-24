@@ -10275,15 +10275,25 @@ export function computeOutcomeTargetCostPlan(
   const planningCost = costPer.strength === 'cap' ? plannableCost : answeredAmount;
   const rangeFloor = budgetRange?.min ?? 0;
   const rangeCeiling = budgetRange?.max ?? Number.POSITIVE_INFINITY;
-  const budget = roundMoney(volume !== undefined
+  // Every purchase must clear its option's minimum spend, so the plan total
+  // is at least the largest minimum divided by that purchase's share.
+  const minimumSpendTotal = Math.max(0, ...allocations.map((allocation, index) => {
+    const share = (allocation.allocation_percentage ?? 100 / allocations.length) / 100;
+    return share > 0 ? (pricings[index]!.min_spend_per_package ?? 0) / share : 0;
+  }));
+  const targetBudget = volume !== undefined
     ? Math.min(Math.max(volume * planningCost, rangeFloor), rangeCeiling)
     : budgetRange
       ? budgetRange.max ?? budgetRange.min!
-      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost);
+      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost;
+  // A minimum spend above the buyer's ceiling leaves no executable plan; the
+  // caller drops a plan that buys less than one result.
+  const minimumSpendExceedsCeiling = minimumSpendTotal > rangeCeiling;
+  const budget = roundMoney(minimumSpendExceedsCeiling ? targetBudget : Math.max(targetBudget, minimumSpendTotal));
   const now = Date.now();
   return {
     totalBudgetGuidance: {
-      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget))),
+      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget, minimumSpendTotal))),
       recommended: budget,
       max: roundMoney(Math.max(budget, budgetRange?.max ?? 1.25 * budget)),
       currency: costPer.currency,
@@ -10313,7 +10323,7 @@ export function computeOutcomeTargetCostPlan(
     optimizationGoal: structuredClone(optimizationGoal),
     allocations,
     plannableCost,
-    plannedVolume: Math.floor(budget / planningCost),
+    plannedVolume: minimumSpendExceedsCeiling ? 0 : Math.floor(budget / planningCost),
   };
 }
 
@@ -13350,7 +13360,7 @@ async function handleGetProductsUnlocked(
         reason: emptiedByCriterion
           ? `The seller could not construct a proposal: no offer satisfies criteria.${emptiedByCriterion} together with the other supplied criteria.`
           : unplannableOutcome
-            ? 'The seller could not construct a proposal: within the supplied budget, criteria.outcome_target.cost_per plans less than one result on every matching offer.'
+            ? 'The seller could not construct a proposal: within the supplied budget, criteria.outcome_target.cost_per plans less than one result, or cannot meet each offer\'s minimum spend, on every matching offer.'
             : 'The seller could not construct a proposal satisfying the supplied product and campaign criteria.',
         suggestions: emptiedByCriterion
           ? [
