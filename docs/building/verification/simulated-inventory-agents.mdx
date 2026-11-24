@@ -43,7 +43,7 @@ Both tenants keep a creative library for each account. Sync creatives to it with
 
 - **Formats.** [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) returns only the formats the tenant serves: display, pre-roll video and the takeover image on the ad server; the podcast spot, newsletter sponsorship and creator brief on the content platform. Name a creative's format canonically, with `format_kind` and the `params` of one of the product's `format_options` (or its `format_option_ref`); the size of the creative's image or video picks the format when `params` is omitted. A named `format_id` copied from `format_options` also works. A request whose format still matches more than one option is refused, naming them. A creative can only be assigned to a package whose product serves its format. Otherwise the request fails with [`FORMAT_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-format-not-supported).
 - **Assignments.** `assignment_operations` supports `assign`, `unassign` and `replace`. A request's operations apply together or not at all. The deprecated `assignments` field still works, and reports each failed assignment in the creative's `assignment_errors`. Merges, assignment-level trackers and landing pages, installment scoping and placement routing are rejected with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
-- **Review and delivery.** Every creative is approved as soon as it arrives. A buy reports `pending_creatives` while none of its live packages has a creative, then `pending_start` or `active` as usual. Delivery does not wait for a creative, though: an unassigned package delivers exactly as the simulation forecast. The creatives exist to test trafficking, not to gate serving.
+- **Review and delivery.** Every creative is approved as soon as it arrives. A buy reports `pending_creatives` while none of its live packages has a creative, then `pending_start` or `active` as usual. Delivery does not wait for a creative, though: an unassigned package delivers as the simulation's actual traffic dictates. The creatives exist to test trafficking, not to gate serving.
 - **Scope.** Creatives are private to the account that synced them, like the buys they are assigned to. Each account holds up to 200 creatives of up to 32 KiB each; reference hosted media by URL. `reset_state` clears them with the rest of your market.
 
 ## Move the clock
@@ -85,12 +85,104 @@ Seeded products are private to your credential, like your buys. A credential tha
 When the clock passes the end of a day, that day runs:
 
 1. **Bookings start.** A buy confirmed by the end of day N serves from day N+1, or from its flight start if that is later.
-2. **Actual traffic arrives.** It differs from the forecast by seeded noise and by the season's scripted events.
-3. **Guarantees are served first.** The takeover and the sponsorships take their share. Impression goals are then served by the high-water mark method. Each package's daily target is what is left of its goal, in proportion to that day's share of its forecast traffic for the remaining days. The package with the least usable supply goes first, and each takes the same share of every impression it can use, never more than its target. A package that falls short catches up over its remaining days in proportion to their traffic, and the pace in delivery reports follows the same line.
+2. **Actual traffic arrives.** Each day's traffic is the expected pattern, times one deviation (the publisher's same-day deviation, its revisions and the cell deviation, added and clipped together), times a seeded daily variation, times the season's scripted events and any traffic spikes. An installment's audience also carries the episode's audience shock. These deviations are part of the traffic itself, and each forecast knows only some of them. See [How forecasts are wrong](#how-forecasts-are-wrong).
+3. **Guarantees are served first.** The takeover and the sponsorships take their share. Impression goals are then served by the high-water mark method. Each package's daily target is what is left of its goal, in proportion to that day's share of its expected traffic for the remaining days. Expected traffic is the pattern every forecast starts from, so the pace does not follow any forecast's errors. The package with the least usable supply goes first, and each takes the same share of every impression it can use, never more than its target. A package that falls short catches up over its remaining days in proportion to their expected traffic, and the pace in delivery reports follows the same line.
 4. **The auction takes what is left.** The highest bid above the floor wins until each package's daily budget is spent.
 5. **Installments run.** Each one runs, is postponed or is cancelled, as the season says. One that runs builds its audience over its channel's curve: newsletter opens over 3 days, podcast listens over 30, video views over 6 weeks.
 
 Delivery is reported once the day has closed and the product's reporting delay has passed: the next day for the websites, a day later for the podcast and the creator series. A sponsorship package keeps delivering after its flight ends, while its installments' audience builds.
+
+## How forecasts are wrong
+
+The forecast errors live in the actual traffic. The simulation draws each day's traffic with its deviations from the expected pattern already in it, and a forecast is the expected pattern plus whatever part of those deviations was known on the day it was made. A forecast made on a given day:
+
+- **carries** the publisher's bias, as an offset from the expected pattern, and **knows** the expected pattern, every revision revealed before that day and every past same-day deviation;
+- **never knows** that day's own deviation, revisions revealed later, the cell deviation, the daily variation, scripted events or a spike before it starts.
+
+Lead time is how many days separate your sandbox clock from the day forecast. The forecast is built as seen from the sandbox day of your call.
+
+```text
+actual   = expected * exp(deviation) * daily variation * scripted events * spike tails
+forecast = expected * exp(known part + b) * known spike tails
+
+deviation  = clip(a * (same-day deviation + revisions / sqrt(lead_time_tau_days)) + cell deviation)
+known part = clip(a * (past same-day deviations carried forward
+                       + revisions revealed before the day / sqrt(lead_time_tau_days)))
+a = channel_sigma * error_scale
+b = -(bias + bias_sigma * seeded draw)
+```
+
+The error, before events, spikes and the daily variation, is `b' + (deviation - known part)`, where `b' = -b` is the publisher's bias. It widens with lead time and levels off. The revision part stops growing at `lead_time_horizon_days`, and the unknown same-day part rises with lead time, from 1 - `ar1_phi`² of a full deviation's variance on the day itself toward all of it, at a rate set by `ar1_phi`.
+
+Everything delivery history could reveal about the publisher's deviation is already in the forecast's known part, and the part a forecast does not see is independent across days. Delivery history therefore cannot beat the forecast on that part, `deviation - known part`. The bias is a systematic offset that history can learn.
+
+Every dial is a season key, under `forecast_error` unless noted:
+
+- **Expected pattern.** A placement's base traffic, shaped by weekday, `trend_per_day` and the `month_shape` multipliers (twelve values, January first) under `traffic`. A season can leave out `month_shape`, which then does not change traffic. Expected traffic is the median of the actual traffic, so the mean sits slightly above it (about 1% at the shipped sizes).
+- **Publisher bias.** `publishers[].bias` is how far actual traffic sits from the forecast. Negative means actual comes in below the forecast; the shipped ad server uses -0.02. `bias_sigma` adds a seeded per-publisher offset with that standard deviation, and `error_scale` multiplies the publisher's deviation. A property joins a publisher through its `publisher_id`, or is its own publisher. Publishers that are not listed have no bias and an `error_scale` of 1. The forecast carries the bias.
+- **Same-day deviation.** Each publisher has a seeded deviation for each day, shared across the publisher's channels, whose neighbouring days are correlated by `ar1_phi`. `channel_sigma` sets its size per channel. A forecast knows the deviations of days that have closed, and carries them forward into the days after at the rate `ar1_phi` allows. It never knows the deviation of the day itself.
+- **Revisions.** Each day, information about each later day (up to `lead_time_horizon_days` ahead) is revealed. Each revision is a seeded deviation of size `channel_sigma` (times `error_scale`) divided by the square root of `lead_time_tau_days`: the larger `lead_time_tau_days` is, the less each revision weighs and the more slowly the error widens with lead time. A forecast knows every revision revealed before its day.
+- **Cell deviation.** Each cell-day carries a deviation whose size is `cell_kappa` divided by the square root of the cell's expected impressions, never counting a cell as smaller than `cell_min_impressions`. Thin cells deviate more than busy ones. It is independent across cells and days, and no forecast knows it.
+- **Daily variation.** `traffic.truth_daily_sigma` is the spread of a seeded day-to-day variation of each placement. It is part of the actual traffic and no forecast knows it.
+- **Audience shock.** Each installment's audience is scaled in actual traffic by a seeded shock of size `audience_sigma` (a collection key), applied across the whole audience curve of the episode. No forecast sees it. It is why content actuals differ from forecasts even though the content tenant's `channel_sigma` is 0.
+- **The clip.** `log_clip` limits the deviation and the forecast's known part separately, on a log scale, in both directions. The error therefore never exceeds the unclipped error, and stays within twice the clip. The bias sits outside the clip. The clip does not limit the daily variation, spikes or scripted events.
+- **Spikes.** A season can script random traffic spikes per publisher under `spikes`: how many (`per_publisher_min` to `per_publisher_max`), how large (`size_min` to `size_max`) and how much of the jump is left each day (`decay`, so a higher value fades more slowly). A negative size is a slump. A forecast made before a spike's first day does not know it, even for later days. A forecast made on or after that day knows its size and estimates its decay with an error of `decay_forecast_sigma`. The shipped seasons have none.
+
+Scripted events are in actual traffic only. A forecast never knows an outage, a cancellation or a postponement.
+
+### What delivery history can teach
+
+By design, some things can be learned from what has been delivered:
+
+- An ongoing scripted event, such as an outage that is still running.
+- An episode's audience shock, after the first days of its audience curve.
+- A started spike's true decay.
+- The publisher's bias.
+
+None of these helps with the deviation a forecast cannot see on the day, which is why history cannot beat the forecast on it.
+
+### The published range
+
+The published range is the 10th to 90th percentile of the error, to first order and without the clip. It is built per publisher, since publishers' deviations are independent of each other, and capped at twice the clip. It reflects the same-day deviation and the revisions not yet revealed, the cell deviation, the daily variation, the audience spread of installments and the forecaster's uncertainty about the decay of spikes that have already started. It excludes the publisher bias, spikes that have not started and scripted events, so actual traffic can land outside it for those reasons. [`get_products`](/docs/media-buy/task-reference/get_products) builds `low` and `high` on capacity, subtracts your bookings and caps them at what the budget buys.
+
+### Forecasts change as you move the clock
+
+Forecasts depend on your sandbox day where a season sets a `channel_sigma` above 0, as the ad server does. There the same `get_products` call returns different numbers after you advance the clock: the midpoint of a flight's forecast moves a little, and the band narrows as the flight gets closer. Each revision is independent of the other revisions and of the forecast already published, so one forecast gives no hint of which way the next will move. The latest forecast holds everything the forecasts made before it did. Nothing is random between calls: the same call at the same simulated time returns the same forecast.
+
+The content tenant's `channel_sigma` is 0, so a cell-day's forecast does not change with the clock. Only the days left in the flight window and your bookings change. Forecasts differ from delivery through the cell deviation, the daily variation and the audience shocks, none of which depends on lead time. A flight that ended before the clock forecasts zero.
+
+### Error sizes are assumptions
+
+The shipped sizes are assumptions and have not been measured: a 6% same-day spread for display and video, 5% cell noise at the median cell on the ad server, and a -2% publisher bias. Change them in the season file. They are to be recalibrated from real publisher data.
+
+| Key | Ad server | Content platform |
+|-----|-----------|------------------|
+| `channel_sigma` | `display` 0.06, `olv` 0.06 | 0 for `podcast`, `newsletter` and `creator_video` |
+| `cell_kappa` | 3.08 | 0.4 |
+| `cell_min_impressions` | 100 | 100 |
+| `traffic.truth_daily_sigma` | 0.03 | 0.03 |
+| `ar1_phi` | 0.85 | 0.85 |
+| `lead_time_tau_days` | 14 | 14 |
+| `lead_time_horizon_days` | 60 | 60 |
+| `log_clip` | 0.693 (a factor of two) | 0.693 (a factor of two) |
+| `publishers[].bias` | -0.02 for both publishers | none |
+| `audience_sigma` | none | 0.12 podcast, 0.05 newsletter, 0.25 creator series |
+| `spikes` | none | none |
+
+Book exactly the forecast midpoint on `sports_hero_guaranteed`, a single-publisher product, for a 30-day flight booked 30 days ahead: it delivers under 90% of the booked amount in 7.6% of flights, about 1 in 13. That is measured as actual traffic against the forecast, so it is a floor for real bookings. Products that span several publishers miss less, because their publishers' deviations are independent. The engine's tests pin this rate to 5–11%. That range would catch a doubling of the error sizes (about 15.7%) or a halving (about 0.5%), so changing the shipped sizes needs a deliberate update of the pin.
+
+To test how robust your agent is to the sizes, the sweep levels are ×0.5, ×1 and ×2 on `channel_sigma` and `cell_kappa` together, and 0, 0.03 and 0.06 on `truth_daily_sigma`. Run them as season files, each with its own `seed_id`. These change the actual traffic's volatility, not only the forecast's, and since expected traffic is the median of the actual traffic, its mean rises with the sizes (about 1% at the shipped sizes, about 4% at ×2).
+
+### Versions and the market reset
+
+Results from these tenants depend on the engine and on the season. `sandbox_clock` `get` and `advance_time` report both, inside `simulated`:
+
+- `engine_version`: the version of the engine's behaviour.
+- `seed_id` and `season_fingerprint`: the season's name, and a hash of every value in it.
+
+Record all three with every result, and compare only results that share them. A stored market restarts, discarding its bookings, seeded products and creatives, when the engine version, the season's `seed_id` or the season's fingerprint changes. Editing a local season file therefore restarts the stored market, even under the same `seed_id`. Give an edited season its own `seed_id` to name it. Hosted seasons are fixed. The engine version is `2` and the shipped seasons' ids are `adserver-2027-lead-time` and `content-2027-lead-time`, so a market stored under any other version or id on either tenant restarts once.
+
+The guarantee that forecasts reveal none of the actual traffic holds within one timeline. Keep the test controller (the clock and `reset_state`) away from the agent under test.
 
 ## The season
 
@@ -121,7 +213,7 @@ In the daily breakdown, the guarantee drops to under half its usual delivery dur
 
 The two tenants run on any season you supply as a file, so you can test against your own sites, products and scripted events. Run the training agent on your machine and point a tenant at the file. The environment variables apply to the whole server, so every caller of that server's inventory tenants gets the file's season. That makes season files a fit for local and self-hosted runs. The hosted test agent serves its shipped seasons, so a season file never leaves your machine.
 
-A season is a YAML or JSON file. Its fields are the `SeasonSeed` type in [`engine/types.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/inventory-sim/engine/types.ts). The starter, `server/tests/fixtures/inventory-sim/small-season.yaml`, is a complete season for one site with a guaranteed and an auction product. Copy it and edit it. The sketch below shows the shape only. It does not load on its own, because it leaves out required fields such as `audience_profiles`, `segments`, `traffic` and `forecast_error`. The starter file is the complete, loadable example.
+A season is a YAML or JSON file. Its fields are the `SeasonSeed` type in [`engine/types.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/inventory-sim/engine/types.ts). The starter, `server/tests/fixtures/inventory-sim/small-season.yaml`, is a complete season for one site with a guaranteed and an auction product. Copy it and edit it. The sketch below shows the shape only. It does not load on its own, because it leaves out required fields: `audience_profiles`, `segments`, `traffic` and `forecast_error` (with its `channel_sigma` for every channel a placement uses, `ar1_phi`, `lead_time_tau_days`, `lead_time_horizon_days`, `log_clip`, `cell_kappa` and `cell_min_impressions`), each placement's `name`, `formats`, `rates` and `reporting_lag_days`, and each product's `name` and `description`. The starter file is the complete, loadable example.
 
 ```yaml
 seed_id: small-season
@@ -148,15 +240,20 @@ products:
 
 The loader checks:
 
-- The shape and value ranges. Reporting lags are whole numbers, 0 or more. Collection cadences and counts are whole numbers, 1 or more. `share_of_voice` is above 0 and at most 1, and rates are between 0 and 1. Property `traffic_multiplier`, audience-profile rate multipliers, `weekday_shape` values and the noise settings are not negative. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, every placement lists at least one format, and the season has at least one placement and one product.
+- The shape and value ranges. Reporting lags are whole numbers, 0 or more. Collection cadences and counts are whole numbers, 1 or more. `share_of_voice` is above 0 and at most 1, and rates are between 0 and 1. Property `traffic_multiplier`, audience-profile rate multipliers, `weekday_shape` values and a collection's `audience_sigma` are not negative. The currency is an upper-case three-letter code, property domains are lower-case hostnames, floors are not negative, every placement lists at least one format, and the season has at least one placement and one product.
 - A file over 5 MB, or a path that is not a regular file, is refused before it is read.
 - Dates are real calendar dates, every installment of a collection falls inside the season, and so does the date an installment is postponed to.
 - References that the engine leaves unchecked: product properties and collections, and the ids traffic events name.
+- The forecast-error settings, checked together with the references, and listed in full with their paths:
+  - Ranges. `month_shape` has twelve values above 0 and at most 100. `channel_sigma` values, `truth_daily_sigma`, `bias_sigma` and `decay_forecast_sigma` are from 0 to 5. `error_scale` is from 0 to 100, and `cell_kappa` from 0 to 1000. A publisher's `bias` is from -5 to 5. `ar1_phi` and a spike's `decay` are at least 0 and below 1. `lead_time_tau_days` is at least 0.01, and `log_clip` is above 0. `cell_min_impressions` is at least 1. A spike's `size_min` is above -1 and `size_max` is at least `size_min`. `per_publisher_min` and `per_publisher_max` are whole numbers, 0 or more, with `per_publisher_max` at least the minimum, at most the season's `days` and at most 100.
+  - References. Every channel a placement uses has a `channel_sigma`, and each `publishers[].publisher_id` names a publisher that some property resolves to, once.
+  - Size. `lead_time_horizon_days` is a whole number from 0 to 366, and the build stays within a budget: publishers × (`days` + horizon) × (horizon + 1) is at most 20,000,000 draws. A season at that budget can take a few seconds and on the order of 160 MB to build.
+  - Finite traffic. If the build produces expected or actual traffic that is not a finite number, for example from a very large spike `size_max`, the season is refused, naming the first day and cell.
 - Placement `formats` are format labels the training agent knows, such as `display_300x250` or `video_preroll`; the error for any other lists them.
-- The engine's own rules. The season's `days` is a whole number from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Event multipliers are not negative. Ids are unique, and the other references resolve: product placements and segments, segment profiles, placement properties and collection placements. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`.
+- The engine's own rules. The season's `days` is a whole number from 1 to 1100, and `weekday_shape` has seven values. Region and audience-profile shares are positive and sum to 1. Event multipliers are not negative. The engine checks the forecast-error settings too. Ids are unique, and the other references resolve: product placements and segments, segment profiles, placement properties and collection placements. Each placement on the `display` or `olv` channel has `base_daily_impressions` (podcast, newsletter and creator-video placements take their audience from their collections instead), and each guaranteed product has `rate_cpm`.
 - Every product covers some inventory.
 
-The shape, reference and coverage checks each list every problem they find. The engine's own rules report the first problem only.
+The shape, reference (including the forecast-error settings) and coverage checks each list every problem they find. The engine's own rules report the first problem only.
 
 Set one environment variable per tenant:
 
@@ -167,7 +264,7 @@ Set one environment variable per tenant:
 
 A tenant whose variable is unset or empty serves its shipped season. A tenant whose variable is set serves the file, and logs one line naming it. If the file is missing or invalid, the server refuses to start. The error names the variable and the path.
 
-Change `seed_id` whenever you change a season file. A market already stored under an unchanged `seed_id` would replay under the new traffic.
+Editing a season file restarts the stored market on that tenant, because the season's fingerprint changes. Give an edited season its own `seed_id` to name it.
 
 The server needs PostgreSQL. Start the one in `docker-compose.yml`, create the schema the migrations expect, then start the server from the repository root. The one-line `create schema` is enough for a throwaway local database. The [local bootstrap](https://github.com/adcontextprotocol/adcp/blob/main/docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap) in the runbook has the full setup.
 
@@ -193,6 +290,6 @@ To start from a shipped season instead of the starter, print one as YAML. The co
 npx tsx --input-type=module -e "import { seasonToYaml } from './server/src/training-agent/inventory-sim/season-file.js'; import { CONTENT_SEASON } from './server/src/training-agent/inventory-sim/engine/index.js'; process.stdout.write(seasonToYaml(CONTENT_SEASON))" > my-season.yaml
 ```
 
-To use a season without a server, read it with `readSeasonFile` from `server/src/training-agent/inventory-sim/season-file.ts`, and pass the result to `InventorySimulation.create(seed, nowMs)`, where `nowMs` is the start instant, from `server/src/training-agent/inventory-sim/engine/`.
+To use the library directly, `traffic.day(d)` returns `expected` and `actual` tables. `ForecastResult.sigma` is the standard deviation of the forecast error on a log scale. Its `low` and `high` are built on capacity, net of bookings, and capped at what the budget buys. A forecast's clicks and conversions use the expected rates. To use a season without a server, read it with `readSeasonFile` from `server/src/training-agent/inventory-sim/season-file.ts`, and pass the result to `InventorySimulation.create(seed, nowMs)`, where `nowMs` is the start instant, from `server/src/training-agent/inventory-sim/engine/`.
 
 The engine behind these tenants lives in `server/src/training-agent/inventory-sim/engine/` and has no dependencies on the rest of the test agent, so it can move into `@adcp/sdk` if that proves useful.
