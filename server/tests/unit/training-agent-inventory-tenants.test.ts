@@ -1105,46 +1105,36 @@ describe('inventory tenants', () => {
         return buy;
       };
 
-      it('forecasts availability alone when the options book at different rates, and every option books within it', async () => {
-        const forecast = await forecastOf('seeded_two_rates', 1000);
-        expect(forecast.forecast_range_unit).toBe('availability');
-        expect(forecast.points[0].budget).toBeUndefined();
-        expect(forecast.points[0].metrics.spend).toBeUndefined();
-        const open = forecast.points[0].metrics.impressions.mid as number;
-        expect(open).toBeGreaterThan(0);
-
-        // The $10 option's goal at $1,000 is 100,000; the $1 option's goal fits what is open.
-        const ten = await bookAt('inventory-forecast-rates-ten-01', 'cpm_ten', 1000);
-        expect(ten.packages[0].impressions).toBe(100_000);
-        expect(100_000).toBeLessThanOrEqual(open);
-        const oneBudget = Math.floor((Math.min(open - 100_000, 500_000) * 1) / 1000);
-        const one = await bookAt('inventory-forecast-rates-one-01', 'cpm_one', oneBudget);
-        expect(one.packages[0].impressions).toBeLessThanOrEqual(open);
-        const over = await call(tenant, 'create_media_buy', {
-          idempotency_key: 'inventory-forecast-rates-over-01', account: ACCOUNT, brand: BRAND, ...times,
-          packages: [{ product_id: 'seeded_two_rates', pricing_option_id: 'cpm_one', budget: Math.ceil(open / 1000) + 1000 }],
-        }, TOKEN_PRICE);
-        expect(errorOf(over)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE' });
-      });
-
-      it('prices the forecast when every option books at one rate, and booking matches it', async () => {
+      it('prices a single-rate forecast without a label, and booking matches it', async () => {
         await seedOne('seeded_one_rate', 'guaranteed', { cpm_only: 10 });
         const forecast = await forecastOf('seeded_one_rate', 1000);
         expect(forecast.forecast_range_unit).toBe('spend');
         expect(forecast.points[0].budget).toBe(1000);
+        expect(forecast.points[0].label).toBeUndefined();
         expect(forecast.points[0].metrics.impressions.mid).toBe(100_000);
         expect(forecast.points[0].metrics.spend.mid).toBe(1000);
         const buy = await bookAt('inventory-forecast-one-rate-001', 'cpm_only', 1000, 'seeded_one_rate');
         expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
       });
 
-      it('forecasts an auction product with different floors as availability alone', async () => {
+      it('prices the forecast without a label when several options share one rate', async () => {
+        await seedOne('seeded_equal_rates', 'guaranteed', { cpm_a: 10, cpm_b: 10 });
+        const forecast = await forecastOf('seeded_equal_rates', 1000);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(1000);
+        expect(forecast.points[0].label).toBeUndefined();
+        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
+        const buy = await bookAt('inventory-forecast-equal-rates-1', 'cpm_b', 1000, 'seeded_equal_rates');
+        expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
+      });
+
+      it('labels an auction forecast with the first floor it is priced at', async () => {
         await seedOne('seeded_two_floors', 'non_guaranteed', { floor_one: 1, floor_ten: 10 });
         const forecast = await forecastOf('seeded_two_floors', 1000);
-        expect(forecast.forecast_range_unit).toBe('availability');
-        expect(forecast.points[0].budget).toBeUndefined();
-        expect(forecast.points[0].metrics.spend).toBeUndefined();
-        expect(forecast.points[0].metrics.impressions.mid).toBeGreaterThan(0);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(1000);
+        expect(forecast.points[0].label).toBe('Priced at pricing option floor_one');
+        expect(forecast.points[0].metrics.spend).toBeDefined();
       });
 
       const delivered = async (mediaBuyId: string) => {
@@ -1155,10 +1145,18 @@ describe('inventory tenants', () => {
 
       it('derives the goal and spend from the selected option, not the first', async () => {
         const budget = 1000;
+        // Discovery prices the forecast at the first option and names it.
+        const forecast = await forecastOf('seeded_two_rates', budget);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(budget);
+        expect(forecast.points[0].label).toBe('Priced at pricing option cpm_one');
+        expect(forecast.points[0].metrics.spend.mid).toBe(budget);
+        expect(forecast.points[0].metrics.impressions.mid).toBe(1_000_000);
         const second = await bookAt('inventory-goal-price-second-1', 'cpm_ten', budget);
         expect(second.packages[0].impressions).toBe(Math.floor((budget * 1000) / 10));
         const first = await bookAt('inventory-goal-price-first-01', 'cpm_one', budget);
         expect(first.packages[0].impressions).toBe(Math.floor((budget * 1000) / 1));
+        expect(first.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
 
         const clock = await controller('sandbox_clock', { operation: 'advance_time', by: 'P40D' });
         expect(clock.success, JSON.stringify(clock).slice(0, 500)).toBe(true);
