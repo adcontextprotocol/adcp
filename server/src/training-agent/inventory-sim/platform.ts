@@ -42,7 +42,7 @@ import {
   type CreativeError,
 } from './creatives.js';
 import { catalogIdOf, formatFilter, listSeedCreativeFormats, resolveCreativeFormat, seedFormatDeclarations, wireFormat, type FormatDeclaration } from './creative-wire.js';
-import { engineProducts, floorPrice, seededPricing, wireOverrides, wirePricing, type SeededCatalog, type SeededPricingRecord, type SeededProductRecord } from './seeded-products.js';
+import { engineProducts, fixedPrice, floorPrice, seededPricing, wireOverrides, wirePricing, type SeededCatalog, type SeededPricingRecord, type SeededProductRecord } from './seeded-products.js';
 import type { TrainingContext } from '../types.js';
 
 export interface InventoryTenantProfile {
@@ -619,6 +619,9 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         const pricingOptionId = pkg.pricing_option_id;
         const seededOption = this.seededProduct(market, product.product_id)?.pricing
           .find(option => option.pricing_option_id === pricingOptionId);
+        // A guaranteed booking pays the fixed price of the option chosen, not
+        // the first one the product lists.
+        const rate = product.delivery_type === 'guaranteed' && seededOption ? fixedPrice(seededOption) : undefined;
         const startMs = pkg.start_time !== undefined ? parseInstant(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
         const endMs = pkg.end_time !== undefined ? parseInstant(pkg.end_time, `${field}.end_time`, market.nowMs) : buyEnd;
         const targeting = this.targetingFrom(pkg.targeting_overlay, `${field}.targeting_overlay`);
@@ -643,6 +646,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             flight_end_ms: bookingEndMs,
             budget,
             ...(impressions !== undefined && { impression_goal: impressions }),
+            ...(rate !== undefined && { rate_cpm: rate }),
             ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? (seededOption && floorPrice(seededOption)) ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
           }, market.nowMs);
         } catch (error) {

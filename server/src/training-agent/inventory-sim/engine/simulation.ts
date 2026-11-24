@@ -52,8 +52,11 @@ export interface BookRequest {
   flight_start_ms: number;
   flight_end_ms: number;
   budget: number;
+  /** Guaranteed products: the rate of the pricing option the buyer chose.
+   * Defaults to the product's rate. */
+  rate_cpm?: number;
   /** Guaranteed impression-goal products. Defaults to what the budget buys
-   * at the product's rate. */
+   * at the booking's rate. */
   impression_goal?: number;
   /** Non-guaranteed products. */
   bid_cpm?: number;
@@ -235,7 +238,7 @@ export class InventorySimulation {
     if (booking.kind === 'auction') {
       booking.cpm = positive(request.bid_cpm, 'bid_cpm');
     } else {
-      booking.cpm = product.rate_cpm!;
+      booking.cpm = request.rate_cpm !== undefined ? positive(request.rate_cpm, 'rate_cpm') : product.rate_cpm!;
     }
     if (booking.kind === 'goal') {
       booking.impression_goal = Math.floor(request.impression_goal !== undefined
