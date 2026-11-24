@@ -655,4 +655,47 @@ describe('injected delivery (#9151)', () => {
     const sim = InventorySimulation.create(scarceSeed(), now);
     expectEngineError(() => sim.injectDelivery('nope', metrics(), now), 'BOOKING_NOT_FOUND');
   });
+
+  it('lowers the forecast booked by the goal an injection fulfils, and the next served days aim at what is left', () => {
+    const later = at('2027-01-05T12:00:00Z');
+    const plain = InventorySimulation.create(scarceSeed(), now);
+    const injected = InventorySimulation.create(scarceSeed(), now);
+    goal(plain);
+    goal(injected);
+    const query = { product_id: 'banner_guaranteed', ...flight };
+    injected.injectDelivery('g', metrics({ impressions: 40_000, spend: 400 }), later);
+    const without = plain.forecast(query, later);
+    const withInjection = injected.forecast(query, later);
+    // The 40,000 injected impressions no longer need reserving.
+    expect(withInjection.booked).toBeLessThan(without.booked);
+    expect(withInjection.available).toBeGreaterThan(without.available);
+
+    plain.advanceTo(at('2027-01-06T12:00:00Z'));
+    injected.advanceTo(at('2027-01-06T12:00:00Z'));
+    const nextServed = (sim: InventorySimulation) => sim.booking('g').days.filter(record => !record.simulated).at(-1)!;
+    const next = nextServed(injected);
+    const reference = nextServed(plain);
+    expect(next.date).toBe(reference.date);
+    const booking = injected.booking('g');
+    // The target is what is left of the goal over the days left; the day's
+    // delivery was already counted when it ran, so reckon it back.
+    const leftBefore = 100_000 - (booking.delivered.impressions - next.impressions);
+    expect(next.target).toBe(Math.ceil(leftBefore / (booking.flight_end_day - next.day)));
+    expect(next.target!).toBeLessThan(reference.target!);
+  });
+
+  it('keeps spend exact after an injection at a fractional-cent CPM', () => {
+    const seed = scarceSeed();
+    seed.products = seed.products.map(product => product.product_id === 'banner_guaranteed' ? { ...product, rate_cpm: 13.37 } : product);
+    const sim = InventorySimulation.create(seed, now);
+    sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 100_000, impression_goal: 100_000 }, now);
+    sim.injectDelivery('g', metrics({ impressions: 123, spend: 0.004 }), at('2027-01-03T12:00:00Z'));
+    sim.advanceTo(at('2027-01-31T00:00:00Z'));
+    const booking = sim.booking('g');
+    const served = booking.days.filter(record => !record.simulated).reduce((sum, record) => sum + record.impressions, 0);
+    // The injected spend rounds to $0.00; served impressions are priced at the
+    // unrounded $13.37 CPM, so the total is their rounded cost, not a sum of rounded days.
+    expect(booking.delivered.spend).toBe(round2((served * 13.37) / 1000));
+    expect(round2(booking.days.reduce((sum, record) => sum + record.spend, 0))).toBe(booking.delivered.spend);
+  });
 });
