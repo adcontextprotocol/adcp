@@ -10277,13 +10277,16 @@ export function computeOutcomeTargetCostPlan(
   const rangeCeiling = budgetRange?.max ?? Number.POSITIVE_INFINITY;
   // Every purchase must clear its option's minimum spend, so the plan total
   // is at least the largest minimum divided by that purchase's share,
-  // rounded up to a cent. Purchase budgets are total × share without
-  // rounding, so step up a cent while float shares leave one a hair short.
-  const shares = allocations.map(allocation => (allocation.allocation_percentage ?? 100 / allocations.length) / 100);
+  // rounded up to a cent. Purchase budgets are unrounded, so the check uses
+  // buildCanonicalCommercialTerms' exact expression and steps up a cent
+  // while floating point leaves one a hair short.
+  const percentages = allocations.map(allocation => allocation.allocation_percentage ?? 0);
   const minimumSpends = pricings.map(pricing => pricing!.min_spend_per_package ?? 0);
-  const clearsMinimums = (total: number) => shares.every((share, index) => total * share >= minimumSpends[index]!);
-  let minimumSpendTotal = ceilToCents(Math.max(0, ...shares.map((share, index) => (
-    share > 0 ? minimumSpends[index]! / share : 0
+  const clearsMinimums = (total: number) => percentages.every((percentage, index) => (
+    total * percentage / 100 >= minimumSpends[index]!
+  ));
+  let minimumSpendTotal = ceilToCents(Math.max(0, ...percentages.map((percentage, index) => (
+    percentage > 0 ? minimumSpends[index]! * 100 / percentage : 0
   ))));
   for (let step = 0; step < 100 && !clearsMinimums(minimumSpendTotal); step += 1) {
     minimumSpendTotal = roundMoney(minimumSpendTotal + 0.01);
