@@ -137,6 +137,12 @@ function reportsAllMetrics(product: { reporting_capabilities?: unknown }, requir
   return required.every(metric => reportingMetricIsAvailable(metric, declared));
 }
 
+/** A forecast with no price to spend at: what is available, without spend. */
+function unpriced(forecast: ForecastResult): ForecastResult {
+  const { cpm: _cpm, ...rest } = forecast;
+  return { ...rest, spend: 0 };
+}
+
 function parseDateStart(value: unknown, field: string): number {
   const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : Number.NaN;
   if (!Number.isFinite(ms)) throw invalid(`${field} must be a YYYY-MM-DD date`, field);
@@ -311,6 +317,15 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     return seeded.length > 0 ? seeded.map(option => option.pricing_option_id) : [this.pricingOptionId(product)];
   }
 
+  /** The CPM a package books at under a pricing option when it names no bid:
+   * a guaranteed option's fixed price, an auction option's floor, otherwise
+   * the product's own rate or its placements' lowest floor. */
+  private optionCpm(product: SeedProduct, option: SeededPricingRecord | undefined): number {
+    if (product.delivery_type === 'guaranteed') return (option && fixedPrice(option)) ?? product.rate_cpm!;
+    return (option && floorPrice(option))
+      ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(placement => placement.placement_id === id)!.floor_cpm));
+  }
+
   /** The AdCP channels a product sells: a seeded product's own, when its
    * fixture names them, otherwise its placements'. */
   private channelsOf(market: OpenMarket, product: SeedProduct): string[] {
@@ -388,8 +403,14 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     const properties = seed.properties.filter(property => propertyIds.has(property.property_id));
     const lag = Math.max(...placements.map(placement => placement.reporting_lag_days));
     const guaranteed = product.delivery_type === 'guaranteed';
-    const floor = seeded?.pricing.map(floorPrice).find(value => value !== undefined)
-      ?? Math.min(...placements.map(placement => placement.floor_cpm));
+    // Each pricing option books at its own CPM. A forecast priced at one of
+    // several would misstate what the others buy, so a product whose options
+    // book at different rates forecasts its availability alone, unpriced.
+    const rates = new Set(seeded?.pricing.length
+      ? seeded.pricing.map(option => this.optionCpm(product, option))
+      : [this.optionCpm(product, undefined)]);
+    const rate = rates.size === 1 ? [...rates][0] : undefined;
+    const priced = rate !== undefined;
     const forecast: ForecastResult = installments?.length === 0
       ? { ...sim.forecast({ product_id: product.product_id, flight_start_ms: flight.startMs, flight_end_ms: flight.endMs }, nowMs), available: 0, impressions: 0, low: 0, high: 0, spend: 0, clicks: 0, viewable_impressions: 0, completed_views: 0, conversions: 0 }
       : sim.forecast({
@@ -398,8 +419,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         flight_start_ms: flight.startMs,
         // A sponsorship's audience keeps arriving after the flight.
         flight_end_ms: installments ? Math.max(flight.endMs, this.audienceEndMs(installments, sim)) : flight.endMs,
-        ...(budget !== undefined && { budget }),
-        ...(!guaranteed && { bid_cpm: floor }),
+        ...(priced && budget !== undefined && { budget }),
+        ...(!guaranteed && priced && { bid_cpm: rate }),
       }, nowMs);
     const agentUrl = getAgentUrl();
     return {
@@ -415,11 +436,11 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         pricing_option_id: this.pricingOptionId(product),
         pricing_model: 'cpm' as const,
         currency: seed.currency,
-        ...(guaranteed ? { fixed_price: product.rate_cpm! } : { floor_price: floor }),
+        ...(guaranteed ? { fixed_price: product.rate_cpm! } : { floor_price: this.optionCpm(product, undefined) }),
       }],
-      forecast: toAdcpForecast(forecast, {
+      forecast: toAdcpForecast(priced ? forecast : unpriced(forecast), {
         guaranteed,
-        ...(budget !== undefined && { budget }),
+        ...(priced && budget !== undefined && { budget }),
         generatedAt: new Date(nowMs).toISOString(),
         validUntil: new Date(nowMs + DAY_MS).toISOString(),
       }),
@@ -619,9 +640,9 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         const pricingOptionId = pkg.pricing_option_id;
         const seededOption = this.seededProduct(market, product.product_id)?.pricing
           .find(option => option.pricing_option_id === pricingOptionId);
-        // A guaranteed booking pays the fixed price of the option chosen, not
-        // the first one the product lists.
-        const rate = product.delivery_type === 'guaranteed' && seededOption ? fixedPrice(seededOption) : undefined;
+        // A booking pays the price of the option chosen, not the first one the
+        // product lists: the rate get_products forecasts for it.
+        const rate = this.optionCpm(product, seededOption);
         const startMs = pkg.start_time !== undefined ? parseInstant(pkg.start_time, `${field}.start_time`, market.nowMs) : buyStart;
         const endMs = pkg.end_time !== undefined ? parseInstant(pkg.end_time, `${field}.end_time`, market.nowMs) : buyEnd;
         const targeting = this.targetingFrom(pkg.targeting_overlay, `${field}.targeting_overlay`);
@@ -646,8 +667,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             flight_end_ms: bookingEndMs,
             budget,
             ...(impressions !== undefined && { impression_goal: impressions }),
-            ...(rate !== undefined && { rate_cpm: rate }),
-            ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? (seededOption && floorPrice(seededOption)) ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
+            ...(product.delivery_type === 'guaranteed' ? { rate_cpm: rate } : { bid_cpm: bid ?? rate }),
           }, market.nowMs);
         } catch (error) {
           // A goal the forecast cannot cover is the impressions asked for, or
