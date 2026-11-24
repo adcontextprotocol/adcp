@@ -66,6 +66,17 @@ export interface MediaBuyRecord {
   /** The buyer's opaque media-buy correlation data from create_media_buy,
    * echoed unchanged on reads. */
   context?: Record<string, unknown>;
+  /** Whether the buy's reported delivery is final, as the test controller's
+   * simulate_delivery last set it. Absent until then: the report does not
+   * tell provisional from final. */
+  finality?: DeliveryFinality;
+}
+
+export interface DeliveryFinality {
+  is_final: boolean;
+  /** Only when final. */
+  finalized_at?: string;
+  measurement_window?: string;
 }
 
 export interface MarketDocument extends Record<string, unknown> {

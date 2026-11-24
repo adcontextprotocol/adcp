@@ -7458,7 +7458,7 @@ interface FormatOptionDeclaration {
 
 /** One declared constraint a creative breaks. `field` is the path within the
  * creative (`assets.title.content`, `assets.cards[2].cta`). */
-interface FormatOptionViolation {
+export interface FormatOptionViolation {
   code: 'VALIDATION_ERROR' | 'CREATIVE_VALUE_NOT_ALLOWED';
   constraint: string;
   field: string;
@@ -7537,7 +7537,7 @@ function imageSizeViolation(
  * `*_max_chars`, no `icon_size`) does not narrow its slot, and optional slots
  * (`icon`, `cta`, `body_text`) may be absent. Returns the first violation.
  */
-function nativeInFeedParamViolation(
+export function nativeInFeedParamViolation(
   assets: Record<string, unknown>,
   params: Record<string, unknown>,
 ): FormatOptionViolation | null {
@@ -7770,7 +7770,7 @@ function nativeInFeedValidationError(
  * without a `cta` is not refused, and a declaration without `cta_values`
  * leaves `cta` free text. Returns the first offending card.
  */
-function imageCarouselParamViolation(
+export function imageCarouselParamViolation(
   assets: Record<string, unknown>,
   params: Record<string, unknown>,
 ): FormatOptionViolation | null {

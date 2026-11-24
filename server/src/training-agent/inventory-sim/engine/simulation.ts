@@ -285,6 +285,42 @@ export class InventorySimulation {
     return booking;
   }
 
+  /**
+   * Record delivery the host injects on a booking, such as a test
+   * controller's simulated delivery, dated the day `nowMs` falls on. It counts
+   * as delivered, so pacing and the goal and budget left reckon with it, but
+   * it serves no cells and takes nothing from the market. It is reported at
+   * once, without the product's reporting lag.
+   */
+  injectDelivery(bookingId: string, metrics: DeliveryMetrics, nowMs: number): BookingDay {
+    this.advanceTo(nowMs);
+    const booking = this.booking(bookingId);
+    if (booking.status === 'canceled') throw new EngineError('INVALID_BOOKING', `Booking ${bookingId} is canceled`);
+    for (const [key, value] of Object.entries(metrics)) {
+      if (!Number.isFinite(value) || value < 0) throw new EngineError('INVALID_BOOKING', `${key} must be a non-negative number`);
+    }
+    const day = this.today(nowMs);
+    const spend = roundMoney(metrics.spend);
+    // Keep the unrounded total in step, so the next served day's spend is
+    // still the change in rounded cumulative spend.
+    booking.spend_exact = (booking.spend_exact ?? booking.delivered.spend) + spend;
+    const record: BookingDay = {
+      day,
+      date: this.traffic.calendar.dateOf(day),
+      impressions: Math.round(metrics.impressions),
+      spend,
+      clicks: Math.round(metrics.clicks),
+      viewable_impressions: Math.round(metrics.viewable_impressions),
+      completed_views: Math.round(metrics.completed_views),
+      conversions: Math.round(metrics.conversions),
+      cells: [],
+      simulated: true,
+    };
+    booking.days.push(record);
+    addMetrics(booking.delivered, record);
+    return structuredClone(record);
+  }
+
   private runDay(day: number): void {
     const { calendar } = this.traffic;
     const tables = this.traffic.day(day);
@@ -553,19 +589,22 @@ export class InventorySimulation {
   }
 
   /**
-   * Delivery as reported at `nowMs`: each day is released once it has
-   * closed and the product's reporting lag has passed.
+   * Delivery as reported at `nowMs`: each served day is released once it has
+   * closed and the product's reporting lag has passed; injected delivery is
+   * reported as soon as it is recorded.
    */
   delivery(bookingId: string, nowMs: number): DeliveryReport {
     this.advanceTo(nowMs);
     const booking = this.booking(bookingId);
     const lag = this.traffic.reportingLagDays(booking.product_id);
     const today = this.today(nowMs);
-    const days = booking.days.filter(record => record.day + lag < today);
+    const days = booking.days.filter(record => record.simulated || record.day + lag < today);
     const totals = zeroMetrics();
     for (const record of days) addMetrics(totals, record);
     const { days: _all, ...summary } = booking;
-    const reportedThrough = days.length > 0 ? days[days.length - 1].day : undefined;
+    // Pacing runs to the last served day reported.
+    const served = days.filter(record => !record.simulated);
+    const reportedThrough = served.length > 0 ? served[served.length - 1].day : undefined;
     let expected: number | undefined;
     if (booking.kind === 'goal' && reportedThrough !== undefined) {
       const firstServe = Math.max(booking.confirmed_day + 1, booking.flight_start_day);

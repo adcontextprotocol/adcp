@@ -27,7 +27,7 @@ import {
   type SeasonSeed,
   type SeedProduct,
 } from './engine/index.js';
-import { openMarket, withCallerMarkets, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
+import { openMarket, withCallerMarkets, type DeliveryFinality, type MediaBuyRecord, type OpenMarket, type PackageRecord } from './market-store.js';
 import { TestControllerError } from '@adcp/sdk/testing';
 import {
   CreativeRequestError,
@@ -41,7 +41,17 @@ import {
   type CreativeCatalog,
   type CreativeError,
 } from './creatives.js';
-import { catalogIdOf, formatFilter, listSeedCreativeFormats, resolveCreativeFormat, seedFormatDeclarations, wireFormat, type FormatDeclaration } from './creative-wire.js';
+import {
+  catalogIdOf,
+  formatFilter,
+  listSeedCreativeFormats,
+  resolveCreativeFormat,
+  resolveSeededCreativeFormat,
+  seedFormatDeclarations,
+  seededFormatDeclarations,
+  wireFormat,
+  type FormatDeclaration,
+} from './creative-wire.js';
 import { engineProducts, floorPrice, seededPricing, wireOverrides, wirePricing, type SeededCatalog, type SeededPricingRecord, type SeededProductRecord } from './seeded-products.js';
 import type { TrainingContext } from '../types.js';
 
@@ -94,7 +104,7 @@ function isContext(value: unknown): value is Record<string, unknown> {
 
 function creativeFailure(error: CreativeError): AdcpError {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return new AdcpError(error.code as any, { recovery: 'correctable', message: error.message, ...(error.field && { field: error.field }) });
+  return new AdcpError(error.code as any, { recovery: 'correctable', message: error.message, ...(error.field && { field: error.field }), ...(error.details && { details: error.details }) });
 }
 
 function fromEngine(error: unknown, field?: string): never {
@@ -135,6 +145,60 @@ function servesFormatOptionRef(product: { format_options?: unknown }, refs: read
 function reportsAllMetrics(product: { reporting_capabilities?: unknown }, required: readonly string[]): boolean {
   const declared = new Set((product.reporting_capabilities as { available_metrics?: string[] } | undefined)?.available_metrics ?? []);
   return required.every(metric => reportingMetricIsAvailable(metric, declared));
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** `total` whole units shared in proportion to `weights`, the largest
+ * remainders taking the units left over. */
+function apportion(total: number, weights: readonly number[]): number[] {
+  const sum = weights.reduce((acc, weight) => acc + weight, 0);
+  const exact = weights.map(weight => (total * weight) / sum);
+  const shares = exact.map(Math.floor);
+  let left = total - shares.reduce((acc, share) => acc + share, 0);
+  const byRemainder = exact.map((_, index) => index).sort((a, b) => (exact[b] - shares[b]) - (exact[a] - shares[a]) || a - b);
+  for (const index of byRemainder) {
+    if (left <= 0) break;
+    shares[index] += 1;
+    left -= 1;
+  }
+  return shares;
+}
+
+/** A count a simulate_* scenario sends: absent is none. */
+function controllerCount(params: Record<string, unknown>, key: string): number {
+  const value = params[key];
+  if (value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new TestControllerError('INVALID_PARAMS', `${key} must be a non-negative integer`);
+  }
+  return value;
+}
+
+/** The finality simulate_delivery sets on a buy's reported delivery, or the
+ * buy's current finality when it sends none of is_final, finalized_at and
+ * measurement_window. finalized_at implies final; a final buy without one is
+ * final as of now. */
+function finalityFrom(params: Record<string, unknown>, previous: DeliveryFinality | undefined, nowIso: string): DeliveryFinality | undefined {
+  const { is_final: isFinal, finalized_at: finalizedAt, measurement_window: windowId } = params;
+  if (isFinal === undefined && finalizedAt === undefined && windowId === undefined) return previous;
+  if (isFinal !== undefined && typeof isFinal !== 'boolean') throw new TestControllerError('INVALID_PARAMS', 'is_final must be a boolean');
+  if (finalizedAt !== undefined && (typeof finalizedAt !== 'string' || !Number.isFinite(Date.parse(finalizedAt)))) {
+    throw new TestControllerError('INVALID_PARAMS', 'finalized_at must be an ISO 8601 date-time');
+  }
+  if (finalizedAt !== undefined && isFinal === false) throw new TestControllerError('INVALID_PARAMS', 'finalized_at is only for final delivery');
+  if (windowId !== undefined && (typeof windowId !== 'string' || windowId.length === 0 || windowId.length > 50)) {
+    throw new TestControllerError('INVALID_PARAMS', 'measurement_window must be a window_id of 1 to 50 characters');
+  }
+  const final = typeof isFinal === 'boolean' ? isFinal : finalizedAt !== undefined || (previous?.is_final ?? false);
+  const window = windowId ?? previous?.measurement_window;
+  return {
+    is_final: final,
+    ...(final && { finalized_at: finalizedAt ?? nowIso }),
+    ...(window !== undefined && { measurement_window: window }),
+  };
 }
 
 function parseDateStart(value: unknown, field: string): number {
@@ -282,6 +346,159 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     });
   }
 
+  /** A buy in the caller's market that simulated delivery may land on, and
+   * its live packages. */
+  private simulationTarget(market: OpenMarket, mediaBuyId: unknown): { buy: MediaBuyRecord; packages: PackageRecord[] } {
+    if (typeof mediaBuyId !== 'string') throw new TestControllerError('INVALID_PARAMS', 'params.media_buy_id is required');
+    const buy = market.doc.media_buys.find(candidate => candidate.media_buy_id === mediaBuyId);
+    if (!buy) throw new TestControllerError('NOT_FOUND', `Media buy ${mediaBuyId} not found`);
+    const status = this.buyStatus(buy, market.nowMs);
+    if (status === 'canceled' || status === 'completed') {
+      throw new TestControllerError('INVALID_STATE', `Cannot simulate delivery for media buy in ${status} state`, status);
+    }
+    const packages = buy.packages.filter(pkg => !pkg.canceled);
+    if (packages.length === 0) throw new TestControllerError('INVALID_STATE', `Media buy ${mediaBuyId} has no live packages`, status);
+    return { buy, packages };
+  }
+
+  /**
+   * comply_test_controller `simulate_delivery`: record the impressions,
+   * clicks, conversions and spend given as engine delivery on the buy's live
+   * packages, shared in proportion to their budgets and dated the caller's
+   * sandbox day (`InventorySimulation#injectDelivery`). Reporting reads it
+   * like served delivery, at once. Without reported_spend, a package spends
+   * what its impressions cost at its rate. is_final, finalized_at and
+   * measurement_window mark the buy's reported delivery from then on.
+   */
+  simulateDelivery(principal: string | undefined, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return withCallerMarkets(principal, async () => {
+      const market = await openMarket(this.profile.tenantId, this.profile.seed, principal);
+      const { buy, packages } = this.simulationTarget(market, params.media_buy_id);
+      const impressions = controllerCount(params, 'impressions');
+      const clicks = controllerCount(params, 'clicks');
+      const conversions = controllerCount(params, 'conversions');
+      const reported = params.reported_spend as { amount?: unknown; currency?: unknown } | undefined;
+      if (reported !== undefined) {
+        if (typeof reported?.amount !== 'number' || !Number.isFinite(reported.amount) || reported.amount < 0) {
+          throw new TestControllerError('INVALID_PARAMS', 'reported_spend.amount must be a non-negative number');
+        }
+        if (reported.currency !== buy.currency) {
+          throw new TestControllerError('INVALID_PARAMS', `Media buy ${buy.media_buy_id} is in ${buy.currency}, not ${String(reported.currency)}`);
+        }
+      }
+      const previousFinality = buy.finality;
+      const finality = finalityFrom(params, previousFinality, market.nowIso);
+      const weights = packages.map(pkg => pkg.budget);
+      const shares = {
+        impressions: apportion(impressions, weights),
+        clicks: apportion(clicks, weights),
+        conversions: apportion(conversions, weights),
+        cents: reported ? apportion(Math.round((reported.amount as number) * 100), weights) : undefined,
+      };
+      let spend = 0;
+      packages.forEach((pkg, index) => {
+        const cpm = market.sim.booking(pkg.package_id).cpm;
+        const day = market.sim.injectDelivery(pkg.package_id, {
+          impressions: shares.impressions[index],
+          clicks: shares.clicks[index],
+          conversions: shares.conversions[index],
+          spend: shares.cents ? shares.cents[index] / 100 : roundMoney((shares.impressions[index] * cpm) / 1000),
+          viewable_impressions: 0,
+          completed_views: 0,
+        }, market.nowMs);
+        spend = roundMoney(spend + day.spend);
+      });
+      if (finality) buy.finality = finality;
+      market.save();
+      // Every simulated day on the buy, this one included.
+      const cumulative = { impressions: 0, clicks: 0, conversions: 0, spend: 0 };
+      for (const pkg of buy.packages) {
+        for (const day of market.sim.booking(pkg.package_id).days.filter(record => record.simulated)) {
+          cumulative.impressions += day.impressions;
+          cumulative.clicks += day.clicks;
+          cumulative.conversions += day.conversions;
+          cumulative.spend = roundMoney(cumulative.spend + day.spend);
+        }
+      }
+      return {
+        success: true,
+        simulated: {
+          impressions,
+          clicks,
+          conversions,
+          reported_spend: { amount: spend, currency: buy.currency },
+          ...(finality !== previousFinality && finality),
+        },
+        cumulative: {
+          impressions: cumulative.impressions,
+          clicks: cumulative.clicks,
+          conversions: cumulative.conversions,
+          reported_spend: { amount: cumulative.spend, currency: buy.currency },
+        },
+        message: `Delivery simulated for ${buy.media_buy_id} on ${market.nowIso.slice(0, 10)}: ${impressions} impressions, ${buy.currency} ${spend.toFixed(2)} spend`,
+      };
+    });
+  }
+
+  /**
+   * comply_test_controller `simulate_budget_spend`: bring each live package
+   * of the buy (or of every buy on the account) to `spend_percentage` of its
+   * budget, by recording the spend still missing, and the impressions it buys
+   * at the package's rate, as engine delivery dated the caller's sandbox day.
+   * Spend never goes down; the engine's pacing then serves only what budget
+   * is left.
+   */
+  simulateBudgetSpend(principal: string | undefined, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return withCallerMarkets(principal, async () => {
+      const percentage = params.spend_percentage;
+      if (typeof percentage !== 'number' || !(percentage >= 0 && percentage <= 100)) {
+        throw new TestControllerError('INVALID_PARAMS', 'spend_percentage must be between 0 and 100');
+      }
+      const market = await openMarket(this.profile.tenantId, this.profile.seed, principal);
+      let targets: Array<{ buy: MediaBuyRecord; packages: PackageRecord[] }>;
+      if (params.media_buy_id !== undefined) {
+        targets = [this.simulationTarget(market, params.media_buy_id)];
+      } else if (typeof params.account_id === 'string') {
+        targets = market.doc.media_buys
+          .filter(buy => buy.account_id === params.account_id && !['canceled', 'completed'].includes(this.buyStatus(buy, market.nowMs)))
+          .map(buy => ({ buy, packages: buy.packages.filter(pkg => !pkg.canceled) }));
+      } else {
+        throw new TestControllerError('INVALID_PARAMS', 'simulate_budget_spend needs params.media_buy_id or params.account_id');
+      }
+      const entity = typeof params.media_buy_id === 'string' ? `media buy ${params.media_buy_id}` : `account ${String(params.account_id)}`;
+      const live = targets.flatMap(target => target.packages);
+      const budget = roundMoney(live.reduce((sum, pkg) => sum + pkg.budget, 0));
+      if (budget <= 0) throw new TestControllerError('INVALID_PARAMS', `No live budget on ${entity}`);
+      let computed = 0;
+      for (const pkg of live) {
+        const booking = market.sim.booking(pkg.package_id);
+        const target = roundMoney((pkg.budget * percentage) / 100);
+        computed = roundMoney(computed + target);
+        const missing = roundMoney(target - booking.delivered.spend);
+        if (missing <= 0) continue;
+        market.sim.injectDelivery(pkg.package_id, {
+          impressions: Math.floor((missing * 1000) / booking.cpm),
+          spend: missing,
+          clicks: 0,
+          conversions: 0,
+          viewable_impressions: 0,
+          completed_views: 0,
+        }, market.nowMs);
+      }
+      market.save();
+      const currency = this.profile.seed.currency;
+      return {
+        success: true,
+        simulated: {
+          spend_percentage: percentage,
+          computed_spend: { amount: computed, currency },
+          budget: { amount: budget, currency },
+        },
+        message: `Budget for ${entity} set to ${percentage}% consumed (${currency} ${computed.toFixed(2)} of ${budget.toFixed(2)})`,
+      };
+    });
+  }
+
   /** Run a market handler as the caller's only market request
    * (`withCallerMarkets`). Every handler takes its context last. */
   private serialized<A extends unknown[], R>(handler: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
@@ -319,17 +536,29 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
     return product.placement_ids.map(id => ADCP_CHANNEL[this.profile.seed.placements.find(placement => placement.placement_id === id)!.channel]);
   }
 
-  /** The creative catalogue for a caller's market, which also serves the
-   * formats of the products it seeded. */
+  /** The creative catalogue for a caller's market. A product the caller
+   * seeded serves the formats of the placements it sells on and the format
+   * options its fixture declares, and creatives may be in those options too. */
   private catalogFor(market: OpenMarket): CreativeCatalog {
-    if (!market.doc.seeded?.products?.length) return this.catalog;
+    const records = market.doc.seeded?.products ?? [];
+    if (records.length === 0) return this.catalog;
+    const declaredBy = new Map(records.map(record => [record.product_id, seededFormatDeclarations(record.fixture.format_options)]));
+    const seeded = [...declaredBy.values()].flat();
+    const all = [...this.declarations, ...seeded];
     return {
-      ...this.catalog,
+      formats: new Set([...this.catalog.formats, ...seeded.map(declaration => declaration.format_option_id)]),
       productFormats: productId => {
         const own = this.catalog.productFormats(productId);
         if (own.size > 0 || !market.sim.traffic.products.has(productId)) return own;
-        return this.formatsOf(market.sim.traffic.requireProduct(productId));
+        return new Set([
+          ...this.formatsOf(market.sim.traffic.requireProduct(productId)),
+          ...(declaredBy.get(productId) ?? []).map(declaration => declaration.format_option_id),
+        ]);
       },
+      label: this.catalog.label,
+      resolve: (input, field, allowed) => resolveSeededCreativeFormat(this.declarations, seeded, input, field, allowed),
+      wire: formatOptionId => wireFormat(all, formatOptionId),
+      filter: filters => formatFilter(all, filters),
     };
   }
 
@@ -854,6 +1083,12 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const toDate = typeof filter.end_date === 'string' ? filter.end_date : undefined;
       const inRange = (date: string) => (!fromDate || date >= fromDate) && (!toDate || date < toDate);
       const deliveries = buys.map(buy => {
+        // One finality covers every package of the buy, so the row's matches
+        // each package's.
+        const finality = buy.finality && {
+          is_final: buy.finality.is_final,
+          ...(buy.finality.finalized_at && { finalized_at: buy.finality.finalized_at }),
+        };
         const daily = new Map<string, { impressions: number; spend: number }>();
         const byPackage = buy.packages.map(pkg => {
           const report = market.sim.delivery(pkg.package_id, market.nowMs);
@@ -881,6 +1116,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             rate: report.booking.cpm,
             currency: buy.currency,
             ...(expected !== undefined && expected > 0 && !fromDate && !toDate && { pacing_index: Math.round((impressions / expected) * 1000) / 1000 }),
+            ...finality,
+            ...(buy.finality?.measurement_window && { measurement_window: buy.finality.measurement_window }),
           };
         });
         const totals = byPackage.reduce((acc, row) => ({
@@ -894,6 +1131,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           currency: buy.currency,
           status: this.buyStatus(buy, market.nowMs),
           pricing_model: 'cpm',
+          ...finality,
           totals,
           by_package: byPackage,
           daily_breakdown: [...daily.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, row]) => ({ date, ...row })),

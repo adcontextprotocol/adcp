@@ -230,6 +230,9 @@ export interface BookingDay extends DeliveryMetrics {
   target?: number;
   /** Impressions per cell slot, as [slot index, impressions] pairs. */
   cells: Array<[number, number]>;
+  /** Delivery the host injected (`InventorySimulation#injectDelivery`)
+   * rather than served from cells. */
+  simulated?: true;
 }
 
 export interface Booking {

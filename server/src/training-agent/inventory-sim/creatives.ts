@@ -32,6 +32,7 @@ export interface CreativeError {
   code: string;
   message: string;
   field?: string;
+  details?: Record<string, unknown>;
 }
 
 /** What the library needs to know about the tenant's seed: format_option_ids,
