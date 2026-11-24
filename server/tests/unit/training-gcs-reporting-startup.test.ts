@@ -233,3 +233,132 @@ describe('private GCS reporting startup connection budget', () => {
     expect(state.pools).toHaveLength(0);
   });
 });
+
+describe('durable reporting scheduler failure logging', () => {
+  const scope = { kind: 'account', tenantId: 'tenant-a', principalId: 'principal-secret', accountId: 'account-a' };
+  const UNSETTLED = 'Reporting notification delivery is not settled for 1 recipient(s); retrying';
+
+  /** Shaped like the SDK error classes: an own `name` and own data properties. */
+  function sdkError(name: string, message: string, fields: Record<string, unknown> = {}) {
+    return Object.assign(new Error(message), { name }, fields);
+  }
+  function unsettled(overrides: Record<string, unknown> = {}, message = UNSETTLED) {
+    return sdkError('ReportingNotificationUnsettledError', message, {
+      transitionId: 'transition-1', unsettled: 1, attempt: 1, maxAttempts: 100,
+      recipients: [{
+        scope, subscriberId: 'sub-1', destinationGeneration: 'gen-secret', reason: 'delivery_failed', finalStatus: 503,
+      }],
+      ...overrides,
+    });
+  }
+  async function logger() {
+    return (await import('../../src/training-agent/gcs-reporting.js')).logTrainingReportingSchedulerFailure;
+  }
+
+  it('logs a typed unsettled retry at warn with non-secret subscriber identifiers', async () => {
+    (await logger())(unsettled());
+    expect(state.logError).not.toHaveBeenCalled();
+    expect(state.logWarn).toHaveBeenCalledOnce();
+    expect(state.logWarn).toHaveBeenCalledWith({
+      diagnostic: UNSETTLED, transitionId: 'transition-1', unsettled: 1, attempt: 1, maxAttempts: 100,
+      subscribers: [{ subscriberId: 'sub-1', accountId: 'account-a', reason: 'delivery_failed', finalStatus: 503 }],
+    }, 'Reporting notification delivery is retrying');
+    const logged = JSON.stringify(state.logWarn.mock.calls);
+    for (const leaked of ['principal-secret', 'gen-secret', 'principalId', 'destinationGeneration', 'http']) {
+      expect(logged).not.toContain(leaked);
+    }
+  });
+
+  it.each([
+    UNSETTLED,
+    'Reporting notification delivery is not settled for 1 recipient(s); attempt 100 of 100, not retrying',
+  ])('downgrades only the typed error: a plain Error saying %j stays at error', async message => {
+    (await logger())(new Error(message));
+    expect(state.logWarn).not.toHaveBeenCalled();
+    expect(state.logError).toHaveBeenCalledOnce();
+    expect(state.logError).toHaveBeenCalledWith(
+      { diagnostic: message, databaseCode: undefined }, 'Durable reporting scheduler failed');
+  });
+
+  it('still warns on the final-attempt message because abandonment is reported separately', async () => {
+    const message = 'Reporting notification delivery is not settled for 1 recipient(s); attempt 100 of 100, not retrying';
+    (await logger())(unsettled({ attempt: 100 }, message));
+    expect(state.logError).not.toHaveBeenCalled();
+    expect(state.logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ diagnostic: message, attempt: 100, maxAttempts: 100 }),
+      'Reporting notification delivery is retrying',
+    );
+  });
+
+  it('logs abandonment at error with its identifiers', async () => {
+    const abandoned = sdkError('ReportingNotificationAbandonedError',
+      'Reporting notification was abandoned undelivered after 100 attempt(s); it will not be retried', {
+        transitionId: 'transition-1', attempt: 100, maxAttempts: 100, cause: unsettled(),
+      });
+    (await logger())(abandoned);
+    expect(state.logWarn).not.toHaveBeenCalled();
+    expect(state.logError).toHaveBeenCalledOnce();
+    expect(state.logError).toHaveBeenCalledWith({
+      diagnostic: abandoned.message, databaseCode: undefined,
+      transitionId: 'transition-1', attempt: 100, maxAttempts: 100,
+    }, 'Durable reporting scheduler failed');
+  });
+
+  it('lets a nested database code beat the typed unsettled error', async () => {
+    const databaseError = Object.assign(new Error('private SQL'), { code: '40P01' });
+    (await logger())(unsettled({ cause: new Error('storage wrapper', { cause: databaseError }) }));
+    expect(state.logWarn).not.toHaveBeenCalled();
+    expect(state.logError).toHaveBeenCalledWith(
+      expect.objectContaining({ databaseCode: '40P01' }), 'Durable reporting scheduler failed');
+  });
+
+  it.each([
+    ['a port that did not freeze', new Error('Reporting notification port did not freeze its recipient set; refusing')],
+    ['a retryable suppression', sdkError('ReportingNotificationRetryableSuppressionError', 'Reporting notification delivery was suppressed')],
+  ])('keeps %s at error', async (_label, error) => {
+    (await logger())(error);
+    expect(state.logWarn).not.toHaveBeenCalled();
+    expect(state.logError).toHaveBeenCalledOnce();
+    expect(state.logError.mock.calls[0][0]).toEqual({ diagnostic: error.message, databaseCode: undefined });
+  });
+
+  it('never throws on hostile recipients and never invokes an accessor', async () => {
+    const log = await logger();
+    let getterCalls = 0;
+    const getterRecipient = {};
+    for (const key of ['subscriberId', 'reason', 'finalStatus']) {
+      Object.defineProperty(getterRecipient, key, { get() { getterCalls += 1; throw new Error('hostile getter'); } });
+    }
+    Object.defineProperty(getterRecipient, 'scope', { get() { getterCalls += 1; throw new Error('hostile getter'); } });
+    const hostileProxy = new Proxy({}, { getOwnPropertyDescriptor() { throw new Error('hostile'); } });
+    const wrongTypes = { scope: 'nope', subscriberId: 42, reason: {}, finalStatus: '503' };
+    const cases = [
+      unsettled({ recipients: 'not an array' }),
+      unsettled({ recipients: { length: 1, 0: {} } }),
+      unsettled({ recipients: [null, undefined, 7, 'x', [], getterRecipient, hostileProxy, wrongTypes] }),
+      unsettled({ transitionId: { toString() { throw new Error('hostile'); } }, attempt: 1.5, maxAttempts: Infinity }),
+    ];
+    for (const error of cases) expect(() => log(error)).not.toThrow();
+    expect(getterCalls).toBe(0);
+    expect(state.logError).not.toHaveBeenCalled();
+    expect(state.logWarn).toHaveBeenCalledTimes(cases.length);
+    const calls = state.logWarn.mock.calls;
+    expect(calls[0][0].subscribers).toBeUndefined();
+    expect(calls[1][0].subscribers).toBeUndefined();
+    expect(calls[2][0].subscribers).toEqual(Array(8).fill({}));
+    expect(calls[3][0]).not.toHaveProperty('transitionId');
+    expect(calls[3][0]).not.toHaveProperty('attempt');
+    expect(calls[3][0]).not.toHaveProperty('maxAttempts');
+  });
+
+  it('logs at most ten recipients', async () => {
+    const recipients = Array.from({ length: 15 }, (_, index) => ({
+      scope, subscriberId: `sub-${index}`, reason: 'delivery_failed', finalStatus: 503,
+    }));
+    (await logger())(unsettled({ unsettled: 15, recipients }));
+    const [details] = state.logWarn.mock.calls[0];
+    expect(details.unsettled).toBe(15);
+    expect(details.subscribers).toHaveLength(10);
+    expect(details.subscribers.at(-1).subscriberId).toBe('sub-9');
+  });
+});

@@ -133,6 +133,34 @@ function summarizeAttempts(records: ReadonlyArray<{ status: string; fired_at: st
   return summary;
 }
 
+/**
+ * Non-secret identifiers from `ReportingNotificationUnsettledError` (or the
+ * abandonment that follows it): enough to find the subscriber, never its URL.
+ */
+function notificationRetryDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {};
+  for (const key of ['transitionId', 'unsettled', 'attempt', 'maxAttempts']) {
+    const value = ownValue(error, key);
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isSafeInteger(value))) details[key] = value;
+  }
+  const recipients = ownValue(error, 'recipients');
+  if (Array.isArray(recipients)) {
+    details.subscribers = recipients.slice(0, 10).map(recipient => {
+      const subscriberId = ownValue(recipient, 'subscriberId');
+      const accountId = ownValue(ownValue(recipient, 'scope'), 'accountId');
+      const reason = ownValue(recipient, 'reason');
+      const finalStatus = ownValue(recipient, 'finalStatus');
+      return {
+        ...(typeof subscriberId === 'string' ? { subscriberId } : {}),
+        ...(typeof accountId === 'string' ? { accountId } : {}),
+        ...(typeof reason === 'string' ? { reason } : {}),
+        ...(typeof finalStatus === 'number' ? { finalStatus } : {}),
+      };
+    });
+  }
+  return details;
+}
+
 /** Keep the PostgreSQL receipt when the storage layer wraps a query failure. */
 export function logTrainingReportingSchedulerFailure(error: unknown): void {
   let databaseCode: string | undefined;
@@ -149,8 +177,20 @@ export function logTrainingReportingSchedulerFailure(error: unknown): void {
       cause = next && 'value' in next ? next.value : undefined;
     } catch { break; }
   }
-  logger.error({ diagnostic: reportingSchedulerErrorMessage(error), databaseCode },
-    'Durable reporting scheduler failed');
+  const diagnostic = reportingSchedulerErrorMessage(error);
+  const name = ownValue(error, 'name');
+  // A webhook subscriber that is not accepting deliveries is an expected retry,
+  // bounded by the SDK's maxAttempts; only its abandonment needs an operator.
+  // SDKs that throw a plain Error here never report abandonment, so that form
+  // stays at error.
+  if (databaseCode === undefined && name === 'ReportingNotificationUnsettledError') {
+    logger.warn({ diagnostic, ...notificationRetryDetails(error) }, 'Reporting notification delivery is retrying');
+    return;
+  }
+  logger.error({
+    diagnostic, databaseCode,
+    ...(name === 'ReportingNotificationAbandonedError' ? notificationRetryDetails(error) : {}),
+  }, 'Durable reporting scheduler failed');
 }
 
 /** Reserve one active or unfinished canary account per organization. Retired
@@ -563,7 +603,9 @@ function redactCredentials(text: string): string {
   }
   return redacted.slice(0, 1000);
 }
-function ownValue(target: object, key: string): unknown {
+/** Own data property only: never invokes an accessor. */
+function ownValue(target: unknown, key: string): unknown {
+  if (typeof target !== 'object' || target === null) return undefined;
   try {
     const descriptor = Object.getOwnPropertyDescriptor(target, key);
     return descriptor && 'value' in descriptor ? descriptor.value : undefined;
