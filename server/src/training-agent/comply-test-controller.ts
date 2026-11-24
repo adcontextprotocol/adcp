@@ -2235,7 +2235,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return {
       success: false,
       error: 'FORBIDDEN',
-      error_detail: 'comply_test_controller requires account.sandbox: true',
+      // Learners usually hold the account_id that sync_accounts returned;
+      // show that the assertion rides on that same reference.
+      error_detail: 'comply_test_controller requires account.sandbox: true. Add it to the account reference you already use, for example {"account_id": "<id>", "sandbox": true} or {"brand": {"domain": "<domain>"}, "operator": "<operator>", "sandbox": true}.',
     };
   }
   if (isLiveModeProbe) {

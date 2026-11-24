@@ -2243,7 +2243,8 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
-      expect(result.error_detail).toBe('comply_test_controller requires account.sandbox: true');
+      expect(result.error_detail).toMatch(/^comply_test_controller requires account\.sandbox: true\. /);
+      expect(result.error_detail).toContain('{"account_id": "<id>", "sandbox": true}');
     });
 
     it('rejects calls with sandbox: false', async () => {
