@@ -1137,6 +1137,57 @@ describe('inventory tenants', () => {
         expect(forecast.points[0].metrics.spend).toBeDefined();
       });
 
+      it('labels the forecast with the full sentence when it is exactly 128 characters', async () => {
+        const firstId = 'p'.repeat(103);
+        await seedOne('seeded_label_103', 'guaranteed', { [firstId]: 1, cpm_ten_label: 10 });
+        const forecast = await forecastOf('seeded_label_103', 1000);
+        expect(forecast.points[0].label).toBe(`Priced at pricing option ${firstId}`);
+        expect(forecast.points[0].label).toHaveLength(128);
+        expect(forecast.points[0].metrics.impressions.mid).toBe(1_000_000);
+      });
+
+      it('falls back to the bare id when the sentence would pass 128 characters', async () => {
+        const firstId = 'q'.repeat(104);
+        await seedOne('seeded_label_104', 'guaranteed', { [firstId]: 1, cpm_ten_label: 10 });
+        const forecast = await forecastOf('seeded_label_104', 1000);
+        expect(forecast.points[0].label).toBe(firstId);
+        expect(forecast.points[0].metrics.impressions.mid).toBe(1_000_000);
+      });
+
+      it('prices and names the first option whose id fits when the first id is too long', async () => {
+        await seedOne('seeded_label_129', 'guaranteed', { ['r'.repeat(129)]: 1, cpm_ten_fits: 10 });
+        const forecast = await forecastOf('seeded_label_129', 1000);
+        expect(forecast.points[0].label).toBe('Priced at pricing option cpm_ten_fits');
+        expect(forecast.points[0].metrics.impressions.mid).toBe(100_000);
+        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
+        const buy = await bookAt('inventory-forecast-long-id-0001', 'cpm_ten_fits', 1000, 'seeded_label_129');
+        expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
+      });
+
+      it('prices an auction forecast at the placements\' lowest floor when the first option has none', async () => {
+        expect((await controller('seed_product', {
+          product_id: 'seeded_no_floor',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            name: 'seeded_no_floor',
+            format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+          },
+        })).success).toBe(true);
+        for (const [id, fixture] of [
+          ['floor_none', { pricing_model: 'cpm', currency: 'USD' }],
+          ['floor_ten', { pricing_model: 'cpm', currency: 'USD', floor_price: 10 }],
+        ] as const) {
+          const seeded = await controller('seed_pricing_option', { product_id: 'seeded_no_floor', pricing_option_id: id, fixture });
+          expect(seeded.success, JSON.stringify(seeded).slice(0, 300)).toBe(true);
+        }
+        const forecast = await forecastOf('seeded_no_floor', 1000);
+        expect(forecast.points[0].label).toBe('Priced at pricing option floor_none');
+        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
+        // A $10 floor would buy exactly 100,000 at most.
+        expect(forecast.points[0].metrics.impressions.mid).toBeGreaterThan(100_000);
+      });
+
       const delivered = async (mediaBuyId: string) => {
         const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, TOKEN_PRICE);
         expectCanonical('get_media_buy_delivery', delivery);
