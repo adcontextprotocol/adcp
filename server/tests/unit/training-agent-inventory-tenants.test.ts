@@ -1073,14 +1073,80 @@ describe('inventory tenants', () => {
         }
       });
 
-      const bookAt = async (key: string, pricingOptionId: string, budget: number) => {
+      const seedOne = async (productId: string, delivery_type: string, options: Record<string, unknown>) => {
+        expect((await controller('seed_product', {
+          product_id: productId,
+          fixture: {
+            delivery_type,
+            channels: ['display'],
+            name: productId,
+            format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+          },
+        })).success).toBe(true);
+        for (const [id, price] of Object.entries(options)) {
+          expect((await controller('seed_pricing_option', {
+            product_id: productId, pricing_option_id: id, fixture: { pricing_model: 'cpm', currency: 'USD', ...(delivery_type === 'guaranteed' ? { fixed_price: price } : { floor_price: price }) },
+          })).success).toBe(true);
+        }
+      };
+      const forecastOf = async (productId: string, budget: number) => {
+        const offer = await call(tenant, 'get_products', {
+          buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: { ...flight, budget_range: { max: budget } },
+        }, TOKEN_PRICE);
+        expectCanonical('get_products', offer);
+        return offer.products.find((product: Structured) => product.product_id === productId).forecast as Structured;
+      };
+      const bookAt = async (key: string, pricingOptionId: string, budget: number, productId = 'seeded_two_rates') => {
         const buy = await call(tenant, 'create_media_buy', {
           idempotency_key: key, account: ACCOUNT, brand: BRAND, ...times,
-          packages: [{ product_id: 'seeded_two_rates', pricing_option_id: pricingOptionId, budget }],
+          packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget }],
         }, TOKEN_PRICE);
         expectCanonical('create_media_buy', buy);
         return buy;
       };
+
+      it('forecasts availability alone when the options book at different rates, and every option books within it', async () => {
+        const forecast = await forecastOf('seeded_two_rates', 1000);
+        expect(forecast.forecast_range_unit).toBe('availability');
+        expect(forecast.points[0].budget).toBeUndefined();
+        expect(forecast.points[0].metrics.spend).toBeUndefined();
+        const open = forecast.points[0].metrics.impressions.mid as number;
+        expect(open).toBeGreaterThan(0);
+
+        // The $10 option's goal at $1,000 is 100,000; the $1 option's goal fits what is open.
+        const ten = await bookAt('inventory-forecast-rates-ten-01', 'cpm_ten', 1000);
+        expect(ten.packages[0].impressions).toBe(100_000);
+        expect(100_000).toBeLessThanOrEqual(open);
+        const oneBudget = Math.floor((Math.min(open - 100_000, 500_000) * 1) / 1000);
+        const one = await bookAt('inventory-forecast-rates-one-01', 'cpm_one', oneBudget);
+        expect(one.packages[0].impressions).toBeLessThanOrEqual(open);
+        const over = await call(tenant, 'create_media_buy', {
+          idempotency_key: 'inventory-forecast-rates-over-01', account: ACCOUNT, brand: BRAND, ...times,
+          packages: [{ product_id: 'seeded_two_rates', pricing_option_id: 'cpm_one', budget: Math.ceil(open / 1000) + 1000 }],
+        }, TOKEN_PRICE);
+        expect(errorOf(over)).toMatchObject({ code: 'PRODUCT_UNAVAILABLE' });
+      });
+
+      it('prices the forecast when every option books at one rate, and booking matches it', async () => {
+        await seedOne('seeded_one_rate', 'guaranteed', { cpm_only: 10 });
+        const forecast = await forecastOf('seeded_one_rate', 1000);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(1000);
+        expect(forecast.points[0].metrics.impressions.mid).toBe(100_000);
+        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
+        const buy = await bookAt('inventory-forecast-one-rate-001', 'cpm_only', 1000, 'seeded_one_rate');
+        expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
+      });
+
+      it('forecasts an auction product with different floors as availability alone', async () => {
+        await seedOne('seeded_two_floors', 'non_guaranteed', { floor_one: 1, floor_ten: 10 });
+        const forecast = await forecastOf('seeded_two_floors', 1000);
+        expect(forecast.forecast_range_unit).toBe('availability');
+        expect(forecast.points[0].budget).toBeUndefined();
+        expect(forecast.points[0].metrics.spend).toBeUndefined();
+        expect(forecast.points[0].metrics.impressions.mid).toBeGreaterThan(0);
+      });
+
       const delivered = async (mediaBuyId: string) => {
         const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, TOKEN_PRICE);
         expectCanonical('get_media_buy_delivery', delivery);
