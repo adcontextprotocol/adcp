@@ -409,6 +409,14 @@ describe('season bounds', () => {
     expect(message).toContain('collections[0]: installment 6 on 2027-02-06 falls after the season ends (2027-01-30)');
   });
 
+  it.each([1_000_000_000, Number.MAX_SAFE_INTEGER])('refuses a collection whose installments run past any representable date (cadence_days %d)', cadence => {
+    const message = invalidSeedMessage(() => parseSeasonSeed(withCollection({ count: 2, cadence_days: cadence }), 'far'));
+    expect(message).toContain('collections[0]');
+    expect(message).toContain('falls');
+    expect(message).toMatch(/installment 2 falls \d+ days after the season starts, past its end \(2027-01-30\)/);
+    expect(message).not.toContain('Invalid time value');
+  });
+
   it('refuses a first installment before the season starts', () => {
     const message = invalidSeedMessage(() => parseSeasonSeed(withCollection({ first_date: '2026-12-25' }), 'early'));
     expect(message).toContain('collections[0]: installment 1 on 2026-12-25 falls before the season starts (2027-01-01)');

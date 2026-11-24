@@ -217,6 +217,13 @@ export interface SeasonFileOptions {
   formats?: ReadonlySet<string>;
 }
 
+const MAX_DATE_MS = 8.64e15;
+
+/** A day's ISO date, or undefined when the instant is beyond JavaScript's Date range. */
+function dateIfRepresentable(calendar: SeasonCalendar, day: number): string | undefined {
+  return Math.abs(calendar.startMs + day * DAY_MS) <= MAX_DATE_MS ? calendar.dateOf(day) : undefined;
+}
+
 /** References the engine does not resolve: a product's `property_ids` and
  * `collection_ids`, and the ids a traffic event targets. Each would load and
  * then match nothing. With `formats`, also placement formats the host does
@@ -272,8 +279,14 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
     const lastDay = first + (collection.count - 1) * collection.cadence_days;
     if (lastDay < seed.days) return;
     const firstPast = Math.max(Math.floor((seed.days - 1 - first) / collection.cadence_days) + 1, 0);
-    const date = calendar.dateOf(first + firstPast * collection.cadence_days);
-    problems.push(`collections[${i}]: installment ${firstPast + 1} on ${date} falls after the season ends (${calendar.dateOf(seed.days - 1)})`);
+    const day = first + firstPast * collection.cadence_days;
+    const date = dateIfRepresentable(calendar, day);
+    const lastDate = calendar.dateOf(seed.days - 1);
+    problems.push(
+      date
+        ? `collections[${i}]: installment ${firstPast + 1} on ${date} falls after the season ends (${lastDate})`
+        : `collections[${i}]: installment ${firstPast + 1} falls ${day} days after the season starts, past its end (${lastDate})`,
+    );
   });
   (seed.events ?? []).forEach((event, i) => {
     if (event.type === 'installment_postponed' && daysUsable && parseDate(event.to_date) - calendar.startMs >= seed.days * DAY_MS) {
