@@ -10276,11 +10276,18 @@ export function computeOutcomeTargetCostPlan(
   const rangeFloor = budgetRange?.min ?? 0;
   const rangeCeiling = budgetRange?.max ?? Number.POSITIVE_INFINITY;
   // Every purchase must clear its option's minimum spend, so the plan total
-  // is at least the largest minimum divided by that purchase's share.
-  const minimumSpendTotal = Math.max(0, ...allocations.map((allocation, index) => {
-    const share = (allocation.allocation_percentage ?? 100 / allocations.length) / 100;
-    return share > 0 ? (pricings[index]!.min_spend_per_package ?? 0) / share : 0;
-  }));
+  // is at least the largest minimum divided by that purchase's share,
+  // rounded up to a cent. Purchase budgets are total × share without
+  // rounding, so step up a cent while float shares leave one a hair short.
+  const shares = allocations.map(allocation => (allocation.allocation_percentage ?? 100 / allocations.length) / 100);
+  const minimumSpends = pricings.map(pricing => pricing!.min_spend_per_package ?? 0);
+  const clearsMinimums = (total: number) => shares.every((share, index) => total * share >= minimumSpends[index]!);
+  let minimumSpendTotal = ceilToCents(Math.max(0, ...shares.map((share, index) => (
+    share > 0 ? minimumSpends[index]! / share : 0
+  ))));
+  for (let step = 0; step < 100 && !clearsMinimums(minimumSpendTotal); step += 1) {
+    minimumSpendTotal = roundMoney(minimumSpendTotal + 0.01);
+  }
   const targetBudget = volume !== undefined
     ? Math.min(Math.max(volume * planningCost, rangeFloor), rangeCeiling)
     : budgetRange
