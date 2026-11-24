@@ -31,32 +31,6 @@ changes:
     witness): a completed get_signals response with incomplete [{scope: signals, description: ""}] is valid on base and invalid
     on head ("must NOT have fewer than 1 characters"); restoring {type: string} at the site makes it valid again, and a non-empty
     description is valid on head.
-- location: core/signal-listing.json#/properties/categories
-  keyword: items
-  new:
-    type:
-    - string
-  direction: none
-  side: both
-  note: >-
-    The catalog entry inherits categories from core/signal-listing.json instead of restating it: the same string items, written
-    once in the listing and no longer beside an allOf in the entry. Masked by the allOf line below; no payload changes verdict.
-    Checked by hand with Ajv: a get_signals catalog entry with categories ["a"] and one deployment is valid at the base and
-    at the head, and with categories [] invalid at both (the listing's minItems 1). The tool's witness for this site sends
-    deployments [], which the deployments minItems line rejects, not this one.
-- location: core/signal-listing.json#/properties/categories
-  keyword: allOf
-  old:
-    items:
-      type:
-      - string
-  direction: none
-  side: both
-  note: >-
-    The other half of the categories restructure above: the items constraint the entry stated through allOf now comes from
-    the listing. No payload changes verdict. Checked by hand with Ajv: a get_signals catalog entry with categories ["a"] and
-    one deployment is valid at the base and at the head, and with categories [] invalid at both (the listing's minItems 1).
-    The tool's witness for this site sends deployments [], which the deployments minItems line rejects, not this one.
 - location: core/signal-catalog-entry.json#/properties/data_provider
   keyword: minLength
   new: 1
