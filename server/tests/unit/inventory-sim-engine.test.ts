@@ -258,6 +258,27 @@ describe('simulation', () => {
     expect(n.delivered.spend).toBe(Math.round(((before * 3.333) / 1000 + (after * 2.777) / 1000) * 100) / 100);
   });
 
+  it('prices a guaranteed booking at the rate it is booked with, not the product rate (#9208)', () => {
+    const sim = InventorySimulation.create(scarceSeed(), now);
+    // The product lists $10; a $400 budget at the chosen $4 buys 100,000, not 40,000.
+    sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 400, rate_cpm: 4 }, now);
+    expect(sim.booking('g').cpm).toBe(4);
+    expect(sim.booking('g').impression_goal).toBe(100_000);
+    sim.advanceTo(at('2027-01-31T00:00:00Z'));
+    const g = sim.booking('g');
+    expect(g.delivered.impressions).toBeGreaterThan(99_990);
+    expect(g.delivered.impressions).toBeLessThanOrEqual(100_000);
+    expect(g.delivered.spend).toBeCloseTo((g.delivered.impressions * 4) / 1000, 2);
+  });
+
+  it('refuses a non-positive booking rate', () => {
+    const sim = InventorySimulation.create(scarceSeed(), now);
+    for (const rate_cpm of [0, -1]) {
+      expect(() => sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 400, rate_cpm }, now))
+        .toThrow(expect.objectContaining({ code: 'INVALID_BOOKING' }));
+    }
+  });
+
   it('gives non-guaranteed bookings only what guarantees leave, first-price', () => {
     const sim = InventorySimulation.create(scarceSeed(), now);
     sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 10_000, impression_goal: 150_000 }, now);

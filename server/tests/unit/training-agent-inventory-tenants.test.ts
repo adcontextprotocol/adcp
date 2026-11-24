@@ -1049,6 +1049,61 @@ describe('inventory tenants', () => {
       });
     });
 
+    // A guaranteed product with several fixed prices books at the one chosen (#9208).
+    describe('/inventory-adserver selected pricing option', () => {
+      const tenant = 'inventory-adserver';
+      const TOKEN_PRICE = 'demo-inventory-goal-price-v1';
+      const controller = (scenario: string, params: Record<string, unknown>) =>
+        call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, TOKEN_PRICE);
+      beforeAll(async () => {
+        await prepare(tenant, TOKEN_PRICE);
+        expect((await controller('seed_product', {
+          product_id: 'seeded_two_rates',
+          fixture: {
+            delivery_type: 'guaranteed',
+            channels: ['display'],
+            name: 'Seeded two rates',
+            format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+          },
+        })).success).toBe(true);
+        for (const [id, fixed_price] of [['cpm_one', 1], ['cpm_ten', 10]] as const) {
+          expect((await controller('seed_pricing_option', {
+            product_id: 'seeded_two_rates', pricing_option_id: id, fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price },
+          })).success).toBe(true);
+        }
+      });
+
+      const bookAt = async (key: string, pricingOptionId: string, budget: number) => {
+        const buy = await call(tenant, 'create_media_buy', {
+          idempotency_key: key, account: ACCOUNT, brand: BRAND, ...times,
+          packages: [{ product_id: 'seeded_two_rates', pricing_option_id: pricingOptionId, budget }],
+        }, TOKEN_PRICE);
+        expectCanonical('create_media_buy', buy);
+        return buy;
+      };
+      const delivered = async (mediaBuyId: string) => {
+        const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, TOKEN_PRICE);
+        expectCanonical('get_media_buy_delivery', delivery);
+        return delivery.media_buy_deliveries[0].totals as Structured;
+      };
+
+      it('derives the goal and spend from the selected option, not the first', async () => {
+        const budget = 1000;
+        const second = await bookAt('inventory-goal-price-second-1', 'cpm_ten', budget);
+        expect(second.packages[0].impressions).toBe(Math.floor((budget * 1000) / 10));
+        const first = await bookAt('inventory-goal-price-first-01', 'cpm_one', budget);
+        expect(first.packages[0].impressions).toBe(Math.floor((budget * 1000) / 1));
+
+        const clock = await controller('sandbox_clock', { operation: 'advance_time', by: 'P40D' });
+        expect(clock.success, JSON.stringify(clock).slice(0, 500)).toBe(true);
+        const priced = await delivered(second.media_buy_id);
+        expect(priced.impressions).toBeGreaterThan(0);
+        expect(priced.spend).toBeCloseTo((priced.impressions * 10) / 1000, 0);
+        const cheap = await delivered(first.media_buy_id);
+        expect(cheap.spend).toBeCloseTo((cheap.impressions * 1) / 1000, 0);
+      });
+    });
+
     describe('/inventory-adserver multi-package updates', () => {
       const tenant = 'inventory-adserver';
       const TOKEN_GOAL = 'demo-inventory-goal-update-v1';
