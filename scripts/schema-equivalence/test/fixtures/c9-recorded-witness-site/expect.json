@@ -1,0 +1,12 @@
+{
+  "why": "A recorded witness for a oneOf that a discriminator reads, which cannot be reverted alone, verifies against the head with the whole schema at the line's site reverted.",
+  "exit": 0,
+  "class": 3,
+  "witnesses": 3,
+  "attribution": "site",
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ]
+}

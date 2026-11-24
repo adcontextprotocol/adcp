@@ -1,0 +1,31 @@
+title: guard-recorded-witness-other-reason
+changes:
+  - location: order-request.json#/properties/code
+    keyword: pattern
+    old: ^[a-z]+$
+    new: ^[a-z0-9]+$
+    direction: loosen
+    side: request
+    witness:
+      root: /schemas/order-request.json
+      instance:
+        token: abcdefghijk1
+        code: abc
+        mode: express
+  - location: order-request.json#/properties/mode
+    keyword: enum
+    old:
+      - priority
+      - standard
+    new:
+      - express
+      - priority
+      - standard
+    direction: loosen
+    side: request
+    witness:
+      root: /schemas/order-request.json
+      instance:
+        token: abcdefghijk1
+        code: abc
+        mode: express

@@ -268,7 +268,7 @@ async function main() {
       const atRange = manifest.changes.filter(c => rangeMatch.matched.some(m => m.change.index === c.index));
       if (atRange.length) {
         const found = await generateWitnesses({ baseTree: base, headTree: head, manifest: { changes: atRange }, match: rangeMatch, corpus, validators: getValidators() });
-        for (const w of found) if (w.ok) results.set(w.index, { ...w, from: 'range' });
+        for (const w of found) if (w.ok) results.set(w.index, { ...w, from: w.from || 'range' });
       }
       for (const s of chain.steps) {
         if (s.merge || !s.lines.length || s.lines.every(l => results.has(l.index))) continue;
@@ -283,7 +283,7 @@ async function main() {
           // Only the roots a line reaches get compiled.
           validators: { base: new TreeValidator(stepBase, { lazy: true }), head: new TreeValidator(stepHead, { lazy: true }) },
         });
-        for (const w of found) if (!results.has(w.index)) results.set(w.index, { ...w, from: s.commit });
+        for (const w of found) if (!results.has(w.index)) results.set(w.index, { ...w, from: w.from || s.commit });
       }
       for (const c of chain.unowned) results.set(c.index, { index: c.index, direction: c.direction, ok: false, payloads: [], reason: 'no commit of the range adds or changes its manifest file' });
       report.witnesses = [...results.values()].sort((a, b) => a.index - b.index);

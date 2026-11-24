@@ -22,7 +22,7 @@ const { TreeValidator } = require('./corpus.cjs');
 const { refTarget, readDoc, originLabel } = require('./graph.cjs');
 const { getPointer, escapePointer, unescapePointer, stableStringify } = require('./json.cjs');
 const { sampleRegex } = require('./sample-regex.cjs');
-const { siteOf } = require('./manifest.cjs');
+const { siteOf, normalizeRoot } = require('./manifest.cjs');
 const { VALUE, SINGLE, MAP, UNION } = require('./keywords.cjs');
 const { accepts } = require('./raw-eval.cjs');
 
@@ -929,6 +929,53 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
       }
       if (declared.every(d => found[d])) break;
     }
+    // A recorded witness counts when the search finds none, and only when it
+    // verifies: Ajv gives it the declared direction at base and head, and
+    // with this line alone reverted it gets the base verdict again.
+    const recordedReasons = [];
+    for (const w of change.witness === undefined ? [] : [].concat(change.witness)) {
+      const open = declared.filter(d => !found[d]);
+      if (!open.length) break;
+      const rel = normalizeRoot(w.root);
+      const entry = m.entries.find(e => e.root === rel);
+      if (!entry) {
+        recordedReasons.push(`the recorded witness's root ${rel} is not one of this line's roots`);
+        continue;
+      }
+      const vb = await validators.base.get(`${rel}#`);
+      const vh = await validators.head.get(`${rel}#`);
+      if (typeof vb !== 'function' || typeof vh !== 'function') {
+        recordedReasons.push(`the recorded witness's root ${rel} does not compile`);
+        continue;
+      }
+      const atBase = vb(w.instance);
+      const atHead = vh(w.instance);
+      const dir = atBase && !atHead ? 'tighten' : !atBase && atHead ? 'loosen' : null;
+      if (!dir || !open.includes(dir)) {
+        recordedReasons.push(`the recorded witness is ${atBase ? 'valid' : 'invalid'} at the base and ${atHead ? 'valid' : 'invalid'} at the head, not a ${open.join('/')}`);
+        continue;
+      }
+      // Attributed to the line where its keyword can be reverted alone, else
+      // to its site: the head with the whole schema at the site reverted.
+      const hybrid = hybridFor(entry);
+      let h = hybrid.hv ? await hybrid.hv.get(`${rel}#`) : null;
+      let attribution = 'line';
+      if (typeof h !== 'function') {
+        const site = hybridFor({ ...entry, keyword: '(schema)' });
+        const hs = site.hv ? await site.hv.get(`${rel}#`) : null;
+        if (typeof hs !== 'function') {
+          recordedReasons.push(`cannot attribute the recorded witness: ${hybrid.reason || 'the head with this line reverted does not compile'}`);
+          continue;
+        }
+        h = hs;
+        attribution = 'site';
+      }
+      if (dir === 'tighten' ? !h(w.instance) : h(w.instance)) {
+        recordedReasons.push(`the recorded witness changes verdict for another reason: with this line reverted it is still ${dir === 'tighten' ? 'invalid' : 'valid'}`);
+        continue;
+      }
+      found[dir] = { root: rel, payload: w.instance, at: [], recorded: true, attribution };
+    }
     const observed = ['tighten', 'loosen'].filter(d => found[d]);
     if (firstCompiled && compileError) reasons.push(`cannot attribute: the head with this line reverted does not compile (${compileError})`);
     res.observed = observed;
@@ -937,8 +984,10 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
     const extra = observed.filter(d => !declared.includes(d));
     if (missing.length && !reasons.length) reasons.push(`no ${missing.join('/')} witness attributed to this line in ${entries.length} root(s)`);
     else if (missing.length) reasons.push(`no ${missing.join('/')} witness`);
+    if (missing.length) reasons.push(...recordedReasons);
     if (extra.length) reasons.push(`a ${extra.join('/')} witness is attributed to this line, which declares ${change.direction}`);
     if (!missing.length && !extra.length) reasons.length = 0;
+    if (observed.some(d => found[d].recorded)) res.from = 'recorded';
     res.ok = reasons.length === 0;
     if (reasons.length) res.reason = [...new Set(reasons)].join('; ');
     results.set(change.index, res);
@@ -976,6 +1025,7 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
 function payloadRecord(dir, found) {
   return {
     kind: dir,
+    ...(found.recorded ? { from: 'recorded', attribution: found.attribution } : {}),
     root: found.root,
     payload: found.payload,
     at: found.at.length ? `/${found.at.map(x => String(x).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}` : '',

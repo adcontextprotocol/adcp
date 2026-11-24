@@ -1,0 +1,10 @@
+title: c9-none-masked-monotone
+changes:
+  - location: error-request.json#/properties/recovery/allOf/0
+    keyword: enum
+    new:
+      - correctable
+      - terminal
+      - transient
+    direction: none
+    side: request

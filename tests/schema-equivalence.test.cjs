@@ -44,6 +44,8 @@ describe('schema-equivalence CLI fixtures', { concurrency: 8 }, () => {
       if (expect.class === 1) assert.equal(c.entriesWithoutRules.length, 0);
       if (expect.rule) assert.ok(c.rewrites.some(r => r.rule === expect.rule), `rule ${expect.rule} fired`);
       if (expect.keyword) assert.ok(c.entries.some(e => e.keyword === expect.keyword), `an entry for ${expect.keyword}: ${JSON.stringify(c.entries)}`);
+      if (expect.location) assert.ok(c.entries.some(e => e.keyword === expect.keyword && e.head_location === expect.location), `an entry for ${expect.keyword} at ${expect.location}: ${JSON.stringify(c.entries.map(e => [e.keyword, e.head_location]))}`);
+      if (expect.attribution) assert.ok(report.witnesses.some(w => (w.payloads || []).some(p => p.from === 'recorded' && p.attribution === expect.attribution)), `a recorded witness attributed to the ${expect.attribution}: ${JSON.stringify(report.witnesses)}`);
       if (expect.entries !== undefined) assert.equal(c.entries.length, expect.entries);
       if (expect.info) assert.ok(c.info.some(e => e.keyword === expect.info), `informational entry for ${expect.info}`);
       if (expect.infoEntries !== undefined) assert.equal(c.info.length, expect.infoEntries, JSON.stringify(c.info, null, 1));

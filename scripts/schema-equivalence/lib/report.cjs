@@ -106,7 +106,7 @@ function formatText(report) {
     for (const x of w) {
       lines.push(`  entry ${x.index} (${x.direction}): ${x.ok ? 'ok' : 'MISSING'}`);
       for (const p of x.payloads || []) {
-        lines.push(`    ${p.kind}: ${p.root} with ${p.at || '/'} = ${short(p.value, 100)} (base ${p.base}, head ${p.head}; full payload in the JSON report)`);
+        lines.push(`    ${p.kind}${p.from === 'recorded' ? ' (recorded in the manifest)' : ''}: ${p.root} with ${p.at || '/'} = ${short(p.value, 100)} (base ${p.base}, head ${p.head}; full payload in the JSON report)`);
       }
       if (!x.ok && x.reason) lines.push(`    ${x.reason}`);
     }

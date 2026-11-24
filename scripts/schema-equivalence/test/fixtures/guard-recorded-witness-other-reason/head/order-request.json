@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/order-request.json",
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "string",
+      "pattern": "^(?=.*[0-9])(?=.*[a-z])[a-z0-9]{12}$"
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+$"
+    },
+    "mode": {
+      "enum": [
+        "express",
+        "priority",
+        "standard"
+      ]
+    }
+  },
+  "required": [
+    "token",
+    "code"
+  ]
+}

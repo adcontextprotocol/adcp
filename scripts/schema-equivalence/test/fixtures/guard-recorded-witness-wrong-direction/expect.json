@@ -1,0 +1,11 @@
+{
+  "why": "A recorded witness that shows a loosening does not verify a line declared as a tightening, so the line fails.",
+  "exit": 1,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 0
+}

@@ -16,7 +16,7 @@ const { stableStringify } = require('./json.cjs');
 // changes verdict because of this line alone.
 const DIRECTIONS = new Set(['tighten', 'loosen', 'both', 'none']);
 const SIDES = new Set(['request', 'response', 'both', 'none']);
-const FIELDS = new Set(['root', 'pointer', 'location', 'keyword', 'old', 'new', 'direction', 'side', 'note']);
+const FIELDS = new Set(['root', 'pointer', 'location', 'keyword', 'old', 'new', 'direction', 'side', 'note', 'witness']);
 
 function normalizeRoot(root) {
   return String(root).replace(/^https?:\/\/[^/]+/, '').replace(/^\/schemas\//, '').replace(/^\/+/, '');
@@ -40,6 +40,14 @@ function parseManifest(doc, label = 'manifest') {
     if (typeof c.keyword !== 'string') throw new Error(`${where}: "keyword" is required`);
     if (!DIRECTIONS.has(c.direction)) throw new Error(`${where}: "direction" must be one of ${[...DIRECTIONS].join(', ')}`);
     if (!SIDES.has(c.side)) throw new Error(`${where}: "side" must be one of ${[...SIDES].join(', ')}`);
+    if (c.witness !== undefined) {
+      for (const w of [].concat(c.witness)) {
+        if (!w || typeof w !== 'object' || typeof w.root !== 'string' || !Object.prototype.hasOwnProperty.call(w, 'instance') || Object.keys(w).some(k => k !== 'root' && k !== 'instance')) {
+          throw new Error(`${where}: "witness" must be { root, instance } (or a list of them)`);
+        }
+      }
+      if (c.direction === 'none') throw new Error(`${where}: a "none" line takes no witness`);
+    }
     return { ...c, index: i, root: c.root === undefined ? undefined : normalizeRoot(c.root) };
   });
   return { title: doc.title, changes, label };
@@ -159,7 +167,9 @@ function matchManifest(entries, manifest) {
     const single = hits.every(h => keywordsAtSite.get(siteOf(h)).size === 1);
     const inferred = single ? [...new Set(hits.map(inferDirection).filter(Boolean))] : [];
     const inferredDir = inferred.length === 1 ? inferred[0] : inferred.length > 1 ? 'both' : null;
-    if (inferredDir && inferredDir !== change.direction) {
+    // `none` claims that context masks a change that is monotone on its own;
+    // the witness search checks that claim (no attributed witness).
+    if (inferredDir && inferredDir !== change.direction && change.direction !== 'none') {
       problems.push({ change, problem: `direction is "${change.direction}" but the change is a "${inferredDir}"` });
     }
     matched.push({ change, entries: hits, side, inferred: inferredDir });

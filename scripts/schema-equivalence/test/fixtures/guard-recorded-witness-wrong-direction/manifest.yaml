@@ -1,0 +1,13 @@
+title: guard-recorded-witness-wrong-direction
+changes:
+  - location: order-request.json#/properties/code
+    keyword: pattern
+    old: ^[a-z]+$
+    new: ^[a-z0-9]+$
+    direction: tighten
+    side: request
+    witness:
+      root: /schemas/order-request.json
+      instance:
+        token: abcdefghijk1
+        code: a1

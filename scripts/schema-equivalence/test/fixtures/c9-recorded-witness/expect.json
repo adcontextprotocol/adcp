@@ -1,0 +1,11 @@
+{
+  "why": "A line the search finds no witness for passes with a recorded witness that Ajv rejects at the base and accepts at the head, and that the base rejects again with only this line reverted.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

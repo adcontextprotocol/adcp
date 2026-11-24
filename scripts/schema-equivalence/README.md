@@ -335,12 +335,25 @@ Each entry has the following fields:
 - `side`: `request`, `response`, `both`, or `none`, from the names of the
   affected task roots (`*-request.json`, `*-response*.json`).
 - `note`: optional free text.
+- `witness`: optional, `{root, instance}` (or a list of them): a payload
+  recorded for a line the witness search finds none for. `root` is the root's
+  `$id` or path, and `instance` the payload. The tool verifies it: with the
+  repo's Ajv configuration it must be valid at the base and invalid at the
+  head for `tighten` (the reverse for `loosen`), and with only this line
+  reverted at its site it must get the base verdict again. When the line's
+  keyword cannot be reverted alone (it comes from a normalization, or a
+  `discriminator` needs the union), the whole schema at the line's site is
+  reverted instead, and the report says `attribution: site`. A recorded
+  witness that does not verify fails the line, and one that verifies is
+  reported with `from: recorded`. A prose note is not a witness.
 
 The check passes only when the manifest and the differences match exactly. A
 difference that no entry covers fails, and an entry that covers no difference
 fails. For a site where only one keyword changed and its effect is monotone
 (a bound, an enum subset, `required`), the tool also checks the declared
-direction.
+direction, except for `none`: context can mask a change that is monotone on
+its own (an enum added beside a `const`), and the witness search checks that
+claim.
 
 ### A range of several commits
 
