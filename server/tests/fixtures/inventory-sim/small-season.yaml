@@ -56,8 +56,23 @@ products:
 traffic:
   weekday_shape: [0.9, 1, 1, 1, 1, 1.05, 0.95]
 
-# How wrong forecasts are versus delivery: bias, plus day-to-day and per-cell noise.
+# How wrong forecasts are versus delivery. The errors live in the traffic: each day's traffic deviates from the expected pattern, and a forecast
+# knows the part of the deviation revealed before its day, so a forecast made far ahead is further off. The sizes in the shipped seasons are
+# assumptions, easy to change and to be recalibrated from real publisher data.
+# The error here is zero, so forecasts equal expected traffic. For a realistic starting point, use the shipped ad server's values: channel_sigma
+# 0.06 for display and olv, ar1_phi 0.85, cell_kappa 3.08, and a publisher bias of -0.02.
 forecast_error:
-  bias: 0
-  day_sigma: 0.04
-  cell_sigma: 0.08
+  # Spread, per channel, of the publisher's deviation on a day; revisions widen it with lead time. With cell_kappa 0, no bias and truth_daily_sigma 0, 0 means forecasts are exact.
+  channel_sigma: { display: 0 }
+  # How strongly one day's deviation carries into the next, from 0 (independent days) up to but below 1.
+  ar1_phi: 0
+  # How much the revisions weigh: each is scaled by 1 / sqrt(this), so the error's variance grows with min(lead time, horizon) / this.
+  lead_time_tau_days: 14
+  # How many days ahead of a day its revisions are revealed, so the lead time beyond which the revision part of the error stops widening.
+  lead_time_horizon_days: 60
+  # Limit, on a log scale, on the deviation and separately on the forecast's known part of it (0.69 is a factor of two). The error is within twice this.
+  log_clip: 0.6931471805599453
+  # Per-cell deviation that is small on busy cells and large on thin ones, and that no forecast knows. 0 turns it off.
+  cell_kappa: 0
+  # Impressions a cell is treated as having at least when sizing the per-cell deviation.
+  cell_min_impressions: 100

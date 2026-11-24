@@ -14,6 +14,9 @@ import { flushDirtySessions, runWithSessionContext, stopSessionCleanup } from '.
 import { setSandboxWallClockForTesting } from '../../src/training-agent/account-sandbox.js';
 import { resetReportingSubscriptionProbe } from '../../src/training-agent/subscription-probe.js';
 import { getAgentUrl } from '../../src/training-agent/config.js';
+import { ENGINE_VERSION } from '../../src/training-agent/inventory-sim/engine/index.js';
+import { seasonFingerprint } from '../../src/training-agent/inventory-sim/season-file.js';
+import { INVENTORY_TENANT_PROFILES } from '../../src/training-agent/tenants/inventory.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Where an unpinned sandbox clock starts, so the seeds' scripted 2027
@@ -401,6 +404,9 @@ describe('inventory tenants', () => {
       expect(initial.success).toBe(true);
       expect(initial.simulated.simulated_now.slice(0, 10)).toBe(WALL_CLOCK.slice(0, 10));
       expect(initial.simulated.pinned).toBe(false);
+      expect(initial.simulated.seed_id).toBe(INVENTORY_TENANT_PROFILES[tenant].seed.seed_id);
+      expect(initial.simulated.season_fingerprint).toBe(seasonFingerprint(INVENTORY_TENANT_PROFILES[tenant].seed));
+      expect(initial.simulated.engine_version).toBe(ENGINE_VERSION);
 
       const pinned = await controller({ operation: 'advance_time', to: '2026-12-31T12:00:00Z' });
       expect(pinned.simulated.simulated_now).toBe('2026-12-31T12:00:00.000Z');
@@ -428,6 +434,7 @@ describe('inventory tenants', () => {
       expect(advanced.success).toBe(true);
       expect(advanced.simulated.simulated_now).toBe('2027-01-31T12:00:00.000Z');
       expect(advanced.simulated.days_crossed).toBe(31);
+      expect(advanced.simulated).toMatchObject({ seed_id: initial.simulated.seed_id, season_fingerprint: initial.simulated.season_fingerprint, engine_version: ENGINE_VERSION });
 
       const delivery = await call(tenant, 'get_media_buy_delivery', {
         account: ACCOUNT, media_buy_ids: [guaranteed.media_buy_id, auction.media_buy_id],
@@ -449,10 +456,29 @@ describe('inventory tenants', () => {
       expect(g.totals.impressions).toBeGreaterThan(180_000 * 0.97);
       expect(g.totals.impressions).toBeLessThanOrEqual(180_000);
 
-      // Actual traffic differs from the forecast, within the seeded error.
+      // Actual traffic differs from the forecast, within the model's error. The
+      // forecast is read on 2026-12-31 (day 60 of the season) for 30 January
+      // days, so lead times run 1 to 30 days. ln(actual / forecast) over the
+      // flight is:
+      //  - the publisher bias, -0.02 on both publishers;
+      //  - the election spike, a scripted truth-only event: 1.8x on Pinnacle
+      //    News for 3 of 30 days, and Pinnacle carries about 0.64 of the
+      //    pre-roll forecast (Summit Sports has traffic_multiplier 0.6), so
+      //    ln(1 + 0.8 * 0.064) = +0.049;
+      //  - the second-order mean of a log of a sum, 1/2 (sum w v - V) = +0.006,
+      //    with weights w = F / W and v the unknown variance of a cell-day;
+      //  - the error nobody can see yet, zero-mean with variance V = 0.00123
+      //    (sd 0.035): per publisher, the same-day AR(1) shock beyond what the
+      //    closed days reveal, with variance a^2 (1 - phi^(2(h+1))), plus the
+      //    revision shocks, a^2 min(h, 60) / 14, at a = 0.06 and phi = 0.85,
+      //    averaged over 30 days and over two independent publishers; the cell
+      //    shock (cell_kappa 3.08) and the daily wobble add about 0.00003 to V.
+      // The centre is -0.02 + 0.049 + 0.006 = +0.035 and the bound is three sd
+      // either side. The ln 2 log clip is far outside it, so it does not bind.
+      const logError = Math.log(a.totals.impressions / forecastMid);
       expect(a.totals.impressions).not.toBe(forecastMid);
-      expect(Math.abs(a.totals.impressions / forecastMid - 1)).toBeGreaterThan(0.001);
-      expect(Math.abs(a.totals.impressions / forecastMid - 1)).toBeLessThan(0.15);
+      expect(logError).toBeGreaterThan(0.035 - 3 * 0.035);
+      expect(logError).toBeLessThan(0.035 + 3 * 0.035);
       expect(a.totals.spend).toBeCloseTo((a.totals.impressions * 10) / 1000, 0);
     });
 
@@ -766,7 +792,12 @@ describe('inventory tenants', () => {
       const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [buy.media_buy_id] }, CONTENT_TOKEN);
       expectCanonical('get_media_buy_delivery', delivery);
       const delivered = delivery.media_buy_deliveries[0].totals.impressions as number;
-      // Three of the four forecast episodes ran.
+      // Forecasts never know a cancellation, so delivery is the three episodes
+      // that ran over the four forecast: 3 / 4 = 0.75, times the mean of three
+      // audience shocks A_i (audience_sigma 0.12, so sd 0.12 / sqrt(3) = 0.07).
+      // channel_sigma is 0, and per-cell noise (cell_kappa 0.4, about 0.04 per
+      // cell-day) and the daily truth variation average out or cancel. Three sd
+      // is 0.75 x (1 +/- 0.21) = 0.59 to 0.91; the bounds below, 0.6 and 0.9, sit just inside that.
       expect(delivered / forecastMid).toBeGreaterThan(0.6);
       expect(delivered / forecastMid).toBeLessThan(0.9);
       const daily = (delivery.media_buy_deliveries[0].daily_breakdown as Structured[]).filter(row => row.impressions > 0);

@@ -38,6 +38,11 @@ export class SeasonCalendar {
     return new Date(this.startMs + day * DAY_MS).toISOString();
   }
 
+  /** UTC calendar month of a day, 0 for January. */
+  month(day: number): number {
+    return new Date(this.startMs + day * DAY_MS).getUTCMonth();
+  }
+
   weekday(day: number): number {
     return new Date(this.startMs + day * DAY_MS).getUTCDay();
   }

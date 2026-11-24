@@ -12,12 +12,17 @@ import {
   CONTENT_SEASON,
   EngineError,
   InventorySimulation,
+  MAX_REVISION_DRAWS,
+  MAX_SPIKES_PER_PUBLISHER,
+  SeasonCalendar,
+  SeasonTraffic,
   type SeasonSeed,
 } from '../../src/training-agent/inventory-sim/engine/index.js';
 import {
   MAX_SEASON_FILE_BYTES,
   parseSeasonSeed,
   readSeasonFile,
+  seasonFingerprint,
   seasonToYaml,
 } from '../../src/training-agent/inventory-sim/season-file.js';
 import { TRAINING_FORMAT_LABELS } from '../../src/training-agent/product-factory.js';
@@ -94,9 +99,41 @@ products:
 traffic:
   weekday_shape: [1, 1, 1, 1, 1, 1, 1]
 forecast_error:
-  day_sigma: 0.05
-  cell_sigma: 0.1
+  channel_sigma: { display: 0.05 }
+  ar1_phi: 0.5
+  lead_time_tau_days: 14
+  lead_time_horizon_days: 60
+  log_clip: 0.6931471805599453
+  cell_kappa: 0.5
+  cell_min_impressions: 100
 `;
+
+describe('season fingerprint', () => {
+  it('is sha256 and hex of the canonical JSON', () => {
+    expect(seasonFingerprint(ADSERVER_SEASON)).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(seasonFingerprint(ADSERVER_SEASON)).not.toBe(seasonFingerprint(CONTENT_SEASON));
+  });
+
+  it('does not depend on key order', () => {
+    const reversed = Object.fromEntries(Object.entries(ADSERVER_SEASON).reverse()) as unknown as SeasonSeed;
+    expect(seasonFingerprint(reversed)).toBe(seasonFingerprint(ADSERVER_SEASON));
+  });
+
+  it('changes when any value changes', () => {
+    const base = seasonFingerprint(ADSERVER_SEASON);
+    expect(seasonFingerprint({ ...ADSERVER_SEASON, seed_id: `${ADSERVER_SEASON.seed_id}x` })).not.toBe(base);
+    const nested = structuredClone(ADSERVER_SEASON);
+    nested.forecast_error.log_clip += 0.01;
+    expect(seasonFingerprint(nested)).not.toBe(base);
+  });
+
+  it('is the same for a shipped season loaded through YAML and for the constant', () => {
+    for (const [name, seed] of SEEDS) {
+      const loaded = readSeasonFile(write(`fingerprint-${name}.yaml`, seasonToYaml(seed)));
+      expect(seasonFingerprint(loaded)).toBe(seasonFingerprint(seed));
+    }
+  });
+});
 
 describe('season files', () => {
   it('loads every shipped season through YAML and JSON unchanged', () => {
@@ -316,6 +353,7 @@ describe('season number ranges', () => {
     expected_audience: 1000,
     audience_sigma: 0.1,
   };
+  const SPIKES = { per_publisher_min: 1, per_publisher_max: 3, size_min: 0.2, size_max: 0.8, decay: 0.7, decay_forecast_sigma: 0.1 };
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const cases: Array<[string, (seed: any) => void, string]> = [
     ['a negative reporting lag', s => { s.placements[0].reporting_lag_days = -1; }, 'placements[0].reporting_lag_days:'],
@@ -333,8 +371,29 @@ describe('season number ranges', () => {
     ['a negative rate multiplier', s => { s.audience_profiles[0].rate_multipliers.click_rate = -1; }, 'audience_profiles[0].rate_multipliers.click_rate:'],
     ['a negative weekday shape', s => { s.traffic.weekday_shape[3] = -1; }, 'traffic.weekday_shape[3]:'],
     ['a negative traffic multiplier', s => { s.properties[0].traffic_multiplier = -1; }, 'properties[0].traffic_multiplier:'],
-    ['a negative day sigma', s => { s.forecast_error.day_sigma = -0.1; }, 'forecast_error.day_sigma:'],
-    ['a negative cell sigma', s => { s.forecast_error.cell_sigma = -0.1; }, 'forecast_error.cell_sigma:'],
+    ['a negative channel sigma', s => { s.forecast_error.channel_sigma.display = -0.1; }, 'forecast_error.channel_sigma.display:'],
+    ['an ar1_phi of 1', s => { s.forecast_error.ar1_phi = 1; }, 'forecast_error.ar1_phi:'],
+    ['a negative ar1_phi', s => { s.forecast_error.ar1_phi = -0.1; }, 'forecast_error.ar1_phi:'],
+    ['a zero lead_time_tau_days', s => { s.forecast_error.lead_time_tau_days = 0; }, 'forecast_error.lead_time_tau_days:'],
+    ['a negative lead_time_horizon_days', s => { s.forecast_error.lead_time_horizon_days = -1; }, 'forecast_error.lead_time_horizon_days:'],
+    ['a fractional lead_time_horizon_days', s => { s.forecast_error.lead_time_horizon_days = 1.5; }, 'forecast_error.lead_time_horizon_days:'],
+    ['a zero log_clip', s => { s.forecast_error.log_clip = 0; }, 'forecast_error.log_clip:'],
+    ['a negative cell_kappa', s => { s.forecast_error.cell_kappa = -1; }, 'forecast_error.cell_kappa:'],
+    ['a cell_min_impressions below 1', s => { s.forecast_error.cell_min_impressions = 0.5; }, 'forecast_error.cell_min_impressions:'],
+    ['a negative truth_daily_sigma', s => { s.traffic.truth_daily_sigma = -0.1; }, 'traffic.truth_daily_sigma:'],
+    ['a month_shape of eleven values', s => { s.traffic.month_shape = Array(11).fill(1); }, 'traffic.month_shape'],
+    ['a month_shape with a zero', s => { s.traffic.month_shape = [1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1]; }, 'traffic.month_shape[2]'],
+    ['a negative bias_sigma', s => { s.forecast_error.publishers = [{ publisher_id: 'harbor_daily', bias: 0, bias_sigma: -1 }]; }, 'forecast_error.publishers[0].bias_sigma:'],
+    ['a negative error_scale', s => { s.forecast_error.publishers = [{ publisher_id: 'harbor_daily', bias: 0, error_scale: -1 }]; }, 'forecast_error.publishers[0].error_scale:'],
+    ['a negative per_publisher_min', s => { s.forecast_error.spikes = { ...SPIKES, per_publisher_min: -1 }; }, 'forecast_error.spikes.per_publisher_min:'],
+    ['a size_min of -1', s => { s.forecast_error.spikes = { ...SPIKES, size_min: -1 }; }, 'forecast_error.spikes.size_min:'],
+    ['a per_publisher_min above per_publisher_max', s => { s.forecast_error.spikes = { ...SPIKES, per_publisher_min: 4, per_publisher_max: 3 }; }, 'forecast_error.spikes.per_publisher_max:'],
+    ['a size_min above size_max', s => { s.forecast_error.spikes = { ...SPIKES, size_min: 1, size_max: 0.5 }; }, 'forecast_error.spikes.size_max:'],
+    ['a per_publisher_max above the days', s => { s.forecast_error.spikes = { ...SPIKES, per_publisher_max: 366 }; }, 'forecast_error.spikes.per_publisher_max:'],
+    ['a spike decay of 1', s => { s.forecast_error.spikes = { ...SPIKES, decay: 1 }; }, 'forecast_error.spikes.decay:'],
+    ['a negative decay_forecast_sigma', s => { s.forecast_error.spikes = { ...SPIKES, decay_forecast_sigma: -1 }; }, 'forecast_error.spikes.decay_forecast_sigma:'],
+    ['a publisher no property has', s => { s.forecast_error.publishers = [{ publisher_id: 'nobody', bias: 0 }]; }, 'forecast_error.publishers[0].publisher_id: unknown publisher nobody'],
+    ['a publisher listed twice', s => { s.forecast_error.publishers = [{ publisher_id: 'harbor_daily', bias: 0 }, { publisher_id: 'harbor_daily', bias: 0.1 }]; }, 'forecast_error.publishers[1].publisher_id'],
   ];
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -360,9 +419,264 @@ describe('season number ranges', () => {
     seed.placements[0].reporting_lag_days = 0;
     seed.placements[0].rates.click_rate = 1;
     seed.products[0].share_of_voice = 1;
-    seed.forecast_error.bias = -5;
+    seed.forecast_error.publishers = [{ publisher_id: 'harbor_daily', bias: -5, bias_sigma: 0, error_scale: 0 }];
+    seed.forecast_error.ar1_phi = 0;
+    seed.forecast_error.lead_time_horizon_days = 0;
+    seed.forecast_error.cell_min_impressions = 1;
+    seed.forecast_error.channel_sigma.display = 0;
+    seed.traffic.truth_daily_sigma = 0;
     seed.traffic.trend_per_day = -0.01;
     expect(() => parseSeasonSeed(seed, 'ranges')).not.toThrow();
+  });
+
+  it('accepts spikes at their bounds', () => {
+    const seed = parseYaml(fs.readFileSync(starterPath, 'utf8'));
+    seed.forecast_error.spikes = { per_publisher_min: 0, per_publisher_max: 100, size_min: -0.99, size_max: -0.99, decay: 0, decay_forecast_sigma: 0 };
+    expect(() => parseSeasonSeed(seed, 'ranges')).not.toThrow();
+  });
+});
+
+describe('forecast error values', () => {
+  it('names the old keys and the missing channel_sigma', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.forecast_error = { day_sigma: 0.05, ar1_phi: 0.5, lead_time_tau_days: 14, lead_time_horizon_days: 60, log_clip: 0.7, cell_kappa: 0, cell_min_impressions: 100 };
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'old'));
+    expect(message).toContain('forecast_error.day_sigma');
+    expect(message).toContain('forecast_error.channel_sigma');
+  });
+
+  it('refuses a placement channel with no channel_sigma, in the loader and in the engine', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.placements.push({ ...seed.placements[0], placement_id: 'show_spot', channel: 'podcast' });
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'podcast'));
+    expect(message).toContain('forecast_error.channel_sigma.podcast');
+    expect(message).toContain('show_spot');
+    expect(invalidSeedMessage(() => new SeasonTraffic(seed))).toContain('forecast_error.channel_sigma.podcast');
+  });
+
+  it('refuses a channel_sigma key that is not a channel, naming the path', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.forecast_error.channel_sigma.radio = 0.1;
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'unknown channel'));
+    expect(message).toContain('forecast_error.channel_sigma');
+    expect(message).toContain('forecast_error.channel_sigma.radio');
+  });
+
+  it('keeps the supported-formats line last with the forecast error problems', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.forecast_error.publishers = [{ publisher_id: 'nobody', bias: 0 }];
+    seed.placements[0].formats = ['custom_banner'];
+    const lines = invalidSeedMessage(() => parseSeasonSeed(seed, 'both', { formats: new Set(['display_300x250']) })).trim().split('\n');
+    expect(lines.some(line => line.includes('unknown publisher nobody'))).toBe(true);
+    expect(lines[lines.length - 1]).toContain('supported formats:');
+  });
+
+  it('reports every forecast problem and a reference problem together, each with its path', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.forecast_error.ar1_phi = 1;
+    seed.placements.push({ ...seed.placements[0], placement_id: 'show_spot', channel: 'podcast' });
+    seed.forecast_error.publishers = [{ publisher_id: 'site', bias: 0 }, { publisher_id: 'site', bias: 0.1 }];
+    seed.products[0].property_ids = ['ghost'];
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'many'));
+    expect(message).toContain('forecast_error.ar1_phi:');
+    expect(message).toContain('forecast_error.channel_sigma.podcast:');
+    expect(message).toContain('forecast_error.publishers[1].publisher_id:');
+    expect(message).toContain('products[0].property_ids[0]: unknown property ghost');
+  });
+
+  it('refuses a lead_time_horizon_days above 366', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.forecast_error.lead_time_horizon_days = 367;
+    expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'horizon'))).toContain(
+      'forecast_error.lead_time_horizon_days: must be a whole number from 0 to 366',
+    );
+    seed.forecast_error.lead_time_horizon_days = 366;
+    expect(() => parseSeasonSeed(seed, 'horizon')).not.toThrow();
+  });
+
+  it('refuses a season whose forecast error needs more draws than the build budget', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.days = 1100;
+    seed.forecast_error.lead_time_horizon_days = 366;
+    for (let i = 0; i < 40; i++) {
+      seed.properties.push({ property_id: `extra_${i}`, name: `Extra ${i}`, domain: `extra-${i}.example` });
+    }
+    // 41 publishers × (1100 + 366) × 367 = 22,058,902 draws, above the 20,000,000 budget.
+    expect(41 * (1100 + 366) * 367).toBeGreaterThan(MAX_REVISION_DRAWS);
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'budget'));
+    expect(message).toContain('forecast_error.lead_time_horizon_days:');
+    expect(message).toContain('41 publishers');
+    expect(message).toContain(String(MAX_REVISION_DRAWS));
+    expect(invalidSeedMessage(() => new SeasonTraffic(seed))).toContain('forecast_error.lead_time_horizon_days:');
+  });
+
+  it('makes the engine throw path: message for the first forecast problem', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.traffic.truth_daily_sigma = -1;
+    seed.forecast_error.ar1_phi = 1;
+    expect(invalidSeedMessage(() => new SeasonTraffic(seed))).toBe('traffic.truth_daily_sigma: must be 0 or more');
+  });
+
+  it('groups properties into a publisher by publisher_id', () => {
+    const seed = parseYaml(MINIMAL_YAML);
+    seed.properties.push({ property_id: 'site_b', name: 'Site B', domain: 'site-b.example', publisher_id: 'house' });
+    seed.forecast_error.publishers = [{ publisher_id: 'house', bias: 0.1 }, { publisher_id: 'site', bias: 0.2 }];
+    expect(() => parseSeasonSeed(seed, 'groups')).not.toThrow();
+  });
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const engineCases: Array<[string, (seed: any) => void, string]> = [
+    ['a missing ar1_phi', s => { delete s.forecast_error.ar1_phi; }, 'forecast_error.ar1_phi'],
+    ['a missing channel_sigma', s => { delete s.forecast_error.channel_sigma; }, 'forecast_error.channel_sigma'],
+    ['a NaN sigma', s => { s.forecast_error.channel_sigma.display = NaN; }, 'forecast_error.channel_sigma.display'],
+    ['a missing lead_time_tau_days', s => { delete s.forecast_error.lead_time_tau_days; }, 'forecast_error.lead_time_tau_days'],
+    ['a missing lead_time_horizon_days', s => { delete s.forecast_error.lead_time_horizon_days; }, 'forecast_error.lead_time_horizon_days'],
+    ['a missing log_clip', s => { delete s.forecast_error.log_clip; }, 'forecast_error.log_clip'],
+    ['a missing cell_kappa', s => { delete s.forecast_error.cell_kappa; }, 'forecast_error.cell_kappa'],
+    ['a missing cell_min_impressions', s => { delete s.forecast_error.cell_min_impressions; }, 'forecast_error.cell_min_impressions'],
+    ['a month_shape of eleven values', s => { s.traffic.month_shape = Array(11).fill(1); }, 'traffic.month_shape'],
+    ['a negative truth_daily_sigma', s => { s.traffic.truth_daily_sigma = -1; }, 'traffic.truth_daily_sigma'],
+    ['an unknown publisher', s => { s.forecast_error.publishers = [{ publisher_id: 'nobody', bias: 0 }]; }, 'forecast_error.publishers[0]'],
+    ['a publisher listed twice', s => { s.forecast_error.publishers = [{ publisher_id: 'site', bias: 0 }, { publisher_id: 'site', bias: 0 }]; }, 'forecast_error.publishers[1]'],
+    ['an invalid spikes block', s => { s.forecast_error.spikes = { per_publisher_min: 2, per_publisher_max: 1, size_min: 0, size_max: 1, decay: 0.5, decay_forecast_sigma: 0 }; }, 'forecast_error.spikes.per_publisher_max'],
+  ];
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  it.each(engineCases)('makes the engine refuse %s instead of producing NaN', (_name, mutate, where) => {
+    const seed = parseYaml(MINIMAL_YAML);
+    mutate(seed);
+    expect(invalidSeedMessage(() => new SeasonTraffic(seed))).toContain(where);
+  });
+});
+
+describe('forecast error value bounds', () => {
+  const starterPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../fixtures/inventory-sim/small-season.yaml');
+  const SPIKES = { per_publisher_min: 1, per_publisher_max: 3, size_min: 0.2, size_max: 0.8, decay: 0.7, decay_forecast_sigma: 0.1 };
+  const starter = () => parseYaml(fs.readFileSync(starterPath, 'utf8'));
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  interface Bound {
+    name: string;
+    path: string;
+    set: (seed: any, value: number) => void;
+    /** The value at the edge of the allowed range, which is accepted. */
+    edge: number;
+    /** `above` refuses what exceeds the edge; `below` refuses what falls short of it. */
+    side: 'above' | 'below';
+    message: string;
+    /** Values past the edge to refuse, when the defaults would trip another rule first. */
+    refused?: number[];
+  }
+  const publisher = (field: string) => (seed: any, value: number) => {
+    seed.forecast_error.publishers = [{ publisher_id: 'harbor_daily', bias: 0, [field]: value }];
+  };
+  const spikes = (field: string) => (seed: any, value: number) => {
+    seed.forecast_error.spikes = { ...SPIKES, [field]: value };
+  };
+  const bounds: Bound[] = [
+    { name: 'a publisher bias above 5', path: 'forecast_error.publishers[0].bias', set: publisher('bias'), edge: 5, side: 'above', message: 'must be from -5 to 5' },
+    { name: 'a publisher bias below -5', path: 'forecast_error.publishers[0].bias', set: publisher('bias'), edge: -5, side: 'below', message: 'must be from -5 to 5' },
+    { name: 'a bias_sigma above 5', path: 'forecast_error.publishers[0].bias_sigma', set: publisher('bias_sigma'), edge: 5, side: 'above', message: 'must be at most 5' },
+    { name: 'an error_scale above 100', path: 'forecast_error.publishers[0].error_scale', set: publisher('error_scale'), edge: 100, side: 'above', message: 'must be at most 100' },
+    { name: 'a channel_sigma above 5', path: 'forecast_error.channel_sigma.display', set: (s, v) => { s.forecast_error.channel_sigma.display = v; }, edge: 5, side: 'above', message: 'must be at most 5' },
+    { name: 'a truth_daily_sigma above 5', path: 'traffic.truth_daily_sigma', set: (s, v) => { s.traffic.truth_daily_sigma = v; }, edge: 5, side: 'above', message: 'must be at most 5' },
+    { name: 'a decay_forecast_sigma above 5', path: 'forecast_error.spikes.decay_forecast_sigma', set: spikes('decay_forecast_sigma'), edge: 5, side: 'above', message: 'must be at most 5' },
+    { name: 'a cell_kappa above 1000', path: 'forecast_error.cell_kappa', set: (s, v) => { s.forecast_error.cell_kappa = v; }, edge: 1000, side: 'above', message: 'must be at most 1000' },
+    {
+      name: 'a month_shape entry above 100',
+      path: 'traffic.month_shape[4]',
+      set: (s, v) => { s.traffic.month_shape = Array(12).fill(1); s.traffic.month_shape[4] = v; },
+      edge: 100,
+      side: 'above',
+      message: 'must be at most 100',
+    },
+    { name: 'a lead_time_tau_days below 0.01', path: 'forecast_error.lead_time_tau_days', set: (s, v) => { s.forecast_error.lead_time_tau_days = v; }, edge: 0.01, side: 'below', message: 'must be at least 0.01' },
+    { name: 'a per_publisher_max above 100', path: 'forecast_error.spikes.per_publisher_max', set: spikes('per_publisher_max'), edge: 100, side: 'above', message: 'must be at most 100', refused: [101, 365] },
+  ];
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  // Past the edge by a hair, and past it by as much as a finite number can be.
+  const beyond = (b: Bound): number[] => {
+    if (b.refused) return b.refused;
+    if (b.side === 'above') return [b.edge * 1.01, Number.MAX_VALUE];
+    return b.edge < 0 ? [b.edge * 1.01, -Number.MAX_VALUE] : [b.edge * 0.99, 1e-9, -Number.MAX_VALUE];
+  };
+
+  it('keeps the spike cap at 100', () => {
+    expect(MAX_SPIKES_PER_PUBLISHER).toBe(100);
+  });
+
+  it.each(bounds)('accepts the edge of the range for $name', b => {
+    const seed = starter();
+    b.set(seed, b.edge);
+    expect(() => parseSeasonSeed(seed, 'bounds')).not.toThrow();
+    expect(() => new SeasonTraffic(seed)).not.toThrow();
+  });
+
+  it.each(bounds)('refuses $name at its season-file path, in the loader and in the engine', b => {
+    for (const value of beyond(b)) {
+      const seed = starter();
+      b.set(seed, value);
+      expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'bounds')), String(value)).toContain(`${b.path}: ${b.message}`);
+      expect(invalidSeedMessage(() => new SeasonTraffic(seed)), String(value)).toBe(`${b.path}: ${b.message}`);
+    }
+  });
+
+  it('refuses a tiny lead_time_tau_days such as 1e-9, which would blow up the revision shocks', () => {
+    const seed = starter();
+    seed.forecast_error.lead_time_tau_days = 1e-9;
+    expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'tau'))).toContain('forecast_error.lead_time_tau_days: must be at least 0.01');
+    expect(invalidSeedMessage(() => new SeasonTraffic(seed))).toBe('forecast_error.lead_time_tau_days: must be at least 0.01');
+  });
+
+  it('reports both the days rule and the cap when per_publisher_max breaks both', () => {
+    const seed = starter();
+    seed.days = 50;
+    seed.forecast_error.spikes = { ...SPIKES, per_publisher_max: 101 };
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'both'));
+    expect(message).toContain('forecast_error.spikes.per_publisher_max: must be at most the number of days in the season');
+    expect(message).toContain('forecast_error.spikes.per_publisher_max: must be at most 100');
+  });
+
+  it('keeps the days rule below the cap', () => {
+    const seed = starter();
+    seed.days = 50;
+    seed.forecast_error.spikes = { ...SPIKES, per_publisher_max: 51 };
+    const message = invalidSeedMessage(() => parseSeasonSeed(seed, 'days'));
+    expect(message).toContain('forecast_error.spikes.per_publisher_max: must be at most the number of days in the season');
+    expect(message).not.toContain('must be at most 100');
+  });
+
+  it('accepts a spike count of exactly the days when that is within the cap', () => {
+    const seed = starter();
+    seed.days = 50;
+    seed.forecast_error.spikes = { ...SPIKES, per_publisher_max: 50 };
+    expect(() => parseSeasonSeed(seed, 'days')).not.toThrow();
+  });
+
+  it('fails the build, naming the first day and cell, when traffic overflows past every bound', () => {
+    const seed = starter();
+    seed.forecast_error.spikes = { per_publisher_min: 1, per_publisher_max: 1, size_min: 1e308, size_max: 1e308, decay: 0.5, decay_forecast_sigma: 0 };
+    const message = invalidSeedMessage(() => new SeasonTraffic(seed));
+    const date = /Traffic is not finite on (\d{4}-\d{2}-\d{2}) \(day (\d+)\) for cell /.exec(message);
+    expect(date, message).not.toBeNull();
+    const calendar = new SeasonCalendar(seed.start_date, seed.days);
+    expect(calendar.dateOf(Number(date![2]))).toBe(date![1]);
+    expect(message).toContain('harbor_daily');
+    expect(invalidSeedMessage(() => parseSeasonSeed(seed, 'overflow'))).toContain('Traffic is not finite');
+  });
+
+  it('fails the build on a NaN that would otherwise vanish from the tables', () => {
+    const seed = starter();
+    const calendar = new SeasonCalendar(seed.start_date, seed.days);
+    seed.forecast_error.spikes = { per_publisher_min: 2, per_publisher_max: 2, size_min: 1e308, size_max: 1e308, decay: 0.5, decay_forecast_sigma: 0 };
+    // A zero multiplier times the infinite tail of two huge spikes is NaN.
+    seed.events = [{ event_id: 'dark', type: 'traffic_multiplier', start_date: seed.start_date, end_date: calendar.dateOf(seed.days - 1), multiplier: 0 }];
+    expect(invalidSeedMessage(() => new SeasonTraffic(seed))).toContain('Traffic is not finite on');
+  });
+
+  it('keeps the shipped seasons and the starter file within every bound', () => {
+    for (const [, seed] of SEEDS) expect(() => new SeasonTraffic(seed)).not.toThrow();
+    expect(() => parseSeasonSeed(starter(), 'starter')).not.toThrow();
   });
 });
 

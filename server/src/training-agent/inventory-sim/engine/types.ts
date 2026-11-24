@@ -58,6 +58,9 @@ export interface SeedProperty {
   domain: string;
   /** Scales every placement's base traffic on this property. Default 1. */
   traffic_multiplier?: number;
+  /** Groups properties into one publisher for the forecast error: a publisher's
+   * properties share its bias, its spikes and its same-day and revision deviations. Default: the property's own id. */
+  publisher_id?: string;
 }
 
 export interface SeedPlacement {
@@ -114,7 +117,7 @@ export interface SeedCollection {
   count: number;
   /** Expected audience of one installment, over its whole curve. */
   expected_audience: number;
-  /** Spread of an installment's actual audience around expected. */
+  /** Spread of an installment's actual audience around expected. No forecast knows it. */
   audience_sigma: number;
 }
 
@@ -169,13 +172,59 @@ export interface SeasonSeed {
     weekday_shape: number[];
     /** Linear growth per day of the season. Default 0. */
     trend_per_day?: number;
+    /** Twelve multipliers on traffic by calendar month, January first, each above 0. Default all 1. */
+    month_shape?: number[];
+    /** Standard deviation of the log day-to-day variation of each placement. It is in actual traffic only: no forecast knows it. 0 or more. Default 0. */
+    truth_daily_sigma?: number;
   };
-  /** How wrong forecasts are: actual = forecast × (1 + bias + day noise +
-   * cell noise), with standard deviations as given. */
+  /**
+   * How wrong forecasts are. The errors live in actual traffic: its deviation from the expected pattern is
+   * made of a same-day publisher deviation, revisions revealed on the days before the target day and a cell
+   * deviation. A forecast carries the publisher bias as an offset and knows the revisions revealed before
+   * its day and the past same-day deviations, never the rest. The sizes below are assumptions, easy to
+   * change and to be recalibrated from real publisher data.
+   */
   forecast_error: {
-    bias?: number;
-    day_sigma: number;
-    cell_sigma: number;
+    /** Standard deviation, per channel, of the log deviation a publisher's traffic has on a day (shared by its channels, scaled by `error_scale`); revisions add to it. 0 or more. Needed for every channel a placement uses. */
+    channel_sigma: Partial<Record<PlacementChannel, number>>;
+    /** Day-to-day correlation of a publisher's same-day deviation and of each revision's carry-over to later days, from 0 up to but not including 1. */
+    ar1_phi: number;
+    /** Sets how much the revisions weigh: each is scaled by 1 / sqrt(this), so the error's variance grows with min(lead time, horizon) / this. Above 0. */
+    lead_time_tau_days: number;
+    /** How many days ahead of a day its revisions are revealed, so the lead time beyond which the revision part of the error stops growing. A whole number from 0 to 366, within the season's build budget. */
+    lead_time_horizon_days: number;
+    /** Limit, in either direction, on the deviation of actual traffic and, separately, on the forecast's known part of it. The error is within twice this; the bias sits outside it. Above 0. */
+    log_clip: number;
+    /** Strength of the per-cell deviation, which is small on busy cells and large on thin ones. No forecast knows it. 0 or more. */
+    cell_kappa: number;
+    /** Impressions at which a cell counts as busy: a cell expecting fewer is treated as having this many when sizing its deviation. 1 or more. */
+    cell_min_impressions: number;
+    /** Per-publisher settings. A publisher left out has no bias, bias spread or scale change. */
+    publishers?: Array<{
+      /** A `publisher_id` that at least one property has. Listed once. */
+      publisher_id: string;
+      /** How far actual traffic sits from this publisher's forecasts, as a log offset: negative means actual comes in below the forecast. Forecasts carry -bias as an offset; they do not correct for it. */
+      bias: number;
+      /** Standard deviation of a per-publisher bias drawn around `bias`. 0 or more. Default 0. */
+      bias_sigma?: number;
+      /** Multiplier on this publisher's deviation. 0 or more. Default 1. */
+      error_scale?: number;
+    }>;
+    /** Sudden surges and slumps in actual traffic that decay over days. A forecast knows a spike only once it has started. */
+    spikes?: {
+      /** Fewest spikes a publisher has over the season. A whole number, 0 or more. */
+      per_publisher_min: number;
+      /** Most spikes a publisher has over the season. A whole number, at least the minimum and at most `days`. */
+      per_publisher_max: number;
+      /** Smallest relative size of a spike, above -1 (-0.5 is a 50% slump). */
+      size_min: number;
+      /** Largest relative size of a spike, at least `size_min`. */
+      size_max: number;
+      /** Share of a spike left each day after it starts, from 0 up to but not including 1. */
+      decay: number;
+      /** Standard deviation of the log error with which forecasts see a spike's decay. 0 or more. */
+      decay_forecast_sigma: number;
+    };
   };
   events?: SeasonEvent[];
 }

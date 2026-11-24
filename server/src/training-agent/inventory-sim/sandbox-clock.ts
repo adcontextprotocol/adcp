@@ -12,13 +12,17 @@
  * Advancing runs the day steps for each day crossed in the market of the
  * tenant it is called on; the caller's other markets run the same days on
  * their next read, with the same results. Writing only that tenant's market
- * keeps the write under the router's lock for that tenant.
+ * keeps the write under the router's lock for that tenant. Both operations
+ * report `seed_id`, `season_fingerprint` and `engine_version` inside
+ * `simulated`, which the response schema leaves open, so a run records which
+ * season and engine produced its results.
  */
 import { loadSandbox, sandboxNowIso, sandboxNowMs } from '../account-sandbox.js';
 import { runSandboxClockAdvanceHooks } from '../subscription-probe.js';
 import type { TrainingContext } from '../types.js';
-import { DAY_MS, type SeasonSeed } from './engine/index.js';
+import { DAY_MS, ENGINE_VERSION, type SeasonSeed } from './engine/index.js';
 import { advanceMarket } from './market-store.js';
+import { seasonFingerprint } from './season-file.js';
 
 export const SANDBOX_CLOCK_SCENARIO = 'sandbox_clock';
 
@@ -48,12 +52,13 @@ export async function handleSandboxClock(
   market: { tenantId: string; seed: SeasonSeed },
 ): Promise<Json> {
   const operation = params.operation;
+  const provenance = { seed_id: market.seed.seed_id, season_fingerprint: seasonFingerprint(market.seed), engine_version: ENGINE_VERSION };
   const sandbox = await loadSandbox(ctx.principal);
   const nowMs = sandboxNowMs(sandbox.doc);
   if (operation === 'get') {
     return {
       success: true,
-      simulated: { simulated_now: sandboxNowIso(sandbox.doc), pinned: sandbox.doc.simulated_now !== undefined },
+      simulated: { simulated_now: sandboxNowIso(sandbox.doc), pinned: sandbox.doc.simulated_now !== undefined, ...provenance },
       message: `simulated_now is ${sandboxNowIso(sandbox.doc)}`,
     };
   }
@@ -83,7 +88,7 @@ export async function handleSandboxClock(
   await runSandboxClockAdvanceHooks(ctx, target);
   return {
     success: true,
-    simulated: { simulated_now: sandbox.doc.simulated_now, previous_simulated_now: new Date(nowMs).toISOString(), days_crossed: daysCrossed },
+    simulated: { simulated_now: sandbox.doc.simulated_now, previous_simulated_now: new Date(nowMs).toISOString(), days_crossed: daysCrossed, ...provenance },
     message: `Sandbox clock advanced to ${sandbox.doc.simulated_now}`,
   };
 }

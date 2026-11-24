@@ -11,7 +11,7 @@
 import type { SeasonSeed } from '../types.js';
 
 export const ADSERVER_SEASON: SeasonSeed = {
-  seed_id: 'adserver-2027',
+  seed_id: 'adserver-2027-lead-time',
   rng_seed: 'adserver-2027-v1',
   start_date: '2026-11-01',
   days: 730,
@@ -155,8 +155,24 @@ export const ADSERVER_SEASON: SeasonSeed = {
   traffic: {
     weekday_shape: [0.8, 1.05, 1.1, 1.1, 1.05, 1, 0.85],
     trend_per_day: 0.0002,
+    truth_daily_sigma: 0.03,
   },
-  forecast_error: { bias: -0.02, day_sigma: 0.06, cell_sigma: 0.05 },
+  // Assumed sizes, not measured: a 6% same-day spread for display and video, 5% cell noise at the median cell, -2% publisher
+  // bias. Change them in the season file; to be recalibrated from real publisher data.
+  forecast_error: {
+    channel_sigma: { display: 0.06, olv: 0.06 },
+    ar1_phi: 0.85,
+    lead_time_tau_days: 14,
+    lead_time_horizon_days: 60,
+    log_clip: 0.6931471805599453,
+    // 0.05 × √3799, the median cell-day expected impressions
+    cell_kappa: 3.08,
+    cell_min_impressions: 100,
+    publishers: [
+      { publisher_id: 'pinnacle_news', bias: -0.02 },
+      { publisher_id: 'summit_sports', bias: -0.02 },
+    ],
+  },
   events: [
     {
       type: 'traffic_multiplier',

@@ -8,7 +8,9 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { flushDirtySessions, getSession, runWithSessionContext, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { loadSandbox, sandboxSessionKey } from '../../src/training-agent/account-sandbox.js';
-import { withCallerMarkets } from '../../src/training-agent/inventory-sim/market-store.js';
+import { openMarket, withCallerMarkets, type MediaBuyRecord } from '../../src/training-agent/inventory-sim/market-store.js';
+import { ADSERVER_SEASON, ENGINE_VERSION } from '../../src/training-agent/inventory-sim/engine/index.js';
+import { seasonFingerprint } from '../../src/training-agent/inventory-sim/season-file.js';
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
@@ -70,6 +72,103 @@ describe('concurrent requests from one caller', () => {
     await runWithSessionContext(async () => {
       const { session } = await loadSandbox(principal);
       expect(session.principalConfigurations.get('market_counter')).toBe(3);
+    });
+  });
+});
+
+describe('stored markets, the engine version and the season', () => {
+  const buy = { media_buy_id: 'mb_0001', packages: [] } as unknown as MediaBuyRecord;
+
+  async function storedDocuments(principal: string) {
+    const session = await getSession(sandboxSessionKey(principal));
+    return [...session.principalConfigurations.entries()].filter(([key]) => key.startsWith('inventory_market'));
+  }
+
+  async function bookMarket(principal: string) {
+    await runWithSessionContext(async () => {
+      const market = await openMarket('inventory-adserver', ADSERVER_SEASON, principal);
+      market.doc.media_buys.push(buy);
+      market.save();
+      await flushDirtySessions();
+    });
+  }
+
+  it('keeps bookings across opens of the same market, and stamps the engine version and the season fingerprint', async () => {
+    const principal = 'engine-version-keep-caller';
+    await runWithSessionContext(async () => {
+      const first = await openMarket('inventory-adserver', ADSERVER_SEASON, principal);
+      expect(first.doc.engine_version).toBe(ENGINE_VERSION);
+      expect(first.doc.season_fingerprint).toBe(seasonFingerprint(ADSERVER_SEASON));
+      first.doc.media_buys.push(buy);
+      first.save();
+      await flushDirtySessions();
+    });
+    await runWithSessionContext(async () => {
+      const second = await openMarket('inventory-adserver', ADSERVER_SEASON, principal);
+      expect(second.doc.media_buys.map(record => record.media_buy_id)).toEqual(['mb_0001']);
+    });
+  });
+
+  it('restarts a stored market built by another engine version, or by none', async () => {
+    const principal = 'engine-version-restart-caller';
+    await bookMarket(principal);
+    for (const version of ['0', undefined]) {
+      await runWithSessionContext(async () => {
+        const [[, stored]] = await storedDocuments(principal);
+        (stored as Record<string, unknown>).engine_version = version;
+        await flushDirtySessions();
+      });
+      await runWithSessionContext(async () => {
+        const reopened = await openMarket('inventory-adserver', ADSERVER_SEASON, principal);
+        expect(reopened.doc.media_buys).toEqual([]);
+        expect(reopened.doc.engine_version).toBe(ENGINE_VERSION);
+        reopened.doc.media_buys.push(buy);
+        reopened.save();
+        await flushDirtySessions();
+      });
+    }
+  });
+
+  it('restarts a stored market built on another season fingerprint, or on none', async () => {
+    const principal = 'season-fingerprint-restart-caller';
+    await bookMarket(principal);
+    for (const fingerprint of ['sha256:other', undefined]) {
+      await runWithSessionContext(async () => {
+        const [[, stored]] = await storedDocuments(principal);
+        (stored as Record<string, unknown>).season_fingerprint = fingerprint;
+        await flushDirtySessions();
+      });
+      await runWithSessionContext(async () => {
+        const reopened = await openMarket('inventory-adserver', ADSERVER_SEASON, principal);
+        expect(reopened.doc.media_buys).toEqual([]);
+        expect(reopened.doc.season_fingerprint).toBe(seasonFingerprint(ADSERVER_SEASON));
+        reopened.doc.media_buys.push(buy);
+        reopened.save();
+        await flushDirtySessions();
+      });
+    }
+  });
+
+  it('keeps a market stored for the same season across a second open', async () => {
+    const principal = 'season-fingerprint-keep-caller';
+    await bookMarket(principal);
+    await runWithSessionContext(async () => {
+      const second = await openMarket('inventory-adserver', ADSERVER_SEASON, principal);
+      expect(second.doc.media_buys.map(record => record.media_buy_id)).toEqual(['mb_0001']);
+    });
+  });
+
+  it('restarts the market when a season value is edited and the seed_id is kept', async () => {
+    const principal = 'season-edit-restart-caller';
+    await bookMarket(principal);
+    const edited = structuredClone(ADSERVER_SEASON);
+    edited.forecast_error.log_clip += 0.01;
+    expect(edited.seed_id).toBe(ADSERVER_SEASON.seed_id);
+    expect(seasonFingerprint(edited)).not.toBe(seasonFingerprint(ADSERVER_SEASON));
+    await runWithSessionContext(async () => {
+      const reopened = await openMarket('inventory-adserver', edited, principal);
+      expect(reopened.doc.media_buys).toEqual([]);
+      expect(reopened.doc.season_fingerprint).toBe(seasonFingerprint(edited));
     });
   });
 });

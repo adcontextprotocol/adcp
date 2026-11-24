@@ -22,9 +22,10 @@ import { AdcpError } from '@adcp/sdk/server';
 import { loadSandbox, sandboxNowMs, sandboxSessionKey } from '../account-sandbox.js';
 import { getIdempotencyStore } from '../idempotency.js';
 import { evictSessionFromRequestCache, flushDirtySessions } from '../state.js';
-import { InventorySimulation, type SeasonSeed, type SimulationState } from './engine/index.js';
+import { ENGINE_VERSION, InventorySimulation, type SeasonSeed, type SimulationState } from './engine/index.js';
 import type { AssignmentRecord, CreativeRecord } from './creatives.js';
 import { engineProducts, type SeededCatalog } from './seeded-products.js';
+import { seasonFingerprint } from './season-file.js';
 
 const MARKET_DOC_PREFIX = 'inventory_market\u001f';
 const MARKET_LOCK_PRINCIPAL = 'inventory-market-mutex';
@@ -70,6 +71,10 @@ export interface MediaBuyRecord {
 
 export interface MarketDocument extends Record<string, unknown> {
   seed_id: string;
+  /** The fingerprint of the season the market was built on (`seasonFingerprint`). */
+  season_fingerprint: string;
+  /** The engine version that built the market (`ENGINE_VERSION`). */
+  engine_version: string;
   sim: SimulationState;
   media_buys: MediaBuyRecord[];
   next_id: number;
@@ -96,12 +101,16 @@ function marketKey(tenantId: string, principal: string | undefined): string {
 
 /**
  * Whether a stored market still belongs to the caller's timeline. One whose
- * seed changed, or that has run days the clock has not reached (the clock was
- * unpinned by a `reset_state` on any tenant, and reads the wall clock again),
- * is discarded and started fresh.
+ * seed id, season fingerprint or engine version changed (a stored document
+ * without a fingerprint or an engine version counts as changed), or that has
+ * run days the clock has not reached (the clock was unpinned by a
+ * `reset_state` on any tenant, and reads the wall clock again), is discarded
+ * and started fresh.
  */
 function isCurrent(stored: MarketDocument | undefined, seed: SeasonSeed, nowMs: number): stored is MarketDocument {
   if (!stored || stored.seed_id !== seed.seed_id) return false;
+  if (stored.season_fingerprint !== seasonFingerprint(seed)) return false;
+  if (stored.engine_version !== ENGINE_VERSION) return false;
   return stored.sim.processed_through_day <= new InventorySimulation(seed, stored.sim, engineProducts(seed, stored.seeded)).today(nowMs);
 }
 
@@ -114,7 +123,7 @@ export async function openMarket(tenantId: string, seed: SeasonSeed, principal: 
   const stored = sandbox.session.principalConfigurations.get(key) as MarketDocument | undefined;
   const doc: MarketDocument = isCurrent(stored, seed, nowMs)
     ? structuredClone(stored)
-    : { seed_id: seed.seed_id, sim: InventorySimulation.create(seed, nowMs).state, media_buys: [], next_id: 1 };
+    : { seed_id: seed.seed_id, season_fingerprint: seasonFingerprint(seed), engine_version: ENGINE_VERSION, sim: InventorySimulation.create(seed, nowMs).state, media_buys: [], next_id: 1 };
   const sim = new InventorySimulation(seed, doc.sim, engineProducts(seed, doc.seeded));
   sim.advanceTo(nowMs);
   return {

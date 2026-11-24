@@ -2,22 +2,26 @@
  * Season files: load a `SeasonSeed` from YAML or JSON.
  *
  * A file over `MAX_SEASON_FILE_BYTES` is refused before it is read.
- * Loading makes three passes, each reporting every problem it finds:
+ * Loading makes four passes, each reporting every problem it finds:
  * 1. A zod pass checks the shape, dates, number ranges and the values tenants put on the wire
  *    (currency code, domains, formats present, floors), with the path of each problem.
+ *    For `forecast_error`, `traffic.month_shape` and `traffic.truth_daily_sigma` it checks
+ *    the shape only; their ranges come from the engine's `forecastErrorProblems`.
  * 2. A reference pass checks what the engine leaves unchecked: product
  *    properties, product collections, the ids traffic events target, that
- *    every collection's installments and postponements fall inside the season and,
- *    when the host lists the formats it supports, placement formats.
+ *    every collection's installments and postponements fall inside the season
+ *    and, when the host lists the formats it supports, placement formats. It
+ *    also reports every `forecastErrorProblems` problem, with its path.
  * 3. The engine's own checks run through `trafficFor` (shares sum to 1, ids
- *    resolve), which also primes the traffic cache for the returned seed. Then
- *    every product must cover some inventory.
+ *    resolve), which also primes the traffic cache for the returned seed.
+ * 4. Every product must cover some inventory.
  * Nothing is defaulted here, so a loaded seed equals the one that was written.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { parseAllDocuments, stringify } from 'yaml';
 import { z } from 'zod';
-import { DAY_MS, EngineError, SeasonCalendar, parseDate, trafficFor, type SeasonSeed } from './engine/index.js';
+import { DAY_MS, EngineError, SeasonCalendar, forecastErrorProblems, parseDate, trafficFor, type SeasonSeed } from './engine/index.js';
 
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -91,6 +95,7 @@ const property = z.strictObject({
   name: z.string(),
   domain: publisherDomain,
   traffic_multiplier: atLeastZero.optional(),
+  publisher_id: z.string().optional(),
 });
 
 const placement = z.strictObject({
@@ -135,6 +140,36 @@ const collection = z.strictObject({
   audience_sigma: atLeastZero,
 });
 
+/** The shape of the forecast error and of `traffic.month_shape` / `traffic.truth_daily_sigma`.
+ * Their ranges are checked by `forecastErrorProblems`, which the engine shares. */
+const publisherForecastError = z.strictObject({
+  publisher_id: z.string(),
+  bias: z.number(),
+  bias_sigma: z.number().optional(),
+  error_scale: z.number().optional(),
+});
+
+const spikes = z.strictObject({
+  per_publisher_min: z.number(),
+  per_publisher_max: z.number(),
+  size_min: z.number(),
+  size_max: z.number(),
+  decay: z.number(),
+  decay_forecast_sigma: z.number(),
+});
+
+const forecastError = z.strictObject({
+  channel_sigma: z.partialRecord(channel, z.number()),
+  ar1_phi: z.number(),
+  lead_time_tau_days: z.number(),
+  lead_time_horizon_days: z.number(),
+  log_clip: z.number(),
+  cell_kappa: z.number(),
+  cell_min_impressions: z.number(),
+  publishers: z.array(publisherForecastError).optional(),
+  spikes: spikes.optional(),
+});
+
 const event = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('traffic_multiplier'),
@@ -162,30 +197,29 @@ const event = z.discriminatedUnion('type', [
   }),
 ]);
 
-export const seasonSeedSchema = z.strictObject({
-  seed_id: z.string(),
-  rng_seed: z.string(),
-  start_date: isoDate,
-  days: z.number(),
-  currency: currencyCode,
-  regions: z.array(region),
-  audience_profiles: z.array(audienceProfile),
-  segments: z.array(segment),
-  properties: z.array(property),
-  placements: z.array(placement).min(1, 'needs at least one placement'),
-  products: z.array(product).min(1, 'needs at least one product'),
-  collections: z.array(collection).optional(),
-  traffic: z.strictObject({
-    weekday_shape: z.array(atLeastZero),
-    trend_per_day: z.number().optional(),
-  }),
-  forecast_error: z.strictObject({
-    bias: z.number().optional(),
-    day_sigma: atLeastZero,
-    cell_sigma: atLeastZero,
-  }),
-  events: z.array(event).optional(),
-});
+export const seasonSeedSchema = z
+  .strictObject({
+    seed_id: z.string(),
+    rng_seed: z.string(),
+    start_date: isoDate,
+    days: z.number(),
+    currency: currencyCode,
+    regions: z.array(region),
+    audience_profiles: z.array(audienceProfile),
+    segments: z.array(segment),
+    properties: z.array(property),
+    placements: z.array(placement).min(1, 'needs at least one placement'),
+    products: z.array(product).min(1, 'needs at least one product'),
+    collections: z.array(collection).optional(),
+    traffic: z.strictObject({
+      weekday_shape: z.array(atLeastZero),
+      trend_per_day: z.number().optional(),
+      month_shape: z.array(z.number()).optional(),
+      truth_daily_sigma: z.number().optional(),
+    }),
+    forecast_error: forecastError,
+    events: z.array(event).optional(),
+  });
 
 /** Compile-time check that the schema and `SeasonSeed` are the same type,
  * optional fields included: a field added to one and not the other fails
@@ -225,9 +259,11 @@ function dateIfRepresentable(calendar: SeasonCalendar, day: number): string | un
 }
 
 /** References the engine does not resolve: a product's `property_ids` and
- * `collection_ids`, and the ids a traffic event targets. Each would load and
- * then match nothing. With `formats`, also placement formats the host does
- * not know. */
+ * `collection_ids`, the ids a traffic event targets and the installments and
+ * postponements that fall outside the season; each would load and then match
+ * nothing. Then every forecast error and traffic shape problem, from the engine's
+ * own `forecastErrorProblems`. With `formats`, also placement formats the host
+ * does not know, followed by the supported-formats line. */
 function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): string[] {
   const problems: string[] = [];
   let unsupported = false;
@@ -297,6 +333,7 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
     check(`events[${i}].property_ids`, event.property_ids, propertyIds, 'property');
     check(`events[${i}].region_ids`, event.region_ids, regionIds, 'region');
   });
+  problems.push(...forecastErrorProblems(seed).map(p => `${p.path}: ${p.message}`));
   if (unsupported && formats) problems.push(`supported formats: ${[...formats].sort().join(', ')}`);
   return problems;
 }
@@ -305,7 +342,14 @@ function referenceProblems(seed: SeasonSeed, formats?: ReadonlySet<string>): str
 export function parseSeasonSeed(input: unknown, source: string, options: SeasonFileOptions = {}): SeasonSeed {
   const parsed = seasonSeedSchema.safeParse(input);
   if (!parsed.success) {
-    invalid(source, parsed.error.issues.map(issue => `${dottedPath(issue.path)}: ${issue.message}`));
+    invalid(
+      source,
+      parsed.error.issues.flatMap(issue =>
+        issue.code === 'unrecognized_keys'
+          ? issue.keys.map(key => `${dottedPath([...issue.path, key])}: unrecognized key`)
+          : [`${dottedPath(issue.path)}: ${issue.message}`],
+      ),
+    );
   }
   const seed: SeasonSeed = parsed.data;
   const problems = referenceProblems(seed, options.formats);
@@ -364,4 +408,32 @@ export function readSeasonFile(path: string, options: SeasonFileOptions = {}): S
 /** Serialize a season as YAML that `readSeasonFile` loads back unchanged. */
 export function seasonToYaml(seed: SeasonSeed): string {
   return stringify(seed, { schema: 'core' });
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+const fingerprints = new WeakMap<SeasonSeed, string>();
+
+/**
+ * `sha256:` and the hex SHA-256 of the season's canonical JSON (object keys
+ * sorted at every depth, arrays in order, no whitespace). Results record it
+ * beside `seed_id`, so two runs name the same season only when every value
+ * matches. Computed once per seed object.
+ */
+export function seasonFingerprint(seed: SeasonSeed): string {
+  let fingerprint = fingerprints.get(seed);
+  if (fingerprint === undefined) {
+    fingerprint = `sha256:${createHash('sha256').update(canonicalJson(seed)).digest('hex')}`;
+    fingerprints.set(seed, fingerprint);
+  }
+  return fingerprint;
 }
