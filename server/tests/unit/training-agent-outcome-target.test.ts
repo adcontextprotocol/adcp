@@ -1233,6 +1233,34 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       it('plans no volume when the buyer ceiling is below the minimum', () => {
         expect(plan({ max: 20_000 })?.plannedVolume).toBe(0);
       });
+
+      it('clears each purchase minimum to the cent under an unequal split', () => {
+        const splitProposal = {
+          proposal_id: 'split',
+          name: 'Split',
+          allocations: [
+            { product_id: 'p1', allocation_percentage: 45, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+            { product_id: 'p2', allocation_percentage: 55, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+          ],
+        } as unknown as PlanProposal;
+        const splitProducts = new Map([
+          ['p1', { product_id: 'p1', pricing_options: [{ ...USD_FIXED_CPM_40, min_spend_per_package: 5_000 }] }],
+          ['p2', { product_id: 'p2', pricing_options: [USD_FIXED_CPM_40] }],
+        ]) as unknown as PlanProducts;
+        const result = computeOutcomeTargetCostPlan(
+          { kind: 'metric', metric: 'clicks' },
+          clicksOptimizationGoal,
+          { amount: 100, currency: 'USD', strength: 'target' },
+          1,
+          undefined,
+          splitProposal,
+          splitProducts,
+        )!;
+        // 5000 / 0.45 = 11111.11 leaves the 45% purchase at 4999.9995 unless rounded up.
+        expect(result.totalBudgetGuidance.recommended * 0.45).toBeGreaterThanOrEqual(5_000);
+        expect(result.totalBudgetGuidance.min * 0.45).toBeGreaterThanOrEqual(5_000);
+        expect(Math.round(result.totalBudgetGuidance.recommended * 100)).toBeCloseTo(result.totalBudgetGuidance.recommended * 100, 6);
+      });
     });
   });
 

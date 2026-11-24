@@ -624,3 +624,29 @@ describe.each(COMPACT_VERSIONS)('outcome_target cost plans clear minimum spend (
     expect(response.reason).toContain('criteria.offer_filters.budget_range');
   });
 });
+
+describe.each(COMPACT_VERSIONS)('registry plan with an outcome_target cost plan (%s)', version => {
+  it('clears the 45% purchase minimum of the Pinnacle cross-channel plan and accepts it', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const response = await callTool(server, 'request_proposals', {
+      account: ACCOUNT, adcp_version: version, brief: 'Cross-channel news reach',
+      criteria: {
+        product_ids: ['pinnacle_news_video_premium', 'pinnacle_news_video_standard', 'pinnacle_news_display_standard'],
+        outcome_target: {
+          goal: { kind: 'metric', metric: 'clicks' },
+          volume: 1,
+          cost_per: { amount: 100, currency: 'USD', strength: 'target' },
+        },
+      },
+    });
+    expect(response.outcome, JSON.stringify(response).slice(0, 500)).toBe('proposed');
+    const draft = response.proposals.find((proposal: Json) => proposal.proposal_id.includes('pinnacle')) ?? response.proposals[0];
+    const premium = (draft.commercial_terms.purchases as Json[]).find(p => p.product_id === 'pinnacle_news_video_premium')!;
+    expect(premium, JSON.stringify(draft).slice(0, 500)).toBeDefined();
+    expect(premium.budget).toBeGreaterThanOrEqual(premium.pricing.min_spend_per_package);
+
+    const accepted = await finalizeAndAccept(server, version, draft);
+    expect(accepted.code, JSON.stringify(accepted).slice(0, 500)).toBeUndefined();
+    expect(accepted.media_buy_id).toEqual(expect.any(String));
+  });
+});
