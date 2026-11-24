@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/product-unavailable.json",
+  "title": "Product Unavailable Details",
+  "description": "Recommended details shape for PRODUCT_UNAVAILABLE when a seller refuses to book or grow packages because one or more of them asks for more than the seller can deliver. Applies to buy_products, accept_proposal, control_media_buy, and the 3.x create_media_buy and update_media_buy facades. A seller that uses this shape MUST include an entry for every package it refuses, so a buyer can correct the whole request in one resubmission. It MAY also list packages that fit, with their headroom, so the buyer can move budget onto them. A package absent from packages carries no availability claim. Every figure is a snapshot of the seller's state when it refused, never a hold or reservation. When the refusal arrives as the terminal error of an async task that ends in failed, the same details MUST appear on that task's errors[] entry. error.recovery is transient only when every unavailable entry has reason forecast_unavailable; otherwise it is correctable.",
+  "type": "object",
+  "x-added-in": "4.0.0",
+  "properties": {
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Per-package availability. At most one entry per package; entry order carries no meaning. Each entry's bookable assumes every other package in the request stays as requested; packages that draw on the same inventory can share headroom, so moving budget onto several of them at once can still be refused.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "package_field": {
+            "type": "string",
+            "minLength": 1,
+            "description": "JSONPath-lite locator of the package's row, using the same convention as error.field: purchases[i] on buy_products, packages[i] on create_media_buy, update_media_buy and control_media_buy, and new_packages[i] on update_media_buy. The index is the submitted request row, never a readback array index. On accept_proposal, whose request carries no package rows, it is rooted at the committed proposal: commercial_terms.purchases[i]. Omit when the package has no such row, as for an existing package listed only for its headroom; do not fabricate an index."
+          },
+          "package_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Seller-assigned ID of the package when it already exists, as on an update_media_buy packages[] row, a control_media_buy row, or an existing package listed for its headroom. Absent for a package the request would create.",
+            "x-entity": "package"
+          },
+          "product_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Product of the package, echoed from the request or the committed proposal.",
+            "x-entity": "product"
+          },
+          "unit": {
+            "type": "string",
+            "enum": ["impressions", "viewable_impressions", "measured_impressions", "clicks", "views", "completed_views", "grps", "plays", "downloads"],
+            "enumDescriptions": {
+              "impressions": "Ad-server or first-party delivery count, as the forecastable metric impressions.",
+              "viewable_impressions": "Impressions meeting the viewability threshold, as viewability.viewable_impressions on a forecast point. Typical for a vcpm pricing option.",
+              "measured_impressions": "Impressions as counted by the third-party measurement provider, as the forecastable metric measured_impressions.",
+              "clicks": "Clicks, as the forecastable metric clicks.",
+              "views": "Views at the publisher-defined threshold, as the forecastable metric views.",
+              "completed_views": "Video or audio completions, as the forecastable metric completed_views.",
+              "grps": "Gross Rating Points, as the forecastable metric grps. The only fractional unit.",
+              "plays": "DOOH or broadcast plays before any impression multiplier, as the forecastable metric plays.",
+              "downloads": "Podcast downloads, as the forecastable metric downloads."
+            },
+            "description": "Delivery unit that requested, available and bookable are counted in, named as in forecasts. Never a money unit: a package that states only a budget is reported in the delivery unit of its pricing option (impressions for cpm, viewable_impressions for vcpm, clicks for cpc, completed_views for cpcv, views for cpv, grps for cpp), with requested derived from the budget, and the money answer in max_budget. When no delivery unit applies, as with flat_rate or time pricing, or when the seller cannot count the package in one, omit unit, requested, available and bookable; max_budget then carries the answer if one exists."
+          },
+          "requested": {
+            "type": "number",
+            "minimum": 0,
+            "description": "What the package asks for, in unit: its goal when it states one in unit, otherwise the quantity its budget buys at its pricing option, rounded down. On an increase through control_media_buy or update_media_buy, the resulting package total, not the increment. On an entry listed for headroom, the package's current or requested quantity. A whole number for every unit except grps."
+          },
+          "available": {
+            "$ref": "/schemas/core/forecast-range.json",
+            "description": "Advisory forecast of what the package can deliver, in unit, for its targeting and flight. It carries the same uncertainty as a forecast and is not the booking limit; bookable is. Absent when availability could not be determined, or when the seller withholds it. Sellers MAY round or coarsen it."
+          },
+          "bookable": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The most the seller will accept for this package right now, in unit, as a package total with its other terms unchanged. It may exceed available.mid, for a seller that books above its forecast. A resubmission at or below bookable can still be refused if inventory moved after this response. Sellers SHOULD include it on every entry they refuse for over_forecast, even when they omit or coarsen available. A seller that rounds it MUST round down. 0 means nothing can be booked. A whole number for every unit except grps."
+          },
+          "max_budget": {
+            "type": "object",
+            "description": "The largest package budget that fits within bookable at pricing_option_id, so the buyer does not have to back-calculate from the rate. On an entry listed for headroom, the budget the package could grow to. Same amount and currency shape as total_budget. A seller that rounds it MUST round down. Absent when the pricing option has no per-unit rate, as with flat_rate or time pricing.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Budget amount in currency."
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$",
+                "description": "ISO 4217 currency code. The currency of the package budget."
+              },
+              "pricing_option_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Pricing option the amount was computed at, normally the package's selected pricing option. A buyer MUST NOT apply the amount to a package priced at a different option.",
+                "x-entity": "product_pricing_option"
+              }
+            },
+            "required": ["amount", "currency", "pricing_option_id"],
+            "additionalProperties": true
+          },
+          "availability_status": {
+            "$ref": "/schemas/enums/availability-status.json",
+            "description": "unavailable: the seller refuses the package as requested. available: the package as requested fits, with requested at or below bookable, and the entry reports its headroom."
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["over_forecast", "not_forecastable", "forecast_unavailable"],
+            "enumDescriptions": {
+              "over_forecast": "The package asks for more than bookable. Recovery: correctable. Reduce the package to bookable or max_budget, move the difference to packages listed with headroom, or choose another product.",
+              "not_forecastable": "The seller cannot forecast this goal or targeting, so it will not book it. Resubmitting the package unchanged is refused again. Recovery: correctable. Change the goal unit or targeting to one the seller can forecast, or choose another product.",
+              "forecast_unavailable": "The seller's forecast timed out or errored. The request may book once forecasting recovers. Recovery: transient. Resend the same request with the same idempotency_key after error.retry_after, or with backoff."
+            },
+            "description": "Why the seller refuses the package. Present on every unavailable entry; absent on available entries."
+          }
+        },
+        "required": ["product_id", "availability_status"],
+        "dependencies": {
+          "requested": ["unit"],
+          "available": ["unit"],
+          "bookable": ["unit"]
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "availability_status": { "const": "unavailable" } },
+              "required": ["availability_status"]
+            },
+            "then": { "required": ["reason"] },
+            "else": { "not": { "required": ["reason"] } }
+          }
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": ["packages"],
+  "additionalProperties": true
+}
