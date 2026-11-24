@@ -1414,7 +1414,7 @@ Per package:
 Two limits apply:
 
 - **A package merge covers one package.** Each assignment needs its own `merge`. If the seller-assigned creative is assigned to another package later, for example because the advertiser adds the same creative to a new ad in the platform's tools, that assignment is reported under the seller-assigned ID until the buyer merges it too. Buyers that adopt creatives this way watch for new assignments through `creative.assignment_changed` notifications or by rereading `list_creatives`. A [library-level merge](#merging-across-the-account) removes this limit.
-- **History stays split.** Delivery before each merge stays under the seller-assigned ID, with either kind of merge. To report the creative's whole life, the buyer joins the two IDs; see [delivery before and after a merge](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
+- **History stays split.** Sellers never restate past delivery after a merge, of either kind: delivery before the merge stays under the seller-assigned ID. To report the creative's whole life, the buyer joins the two IDs; see [delivery before and after a merge](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
 
 ### Merging across the account
 
@@ -1442,6 +1442,8 @@ Buyers MUST NOT send a `merge` without `package_id` unless the seller declares [
 - MUST make every later assignment of that creative under `creative_id`. When the seller's source of truth assigns the same creative to another package, for example because the advertiser adds it to a new ad in the platform's tools, the seller reports that assignment in `list_creatives`, `get_media_buys` and delivery under `creative_id`, never under `merged_creative_id`. A seller that emits `creative.assignment_changed` sends `assigned` for `creative_id`.
 - MUST keep listing `merged_creative_id` in `list_creatives` while it exists in the seller's source of truth, with no assignments and with `merged_into_creative_id` set to `creative_id`. The merge doesn't purge it, and it stays out of `delete_missing` as before.
 - MUST report delivery under `creative_id` from the merge onward and MUST NOT restate earlier delivery, which stays under `merged_creative_id`. `merged_into_creative_id` is the durable record buyers use to [join the two IDs](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
+
+**History.** A library-level merge never restates past delivery, the same as a package merge. Delivery before the merge stays under `merged_creative_id`, in reports already issued and in any later read of that period. Buyers who want a creative's whole life join the two IDs, using `merged_into_creative_id`.
 
 **Verification.** The library-level merge is all or nothing. If the seller can't merge any one current assignment, it applies no operation in the request and returns [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) with one rejection per blocking package, each with its `package_id` and a `reason` (`format_mismatch` or `not_supported`). Reasons about the pairing itself carry no `package_id`:
 
