@@ -1,10 +1,12 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getSchemaDocumentByRef } from '@adcp/sdk/schemas';
+import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../../src/training-agent/candidate-version.js';
 import { ensureCreative33SchemaBundle } from '../../src/training-agent/creative33/schema.js';
 import {
   fieldsAddedAfterRelease,
   omitFieldsAddedAfterRelease,
   propertiesAddedAfterRelease,
+  servedLifecycleTools,
   servedReleaseEnum,
   undeclaredMembers,
 } from '../../src/training-agent/served-release-fields.js';
@@ -67,6 +69,70 @@ describe('served-release field gate (#8487)', () => {
     expect(servedReleaseEnum('enums/specialism.json', '3.2-rc.0')).not.toContain('sales-fixed-rate');
     // No bundle at all leaves the caller's list as is.
     expect(servedReleaseEnum('enums/specialism.json', '4.0')).toBeNull();
+  });
+});
+
+describe('servedReleaseEnum with a pointer', () => {
+  const ITEMS = '/properties/media_buy/properties/lifecycle_tools/items';
+
+  it('reads an inline enum and leaves the no-pointer behaviour unchanged', () => {
+    const threeTwo = servedReleaseEnum(CAPABILITIES, '3.2', ITEMS);
+    expect(threeTwo).toContain('buy_products');
+    expect(threeTwo).not.toContain('list_proposals');
+    expect(servedReleaseEnum(CAPABILITIES, '3.2-rc.7', ITEMS)).toEqual(threeTwo);
+    // The document root has no enum, with or without a pointer.
+    expect(servedReleaseEnum(CAPABILITIES, '3.2')).toBeNull();
+    expect(servedReleaseEnum('enums/specialism.json', '3.2')).toContain('sales-dooh');
+    expect(servedReleaseEnum(CAPABILITIES, '3.2', '/properties/nope')).toBeNull();
+    expect(servedReleaseEnum(CAPABILITIES, '4.0', ITEMS)).toBeNull();
+  });
+});
+
+describe('servedLifecycleTools (#8981)', () => {
+  const PREVIEW = TRAINING_AGENT_PREVIEW_ADCP_VERSION ?? '3.3-rc.3';
+  const SERVED = [
+    'control_media_buy', 'list_proposals', 'get_products', 'accept_proposal', 'buy_products',
+    'decline_proposals', 'create_media_buy', 'refine_proposals', 'request_proposals', 'list_products',
+  ];
+  const ENUM_ORDER = [...servedReleaseEnum(CAPABILITIES, '3.2', '/properties/media_buy/properties/lifecycle_tools/items')!];
+
+  beforeAll(() => ensureCreative33SchemaBundle());
+
+  it('drops list_proposals at 3.2 even when served, and drops non-lifecycle tools', () => {
+    const tools = servedLifecycleTools(SERVED, '3.2');
+    expect(tools).not.toContain('list_proposals');
+    expect(tools).not.toContain('get_products');
+    expect(tools).not.toContain('create_media_buy');
+    expect(tools).toEqual(ENUM_ORDER.filter(tool => SERVED.includes(tool)));
+    expect(tools.length).toBeGreaterThan(0);
+  });
+
+  it('keeps list_proposals at the 3.3 preview', () => {
+    expect(servedLifecycleTools(SERVED, PREVIEW)).toContain('list_proposals');
+    expect(servedLifecycleTools(['list_proposals'], PREVIEW)).toEqual(['list_proposals']);
+  });
+
+  it('follows the enum order whatever the input order is', () => {
+    const forward = servedLifecycleTools(SERVED, '3.2');
+    expect(servedLifecycleTools([...SERVED].reverse(), '3.2')).toEqual(forward);
+    expect(servedLifecycleTools(new Set(SERVED), '3.2')).toEqual(forward);
+  });
+
+  it('resolves a prerelease pin to its release line', () => {
+    expect(servedLifecycleTools(SERVED, '3.2-rc.7')).toEqual(servedLifecycleTools(SERVED, '3.2'));
+  });
+
+  it('falls back to the source vocabulary when no bundle is available', () => {
+    // 3.3-beta.5 has no bundle and no 3.3 line bundle in the SDK, so the
+    // source schema's enum (which includes the 3.3 value) applies.
+    const tools = servedLifecycleTools(SERVED, '3.3-beta.5');
+    expect(tools).toContain('list_proposals');
+    expect(tools).toContain('buy_products');
+    expect(tools).not.toContain('get_products');
+  });
+
+  it('returns nothing when no lifecycle tool is served', () => {
+    expect(servedLifecycleTools(['get_products', 'create_media_buy'], '3.2')).toEqual([]);
   });
 });
 
