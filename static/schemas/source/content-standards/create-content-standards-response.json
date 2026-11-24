@@ -28,8 +28,7 @@
       },
       "required": [
         "standards_id"
-      ],
-      "title": "CreateContentStandardsSuccess"
+      ]
     },
     {
       "description": "Error response. A body that is also a valid success response is the success shape, even when it lists `errors`.",
