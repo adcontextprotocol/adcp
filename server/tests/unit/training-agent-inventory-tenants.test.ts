@@ -1888,4 +1888,107 @@ describe('inventory tenants', () => {
       expect(JSON.stringify(error)).toContain('feed_two');
     });
   });
+
+  describe('second-round review regressions: seeded format options (#9152)', () => {
+    const tenant = 'inventory-adserver';
+    const TOKEN_TYPO = 'demo-inventory-seeded-round2-typo-v1';
+    const TOKEN_COLLIDE = 'demo-inventory-seeded-round2-collide-v1';
+    const TOKEN_SIZES = 'demo-inventory-seeded-round2-sizes-v1';
+    const TOKEN_ORDER = 'demo-inventory-seeded-round2-order-v1';
+    const controller = (token: string, scenario: string, params: Record<string, unknown>) =>
+      call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, token);
+    const seed = async (token: string, productId: string, formatOptions: Structured[]) => {
+      const seeded = await controller(token, 'seed_product', {
+        product_id: productId,
+        fixture: { delivery_type: 'non_guaranteed', channels: ['display'], name: productId, format_options: formatOptions },
+      });
+      expect(seeded.success, `${productId}: ${JSON.stringify(seeded).slice(0, 500)}`).toBe(true);
+      const priced = await controller(token, 'seed_pricing_option', {
+        product_id: productId, pricing_option_id: `${productId}_cpm`, fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 4 },
+      });
+      expect(priced.success, `${productId}: ${JSON.stringify(priced).slice(0, 500)}`).toBe(true);
+    };
+    let key = 0;
+    const sync = (token: string, creatives: Structured[], extra: Record<string, unknown> = {}) =>
+      call(tenant, 'sync_creatives', { idempotency_key: `inventory-seeded-round2-${String(++key).padStart(8, '0')}`, account: ACCOUNT, creatives, ...extra }, token);
+    const errorOf = (result: Structured) => result.errors?.[0] ?? result.adcp_error;
+    const listed = async (token: string, id: string) =>
+      (await call(tenant, 'list_creatives', { account: ACCOUNT, filters: { creative_ids: [id] } }, token)).creatives[0] as Structured;
+    const image = (id: string, ref: Structured | undefined, width: number, height: number, extra: Record<string, unknown> = {}) => ({
+      creative_id: id, name: id, format_kind: 'image', ...(ref ? { format_option_ref: ref } : {}), ...extra,
+      assets: {
+        image: { asset_type: 'image', url: `https://cdn.inventory-buyer.example/${id}.png`, width, height },
+        click_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+      },
+    });
+    const native = (id: string, ref?: Structured) => ({
+      creative_id: id, name: id, format_kind: 'native_in_feed', ...(ref ? { format_option_ref: ref } : {}),
+      assets: {
+        title: { asset_type: 'text', content: 'Short title' },
+        cta: { asset_type: 'text', content: 'SHOP_NOW' },
+        landing_page_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+      },
+    });
+    const product = (id: string) => ({ scope: 'product', format_option_id: id });
+    const buyOf = (token: string, productId: string, keySuffix: string) =>
+      call(tenant, 'create_media_buy', {
+        idempotency_key: `inventory-seeded-round2-buy-${keySuffix}`, account: ACCOUNT, brand: BRAND,
+        start_time: '2027-02-01T00:00:00Z', end_time: '2027-02-28T00:00:00Z',
+        packages: [{ product_id: productId, pricing_option_id: `${productId}_cpm`, budget: 1000, bid_price: 5 }],
+      }, token);
+
+    beforeAll(async () => {
+      for (const token of [TOKEN_TYPO, TOKEN_COLLIDE, TOKEN_SIZES, TOKEN_ORDER]) await provision(token);
+      await seed(TOKEN_TYPO, 'only_feed', [{ format_option_id: 'real_feed', format_kind: 'native_in_feed', params: { title_max_chars: 20 } }]);
+      await seed(TOKEN_COLLIDE, 'collide', [{
+        format_option_id: 'display_300x250_image', format_kind: 'image', publisher_domain: 'b.example', params: { width: 300, height: 250 },
+      }]);
+      await seed(TOKEN_SIZES, 'sized', [{ format_option_id: 'sized_rect', format_kind: 'image', params: { width: 300, height: 250 } }]);
+      await seed(TOKEN_ORDER, 'order_a', [{ format_option_id: 'rect', format_kind: 'image', params: { width: 300, height: 250, extra: { a: 1, b: 2 } } }]);
+      await seed(TOKEN_ORDER, 'order_b', [{ format_option_id: 'rect', format_kind: 'image', params: { extra: { b: 2, a: 1 }, height: 250, width: 300 } }]);
+    });
+
+    it('does not pick the only seeded option by kind for an explicit ref that names none', async () => {
+      const typo = await sync(TOKEN_TYPO, [native('typo_ref', product('typo'))]);
+      expect(errorOf(typo), JSON.stringify(typo).slice(0, 800)).toMatchObject({ code: 'FORMAT_NOT_SUPPORTED' });
+      const bare = await sync(TOKEN_TYPO, [native('typo_bare')]);
+      expect(bare.errors, JSON.stringify(bare).slice(0, 800)).toBeUndefined();
+    });
+
+    it('keeps a publisher ref apart from a season option id, and a product ref on the season format', async () => {
+      const ref = { scope: 'publisher', publisher_domain: 'b.example', format_option_id: 'display_300x250_image' };
+      const result = await sync(TOKEN_COLLIDE, [image('collide_pub', ref, 300, 250)]);
+      expect(result.errors, JSON.stringify(result).slice(0, 800)).toBeUndefined();
+      const publisherListed = await listed(TOKEN_COLLIDE, 'collide_pub');
+      expect(publisherListed).toMatchObject({ format_kind: 'image', format_option_ref: ref });
+      expect(publisherListed.format_id).toBeUndefined();
+
+      const own = await sync(TOKEN_COLLIDE, [image('collide_own', product('display_300x250_image'), 300, 250)]);
+      expect(own.errors, JSON.stringify(own).slice(0, 800)).toBeUndefined();
+      expect((await listed(TOKEN_COLLIDE, 'collide_own')).format_id).toBeDefined();
+    });
+
+    it('refuses an asset of another size even when the params match the seeded option', async () => {
+      const creative = image('sized_conflict', product('sized_rect'), 728, 90, { params: { width: 300, height: 250 } });
+      const result = await sync(TOKEN_SIZES, [creative]);
+      expect(errorOf(result), JSON.stringify(result).slice(0, 800)).toMatchObject({
+        code: 'CREATIVE_SIZE_MISMATCH', field: 'creatives[0].assets.image',
+      });
+    });
+
+    it('treats the same params in another key order as one option, assignable to either package', async () => {
+      const first = await buyOf(TOKEN_ORDER, 'order_a', 'a');
+      const second = await buyOf(TOKEN_ORDER, 'order_b', 'b');
+      expectCanonical('create_media_buy', first);
+      expectCanonical('create_media_buy', second);
+      const synced = await sync(TOKEN_ORDER, [image('order_creative', product('rect'), 300, 250)]);
+      expect(synced.errors, JSON.stringify(synced).slice(0, 800)).toBeUndefined();
+      for (const buy of [first, second]) {
+        const assigned = await sync(TOKEN_ORDER, [], {
+          assignment_operations: [{ operation: 'assign', creative_id: 'order_creative', package_id: buy.packages[0].package_id }],
+        });
+        expect(assigned.errors, JSON.stringify(assigned).slice(0, 800)).toBeUndefined();
+      }
+    });
+  });
 });
