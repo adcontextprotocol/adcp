@@ -9,6 +9,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
+import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../../src/training-agent/candidate-version.js';
 
 vi.hoisted(() => {
@@ -73,33 +74,95 @@ async function listToolNames(url: string, version?: string): Promise<string[]> {
   return (res.result?.tools ?? []).map((tool: { name: string }) => tool.name);
 }
 
-async function lifecycleToolsDeclared(url: string, version: string): Promise<string[] | undefined> {
+async function capabilities(url: string, args: Record<string, unknown>): Promise<any> {
   await initialize(url);
   const res = await rpc(url, {
     id: 3, method: 'tools/call',
-    params: { name: 'get_adcp_capabilities', arguments: { adcp_version: version, adcp_major_version: 3 } },
+    params: { name: 'get_adcp_capabilities', arguments: args },
   });
-  const media = res.result?.structuredContent?.media_buy;
-  expect(res.result?.structuredContent?.adcp_version, `${url} @ ${version}`).toBe(version);
+  return res.result?.structuredContent;
+}
+
+async function lifecycleToolsDeclared(url: string, version: string): Promise<string[] | undefined> {
+  const structured = await capabilities(url, { adcp_version: version, adcp_major_version: 3 });
+  expect(structured?.adcp_version, `${url} @ ${version}`).toBe(version);
+  const media = structured?.media_buy;
+  // proposal_refinement describes refine_proposals, so the schema requires it declared.
+  if (media?.proposal_refinement !== undefined) expect(media.lifecycle_tools).toContain('refine_proposals');
   return media?.lifecycle_tools;
 }
 
 describe('media_buy.lifecycle_tools matches the served tools (#8981)', () => {
   let server: http.Server;
   let baseUrl: string;
+  let compatServer: http.Server;
+  let compatBaseUrl: string;
 
-  beforeAll(async () => {
+  async function boot(router: express.Router): Promise<{ server: http.Server; baseUrl: string }> {
     const app = express();
     app.use(express.json());
-    app.use('/api/training-agent', createTrainingAgentRouter());
-    server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
-    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  });
+    app.use('/api/training-agent', router);
+    const listening = http.createServer(app);
+    await new Promise<void>(resolve => listening.listen(0, '127.0.0.1', () => resolve()));
+    return { server: listening, baseUrl: `http://127.0.0.1:${(listening.address() as AddressInfo).port}` };
+  }
+
+  beforeAll(async () => {
+    ({ server, baseUrl } = await boot(createTrainingAgentRouter()));
+    ({ server: compatServer, baseUrl: compatBaseUrl } = await boot(
+      createTrainingAgentRouter({ storyboardCompat: { version: '3.0' } }),
+    ));
+  }, 60_000);
 
   afterAll(async () => {
     stopSessionCleanup();
     await new Promise<void>(resolve => server.close(() => resolve()));
+    await new Promise<void>(resolve => compatServer.close(() => resolve()));
+  });
+
+  // Under the 3.0 compat router tools/list hides the proposal tools but keeps
+  // buy_products, accept_proposal and control_media_buy, while a 3.2+ pin (or
+  // a bare major) still resolves above 3.0. The declaration must follow the
+  // hidden tools and stay schema-valid (proposal_refinement needs
+  // refine_proposals).
+  describe('legacy /mcp under the 3.0 storyboard-compat router', () => {
+    const CASES: Array<[string, Record<string, unknown>]> = [
+      ['adcp_major_version only', { adcp_major_version: 3 }],
+      ['adcp_version 3.2', { adcp_version: '3.2', adcp_major_version: 3 }],
+      ['adcp_version 3.2-rc.7', { adcp_version: '3.2-rc.7', adcp_major_version: 3 }],
+      ...(PREVIEW ? [[`preview pin ${PREVIEW}`, { adcp_version: PREVIEW, adcp_major_version: 3 }] as [string, Record<string, unknown>]] : []),
+    ];
+
+    it.each(CASES)('declares only served tools and a schema-valid response: %s', async (_label, args) => {
+      const url = `${compatBaseUrl}/api/training-agent/mcp`;
+      const served = await listToolNames(url);
+      // The compat context really hides the proposal tools but keeps the compact ones.
+      expect(served).not.toContain('refine_proposals');
+      expect(served).toEqual(expect.arrayContaining(['buy_products', 'accept_proposal', 'control_media_buy']));
+
+      const structured = await capabilities(url, args);
+      const resolved = structured?.adcp_version as string;
+      // (a) the request resolves to 3.2 or later, where lifecycle_tools exists.
+      expect(resolved).toMatch(/^3\.([2-9]|\d{2,})/);
+
+      // (b) lifecycle_tools is the served subset of the resolved release's enum.
+      const vocabulary = servedReleaseEnum(CAPABILITIES, resolved, LIFECYCLE_ITEMS)!;
+      expect(vocabulary).not.toBeNull();
+      const expected = served.filter(name => vocabulary.has(name));
+      expect(expected.length).toBeGreaterThan(0);
+      const media = structured.media_buy;
+      expect([...(media.lifecycle_tools ?? [])].sort()).toEqual([...expected].sort());
+
+      // (c) proposal_refinement only accompanies a refine_proposals declaration.
+      expect(media.lifecycle_tools).not.toContain('refine_proposals');
+      expect(media.proposal_refinement).toBeUndefined();
+
+      // (d) the whole response validates against the resolved release's bundle.
+      const validate = getCanonicalToolValidator('get_adcp_capabilities', 'sync', { adcpVersion: resolved });
+      expect(validate, `no validator for ${resolved}`).toBeTruthy();
+      validate!(structured);
+      expect(validate!.errors ?? []).toEqual([]);
+    });
   });
 
   describe.each(SERVING_ROUTES)('$name', ({ path }) => {

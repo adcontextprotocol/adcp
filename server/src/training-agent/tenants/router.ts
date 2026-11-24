@@ -1431,7 +1431,7 @@ function projectTenantCapabilities(
         },
         ...(supportsGetProductsRejected(servedVersion) && {
           // Exactly the compact lifecycle tools this route lists (adcp#8981).
-          ...(lifecycleTools.length > 0 && { lifecycle_tools: lifecycleTools }),
+          lifecycle_tools: lifecycleTools,
           // Flexible-window availability discovery: the platform parses
           // offer_filters.availability_horizon and answers with
           // time-dimensioned forecast points (see handleGetProductsUnlocked).
@@ -1498,8 +1498,12 @@ function projectTenantCapabilities(
           experimentalFeatures.push(REPORTING_SUBSCRIPTIONS_FEATURE);
         }
       }
-      if (!supportsGetProductsRejected(servedVersion)) {
+      if (!supportsGetProductsRejected(servedVersion) || lifecycleTools.length === 0) {
         delete structured.media_buy.lifecycle_tools;
+      }
+      // proposal_refinement describes refine_proposals, so the schema requires
+      // that tool among the declared lifecycle tools.
+      if (!(structured.media_buy.lifecycle_tools as string[] | undefined)?.includes('refine_proposals')) {
         delete structured.media_buy.proposal_refinement;
       }
       const creative = structured.creative && typeof structured.creative === 'object'

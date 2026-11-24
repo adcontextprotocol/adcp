@@ -21444,7 +21444,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       }),
       ...(supportsGetProductsRejected(servedAdcpVersion) && lifecycleTools.length > 0 && {
         lifecycle_tools: lifecycleTools,
-        proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
+        // Describes refine_proposals, so the schema requires that tool declared.
+        ...(lifecycleTools.includes('refine_proposals') && {
+          proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
+        }),
       }),
       supports_proposals: true,
       // Flexible-window availability discovery: parses
