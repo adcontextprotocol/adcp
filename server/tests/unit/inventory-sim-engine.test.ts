@@ -557,3 +557,102 @@ describe('installments', () => {
     expect(actualOn('2027-01-23')).toBeGreaterThan(0);
   });
 });
+
+describe('injected delivery (#9151)', () => {
+  const now = at('2026-12-31T12:00:00Z');
+  const flight = { flight_start_ms: at('2027-01-01T00:00:00Z'), flight_end_ms: at('2027-01-31T00:00:00Z') };
+  const metrics = (overrides: Partial<Record<'impressions' | 'spend' | 'clicks' | 'viewable_impressions' | 'completed_views' | 'conversions', number>> = {}) => ({
+    impressions: 1000, spend: 10, clicks: 5, viewable_impressions: 0, completed_views: 0, conversions: 2, ...overrides,
+  });
+  const laggedSeed = () => {
+    const seed = scarceSeed();
+    seed.placements = seed.placements.map(placement => ({ ...placement, reporting_lag_days: 2 }));
+    return seed;
+  };
+  const goal = (sim: InventorySimulation) =>
+    sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 10_000, impression_goal: 100_000 }, now);
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+
+  it('records a simulated, cell-less day on the date nowMs falls on and adds it to delivered', () => {
+    const sim = InventorySimulation.create(scarceSeed(), now);
+    goal(sim);
+    const day = sim.injectDelivery('g', metrics(), at('2027-01-03T15:00:00Z'));
+    expect(day).toMatchObject({ date: '2027-01-03', impressions: 1000, spend: 10, clicks: 5, conversions: 2, cells: [], simulated: true });
+    const booking = sim.booking('g');
+    // Days 2027-01-01 and -02 were served as the clock moved to the 3rd.
+    const injected = booking.days.filter(record => record.simulated);
+    expect(injected).toHaveLength(1);
+    const served = booking.days.filter(record => !record.simulated);
+    expect(booking.delivered.impressions).toBe(served.reduce((sum, record) => sum + record.impressions, 0) + 1000);
+    expect(booking.delivered.clicks).toBe(served.reduce((sum, record) => sum + record.clicks, 0) + 5);
+  });
+
+  it('reports a simulated day at once, past the reporting lag', () => {
+    const at3 = at('2027-01-03T12:00:00Z');
+    const sim = InventorySimulation.create(laggedSeed(), now);
+    goal(sim);
+    sim.advanceTo(at3);
+    expect(sim.delivery('g', at3).days).toHaveLength(0);
+    sim.injectDelivery('g', metrics(), at3);
+    const report = sim.delivery('g', at3);
+    expect(report.days).toHaveLength(1);
+    expect(report.days[0]).toMatchObject({ simulated: true, impressions: 1000 });
+    expect(report.totals.impressions).toBe(1000);
+    expect(report.totals.spend).toBe(10);
+  });
+
+  it('leaves the pacing reference to the last served reported day', () => {
+    const later = at('2027-01-05T12:00:00Z');
+    const plain = InventorySimulation.create(laggedSeed(), now);
+    const injected = InventorySimulation.create(laggedSeed(), now);
+    goal(plain);
+    goal(injected);
+    injected.injectDelivery('g', metrics({ impressions: 40_000, spend: 400 }), later);
+    const without = plain.delivery('g', later);
+    const withInjection = injected.delivery('g', later);
+    expect(without.reported_through_day).toBeDefined();
+    expect(withInjection.reported_through_day).toBe(without.reported_through_day);
+    expect(withInjection.expected_impressions).toBe(without.expected_impressions);
+    expect(withInjection.totals.impressions).toBe(without.totals.impressions + 40_000);
+  });
+
+  it('reports no pacing reference when only simulated days are reported', () => {
+    const early = at('2027-01-02T12:00:00Z');
+    const sim = InventorySimulation.create(laggedSeed(), now);
+    goal(sim);
+    sim.injectDelivery('g', metrics(), early);
+    const report = sim.delivery('g', early);
+    expect(report.days).toHaveLength(1);
+    expect(report.reported_through_day).toBeUndefined();
+    expect(report.expected_impressions).toBeUndefined();
+  });
+
+  it('keeps the next served day exact: spend stays the change in rounded cumulative spend', () => {
+    const sim = InventorySimulation.create(scarceSeed(), now);
+    goal(sim);
+    sim.injectDelivery('g', metrics({ impressions: 123, spend: 1234.567 }), at('2027-01-03T12:00:00Z'));
+    sim.advanceTo(at('2027-01-31T00:00:00Z'));
+    const booking = sim.booking('g');
+    const served = booking.days.filter(record => !record.simulated).reduce((sum, record) => sum + record.impressions, 0);
+    // Served impressions cost $10 CPM, on top of the injected (rounded) spend.
+    expect(booking.delivered.spend).toBe(round2(1234.57 + (served * 10) / 1000));
+    expect(round2(booking.days.reduce((sum, record) => sum + record.spend, 0))).toBe(booking.delivered.spend);
+  });
+
+  it('refuses a canceled booking and negative or non-finite metrics', () => {
+    const sim = InventorySimulation.create(scarceSeed(), now);
+    goal(sim);
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expectEngineError(() => sim.injectDelivery('g', metrics({ impressions: bad }), now), 'INVALID_BOOKING');
+    }
+    expectEngineError(() => sim.injectDelivery('g', metrics({ spend: -0.01 }), now), 'INVALID_BOOKING');
+    expect(sim.booking('g').days).toHaveLength(0);
+    sim.update('g', { status: 'canceled' }, now);
+    expectEngineError(() => sim.injectDelivery('g', metrics(), now), 'INVALID_BOOKING');
+  });
+
+  it('refuses an unknown booking', () => {
+    const sim = InventorySimulation.create(scarceSeed(), now);
+    expectEngineError(() => sim.injectDelivery('nope', metrics(), now), 'BOOKING_NOT_FOUND');
+  });
+});

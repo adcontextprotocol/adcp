@@ -1183,4 +1183,362 @@ describe('inventory tenants', () => {
       });
     });
   });
+
+  describe('simulated delivery (#9151)', () => {
+    const tenant = 'inventory-adserver';
+    const SIM_TOKEN = 'demo-inventory-simulate-v1';
+    const flight = { start_time: '2027-01-01T00:00:00Z', end_time: '2027-01-31T00:00:00Z' };
+    const controller = (scenario: string, params: Record<string, unknown>, token = SIM_TOKEN) =>
+      call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, token);
+    const advance = async (params: Record<string, unknown>) => {
+      const moved = await controller('sandbox_clock', { operation: 'advance_time', ...params });
+      expect(moved.success, JSON.stringify(moved).slice(0, 500)).toBe(true);
+    };
+    let n = 0;
+    const book = async (packages: Array<Record<string, unknown>>) => {
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: `inventory-simulate-buy-${String(++n).padStart(8, '0')}`, account: ACCOUNT, brand: BRAND, ...flight, packages,
+      }, SIM_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      return buy;
+    };
+    const twoPackages = () => book([
+      { product_id: 'sports_hero_guaranteed', pricing_option_id: 'sports_hero_guaranteed_cpm', budget: 3000, impressions: 5000 },
+      { product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 2500 },
+    ]);
+    const delivery = async (...ids: string[]) => {
+      const result = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: ids }, SIM_TOKEN);
+      expectCanonical('get_media_buy_delivery', result);
+      return result.media_buy_deliveries as Structured[];
+    };
+
+    beforeAll(async () => {
+      await provision(SIM_TOKEN);
+      await advance({ to: '2026-12-31T12:00:00Z' });
+    });
+
+    it('lists simulate_delivery and simulate_budget_spend in list_scenarios and the capabilities', async () => {
+      const listed = await controller('list_scenarios', {});
+      expect(listed.scenarios).toEqual(expect.arrayContaining(['simulate_delivery', 'simulate_budget_spend']));
+      const capabilities = await call(tenant, 'get_adcp_capabilities', {}, SIM_TOKEN);
+      expect(capabilities.compliance_testing.scenarios).toEqual(expect.arrayContaining(['simulate_delivery', 'simulate_budget_spend']));
+    });
+
+    it('splits delivery across the live packages by budget, exactly, and reports it at once', async () => {
+      const buy = await twoPackages();
+      const [hero, ros] = buy.packages.map((pkg: Structured) => pkg.package_id);
+      const result = await controller('simulate_delivery', {
+        media_buy_id: buy.media_buy_id, impressions: 1001, clicks: 11, conversions: 3, reported_spend: { amount: 100.01, currency: 'USD' },
+      });
+      expect(result.success, JSON.stringify(result).slice(0, 500)).toBe(true);
+      expect(result.simulated).toMatchObject({ impressions: 1001, clicks: 11, conversions: 3, reported_spend: { amount: 100.01, currency: 'USD' } });
+      expect(result.cumulative).toMatchObject({ impressions: 1001, reported_spend: { amount: 100.01, currency: 'USD' } });
+
+      const [row] = await delivery(buy.media_buy_id);
+      const byPackage = Object.fromEntries(row.by_package.map((entry: Structured) => [entry.package_id, entry]));
+      // 3000:1000, so 750.75 and 250.25; the largest remainder takes the odd one.
+      expect(byPackage[hero].impressions).toBe(751);
+      expect(byPackage[ros].impressions).toBe(250);
+      expect(byPackage[hero].spend).toBe(75.01);
+      expect(byPackage[ros].spend).toBe(25);
+      expect(row.totals.impressions).toBe(1001);
+      expect(row.totals.spend).toBe(100.01);
+      expect(row.totals.clicks).toBe(11);
+      expect(row.totals.conversions).toBe(3);
+
+      // A second call adds to what is there.
+      const again = await controller('simulate_delivery', { media_buy_id: buy.media_buy_id, impressions: 1000, reported_spend: { amount: 20, currency: 'USD' } });
+      expect(again.cumulative).toMatchObject({ impressions: 2001, reported_spend: { amount: 120.01, currency: 'USD' } });
+      expect((await delivery(buy.media_buy_id))[0].totals.impressions).toBe(2001);
+    });
+
+    it('prices impressions at each package rate when no reported_spend is given', async () => {
+      const buy = await twoPackages();
+      const result = await controller('simulate_delivery', { media_buy_id: buy.media_buy_id, impressions: 4000 });
+      expect(result.success, JSON.stringify(result).slice(0, 500)).toBe(true);
+      const [row] = await delivery(buy.media_buy_id);
+      for (const entry of row.by_package) {
+        expect(entry.spend).toBeCloseTo((entry.impressions * entry.rate) / 1000, 2);
+      }
+      expect(row.totals.spend).toBeCloseTo(row.by_package.reduce((sum: number, entry: Structured) => sum + entry.spend, 0), 2);
+    });
+
+    it('marks delivery final on the row and each package, and leaves provisional rows without finalized_at', async () => {
+      const buy = await twoPackages();
+      const id = buy.media_buy_id;
+      await controller('simulate_delivery', { media_buy_id: id, impressions: 1000 });
+      const [untouched] = await delivery(id);
+      expect(untouched.is_final).toBeUndefined();
+      expect(untouched.by_package[0].is_final).toBeUndefined();
+
+      const provisional = await controller('simulate_delivery', { media_buy_id: id, impressions: 10, is_final: false, measurement_window: 'c7' });
+      expect(provisional.success, JSON.stringify(provisional).slice(0, 500)).toBe(true);
+      const [open] = await delivery(id);
+      expect(open.is_final).toBe(false);
+      expect(open.finalized_at).toBeUndefined();
+      for (const entry of open.by_package) {
+        expect(entry.is_final).toBe(false);
+        expect(entry.finalized_at).toBeUndefined();
+        expect(entry.measurement_window).toBe('c7');
+      }
+
+      const final = await controller('simulate_delivery', { media_buy_id: id, impressions: 10, is_final: true });
+      expect(final.success).toBe(true);
+      const [closed] = await delivery(id);
+      expect(closed.is_final).toBe(true);
+      expect(Number.isFinite(Date.parse(closed.finalized_at))).toBe(true);
+      for (const entry of closed.by_package) {
+        expect(entry).toMatchObject({ is_final: true, finalized_at: closed.finalized_at, measurement_window: 'c7' });
+      }
+    });
+
+    it('takes finalized_at as final, and refuses it together with is_final false', async () => {
+      const buy = await twoPackages();
+      const id = buy.media_buy_id;
+      const finalizedAt = '2026-12-31T06:00:00Z';
+      const result = await controller('simulate_delivery', { media_buy_id: id, impressions: 10, finalized_at: finalizedAt });
+      expect(result.success, JSON.stringify(result).slice(0, 500)).toBe(true);
+      const [row] = await delivery(id);
+      expect(row.is_final).toBe(true);
+      expect(Date.parse(row.finalized_at)).toBe(Date.parse(finalizedAt));
+
+      const conflict = await controller('simulate_delivery', { media_buy_id: id, impressions: 10, finalized_at: finalizedAt, is_final: false });
+      expect(conflict.success).toBe(false);
+      expect(conflict.error).toBe('INVALID_PARAMS');
+    });
+
+    it('refuses a currency mismatch, an unknown buy and a canceled buy', async () => {
+      const buy = await twoPackages();
+      const mismatch = await controller('simulate_delivery', { media_buy_id: buy.media_buy_id, impressions: 10, reported_spend: { amount: 5, currency: 'EUR' } });
+      expect(mismatch.success).toBe(false);
+      expect(mismatch.error).toBe('INVALID_PARAMS');
+      expect((await delivery(buy.media_buy_id))[0].totals.impressions).toBe(0);
+
+      const unknown = await controller('simulate_delivery', { media_buy_id: 'mb_does_not_exist', impressions: 10 });
+      expect(unknown.success).toBe(false);
+      expect(unknown.error).toBe('NOT_FOUND');
+
+      const canceled = await call(tenant, 'update_media_buy', {
+        idempotency_key: `inventory-simulate-cancel-${String(++n).padStart(8, '0')}`, account: ACCOUNT, media_buy_id: buy.media_buy_id, canceled: true,
+      }, SIM_TOKEN);
+      expect(canceled.media_buy_status).toBe('canceled');
+      const refused = await controller('simulate_delivery', { media_buy_id: buy.media_buy_id, impressions: 10 });
+      expect(refused.success).toBe(false);
+      expect(refused.error).toBe('INVALID_STATE');
+    });
+
+    it('brings spend to exactly 95 then 100 percent of budget, and never lowers it', async () => {
+      const buy = await twoPackages();
+      const id = buy.media_buy_id;
+      const spent = async () => {
+        const [row] = await delivery(id);
+        return Object.fromEntries(row.by_package.map((entry: Structured) => [entry.package_id, entry.spend]));
+      };
+      const [hero, ros] = buy.packages.map((pkg: Structured) => pkg.package_id);
+
+      const at95 = await controller('simulate_budget_spend', { media_buy_id: id, spend_percentage: 95 });
+      expect(at95.success, JSON.stringify(at95).slice(0, 500)).toBe(true);
+      expect(at95.simulated).toMatchObject({ spend_percentage: 95, computed_spend: { amount: 3800, currency: 'USD' }, budget: { amount: 4000, currency: 'USD' } });
+      expect(await spent()).toEqual({ [hero]: 2850, [ros]: 950 });
+
+      const at100 = await controller('simulate_budget_spend', { media_buy_id: id, spend_percentage: 100 });
+      expect(at100.success).toBe(true);
+      expect(await spent()).toEqual({ [hero]: 3000, [ros]: 1000 });
+
+      const lower = await controller('simulate_budget_spend', { media_buy_id: id, spend_percentage: 50 });
+      expect(lower.success).toBe(true);
+      expect(await spent()).toEqual({ [hero]: 3000, [ros]: 1000 });
+      const [row] = await delivery(id);
+      const impressions = row.totals.impressions;
+      await controller('simulate_budget_spend', { media_buy_id: id, spend_percentage: 10 });
+      expect((await delivery(id))[0].totals.impressions).toBe(impressions);
+    });
+
+    it('refuses a spend_percentage outside 0 to 100', async () => {
+      const buy = await twoPackages();
+      for (const spend_percentage of [-1, 100.5, 101]) {
+        const result = await controller('simulate_budget_spend', { media_buy_id: buy.media_buy_id, spend_percentage });
+        expect(result.success, String(spend_percentage)).toBe(false);
+        expect(result.error).toBe('INVALID_PARAMS');
+      }
+      expect((await delivery(buy.media_buy_id))[0].totals.spend).toBe(0);
+    });
+
+    it('spends every live buy on an account when given account_id', async () => {
+      const first = await twoPackages();
+      const second = await book([{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 500, impressions: 1000 }]);
+      // A natural-key account resolves to a synthetic id on the brand domain.
+      const result = await controller('simulate_budget_spend', { account_id: `synthetic_${BRAND.domain}`, spend_percentage: 100 });
+      expect(result.success, JSON.stringify(result).slice(0, 500)).toBe(true);
+      const rows = await delivery(first.media_buy_id, second.media_buy_id);
+      expect(rows.map(row => row.totals.spend)).toEqual([4000, 500]);
+    });
+
+    it('never pushes an auction package past its budget as the clock advances after an injection', async () => {
+      const buy = await book([{ product_id: 'preroll_auction', pricing_option_id: 'preroll_auction_cpm', budget: 1000, bid_price: 10 }]);
+      const id = buy.media_buy_id;
+      const injected = await controller('simulate_budget_spend', { media_buy_id: id, spend_percentage: 60 });
+      expect(injected.success, JSON.stringify(injected).slice(0, 500)).toBe(true);
+      await advance({ to: '2027-02-05T12:00:00Z' });
+      const [row] = await delivery(id);
+      expect(row.totals.spend).toBeGreaterThanOrEqual(600);
+      expect(row.totals.spend).toBeLessThanOrEqual(1000);
+      for (const entry of row.by_package) expect(entry.spend).toBeLessThanOrEqual(1000);
+      // Spend is the change in rounded cumulative spend, so the days add up to the total.
+      const days = row.daily_breakdown.reduce((sum: number, day: Structured) => sum + day.spend, 0);
+      expect(days).toBeCloseTo(row.totals.spend, 2);
+    });
+
+    it('discards simulated delivery with the market on reset_state', async () => {
+      const RESET_TOKEN = 'demo-inventory-simulate-reset-v1';
+      await provision(RESET_TOKEN);
+      const run = (scenario: string, params: Record<string, unknown>) =>
+        call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, RESET_TOKEN);
+      expect((await run('sandbox_clock', { operation: 'advance_time', to: '2026-12-31T12:00:00Z' })).success).toBe(true);
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-simulate-reset-buy-001', account: ACCOUNT, brand: BRAND, ...flight,
+        packages: [{ product_id: 'ros_display_guaranteed', pricing_option_id: 'ros_display_guaranteed_cpm', budget: 1000, impressions: 50_000 }],
+      }, RESET_TOKEN);
+      expect((await run('simulate_delivery', { media_buy_id: buy.media_buy_id, impressions: 500 })).success).toBe(true);
+      const reported = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [buy.media_buy_id] }, RESET_TOKEN);
+      expect(reported.media_buy_deliveries[0].totals.impressions).toBe(500);
+
+      expect((await run('reset_state', {})).success).toBe(true);
+      expect((await call(tenant, 'get_media_buys', { account: ACCOUNT }, RESET_TOKEN)).media_buys).toHaveLength(0);
+      expect((await run('simulate_delivery', { media_buy_id: buy.media_buy_id, impressions: 500 })).error).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('seeded format options (#9152)', () => {
+    const FORMAT_TOKEN = 'demo-inventory-seeded-formats-v1';
+    const PLAIN_TOKEN = 'demo-inventory-seeded-formats-plain-v1';
+    const formatId = (id: string) => ({ agent_url: getAgentUrl(), id });
+    const CTAS = ['SHOP_NOW', 'LEARN_MORE'];
+    const fixture = {
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      name: 'Seeded feed and carousel',
+      format_options: [
+        { format_option_id: 'seeded_carousel', format_kind: 'image_carousel', params: { cta_values: CTAS } },
+        { format_option_id: 'seeded_native', format_kind: 'native_in_feed', params: { title_max_chars: 20, cta_values: CTAS } },
+        { format_option_id: 'seeded_rect', format_kind: 'image', params: { width: 300, height: 250 } },
+        { format_option_id: 'seeded_pub_carousel', format_kind: 'image_carousel', publisher_domain: 'pub.example', params: {} },
+      ],
+    };
+    const controller = (tenant: string, scenario: string, params: Record<string, unknown>, token = FORMAT_TOKEN) =>
+      call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, token);
+    let key = 0;
+    const sync = (tenant: string, creatives: Structured[], token = FORMAT_TOKEN, extra: Record<string, unknown> = {}) =>
+      call(tenant, 'sync_creatives', { idempotency_key: `inventory-seeded-formats-${String(++key).padStart(8, '0')}`, account: ACCOUNT, creatives, ...extra }, token);
+    const carousel = (id: string, ctas: string[], option = 'seeded_carousel') => ({
+      creative_id: id, name: id, format_kind: 'image_carousel', format_option_ref: { scope: 'product', format_option_id: option },
+      assets: {
+        cards: ctas.map((cta, index) => ({
+          asset_type: 'card', headline: `Card ${index + 1}`, cta,
+          media: { asset_type: 'image', url: `https://cdn.inventory-buyer.example/${id}-${index}.jpg`, width: 1080, height: 1080 },
+        })),
+      },
+    });
+    const native = (id: string, title = 'Short title') => ({
+      creative_id: id, name: id, format_kind: 'native_in_feed', format_option_ref: { scope: 'product', format_option_id: 'seeded_native' },
+      assets: {
+        title: { asset_type: 'text', content: title },
+        cta: { asset_type: 'text', content: 'SHOP_NOW' },
+        landing_page_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+      },
+    });
+    const image300 = (id: string) => ({
+      creative_id: id, name: id, format_kind: 'image',
+      assets: {
+        image: { asset_type: 'image', url: `https://cdn.inventory-buyer.example/${id}.png`, width: 300, height: 250 },
+        click_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+      },
+    });
+
+    beforeAll(async () => {
+      await provision(FORMAT_TOKEN);
+      await provision(PLAIN_TOKEN);
+      for (const tenant of ['inventory-adserver', 'inventory-content']) {
+        const seeded = await controller(tenant, 'seed_product', { product_id: 'seeded_formats', fixture });
+        expect(seeded.success, JSON.stringify(seeded).slice(0, 500)).toBe(true);
+        expect((await controller(tenant, 'seed_pricing_option', {
+          product_id: 'seeded_formats', pricing_option_id: 'cpm_formats', fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 4 },
+        })).success).toBe(true);
+      }
+    });
+
+    it('refuses a carousel card cta outside cta_values, naming the field and the allowed values', async () => {
+      const result = await sync('inventory-adserver', [carousel('carousel_bad', ['SHOP_NOW', 'SHOP_NOW', 'BUY_ME'])]);
+      const error = result.errors?.[0] ?? result.adcp_error;
+      expect(error, JSON.stringify(result).slice(0, 800)).toMatchObject({ code: 'CREATIVE_VALUE_NOT_ALLOWED', field: 'creatives[0].assets.cards[2].cta' });
+      expect(error.details.allowed_values).toEqual(CTAS);
+    });
+
+    it('accepts a carousel with declared ctas and lists it by format_kind and format_option_ref', async () => {
+      const result = await sync('inventory-adserver', [carousel('carousel_good', ['SHOP_NOW', 'LEARN_MORE'])]);
+      expect(result.errors, JSON.stringify(result).slice(0, 800)).toBeUndefined();
+      expect(result.creatives[0]).toMatchObject({ creative_id: 'carousel_good', action: 'created' });
+      const listed = await call('inventory-adserver', 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['carousel_good'] } }, FORMAT_TOKEN);
+      expectCanonical('list_creatives', listed);
+      expect(listed.creatives[0]).toMatchObject({ format_kind: 'image_carousel', format_option_ref: { scope: 'product', format_option_id: 'seeded_carousel' } });
+      expect(listed.creatives[0].format_id).toBeUndefined();
+    });
+
+    it('lists a publisher-catalog option with scope publisher', async () => {
+      const ref = { scope: 'publisher', publisher_domain: 'pub.example', format_option_id: 'seeded_pub_carousel' };
+      const creative = { ...carousel('carousel_pub', ['ANYTHING']), format_option_ref: ref };
+      const result = await sync('inventory-adserver', [creative]);
+      expect(result.errors, JSON.stringify(result).slice(0, 800)).toBeUndefined();
+      const listed = await call('inventory-adserver', 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['carousel_pub'] } }, FORMAT_TOKEN);
+      expect(listed.creatives[0].format_option_ref).toEqual(ref);
+    });
+
+    it('holds a native creative to the declared params, and accepts a conforming one on both tenants', async () => {
+      for (const tenant of ['inventory-adserver', 'inventory-content']) {
+        const ok = await sync(tenant, [native('native_ok')]);
+        expect(ok.errors, `${tenant}: ${JSON.stringify(ok).slice(0, 800)}`).toBeUndefined();
+        expect(ok.creatives[0]).toMatchObject({ creative_id: 'native_ok', action: 'created' });
+        const listed = await call(tenant, 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['native_ok'] } }, FORMAT_TOKEN);
+        expect(listed.creatives[0]).toMatchObject({ format_kind: 'native_in_feed', format_option_ref: { scope: 'product', format_option_id: 'seeded_native' } });
+
+        const long = await sync(tenant, [native('native_long', 'A title well over twenty characters')]);
+        expect((long.errors?.[0] ?? long.adcp_error)?.field, tenant).toBe('creatives[0].assets.title.content');
+      }
+    });
+
+    it('lets a creative in a seeded option be assigned to the seeded product package', async () => {
+      const tenant = 'inventory-adserver';
+      const buy = await call(tenant, 'create_media_buy', {
+        idempotency_key: 'inventory-seeded-formats-buy-001', account: ACCOUNT, brand: BRAND,
+        start_time: '2027-02-01T00:00:00Z', end_time: '2027-02-28T00:00:00Z',
+        packages: [{ product_id: 'seeded_formats', pricing_option_id: 'cpm_formats', budget: 1000, bid_price: 5 }],
+      }, FORMAT_TOKEN);
+      expectCanonical('create_media_buy', buy);
+      const result = await sync(tenant, [carousel('carousel_assigned', ['SHOP_NOW'])], FORMAT_TOKEN, {
+        assignment_operations: [{ operation: 'assign', creative_id: 'carousel_assigned', package_id: buy.packages[0].package_id }],
+      });
+      expect(result.errors, JSON.stringify(result).slice(0, 800)).toBeUndefined();
+      expect(result.creatives[0].assigned_to).toEqual([buy.packages[0].package_id]);
+    });
+
+    it('still refuses a format outside the season for a caller that seeded nothing', async () => {
+      const formatted = {
+        creative_id: 'audio_plain', name: 'audio', format_id: formatId('audio_spot'),
+        assets: { audio: { asset_type: 'audio', url: 'https://cdn.inventory-buyer.example/a.mp3' } },
+      };
+      const plain = await sync('inventory-adserver', [formatted], PLAIN_TOKEN);
+      expect(plain.errors[0]).toMatchObject({ code: 'FORMAT_NOT_SUPPORTED', field: 'creatives[0].format_id' });
+      const carouselPlain = await sync('inventory-adserver', [carousel('carousel_plain', ['SHOP_NOW'])], PLAIN_TOKEN);
+      expect((carouselPlain.errors?.[0] ?? carouselPlain.adcp_error)?.code).toBe('FORMAT_NOT_SUPPORTED');
+    });
+
+    it('keeps a plain 300x250 image on the season format even though a seeded option is also 300x250', async () => {
+      const result = await sync('inventory-adserver', [image300('rect_plain')]);
+      expect(result.errors, JSON.stringify(result).slice(0, 800)).toBeUndefined();
+      expect(result.creatives[0].action).toBe('created');
+      const listed = await call('inventory-adserver', 'list_creatives', { account: ACCOUNT, filters: { creative_ids: ['rect_plain'] } }, FORMAT_TOKEN);
+      expect(listed.creatives[0].format_id.id).toBe('display_300x250');
+      expect(listed.creatives[0].format_option_ref).toBeUndefined();
+    });
+  });
 });
