@@ -86,7 +86,7 @@ When the clock passes the end of a day, that day runs:
 
 1. **Bookings start.** A buy confirmed by the end of day N serves from day N+1, or from its flight start if that is later.
 2. **Actual traffic arrives.** It differs from the forecast by seeded noise and by the season's scripted events.
-3. **Guarantees are served first.** The takeover and the sponsorships take their share. Impression goals are then served by the high-water mark method. Each package's daily target is its remaining goal divided by its remaining days. The package with the least usable supply goes first, and each takes the same share of every impression it can use, never more than its target. A package that falls short spreads the shortfall over its remaining days.
+3. **Guarantees are served first.** The takeover and the sponsorships take their share. Impression goals are then served by the high-water mark method. Each package's daily target is what is left of its goal, in proportion to that day's share of its forecast traffic for the remaining days. The package with the least usable supply goes first, and each takes the same share of every impression it can use, never more than its target. A package that falls short catches up over its remaining days in proportion to their traffic, and the pace in delivery reports follows the same line.
 4. **The auction takes what is left.** The highest bid above the floor wins until each package's daily budget is spent.
 5. **Installments run.** Each one runs, is postponed or is cancelled, as the season says. One that runs builds its audience over its channel's curve: newsletter opens over 3 days, podcast listens over 30, video views over 6 weeks.
 
