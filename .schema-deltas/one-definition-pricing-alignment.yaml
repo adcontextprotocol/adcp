@@ -229,6 +229,14 @@ changes:
       pricing_model: cpa, currency: USD, event_type: purchase, fixed_price: 0} is valid at the base, invalid at the
       head, and valid again with the then properties removed. The tool's search finds no witness through the
       conditional.
+    witness:
+      root: /schemas/core/canonical-pricing-option.json
+      instance:
+        pricing_option_id: po_1
+        pricing_model: cpa
+        currency: USD
+        event_type: purchase
+        fixed_price: 0
   - location: core/canonical-pricing-option.json#/allOf/2/then/allOf/0
     keyword: if
     new:
@@ -245,6 +253,17 @@ changes:
       the revenue_share object of the next line (event_type purchase, with custom_event_name) is valid at the base,
       invalid at the head, and valid again with the if removed, since an else without its if has no effect. The tool's
       search finds no witness through the nested conditional.
+    witness:
+      root: /schemas/core/canonical-pricing-option.json
+      instance:
+        pricing_option_id: po_1
+        pricing_model: revenue_share
+        currency: USD
+        event_type: purchase
+        event_source_id: es_1
+        commission_rate: 0.04
+        commission_basis_description: Settled order value net of returns.
+        custom_event_name: loyalty_signup
   - location: core/canonical-pricing-option.json#/allOf/2/then/allOf/0
     keyword: else
     new:
@@ -269,6 +288,17 @@ changes:
       at the base, invalid at the head, and valid again with the else removed. The same object with pricing_model cpa,
       event_type purchase, fixed_price 5, and custom_event_name stays valid at the head. The tool's search finds no
       witness through the nested conditional.
+    witness:
+      root: /schemas/core/canonical-pricing-option.json
+      instance:
+        pricing_option_id: po_1
+        pricing_model: revenue_share
+        currency: USD
+        event_type: purchase
+        event_source_id: es_1
+        commission_rate: 0.04
+        commission_basis_description: Settled order value net of returns.
+        custom_event_name: loyalty_signup
   - location: core/canonical-pricing-option.json#/allOf/2/then/allOf/1
     keyword: not
     new:
@@ -293,3 +323,15 @@ changes:
       media-buy/product-purchase.json, and core/wholesale-feed-event.json reference: the revenue_share object above
       without custom_event_name and with price_guidance {p50: 1} is valid at the base, invalid at the head, and valid
       again with the not removed. The tool's search finds no witness through the conditional.
+    witness:
+      root: /schemas/core/canonical-pricing-option.json
+      instance:
+        pricing_option_id: po_1
+        pricing_model: revenue_share
+        currency: USD
+        event_type: purchase
+        event_source_id: es_1
+        commission_rate: 0.04
+        commission_basis_description: Settled order value net of returns.
+        price_guidance:
+          p50: 1

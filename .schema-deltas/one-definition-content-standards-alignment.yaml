@@ -89,315 +89,15 @@ changes:
     Same sites -> core/locale-tag.json. Correction under DR-0036: the fields are BCP 47 language tags in 3.2.12 (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/content-standards/content-standards.json#L38),
     and 3.2.12 publishes core/locale-tag.json with this pattern (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/locale-tag.json#L19).
     The lint does not see pattern. Witness: content-standards/content-standards.json /languages_any/0 = "-a" (tighten).
-- location: core/calibration-exemplars.json#/properties/fail
-  keyword: items
-  old:
-    required:
-    - artifact_id
-    - assets
-    - property_rid
+- location: core/calibration-exemplar.json#
+  keyword: oneOf
+  new:
+  - required:
+    - type
+    - value
     type:
     - object
-    properties:
-      artifact_id:
-        type:
-        - string
-      assets:
-        maxItems: 200
-        type:
-        - array
-        items:
-          discriminator:
-            propertyName: type
-          oneOf:
-          - $at: content-standards/artifact.json#/properties/assets/items/oneOf/0
-          - $at: content-standards/artifact.json#/properties/assets/items/oneOf/1
-          - $at: content-standards/artifact.json#/properties/assets/items/oneOf/2
-          - $at: content-standards/artifact.json#/properties/assets/items/oneOf/3
-      format_id:
-        required:
-        - agent_url
-        - id
-        type:
-        - object
-        dependencies:
-          height:
-          - width
-          pixel_ratio:
-          - height
-          - width
-          width:
-          - height
-        properties:
-          agent_url:
-            format: uri
-            type:
-            - string
-          duration_ms:
-            minimum: 1
-            type:
-            - number
-          height:
-            minimum: 1
-            type:
-            - integer
-          id:
-            pattern: ^[a-zA-Z0-9_-]+$
-            type:
-            - string
-          pixel_ratio:
-            exclusiveMinimum: 0
-            type:
-            - number
-          width:
-            minimum: 1
-            type:
-            - integer
-      format_kind:
-        enum:
-        - agent_placement
-        - audio_daast
-        - audio_hosted
-        - audio_vast
-        - coordinated_placements
-        - custom
-        - display_tag
-        - html5
-        - image
-        - image_carousel
-        - native_in_feed
-        - responsive_creative
-        - seller_rendered_stateful_display
-        - sponsored_placement
-        - video_hosted
-        - video_vast
-      identifiers:
-        type:
-        - object
-        properties:
-          apple_podcast_id:
-            type:
-            - string
-          podcast_guid:
-            type:
-            - string
-          rss_url:
-            format: uri
-            type:
-            - string
-          spotify_collection_id:
-            type:
-            - string
-          youtube_video_id:
-            type:
-            - string
-      last_update_time:
-        format: date-time
-        type:
-        - string
-      metadata:
-        type:
-        - object
-        properties:
-          author:
-            type:
-            - string
-          canonical:
-            format: uri
-            type:
-            - string
-          json_ld:
-            type:
-            - array
-            items:
-              $at: content-standards/artifact.json#/properties/metadata/properties/json_ld/items
-          keywords:
-            type:
-            - string
-          open_graph:
-            type:
-            - object
-          twitter_card:
-            type:
-            - object
-      property_rid:
-        type:
-        - string
-      provenance:
-        type:
-        - object
-        properties:
-          ai_tool:
-            required:
-            - name
-            type:
-            - object
-            properties:
-              name:
-                $at: core/provenance.json#/properties/ai_tool/properties/name
-              provider:
-                $at: core/provenance.json#/properties/ai_tool/properties/provider
-              version:
-                $at: core/provenance.json#/properties/ai_tool/properties/version
-          c2pa:
-            required:
-            - manifest_url
-            type:
-            - object
-            properties:
-              manifest_url:
-                $at: core/provenance.json#/properties/c2pa/properties/manifest_url
-          created_time:
-            format: date-time
-            type:
-            - string
-          declared_at:
-            format: date-time
-            type:
-            - string
-          declared_by:
-            required:
-            - role
-            type:
-            - object
-            properties:
-              agent_url:
-                $at: core/provenance.json#/properties/declared_by/properties/agent_url
-              role:
-                $at: core/provenance.json#/properties/declared_by/properties/role
-          digital_source_type:
-            enum:
-            - algorithmic_media
-            - composite_capture
-            - composite_synthetic
-            - composite_with_trained_algorithmic_media
-            - data_driven_media
-            - digital_capture
-            - digital_creation
-            - human_edits
-            - trained_algorithmic_media
-          disclosure:
-            required:
-            - required
-            type:
-            - object
-            properties:
-              jurisdictions:
-                $at: core/provenance.json#/properties/disclosure/properties/jurisdictions
-              required:
-                $at: core/provenance.json#/properties/disclosure/properties/required
-          embedded_provenance:
-            minItems: 1
-            type:
-            - array
-            items:
-              $at: core/provenance.json#/properties/embedded_provenance/items
-          ext:
-            type:
-            - object
-          human_oversight:
-            enum:
-            - directed
-            - edited
-            - none
-            - prompt_only
-            - selected
-          synthetic_depiction:
-            type:
-            - boolean
-          verification:
-            minItems: 1
-            type:
-            - array
-            items:
-              $at: core/provenance.json#/properties/verification/items
-          watermarks:
-            minItems: 1
-            type:
-            - array
-            items:
-              $at: core/provenance.json#/properties/watermarks/items
-      published_time:
-        format: date-time
-        type:
-        - string
-      url:
-        format: uri
-        type:
-        - string
-      variant_id:
-        type:
-        - string
-  direction: loosen
-  side: request
-  note: >-
-    The fail items union moves into core/calibration-exemplar.json, which the items reference: the same oneOf of a URL reference
-    and an artifact, so no payload changes verdict. core/evaluator-spec.json's exemplars compose core/calibration-exemplars.json
-    and keep their own artifact items, which mask the URL branch for them. The tool reads the moved union as a loosening at
-    the evaluator's composed items, where its own artifact items still apply. Checked by hand with Ajv: a URL-reference exemplar
-    in pass or fail is invalid for core/evaluator-spec.json#/oneOf/0/properties/exemplars at the base and at the head, and
-    valid for core/calibration-exemplars.json at both, so no payload changes verdict.
-- location: core/calibration-exemplars.json#
-  keyword: allOf
-  new:
-    items:
-      oneOf:
-      - required:
-        - type
-        - value
-        type:
-        - object
-        not:
-          $at: content-standards/artifact.json#
-        properties:
-          language:
-            $at: core/locale-tag.json#
-          type:
-            $at: core/calibration-url-reference.json#/properties/type
-          value:
-            $at: core/calibration-url-reference.json#/properties/value
-      - required:
-        - artifact_id
-        - assets
-        - property_rid
-        type:
-        - object
-        properties:
-          artifact_id:
-            $at: content-standards/artifact.json#/properties/artifact_id
-          assets:
-            $at: content-standards/artifact.json#/properties/assets
-          format_id:
-            $at: core/format-id.json#
-          format_kind:
-            $at: core/canonical-format-kind.json#
-          identifiers:
-            $at: content-standards/artifact.json#/properties/identifiers
-          last_update_time:
-            $at: content-standards/artifact.json#/properties/last_update_time
-          metadata:
-            $at: content-standards/artifact.json#/properties/metadata
-          property_rid:
-            $at: content-standards/artifact.json#/properties/property_rid
-          provenance:
-            $at: core/provenance.json#
-          published_time:
-            $at: content-standards/artifact.json#/properties/published_time
-          url:
-            $at: content-standards/artifact.json#/properties/url
-          variant_id:
-            $at: content-standards/artifact.json#/properties/variant_id
-  direction: none
-  side: request
-  note: >-
-    core/evaluator-spec.json#/oneOf/0/properties/exemplars now composes core/calibration-exemplars.json (allOf), whose pass
-    and fail items are core/calibration-exemplar.json, and keeps its own pass and fail items, {$ref: content-standards/artifact.json}.
-    Masked by those items: an artifact fails the composed URL branch, whose not excludes every artifact, and passes the artifact
-    branch, so the conjunction accepts exactly the artifacts the base accepts. This line changes no payload's verdict.
-- location: core/calibration-exemplars.json#
-  keyword: allOf
-  new:
-    items:
+    not:
       required:
       - artifact_id
       - assets
@@ -464,18 +164,15 @@ changes:
           - object
           properties:
             apple_podcast_id:
-              $at: >-
-                content-standards/artifact.json#/properties/identifiers/properties/apple_podcast_id
+              $at: content-standards/artifact.json#/properties/identifiers/properties/apple_podcast_id
             podcast_guid:
               $at: content-standards/artifact.json#/properties/identifiers/properties/podcast_guid
             rss_url:
               $at: content-standards/artifact.json#/properties/identifiers/properties/rss_url
             spotify_collection_id:
-              $at: >-
-                content-standards/artifact.json#/properties/identifiers/properties/spotify_collection_id
+              $at: content-standards/artifact.json#/properties/identifiers/properties/spotify_collection_id
             youtube_video_id:
-              $at: >-
-                content-standards/artifact.json#/properties/identifiers/properties/youtube_video_id
+              $at: content-standards/artifact.json#/properties/identifiers/properties/youtube_video_id
         last_update_time:
           format: date-time
           type:
@@ -540,17 +237,21 @@ changes:
         variant_id:
           type:
           - string
-  direction: none
-  side: request
-  note: >-
-    core/evaluator-spec.json#/oneOf/0/properties/exemplars now composes core/calibration-exemplars.json (allOf), whose pass
-    and fail items are core/calibration-exemplar.json, and keeps its own pass and fail items, {$ref: content-standards/artifact.json}.
-    Masked by those items: an artifact fails the composed URL branch, whose not excludes every artifact, and passes the artifact
-    branch, so the conjunction accepts exactly the artifacts the base accepts. This line changes no payload's verdict.
-- location: core/calibration-exemplars.json#/properties/pass
-  keyword: items
-  old:
-    required:
+    properties:
+      language:
+        maxLength: 63
+        minLength: 2
+        pattern: >-
+          ^(?:[a-z]{2,8}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*(?:-[0-9a-wy-z](?:-[a-z0-9]{2,8})+)*(?:-x(?:-[a-z0-9]{1,8})+)?|x(?:-[a-z0-9]{1,8})+)$
+        type:
+        - string
+      type:
+        const: url
+      value:
+        format: uri
+        type:
+        - string
+  - required:
     - artifact_id
     - assets
     - property_rid
@@ -786,10 +487,14 @@ changes:
       variant_id:
         type:
         - string
-  direction: loosen
+  direction: none
   side: request
   note: >-
-    As the fail line: the pass items union moves into core/calibration-exemplar.json, the same contract. The tool reads the
-    moved union as a loosening at the evaluator's composed items, where its own artifact items still apply. Checked by hand
-    with Ajv: a URL-reference exemplar in pass or fail is invalid for core/evaluator-spec.json#/oneOf/0/properties/exemplars
-    at the base and at the head, and valid for core/calibration-exemplars.json at both, so no payload changes verdict.
+    core/evaluator-spec.json#/oneOf/0/properties/exemplars composes core/calibration-exemplars.json, whose pass and fail
+    items are core/calibration-exemplar.json (a oneOf of a URL reference and an artifact), and keeps its own pass and
+    fail items, {$ref: content-standards/artifact.json}. The schema equivalence check conjoins the two items schemas, so
+    the union shows as added to the evaluator's items. Masked by the evaluator's own artifact items: an artifact fails
+    the URL branch, whose not excludes every artifact, and passes the artifact branch, so the conjunction accepts
+    exactly the artifacts the base accepts. Checked with Ajv at 3ca3c4ef89^ and 3ca3c4ef89: a URL-reference exemplar is
+    invalid in pass and fail at both, and an artifact, alone or with type and value, is valid at both. The witness
+    search finds no payload in either direction.

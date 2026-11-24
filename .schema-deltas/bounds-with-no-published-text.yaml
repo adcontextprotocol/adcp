@@ -13,6 +13,26 @@ changes:
     uses for one purpose, and every published palette sends one per role, so no conforming peer sends 17 or more. No earlier
     published text. Checked by hand with Ajv and ajv-formats: an array of 17 distinct hex colors (#000000 to #000010) is valid
     for core/color-value.json at the base and invalid at the head (more than 16 items); removing maxItems makes it valid again.
+  witness:
+    root: /schemas/core/color-value.json
+    instance:
+    - '#000000'
+    - '#000001'
+    - '#000002'
+    - '#000003'
+    - '#000004'
+    - '#000005'
+    - '#000006'
+    - '#000007'
+    - '#000008'
+    - '#000009'
+    - '#00000a'
+    - '#00000b'
+    - '#00000c'
+    - '#00000d'
+    - '#00000e'
+    - '#00000f'
+    - '#000010'
 - location: core/https-url.json#
   keyword: pattern
   new: ^https://
@@ -91,6 +111,44 @@ changes:
     caps at 10, and uniqueItems rejects repeats, so no conforming seller lists 11 or more. No earlier published text. Checked
     by hand: 11 distinct sha256 digests are valid at the base for #/properties/attestation_digests and invalid at the head
     (more than 10 items); removing maxItems makes them valid again.
+  witness:
+    root: /schemas/core/canonical-audience-evidence.json
+    instance:
+      evidence_id: a
+      snapshot_id: a
+      version: a
+      content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      audience:
+        dimension: age
+        value: 0
+      relationship: composition
+      value: 0
+      unit: fraction
+      baseline:
+        system: https://example.com/x
+        population_id: a
+        version: a
+      evidence_type: measured
+      methodology: observed
+      subject_type: individual
+      provider:
+        domain: a
+      measurement_window:
+        start: '2026-01-01'
+        end: '2026-01-01'
+      last_updated: '2026-01-01T00:00:00Z'
+      attestation_digests:
+      - sha256:0000000000000000000000000000000000000000000000000000000000000001
+      - sha256:0000000000000000000000000000000000000000000000000000000000000002
+      - sha256:0000000000000000000000000000000000000000000000000000000000000003
+      - sha256:0000000000000000000000000000000000000000000000000000000000000004
+      - sha256:0000000000000000000000000000000000000000000000000000000000000005
+      - sha256:0000000000000000000000000000000000000000000000000000000000000006
+      - sha256:0000000000000000000000000000000000000000000000000000000000000007
+      - sha256:0000000000000000000000000000000000000000000000000000000000000008
+      - sha256:0000000000000000000000000000000000000000000000000000000000000009
+      - sha256:000000000000000000000000000000000000000000000000000000000000000a
+      - sha256:000000000000000000000000000000000000000000000000000000000000000b
 - location: >-
     core/canonical-audience-evidence-selection.json#/properties/verified_attestation_digests
   keyword: maxItems
@@ -102,6 +160,26 @@ changes:
     caps at 10, and uniqueItems rejects repeats, so no conforming seller lists 11 or more. No earlier published text. Checked
     by hand: 11 distinct sha256 digests are valid at the base for #/properties/verified_attestation_digests and invalid at
     the head (more than 10 items); removing maxItems makes them valid again.
+  witness:
+    root: /schemas/core/canonical-audience-evidence-selection.json
+    instance:
+      evidence_id: a
+      snapshot_id: a
+      version: a
+      content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      decision_use: recommendation
+      verified_attestation_digests:
+      - sha256:0000000000000000000000000000000000000000000000000000000000000001
+      - sha256:0000000000000000000000000000000000000000000000000000000000000002
+      - sha256:0000000000000000000000000000000000000000000000000000000000000003
+      - sha256:0000000000000000000000000000000000000000000000000000000000000004
+      - sha256:0000000000000000000000000000000000000000000000000000000000000005
+      - sha256:0000000000000000000000000000000000000000000000000000000000000006
+      - sha256:0000000000000000000000000000000000000000000000000000000000000007
+      - sha256:0000000000000000000000000000000000000000000000000000000000000008
+      - sha256:0000000000000000000000000000000000000000000000000000000000000009
+      - sha256:000000000000000000000000000000000000000000000000000000000000000a
+      - sha256:000000000000000000000000000000000000000000000000000000000000000b
 - location: core/audience-id.json#
   keyword: minLength
   new: 1
