@@ -9,6 +9,7 @@
  * have no named format and are listed by format_kind and format_option_ref.
  */
 import { createHash } from 'node:crypto';
+import { canonicalize } from '@adcp/sdk';
 import { getAgentUrl } from '../config.js';
 import { formatOptionsForTrainingFormats } from '../product-factory.js';
 import {
@@ -76,7 +77,8 @@ export function seededFormats(products: ReadonlyArray<{ product_id: string; fixt
       const optionId = typeof option.format_option_id === 'string' ? option.format_option_id : undefined;
       const domain = typeof option.publisher_domain === 'string' ? option.publisher_domain : undefined;
       const params = isObject(option.params) ? option.params : {};
-      const identity = JSON.stringify([domain ?? null, optionId ?? null, option.format_kind, params]);
+      // Canonical JSON, so the same params in another key order are the same option.
+      const identity = canonicalize([domain ?? null, optionId ?? null, option.format_kind, params]);
       const key = `seeded_${createHash('sha256').update(identity).digest('hex').slice(0, 16)}`;
       if (!declarations.has(key)) {
         declarations.set(key, {
@@ -100,34 +102,37 @@ function seededLabel(declaration: FormatDeclaration): string {
   return declaration.option_id ?? declaration.format_kind;
 }
 
-/** The first of a creative's assets that states a width and height. */
-function sizedAsset(input: Json): { key: string; width: number; height: number } | undefined {
-  for (const [key, asset] of Object.entries(isObject(input.assets) ? input.assets : {})) {
-    if (isObject(asset) && typeof asset.width === 'number' && typeof asset.height === 'number') {
-      return { key, width: asset.width, height: asset.height };
-    }
+/** Every size a creative states: in its params, and on each image or video
+ * asset that gives a width and height. */
+function statedSizes(input: Json, field: string): Array<{ at: string; width: number; height: number }> {
+  const sizes: Array<{ at: string; width: number; height: number }> = [];
+  if (isObject(input.params) && typeof input.params.width === 'number' && typeof input.params.height === 'number') {
+    sizes.push({ at: `${field}.params`, width: input.params.width, height: input.params.height });
   }
-  return undefined;
+  for (const [key, asset] of Object.entries(isObject(input.assets) ? input.assets : {})) {
+    if (!isObject(asset) || typeof asset.width !== 'number' || typeof asset.height !== 'number') continue;
+    if (asset.asset_type !== undefined && asset.asset_type !== 'image' && asset.asset_type !== 'video') continue;
+    sizes.push({ at: `${field}.assets.${key}`, width: asset.width, height: asset.height });
+  }
+  return sizes;
 }
 
 /**
  * A creative that states a size or duration other than the fixed one its
  * seeded option declares (width and height, duration_ms_exact, else
- * duration_ms_range). A creative that states none is not refused here, as
- * on /sales.
+ * duration_ms_range), in its params or on any of its assets. A creative that
+ * states none is not refused here, as on /sales.
  */
 function fixedConstraintError(declaration: FormatDeclaration, input: Json, field: string): CreativeError | undefined {
   const params = declaration.params ?? {};
   const label = seededLabel(declaration);
   if (typeof params.width === 'number' && typeof params.height === 'number') {
-    const stated = isObject(input.params) && typeof input.params.width === 'number' && typeof input.params.height === 'number'
-      ? { at: `${field}.params`, width: input.params.width, height: input.params.height }
-      : (asset => asset && { at: `${field}.assets.${asset.key}`, width: asset.width, height: asset.height })(sizedAsset(input));
-    if (stated && (stated.width !== params.width || stated.height !== params.height)) {
+    const wrong = statedSizes(input, field).find(size => size.width !== params.width || size.height !== params.height);
+    if (wrong) {
       return {
         code: 'CREATIVE_SIZE_MISMATCH',
-        message: `${label} is ${params.width}x${params.height}; this creative is ${stated.width}x${stated.height}`,
-        field: stated.at,
+        message: `${label} is ${params.width}x${params.height}; this creative states ${wrong.width}x${wrong.height}`,
+        field: wrong.at,
         details: { constraint: 'size', allowed_sizes: [{ width: params.width, height: params.height }], format_option_id: label },
       };
     }
@@ -202,7 +207,7 @@ function seededRefFormat(
   field: string,
   allowed?: ReadonlySet<string>,
 ): { formatOptionId: string } | { error: CreativeError } {
-  const publisher = ref.scope === 'publisher' || (ref.scope === undefined && typeof ref.publisher_domain === 'string');
+  const publisher = isPublisherRef(ref);
   const scoped = seeded.filter(candidate => candidate.option_id === refId
     && (publisher ? candidate.publisher_domain === ref.publisher_domain : candidate.publisher_domain === undefined));
   const inContext = scoped.filter(candidate => !allowed || allowed.has(candidate.format_option_id));
@@ -217,14 +222,21 @@ function seededRefFormat(
   return { error: { code: 'FORMAT_NOT_SUPPORTED', message, field: at } };
 }
 
+/** A format_option_ref into a publisher's catalog, not a product's own options. */
+function isPublisherRef(ref: Json): boolean {
+  return ref.scope === 'publisher' || (ref.scope === undefined && typeof ref.publisher_domain === 'string');
+}
+
 /**
  * The format of a creative among the seller's own formats and the options
  * of the products the caller seeded. A format_option_ref naming a seeded
- * option resolves within its namespace. Anything else resolves against the
- * seller's own formats as before, and only failing those against the seeded
- * options, whose refusal is the one returned when the seller has no format
- * of the creative's kind but a seeded product does. A creative in a seeded
- * option is held to the constraints and values the option declares.
+ * option resolves within its namespace; a publisher ref never names one of
+ * the seller's own options. Anything else resolves against the seller's own
+ * formats as before. Only a creative that names no format (no format_id, no
+ * format_option_ref) then falls back to the seeded options by kind and
+ * params, and their refusal is the one returned when the seller has no
+ * format of the creative's kind but a seeded product does. A creative in a
+ * seeded option is held to the constraints and values the option declares.
  */
 export function resolveSeededCreativeFormat(
   own: readonly FormatDeclaration[],
@@ -236,13 +248,17 @@ export function resolveSeededCreativeFormat(
   if (seeded.length === 0) return resolveCreativeFormat(own, input, field, allowed);
   const ref = isObject(input.format_option_ref) ? input.format_option_ref : undefined;
   const refId = ref?.format_option_id;
-  if (ref && typeof refId === 'string' && !own.some(candidate => candidate.format_option_id === refId)
-    && seeded.some(candidate => candidate.option_id === refId)) {
-    return heldToSeededOption(seeded, input, field, seededRefFormat(seeded, ref, refId, field, allowed));
+  const explicit = ref !== undefined && typeof refId === 'string';
+  if (explicit) {
+    const ownNamed = !isPublisherRef(ref) && own.some(candidate => candidate.format_option_id === refId);
+    if (!ownNamed && seeded.some(candidate => candidate.option_id === refId)) {
+      return heldToSeededOption(seeded, input, field, seededRefFormat(seeded, ref, refId, field, allowed));
+    }
   }
   const resolved = resolveCreativeFormat(own, input, field, allowed);
-  // A named format_id is the seller's own; a seeded option has none.
-  if ('formatOptionId' in resolved || isObject(input.format_id)) return resolved;
+  // A named format_id is the seller's own, and a ref that names no seeded
+  // option never picks one by kind.
+  if ('formatOptionId' in resolved || isObject(input.format_id) || explicit) return resolved;
   const fallback = resolveCreativeFormat(seeded, input, field, allowed);
   if ('formatOptionId' in fallback) return heldToSeededOption(seeded, input, field, fallback);
   const seededKind = seeded.some(candidate => candidate.format_kind === input.format_kind && (!allowed || allowed.has(candidate.format_option_id)));
