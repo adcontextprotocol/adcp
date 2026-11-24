@@ -16,7 +16,8 @@
     }
   },
   "required": [
-    "outcome"
+    "outcome",
+    "errors"
   ],
   "not": {
     "required": [

@@ -275,6 +275,9 @@
           "$ref": "/schemas/core/task-error-response.json"
         }
       ],
+      "required": [
+        "errors"
+      ],
       "properties": {
         "errors": {
           "description": "Operation-level errors that prevented processing any creatives (e.g., authentication failure, service unavailable, invalid request format)"

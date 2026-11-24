@@ -304,6 +304,9 @@
           "$ref": "/schemas/core/task-error-response.json"
         }
       ],
+      "required": [
+        "errors"
+      ],
       "properties": {
         "errors": {
           "description": "Operation-level errors (e.g., authentication failure, service unavailable)"

@@ -16,7 +16,8 @@
     }
   },
   "required": [
-    "status"
+    "status",
+    "errors"
   ],
   "not": {
     "anyOf": [

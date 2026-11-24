@@ -21,6 +21,9 @@
           "$ref": "/schemas/core/task-error-response.json"
         }
       ],
+      "required": [
+        "errors"
+      ],
       "properties": {
         "evaluation_id": {
           "$ref": "/schemas/core/creative-evaluation-id.json",

@@ -105,6 +105,9 @@
           "$ref": "/schemas/core/task-error-response.json"
         }
       ],
+      "required": [
+        "errors"
+      ],
       "properties": {
         "errors": {
           "description": "Array of errors explaining why feedback was rejected (e.g., invalid measurement period, missing campaign data)"

@@ -51,6 +51,9 @@
           "$ref": "/schemas/core/task-error-response.json"
         }
       ],
+      "required": [
+        "errors"
+      ],
       "properties": {
         "errors": {
           "description": "Array of errors explaining why activation failed (e.g., platform connectivity issues, signal definition problems, authentication failures)"

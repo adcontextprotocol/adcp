@@ -155,6 +155,9 @@
           "$ref": "/schemas/core/task-error-response.json"
         }
       ],
+      "required": [
+        "errors"
+      ],
       "properties": {
         "errors": {
           "description": "Array of errors explaining why the operation failed"

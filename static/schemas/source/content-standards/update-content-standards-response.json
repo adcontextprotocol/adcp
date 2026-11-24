@@ -65,7 +65,8 @@
         }
       },
       "required": [
-        "success"
+        "success",
+        "errors"
       ]
     }
   ],

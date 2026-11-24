@@ -169,6 +169,9 @@
           "$ref": "/schemas/core/task-error-response.json"
         }
       ],
+      "required": [
+        "errors"
+      ],
       "not": {
         "anyOf": [
           {
