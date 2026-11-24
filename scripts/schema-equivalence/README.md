@@ -353,18 +353,26 @@ of the commits' changes there, in commit order: the first commit's old
 value, the last one's new value.
 
 With `--manifest auto`, when the lines do not match the range as a whole and
-the range has more than one commit, the tool composes them commit by commit.
-It compares each commit of `base..head` with its first parent (when the head
-is a merge into the base, as on CI, the merge itself is left out):
+the range has more than one commit, the tool composes them along the commits
+of `base..head` (when the head is a merge into the base, as on CI, the merge
+itself is left out), in these steps:
 
-- A commit that adds or changes a manifest file must show exactly that
-  file's lines, as the head writes them, with their sides.
-- Any other commit must show no difference.
-- A merge's net effect against its first parent is part of the chain as it
-  is: the changes its other parent brings, and its resolution.
+- A merged branch that passes as its own range: when a merge's other parent
+  heads a range from the base whose differences equal the manifests it adds
+  (a stacked PR with one manifest for all of its commits, even after merging
+  the base), that range is one step and its commits are not checked again.
+- A segment: the commits since the previous segment, along first parents, up
+  to a commit that adds or changes a manifest file. Its differences, from the
+  parent of its first commit to that commit, must equal the lines of the
+  manifests its commits add, as the head writes them, with their sides. A
+  commit with its own manifest is a segment of one.
+- A merge's net effect against its first parent, as it is: the changes its
+  other parent brings, and its resolution.
 
-If every commit passes, the range passes: each difference between base and
-head arises in some commit, and every commit's differences are declared.
+Commits after the last manifest form an open segment that must show no
+difference, as must a segment that a merge cuts short. If every step passes,
+the range passes: each difference between base and head arises in some
+step, and every step's differences are declared.
 The composition is checked on the commits, not on rendered values, because a
 rendered value names a shared node by the first location the render met it
 at. The same schema renders differently once an earlier commit extracts a

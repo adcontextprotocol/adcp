@@ -210,7 +210,65 @@ describe('schema-equivalence CLI on a range of commits', () => {
       assert.equal(report.manifest.mode, 'chain');
       assert.equal(report.manifest.ok, false);
       assert.deepEqual(report.manifest.extra.map(e => [e.commit, e.keyword, e.old, e.new]), [[head, 'maxLength', 10, 8]]);
+      assert.ok(report.manifest.problems.some(p => /commits after the last manifest/.test(p.problem)), JSON.stringify(report.manifest.problems));
       assert.equal(code, 1);
+    } finally {
+      r.cleanup();
+    }
+  });
+
+  it('a manifest covers the commits before it since the previous manifest', async () => {
+    const r = scratchRepo();
+    try {
+      r.schema('a-request.json', name());
+      const base = r.commit('base');
+      r.schema('a-request.json', name(10));
+      r.commit('bound the name');
+      r.manifest('first', [{ location: 'a-request.json#/properties/name', keyword: 'maxLength', new: 10, direction: 'tighten', side: 'request' }]);
+      r.commit('add the manifest for the bound');
+      r.schema('a-request.json', name(8));
+      r.manifest('second', [{ location: 'a-request.json#/properties/name', keyword: 'maxLength', old: 10, new: 8, direction: 'tighten', side: 'request' }]);
+      const head = r.commit('lower the bound');
+      const { code, report, stderr } = await run(['--repo', r.repo, '--base', base, '--head', head, '--manifest', 'auto', '--witness'], r.repo);
+      assert.ok(report, stderr);
+      assert.equal(report.manifest.mode, 'chain');
+      assert.deepEqual(report.manifest.steps.map(s => [s.kind, s.commits, s.lines.length, s.ok]), [['segment', 2, 1, true], ['segment', 1, 1, true]]);
+      assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.problems));
+      assert.equal(code, 0, report.failures.join('; '));
+    } finally {
+      r.cleanup();
+    }
+  });
+
+  it('a stacked branch merged in, with one manifest after a merge of the base, passes as its own range', async () => {
+    const r = scratchRepo();
+    try {
+      const a = minLength => ({ type: 'object', properties: { name: { type: 'string', ...(minLength ? { minLength } : {}) } } });
+      r.schema('a-request.json', a());
+      r.schema('c-request.json', { type: 'object', properties: { code: { type: 'string' } } });
+      r.commit('start');
+      r.g('checkout', '-q', '-b', 'stacked');
+      r.schema('a-request.json', a(1));
+      const p1 = r.commit('stacked: require a name');
+      r.g('checkout', '-q', 'main');
+      r.schema('c-request.json', { type: 'object', properties: { code: { type: 'string', maxLength: 8 } } });
+      const base = r.commit('main moves on');
+      r.g('checkout', '-q', 'stacked');
+      r.g('merge', '-q', '--no-edit', 'main');
+      r.manifest('stacked', [{ location: 'a-request.json#/properties/name', keyword: 'minLength', new: 1, direction: 'tighten', side: 'request' }]);
+      r.commit('stacked: add its manifest');
+      r.g('checkout', '-q', '-b', 'series', p1);
+      r.schema('a-request.json', a(2));
+      r.manifest('series', [{ location: 'a-request.json#/properties/name', keyword: 'minLength', old: 1, new: 2, direction: 'tighten', side: 'request' }]);
+      r.commit('series: raise the minimum');
+      r.g('merge', '-q', '--no-edit', 'stacked');
+      const head = r.g('rev-parse', 'HEAD');
+      const { code, report, stderr } = await run(['--repo', r.repo, '--base', base, '--head', head, '--manifest', 'auto', '--witness'], r.repo);
+      assert.ok(report, stderr);
+      assert.equal(report.manifest.mode, 'chain');
+      assert.deepEqual(report.manifest.steps.map(s => [s.kind, s.commits, s.ok]), [['branch', 3, true], ['segment', 1, true], ['merge', 1, true]]);
+      assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.problems));
+      assert.equal(code, 0, report.failures.join('; '));
     } finally {
       r.cleanup();
     }
@@ -245,7 +303,7 @@ describe('schema-equivalence CLI on a range of commits', () => {
     }
   });
 
-  it('a commit\'s change two $refs away from a root is found, and an unrelated commit compares nothing', async () => {
+  it('a commit\'s change two $refs away from a root is found, and a commit without schema changes joins the next segment', async () => {
     const r = scratchRepo();
     try {
       r.schema('leaf.json', { type: 'string' });
@@ -269,8 +327,8 @@ describe('schema-equivalence CLI on a range of commits', () => {
       assert.ok(report, stderr);
       assert.equal(report.manifest.mode, 'chain');
       // leaf.json, mid.json and top-request.json each show the leaf bound;
-      // the notes commit compares nothing.
-      assert.deepEqual(report.manifest.steps.map(s => s.entries), [3, 0, 4]);
+      // the notes commit joins the segment the last manifest closes.
+      assert.deepEqual(report.manifest.steps.map(s => [s.commits, s.entries]), [[1, 3], [2, 4]]);
       assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.problems));
     } finally {
       r.cleanup();

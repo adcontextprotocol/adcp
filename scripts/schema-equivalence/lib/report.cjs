@@ -65,9 +65,10 @@ function formatText(report) {
     if (m.mode === 'chain') {
       const merges = m.steps.filter(s => s.merge).length;
       lines.push(`Manifest ${name}: the lines do not match the range as a whole (${m.range.extra} undeclared, ${m.range.missing} unmatched), so they are composed commit by commit: ${m.ok ? 'every commit\'s differences equal its own lines' : 'does NOT match'}`);
-      lines.push(`  ${m.steps.length} commits; ${merges} merge${merges === 1 ? '' : 's'} taken as their net effect`);
+      lines.push(`  ${m.steps.length} steps; ${merges} merge${merges === 1 ? '' : 's'} taken as their net effect`);
       for (const s of m.steps) {
-        const what = s.merge ? `merge, net effect ${s.entries} entries at ${s.sites} sites` : `${s.lines.length} lines, ${s.entries} entries at ${s.sites} sites${s.ok ? '' : ' (does NOT match)'}`;
+        const scope = s.kind === 'branch' ? `merged branch of ${s.commits} commits from the base, ` : s.commits > 1 ? `${s.commits} commits, ` : '';
+        const what = s.merge ? `merge, net effect ${s.entries} entries at ${s.sites} sites` : `${scope}${s.lines.length} lines, ${s.entries} entries at ${s.sites} sites${s.ok ? '' : ' (does NOT match)'}`;
         lines.push(`  ${s.commit.slice(0, 10)} ${s.subject}: ${what}`);
       }
       for (const n of m.notes) lines.push(`  note, entry ${n.index}: ${n.note}`);

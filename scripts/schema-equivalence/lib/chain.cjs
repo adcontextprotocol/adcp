@@ -142,50 +142,105 @@ function touchedFiles(repo, c, dir) {
  * paths) the range adds or changes; `changes` their lines, each with `file`
  * (repo path) and its range-wide `index`. Returns null when the range has
  * fewer than two commits, else { ok, steps, unowned, problems }.
+ *
+ * Steps, in order:
+ *
+ *   - A merged branch whose own range passes: when a merge's other parent
+ *     is the head of a range that starts at the base and whose differences
+ *     equal the manifests that range adds (a stacked PR merged in, with one
+ *     manifest for all of its commits), that range is one step and its
+ *     commits are not checked again.
+ *   - A segment: the commits since the previous segment, along first
+ *     parents, up to and including a commit that adds or changes a manifest
+ *     file. The segment's differences, from the parent of its first commit
+ *     to that commit, must equal the lines of the manifests its commits
+ *     add. A segment of one commit is a commit with its own manifest.
+ *   - A merge: its net effect against its first parent, taken as it is.
+ *
+ * Commits after the last manifest form an open segment, which must show no
+ * difference, as must a segment that a merge or a change of line cuts short.
  */
 function checkChain({ repo, base, head, files, changes, dir, rules }) {
   const commits = rangeCommits(repo, base, head);
   if (commits.length < 2) return null;
-  const owner = new Map(); // manifest file -> the first commit that adds or changes it
-  for (const c of commits) {
-    for (const f of touchedFiles(repo, c, dir)) if (files.includes(f) && !owner.has(f)) owner.set(f, c);
-  }
+  const byId = new Map(commits.map(c => [c.commit, c]));
+  const touched = new Map(commits.map(c => [c.commit, touchedFiles(repo, c, dir).filter(f => files.includes(f))]));
   const problems = [];
-  const unowned = changes.filter(ch => !owner.has(ch.file));
-  for (const f of files) {
-    const c = owner.get(f);
-    if (c && c.parents.length > 1) problems.push(`${f} arrives through merge ${c.commit.slice(0, 10)}, so no commit shows its lines`);
-  }
+  // A few trees stay loaded: consecutive steps share them.
   const trees = new Map();
   const tree = (commit) => {
-    if (!trees.has(commit)) trees.set(commit, loadFromRef(repo, commit));
-    return trees.get(commit);
+    if (trees.has(commit)) {
+      const t = trees.get(commit);
+      trees.delete(commit);
+      trees.set(commit, t);
+      return t;
+    }
+    const t = loadFromRef(repo, commit);
+    trees.set(commit, t);
+    if (trees.size > 4) trees.delete(trees.keys().next().value);
+    return t;
   };
+  // Differences between two commits, comparing only the roots that reach a
+  // changed document, without the informational channel.
+  const diff = (from, to) => {
+    const changed = changedDocs(repo, from, to);
+    if (!changed.size) return [];
+    const roots = affectedRoots(tree(from), tree(to), changed);
+    if (!roots.length) return [];
+    return compare(tree(from), tree(to), { rules, info: false, pairs: roots.map(rel => ({ name: rel, baseRel: rel, headRel: rel })) }).entries;
+  };
+  const subject = commit => git(repo, ['log', '-1', '--format=%s', commit]).toString('utf8').trim();
   const steps = [];
-  for (const c of commits) {
-    const parent = c.parents[0];
-    // Only the roots that reach a changed document are compared, without the
-    // informational channel; a commit that changes no schema file shares its
-    // parent's tree and has no difference.
-    const changed = changedDocs(repo, parent, c.commit);
-    let result = { entries: [] };
-    if (!changed.size) {
-      trees.set(c.commit, tree(parent));
-    } else {
-      const roots = affectedRoots(tree(parent), tree(c.commit), changed);
-      if (roots.length) result = compare(tree(parent), tree(c.commit), { rules, info: false, pairs: roots.map(rel => ({ name: rel, baseRel: rel, headRel: rel })) });
-    }
-    const subject = git(repo, ['log', '-1', '--format=%s', c.commit]).toString('utf8').trim();
-    if (c.parents.length > 1) {
-      steps.push({ commit: c.commit, parent, subject, merge: true, entries: result.entries });
-    } else {
-      const lines = changes.filter(ch => owner.get(ch.file) === c);
-      const match = matchManifest(result.entries, { changes: lines });
-      steps.push({ commit: c.commit, parent, subject, merge: false, lines, match, entries: result.entries });
-    }
-    // Only the trees a later step compares stay loaded.
-    trees.delete(parent);
+  const owned = new Set(); // manifest files whose lines a step checked
+
+  // Merged branches whose own range from the base passes, latest first.
+  const covered = new Set();
+  for (const m of [...commits].reverse()) {
+    if (m.parents.length < 2) continue;
+    const q = m.parents[1];
+    if (!byId.has(q) || covered.has(q)) continue;
+    const inside = git(repo, ['rev-list', `${base}..${q}`]).toString('utf8').split('\n').filter(Boolean);
+    const subFiles = [...new Set(inside.flatMap(c => touched.get(c) || []))];
+    if (!subFiles.length) continue;
+    const lines = changes.filter(ch => subFiles.includes(ch.file));
+    const entries = diff(base, q);
+    const match = matchManifest(entries, { changes: lines });
+    if (!match.ok) continue;
+    for (const c of inside) covered.add(c);
+    subFiles.forEach(f => owned.add(f));
+    steps.push({ kind: 'branch', commit: q, parent: base, subject: subject(q), merge: false, commits: inside, lines, match, entries });
   }
+
+  // Segments and merges among the other commits.
+  let open = []; // commits of the open segment, along first parents
+  const close = (lines, why) => {
+    if (!open.length) return;
+    const last = open[open.length - 1];
+    const parent = open[0].parents[0];
+    const entries = diff(parent, last.commit);
+    const match = matchManifest(entries, { changes: lines });
+    if (why && !match.ok && match.extra.length) problems.push(`${why}: ${open.length} commit${open.length === 1 ? '' : 's'} ending at ${last.commit.slice(0, 10)} show differences no manifest declares`);
+    steps.push({ kind: 'segment', commit: last.commit, parent, subject: subject(last.commit), merge: false, commits: open.map(c => c.commit), lines, match, entries });
+    open = [];
+  };
+  for (const c of commits) {
+    if (covered.has(c.commit)) continue;
+    if (c.parents.length > 1) {
+      close([], 'a merge cuts the segment short');
+      for (const f of touched.get(c.commit)) if (!owned.has(f)) problems.push(`${f} arrives through merge ${c.commit.slice(0, 10)}, so no commit shows its lines`);
+      steps.push({ kind: 'merge', commit: c.commit, parent: c.parents[0], subject: subject(c.commit), merge: true, commits: [c.commit], entries: diff(c.parents[0], c.commit) });
+      continue;
+    }
+    if (open.length && open[open.length - 1].commit !== c.parents[0]) close([], 'the next commit does not build on the segment');
+    open.push(c);
+    const own = touched.get(c.commit).filter(f => !owned.has(f));
+    if (own.length) {
+      own.forEach(f => owned.add(f));
+      close(changes.filter(ch => own.includes(ch.file)), null);
+    }
+  }
+  close([], 'commits after the last manifest');
+  const unowned = changes.filter(ch => !owned.has(ch.file));
   const ok = problems.length === 0 && unowned.length === 0 && steps.every(s => s.merge || s.match.ok);
   return { ok, steps, unowned, problems };
 }
@@ -230,10 +285,12 @@ function chainReport(chain, rangeMatch) {
       ...chain.problems.map(problem => ({ change: null, problem })),
     ],
     steps: chain.steps.map(s => ({
+      kind: s.kind,
       commit: s.commit,
       parent: s.parent,
       subject: s.subject,
       merge: s.merge,
+      commits: s.commits.length,
       entries: s.entries.length,
       sites: new Set(s.entries.map(siteOf)).size,
       lines: s.merge ? undefined : s.lines.map(l => l.index),
