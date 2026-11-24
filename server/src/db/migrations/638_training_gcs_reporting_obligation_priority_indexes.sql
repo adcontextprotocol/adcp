@@ -4,9 +4,11 @@
 -- and these partial indexes serve that order (globally and per account)
 -- without sorting the pending backlog. The statements are verbatim from the
 -- SDK and idempotent. The migration runner applies every file inside one
--- transaction, so CREATE INDEX CONCURRENTLY is not available: each build holds
--- a SHARE lock on adcp_reporting_obligations, blocking its writes (not its
--- reads) for the build, bounded by the timeouts below.
+-- transaction, so CREATE INDEX CONCURRENTLY is not available. The first build
+-- takes a SHARE lock on adcp_reporting_obligations and the transaction holds it
+-- across both builds until COMMIT: writes to the table (not reads) wait until
+-- the migration commits. lock_timeout bounds the wait for that lock, and
+-- statement_timeout bounds each CREATE INDEX separately.
 DO $schema_precondition$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'training_reporting_gcs') THEN
