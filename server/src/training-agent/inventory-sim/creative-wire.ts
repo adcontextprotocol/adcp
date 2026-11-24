@@ -102,6 +102,14 @@ function seededLabel(declaration: FormatDeclaration): string {
   return declaration.option_id ?? declaration.format_kind;
 }
 
+/** Each asset of a creative, with its path: a slot holds one asset or an
+ * array of them. */
+function eachAsset(input: Json, field: string): Array<{ at: string; asset: Json }> {
+  return Object.entries(isObject(input.assets) ? input.assets : {}).flatMap(([key, value]) => (Array.isArray(value)
+    ? value.flatMap((asset, index) => (isObject(asset) ? [{ at: `${field}.assets.${key}[${index}]`, asset }] : []))
+    : isObject(value) ? [{ at: `${field}.assets.${key}`, asset: value }] : []));
+}
+
 /** Every size a creative states: in its params, and on each image or video
  * asset that gives a width and height. */
 function statedSizes(input: Json, field: string): Array<{ at: string; width: number; height: number }> {
@@ -109,10 +117,10 @@ function statedSizes(input: Json, field: string): Array<{ at: string; width: num
   if (isObject(input.params) && typeof input.params.width === 'number' && typeof input.params.height === 'number') {
     sizes.push({ at: `${field}.params`, width: input.params.width, height: input.params.height });
   }
-  for (const [key, asset] of Object.entries(isObject(input.assets) ? input.assets : {})) {
-    if (!isObject(asset) || typeof asset.width !== 'number' || typeof asset.height !== 'number') continue;
+  for (const { at, asset } of eachAsset(input, field)) {
+    if (typeof asset.width !== 'number' || typeof asset.height !== 'number') continue;
     if (asset.asset_type !== undefined && asset.asset_type !== 'image' && asset.asset_type !== 'video') continue;
-    sizes.push({ at: `${field}.assets.${key}`, width: asset.width, height: asset.height });
+    sizes.push({ at, width: asset.width, height: asset.height });
   }
   return sizes;
 }
@@ -140,8 +148,8 @@ function fixedConstraintError(declaration: FormatDeclaration, input: Json, field
   const exact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
   const range = exact === undefined && Array.isArray(params.duration_ms_range) ? params.duration_ms_range : undefined;
   if (exact === undefined && !range) return undefined;
-  for (const [key, asset] of Object.entries(isObject(input.assets) ? input.assets : {})) {
-    if (!isObject(asset) || typeof asset.duration_ms !== 'number') continue;
+  for (const { at, asset } of eachAsset(input, field)) {
+    if (typeof asset.duration_ms !== 'number') continue;
     const duration = asset.duration_ms;
     const [min, max] = range ?? [];
     const fits = exact !== undefined
@@ -151,7 +159,7 @@ function fixedConstraintError(declaration: FormatDeclaration, input: Json, field
     return {
       code: 'VALIDATION_ERROR',
       message: `${label} runs ${exact !== undefined ? `${exact} ms` : `${min ?? 'any'} to ${max ?? 'any'} ms`}; this creative runs ${duration} ms`,
-      field: `${field}.assets.${key}.duration_ms`,
+      field: `${at}.duration_ms`,
       details: { constraint: exact !== undefined ? 'duration_ms_exact' : 'duration_ms_range', declared: exact ?? range, format_option_id: label },
     };
   }
