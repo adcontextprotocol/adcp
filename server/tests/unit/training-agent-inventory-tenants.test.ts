@@ -1896,6 +1896,7 @@ describe('inventory tenants', () => {
     const TOKEN_SIZES = 'demo-inventory-seeded-round2-sizes-v1';
     const TOKEN_ORDER = 'demo-inventory-seeded-round2-order-v1';
     const TOKEN_ARRAYS = 'demo-inventory-seeded-round2-arrays-v1';
+    const TOKEN_NATIVE = 'demo-inventory-seeded-round2-native-arrays-v1';
     const controller = (token: string, scenario: string, params: Record<string, unknown>) =>
       call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, token);
     const seed = async (token: string, productId: string, formatOptions: Structured[]) => {
@@ -1939,7 +1940,7 @@ describe('inventory tenants', () => {
       }, token);
 
     beforeAll(async () => {
-      for (const token of [TOKEN_TYPO, TOKEN_COLLIDE, TOKEN_SIZES, TOKEN_ORDER, TOKEN_ARRAYS]) await provision(token);
+      for (const token of [TOKEN_TYPO, TOKEN_COLLIDE, TOKEN_SIZES, TOKEN_ORDER, TOKEN_ARRAYS, TOKEN_NATIVE]) await provision(token);
       await seed(TOKEN_TYPO, 'only_feed', [{ format_option_id: 'real_feed', format_kind: 'native_in_feed', params: { title_max_chars: 20 } }]);
       await seed(TOKEN_COLLIDE, 'collide', [{
         format_option_id: 'display_300x250_image', format_kind: 'image', publisher_domain: 'b.example', params: { width: 300, height: 250 },
@@ -1948,6 +1949,9 @@ describe('inventory tenants', () => {
       await seed(TOKEN_ARRAYS, 'arrays', [
         { format_option_id: 'rect', format_kind: 'image', params: { width: 300, height: 250 } },
         { format_option_id: 'clip_15s', format_kind: 'video_hosted', params: { duration_ms_exact: 15000 } },
+      ]);
+      await seed(TOKEN_NATIVE, 'native_arrays', [
+        { format_option_id: 'native', format_kind: 'native_in_feed', params: { title_max_chars: 10, cta_values: ['SHOP_NOW'] } },
       ]);
       await seed(TOKEN_ORDER, 'order_a', [{ format_option_id: 'rect', format_kind: 'image', params: { width: 300, height: 250, extra: { a: 1, b: 2 } } }]);
       await seed(TOKEN_ORDER, 'order_b', [{ format_option_id: 'rect', format_kind: 'image', params: { extra: { b: 2, a: 1 }, height: 250, width: 300 } }]);
@@ -2025,6 +2029,27 @@ describe('inventory tenants', () => {
         code: 'VALIDATION_ERROR', field: 'creatives[0].assets.video[0].duration_ms',
       });
       const ok = await sync(TOKEN_ARRAYS, [arrayVideo('arr_exact', 15000)]);
+      expect(ok.errors, JSON.stringify(ok).slice(0, 800)).toBeUndefined();
+    });
+
+    it('checks declared native_in_feed cta_values and title limit on array-valued text slots', async () => {
+      const arrayNative = (id: string, title: string, cta: string) => ({
+        creative_id: id, name: id, format_kind: 'native_in_feed', format_option_ref: product('native'),
+        assets: {
+          title: [{ asset_type: 'text', content: title }],
+          cta: [{ asset_type: 'text', content: cta }],
+          landing_page_url: { asset_type: 'url', url: 'https://inventory-buyer.example/landing' },
+        },
+      });
+      const badCta = await sync(TOKEN_NATIVE, [arrayNative('arr_bad_cta', 'Short', 'BUY_ME')]);
+      expect(errorOf(badCta), JSON.stringify(badCta).slice(0, 800)).toMatchObject({
+        code: 'CREATIVE_VALUE_NOT_ALLOWED', field: 'creatives[0].assets.cta[0].content',
+      });
+      const longTitle = await sync(TOKEN_NATIVE, [arrayNative('arr_long_title', 'Far too long a title', 'SHOP_NOW')]);
+      expect(errorOf(longTitle), JSON.stringify(longTitle).slice(0, 800)).toMatchObject({
+        code: 'VALIDATION_ERROR', field: 'creatives[0].assets.title[0].content',
+      });
+      const ok = await sync(TOKEN_NATIVE, [arrayNative('arr_native_ok', 'Short', 'SHOP_NOW')]);
       expect(ok.errors, JSON.stringify(ok).slice(0, 800)).toBeUndefined();
     });
   });

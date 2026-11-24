@@ -209,6 +209,35 @@ describe('training agent sync_creatives honors declared native_in_feed options (
       });
     });
 
+    it('refuses an array-valued cta outside the declared cta_values, naming the element index', async () => {
+      const creative = nativeCreative('cta_enum_array_bad', { image: { width: 627, height: 627 } }, OPTION_ID);
+      creative.assets.cta = [{ asset_type: 'text', content: 'LEARN_MORE' }];
+      const result = await sync([creative]);
+      expect(result.errors?.[0]).toMatchObject({
+        code: 'CREATIVE_VALUE_NOT_ALLOWED',
+        field: 'creatives[0].assets.cta[0].content',
+        details: { constraint: 'cta_values', allowed_values: ['Get offer', 'Visit site'], format_option_id: OPTION_ID },
+      });
+    });
+
+    it('refuses an overlong array-valued title, naming the element index', async () => {
+      const creative = nativeCreative('title_array_long', { image: { width: 627, height: 627 }, cta: 'Get offer' }, OPTION_ID);
+      creative.assets.title = [{ asset_type: 'text', content: 'T'.repeat(61) }];
+      const result = await sync([creative]);
+      expect(result.errors?.[0]).toMatchObject({
+        code: 'VALIDATION_ERROR',
+        field: 'creatives[0].assets.title[0].content',
+        details: { constraint: 'title_max_chars', declared: 60 },
+      });
+    });
+
+    it('accepts array-valued title and cta within the declared limits', async () => {
+      const creative = nativeCreative('array_within_limits', { image: { width: 627, height: 627 } }, OPTION_ID);
+      creative.assets.title = [{ asset_type: 'text', content: 'T'.repeat(60) }];
+      creative.assets.cta = [{ asset_type: 'text', content: 'Visit site' }];
+      expectAccepted(await sync([creative]));
+    });
+
     it('refuses an icon that is present but not the declared icon_size', async () => {
       const creative = nativeCreative('cta_enum_bad_icon', { image: { width: 627, height: 627 }, cta: 'Get offer' }, OPTION_ID);
       creative.assets.icon = { asset_type: 'image', url: 'https://cdn.acme-native.example/icon.png', width: 64, height: 64 };
