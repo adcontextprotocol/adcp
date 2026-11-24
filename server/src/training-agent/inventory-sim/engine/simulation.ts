@@ -38,6 +38,7 @@ import type {
   DeliveryMetrics,
   Installment,
   SeasonSeed,
+  SeedProduct,
   SimulationState,
 } from './types.js';
 
@@ -148,22 +149,23 @@ export class InventorySimulation {
   readonly traffic: SeasonTraffic;
   private readonly cellCache = new Map<string, number[]>();
 
-  constructor(readonly seed: SeasonSeed, readonly state: SimulationState) {
+  /** `products` are sold beside the seed's own, on its placements. */
+  constructor(readonly seed: SeasonSeed, readonly state: SimulationState, products: readonly SeedProduct[] = []) {
     if (state.seed_id !== seed.seed_id) {
       throw new EngineError('INVALID_SEED', `State belongs to seed ${state.seed_id}, not ${seed.seed_id}`);
     }
-    this.traffic = trafficFor(seed);
+    this.traffic = trafficFor(seed).withProducts(products);
   }
 
   /** A fresh market whose first unprocessed day is the day `nowMs` falls on. */
-  static create(seed: SeasonSeed, nowMs: number): InventorySimulation {
+  static create(seed: SeasonSeed, nowMs: number, products: readonly SeedProduct[] = []): InventorySimulation {
     const traffic = trafficFor(seed);
     return new InventorySimulation(seed, {
       seed_id: seed.seed_id,
       processed_through_day: traffic.calendar.dayOf(nowMs),
       bookings: [],
       log: [],
-    });
+    }, products);
   }
 
   today(nowMs: number): number {
@@ -240,6 +242,7 @@ export class InventorySimulation {
         ? positive(request.impression_goal, 'impression_goal')
         : (budget * 1000) / booking.cpm);
       if (booking.impression_goal <= 0) throw new EngineError('INVALID_BOOKING', 'The budget buys no impressions at this rate');
+      this.requireAvailable(booking, cells, booking.impression_goal, nowMs);
     }
     if (booking.kind === 'share_of_voice') {
       booking.share_of_voice = product.share_of_voice!;
@@ -262,11 +265,14 @@ export class InventorySimulation {
     this.advanceTo(nowMs);
     const booking = this.booking(bookingId);
     if (booking.status === 'canceled') throw new EngineError('INVALID_BOOKING', `Booking ${bookingId} is canceled`);
-    if (patch.budget !== undefined) booking.budget = positive(patch.budget, 'budget');
+    // The goal goes first, so a refused raise leaves the booking unchanged.
     if (patch.impression_goal !== undefined) {
       if (booking.kind !== 'goal') throw new EngineError('INVALID_BOOKING', 'Only goal bookings have an impression goal');
-      booking.impression_goal = Math.floor(positive(patch.impression_goal, 'impression_goal'));
+      const goal = Math.floor(positive(patch.impression_goal, 'impression_goal'));
+      if (goal > (booking.impression_goal ?? 0)) this.requireAvailable(booking, this.cellsFor(booking), goal, nowMs);
+      booking.impression_goal = goal;
     }
+    if (patch.budget !== undefined) booking.budget = positive(patch.budget, 'budget');
     if (patch.bid_cpm !== undefined) {
       if (booking.kind !== 'auction') throw new EngineError('INVALID_BOOKING', 'Only non-guaranteed bookings bid');
       booking.cpm = positive(patch.bid_cpm, 'bid_cpm');
@@ -379,9 +385,23 @@ export class InventorySimulation {
     return record;
   }
 
-  /** Reserved impressions per day and cell, from the guaranteed bookings
-   * still to serve after `today`. */
-  private reservations(fromDay: number): Map<number, CellCounts> {
+  /** The days a booking still serves, inside the season. `today` has not run
+   * yet, so a booking confirmed before it serves it too. */
+  private servingDays(booking: Pick<Booking, 'confirmed_day' | 'flight_start_day' | 'flight_end_day'>, today: number): { first: number; last: number } {
+    return {
+      first: Math.max(today, booking.confirmed_day + 1, booking.flight_start_day, 0),
+      last: Math.min(booking.flight_end_day, this.traffic.calendar.days),
+    };
+  }
+
+  /**
+   * Reserved impressions per day and cell over the days [first, last), from
+   * the guaranteed bookings still to serve, less `except`. A goal booking
+   * spreads what is left of its goal over its own serving days wherever the
+   * window starts, so a window that opens mid-flight holds only the part
+   * that falls inside it.
+   */
+  private reservations(today: number, first: number, last: number, except?: string): Map<number, CellCounts> {
     const reserved = new Map<number, CellCounts>();
     const add = (day: number, cell: number, value: number) => {
       let counts = reserved.get(day);
@@ -389,12 +409,13 @@ export class InventorySimulation {
       counts.set(cell, (counts.get(cell) ?? 0) + value);
     };
     for (const booking of this.state.bookings) {
-      if (booking.status === 'canceled' || booking.kind === 'auction') continue;
-      const first = Math.max(fromDay, booking.confirmed_day + 1, booking.flight_start_day, 0);
-      const last = Math.min(booking.flight_end_day, this.traffic.calendar.days);
+      if (booking.status === 'canceled' || booking.kind === 'auction' || booking.booking_id === except) continue;
+      const own = this.servingDays(booking, today);
+      const from = Math.max(first, own.first);
+      const to = Math.min(last, own.last);
       const cells = this.cellsFor(booking);
       if (booking.kind === 'share_of_voice') {
-        for (let day = first; day < last; day++) {
+        for (let day = from; day < to; day++) {
           const forecast = this.traffic.day(day).forecast;
           for (const cell of cells) add(day, cell, (booking.share_of_voice ?? 0) * (forecast.get(cell) ?? 0));
         }
@@ -402,15 +423,73 @@ export class InventorySimulation {
       }
       const left = Math.max(0, (booking.impression_goal ?? 0) - booking.delivered.impressions);
       let total = 0;
-      for (let day = first; day < last; day++) total += supplyOf(this.traffic.day(day).forecast, cells);
+      for (let day = own.first; day < own.last; day++) total += supplyOf(this.traffic.day(day).forecast, cells);
       if (total === 0 || left === 0) continue;
       const share = Math.min(1, left / total);
-      for (let day = first; day < last; day++) {
+      for (let day = from; day < to; day++) {
         const forecast = this.traffic.day(day).forecast;
         for (const cell of cells) add(day, cell, share * (forecast.get(cell) ?? 0));
       }
     }
     return reserved;
+  }
+
+  /**
+   * Forecast impressions over `cells` and the days [first, last), and the
+   * part of them guaranteed bookings other than `except` hold. `free` sees
+   * each day and cell with impressions left over.
+   */
+  private netForecast(
+    cells: readonly number[],
+    first: number,
+    last: number,
+    today: number,
+    except?: string,
+    free?: (day: number, cell: number, impressions: number) => void,
+  ): { capacity: number; booked: number; available: number } {
+    const reserved = this.reservations(today, first, last, except);
+    let capacity = 0;
+    let booked = 0;
+    for (let day = first; day < last; day++) {
+      const forecast = this.traffic.day(day).forecast;
+      const held = reserved.get(day);
+      for (const cell of cells) {
+        const value = forecast.get(cell) ?? 0;
+        if (value === 0) continue;
+        const taken = Math.min(value, held?.get(cell) ?? 0);
+        capacity += value;
+        booked += taken;
+        if (value > taken) free?.(day, cell, value - taken);
+      }
+    }
+    return { capacity, booked, available: Math.max(0, Math.round(capacity - booked)) };
+  }
+
+  /**
+   * Refuse a goal whose undelivered part is more than the forecast leaves
+   * the booking over its serving days, net of every other guaranteed
+   * booking: the `available` a forecast for the same cells and flight
+   * reports. A guarantee the market cannot cover is refused, never capped.
+   */
+  private requireAvailable(booking: Booking, cells: readonly number[], goal: number, nowMs: number): void {
+    const today = this.today(nowMs);
+    const { first, last } = this.servingDays(booking, today);
+    const { available } = this.netForecast(cells, first, last, today, booking.booking_id);
+    const left = goal - booking.delivered.impressions;
+    if (left <= available) return;
+    const delivered = booking.delivered.impressions > 0 ? ` (${left} still to deliver)` : '';
+    throw new EngineError('INSUFFICIENT_INVENTORY',
+      `Requested ${goal} impressions${delivered}, but only ${available} are available on ${booking.product_id} for this flight and targeting`);
+  }
+
+  /** Refuse a goal booking whose undelivered goal the forecast no longer
+   * covers: the check `update` runs on a raise. A host that applies several
+   * changes as one runs it on each goal they raised, once all are in. */
+  requireGoalAvailable(bookingId: string, nowMs: number): void {
+    this.advanceTo(nowMs);
+    const booking = this.booking(bookingId);
+    if (booking.kind !== 'goal' || booking.status === 'canceled') return;
+    this.requireAvailable(booking, this.cellsFor(booking), booking.impression_goal ?? 0, nowMs);
   }
 
   /**
@@ -423,34 +502,20 @@ export class InventorySimulation {
     const product = this.traffic.requireProduct(query.product_id);
     const { start, end } = this.flightDays(query.flight_start_ms, query.flight_end_ms);
     const cells = this.traffic.eligibleCells(product.product_id, query.targeting);
-    const first = Math.max(start, this.today(nowMs) + 1, 0);
-    const last = Math.min(end, this.traffic.calendar.days);
-    const reserved = this.reservations(first);
-    let capacity = 0;
-    let booked = 0;
+    const today = this.today(nowMs);
+    // The days a booking confirmed now would serve.
+    const { first, last } = this.servingDays({ confirmed_day: today, flight_start_day: start, flight_end_day: end }, today);
     let clicks = 0;
     let viewable = 0;
     let completed = 0;
     let conversions = 0;
-    for (let day = first; day < last; day++) {
-      const forecast = this.traffic.day(day).forecast;
-      const held = reserved.get(day);
-      for (const cell of cells) {
-        const value = forecast.get(cell) ?? 0;
-        if (value === 0) continue;
-        const taken = Math.min(value, held?.get(cell) ?? 0);
-        const free = value - taken;
-        capacity += value;
-        booked += taken;
-        if (free <= 0) continue;
-        const rates = this.traffic.rates(day, cell);
-        clicks += free * rates.click_rate;
-        viewable += free * rates.viewability;
-        completed += free * rates.completion_rate;
-        conversions += free * rates.click_rate * rates.conversion_rate;
-      }
-    }
-    const available = Math.max(0, Math.round(capacity - booked));
+    const { capacity, booked, available } = this.netForecast(cells, first, last, today, undefined, (day, cell, free) => {
+      const rates = this.traffic.rates(day, cell);
+      clicks += free * rates.click_rate;
+      viewable += free * rates.viewability;
+      completed += free * rates.completion_rate;
+      conversions += free * rates.click_rate * rates.conversion_rate;
+    });
     const cpm = product.delivery_type === 'guaranteed' ? product.rate_cpm : query.bid_cpm;
     const affordable = query.budget !== undefined && cpm ? Math.floor((query.budget * 1000) / cpm) : Number.POSITIVE_INFINITY;
     const impressions = Math.min(available, affordable);

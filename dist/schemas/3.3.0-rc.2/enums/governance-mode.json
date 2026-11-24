@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-rc.2/enums/governance-mode.json",
+  "title": "Governance Mode",
+  "description": "Operating mode for a governance agent. Controls whether findings block execution.",
+  "x-status": "experimental",
+  "type": "string",
+  "enum": [
+    "audit",
+    "advisory",
+    "enforce"
+  ],
+  "enumDescriptions": {
+    "audit": "Log all checks. Findings are recorded and the governance agent returns approved, except in two cases that hold in every mode: plans with human_review_required: true escalate, and a failed approved_sellers or delegations evaluation is denied.",
+    "advisory": "Flag issues and return findings, but do not block execution. Human reviews happen post-hoc. The same two exceptions apply as in audit mode.",
+    "enforce": "Block on denied or escalated. Require resolution before proceeding."
+  }
+}

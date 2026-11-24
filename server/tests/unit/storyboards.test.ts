@@ -287,8 +287,6 @@ describe('wrapper contract', () => {
   it('selects the highest hosted target advertised by the agent', () => {
     expect(hostedComplianceTargetPreference().map(t => t.requested)).toEqual([
       '3.2',
-      '3.2-rc',
-      '3.2-beta',
       '3.1',
       '3.1-rc',
       '3.1-beta',
@@ -301,7 +299,9 @@ describe('wrapper contract', () => {
     const latestRegistered32 = highestRegisteredComplianceVersion(/^3\.2\.\d+$/);
     const latestRegistered31 = highestRegisteredComplianceVersion(/^3\.1\.\d+$/);
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe(latestRegistered32);
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
+    // The 3.2.0 prereleases left hosted grading once 3.2 shipped, so a pin to
+    // one falls back to the canonical 3.0 target instead of being upgraded.
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).requested).toBe('3.0');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe(latestRegistered32);
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe(latestRegistered31);
 
@@ -333,12 +333,14 @@ describe('wrapper contract', () => {
     // release.
     const aliases: Array<{ alias: string; channel: RegExp; floor: string }> = [
       { alias: '3.0', channel: /^3\.0\.\d+$/, floor: '3.0.28' },
-      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.30' },
-      { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.11' },
+      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.34' },
+      { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.12' },
       { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
       { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
-      { alias: '3.2-rc', channel: /^3\.2\.0-rc\.\d+$/, floor: '3.2.0-rc.7' },
     ];
+    for (const retired of ['3.2-rc', '3.2-beta', '3.2-rc.7']) {
+      expect(() => hostedComplianceTarget(retired), retired).toThrow();
+    }
     const checkedIn = checkedInComplianceBundles();
     const cappedAliases: string[] = [];
     for (const { alias, channel, floor } of aliases) {

@@ -2605,7 +2605,9 @@ const QUARTILE_LEAF_FIELDS = {
   quartile_100: 'q4_views',
 } as const;
 
-function reportingMetricIsAvailable(metricId: string, available: ReadonlySet<string>): boolean {
+/** Whether a declared metric set satisfies `metricId` under the container
+ * rule: `viewability` covers its numeric leaves, `quartile_data` its quartiles. */
+export function reportingMetricIsAvailable(metricId: string, available: ReadonlySet<string>): boolean {
   if (available.has(metricId)) return true;
   if (VIEWABILITY_NUMERIC_FIELDS.includes(metricId as typeof VIEWABILITY_NUMERIC_FIELDS[number])) {
     return available.has('viewability');
@@ -6128,8 +6130,9 @@ function requestedCreativeWireMode(
   return 'unknown';
 }
 
-function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
+function formatProjectionCatalogs(extraDeclarations: readonly Record<string, unknown>[] = []): ProjectionCatalogSnapshot[] {
   const declarations = new Map<string, Record<string, unknown>>();
+  for (const declaration of extraDeclarations) declarations.set(JSON.stringify(declaration), declaration);
   for (const catalogProduct of getCatalog()) {
     for (const rawDeclaration of catalogProduct.product.format_options ?? []) {
       if (!isRecord(rawDeclaration)) continue;
@@ -6383,8 +6386,10 @@ type CreativeProjectionAdapters = {
   canonicalFormatLegacyResolver: ReturnType<typeof canonicalFormatLegacyResolverFromCatalogSnapshots>;
 };
 
-export function creativeProjectionAdapters(): CreativeProjectionAdapters {
-  const catalogs = formatProjectionCatalogs();
+/** `extraDeclarations` adds a tenant's own product format declarations (the
+ * inventory tenants') to the sales catalogue's. */
+export function creativeProjectionAdapters(extraDeclarations: readonly Record<string, unknown>[] = []): CreativeProjectionAdapters {
+  const catalogs = formatProjectionCatalogs(extraDeclarations);
   return {
     legacyFormatConverter: legacyFormatConverterFromCatalogSnapshots(catalogs),
     canonicalFormatLegacyResolver: canonicalFormatLegacyResolverFromCatalogSnapshots(
@@ -7289,22 +7294,69 @@ function cacheScopeForWholesaleRequest(req: WholesaleFeedRequest): 'public' | 'a
     : 'public';
 }
 
-function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
-  if (map.size === 0) return 'base';
-  const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  return createHash('sha256').update(JSON.stringify(entries)).digest('hex').slice(0, 16);
+function revisionDigest(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex').slice(0, 16);
 }
 
-function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
-  const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
-  const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+/**
+ * Digests of the whole served product feed: every built-in product as this
+ * context serves it, with the session's controller-seeded products and prices
+ * overlaid, before any filter, targeting configuration or pagination. Those
+ * per-request inputs are already part of the version's scope tuple, so one
+ * whole-feed digest is a valid version for every selection, and a change to
+ * any product moves it for all of them. Prices (product and nested signal
+ * targeting `pricing_options`) are digested separately, so a price-only
+ * change moves pricing_version alone (get-products-response.json#pricing_version).
+ * Forecasts are in neither: the version covers the durable offer definition,
+ * not forecast data (list_products.mdx, "Availability forecasts are a per-read
+ * overlay").
+ */
+function servedProductFeedRevisions(session: SessionState, ctx: TrainingContext): { feed: string; pricing: string } {
+  const productMap = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, { ...entry.product }]));
+  overlaySeededProducts(session, productMap);
+  const structure: Array<[string, unknown]> = [];
+  const pricing: Array<[string, unknown]> = [];
+  for (const [productId, product] of [...productMap].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const {
+      pricing_options: pricingOptions,
+      signal_targeting_options: signalOptions,
+      forecast: _forecast,
+      ...rest
+    } = product as unknown as Record<string, unknown>;
+    const signals = Array.isArray(signalOptions) ? signalOptions : undefined;
+    structure.push([productId, {
+      ...rest,
+      ...(signals && {
+        signal_targeting_options: signals.map(option => {
+          if (!isRecord(option)) return option;
+          const { pricing_options: _pricing, ...optionRest } = option;
+          return optionRest;
+        }),
+      }),
+    }]);
+    pricing.push([productId, {
+      pricing_options: pricingOptions ?? null,
+      ...(signals && {
+        signal_targeting_options: signals.map(option => (isRecord(option) ? option.pricing_options ?? null : null)),
+      }),
+    }]);
+  }
+  return { feed: revisionDigest(structure), pricing: revisionDigest(pricing) };
+}
+
+function productWholesaleFeedMeta(
+  req: WholesaleFeedRequest,
+  session: SessionState,
+  ctx: TrainingContext,
+): WholesaleFeedMeta {
+  const revisions = servedProductFeedRevisions(session, ctx);
   const cacheScope = cacheScopeForWholesaleRequest(req);
   // Tokens are scope-keyed: the same feed state yields a distinct token per
   // cache_scope so a token minted under one scope never short-circuits a probe
   // the seller resolves to another. See media-buy/get-products-response.json#unchanged.
   return {
-    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${seededProductsRevision}`,
-    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${seededPricingRevision}`,
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${revisions.feed}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${revisions.pricing}`,
     cache_scope: cacheScope,
   };
 }
@@ -7900,6 +7952,8 @@ export function normalizeProductDiscoveryArgs(
         : {}),
       ...(ifFeedVersion !== undefined && { if_wholesale_feed_version: ifFeedVersion }),
       buying_mode: 'wholesale',
+      // Errors on expanded criteria report the compact path they arrived on.
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'request_proposals') {
@@ -7910,6 +7964,7 @@ export function normalizeProductDiscoveryArgs(
       buying_mode: 'brief',
       __compact_proposal_lifecycle: true,
       __require_proposals: true,
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'refine_proposals') {
@@ -8870,9 +8925,12 @@ function canonicalStringSet(value: unknown): string[] | undefined {
   return [...new Set(value)].sort();
 }
 
-/** Controller fixtures expose discrete inventory coverage separately from
- * overlay_support. The training seller can evaluate country and metro facts;
- * it refuses geography it cannot evaluate instead of ignoring a predicate. */
+/** Built-in products and controller fixtures expose discrete inventory
+ * coverage as `ext.training.coverage`, separately from overlay_support. The
+ * training seller can evaluate country and metro facts; it refuses geography
+ * it cannot evaluate instead of ignoring a predicate. A coverage filter
+ * returns products whose inventory covers a requested area, so a product
+ * that declares no facts for a requested field is left out. */
 function filterProductsByCoverage(
   products: Product[],
   filters: Record<string, unknown>,
@@ -8882,23 +8940,15 @@ function filterProductsByCoverage(
   if (requested.length === 0) return { products };
   const unsupported = requested.find(field => field !== 'countries' && field !== 'metros');
   if (unsupported) return { products: [], unsupported };
-  const coverageByProduct = new Map<Product, Record<string, unknown>>();
-  for (const product of products) {
-    const ext = (product as unknown as Record<string, unknown>).ext;
-    const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
-    const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
-    for (const field of requested) {
-      if (!coverage || !Array.isArray(coverage[field])) return { products: [], unsupported: field };
-    }
-    coverageByProduct.set(product, coverage!);
-  }
   return {
     products: products.filter(product => {
-      const coverage = coverageByProduct.get(product)!;
+      const ext = (product as unknown as Record<string, unknown>).ext;
+      const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
+      const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
       return requested.every(field => {
         const values = filters[field];
-        if (!Array.isArray(values)) return false;
-        const inventory = coverage[field] as unknown[];
+        const inventory = coverage?.[field];
+        if (!Array.isArray(values) || !Array.isArray(inventory)) return false;
         return values.some(value => inventory.some(area => field === 'countries'
           ? area === value
           : isRecord(area) && isRecord(value)
@@ -11893,7 +11943,7 @@ async function handleGetProductsUnlocked(
       .map(proposal => [proposal.proposal_id, proposal]),
   );
   const wholesaleMeta = buyingMode === 'wholesale'
-    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
+    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session, ctx)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
 
@@ -16523,20 +16573,12 @@ async function handleCreateMediaBuyUnlocked(
       || typeof internalProposal.__brand_id === 'string'
       || Array.isArray(internalProposal.__brand_countries)
       || typeof internalProposal.__account_id === 'string';
+    // The proposal-state codes below take precedence over
+    // PROPOSAL_TERMS_CHANGED, which is checked after expiry. A proposal
+    // already executed under a different digest falls through to it.
     const suppliedTermsDigest = (req as unknown as { proposal_terms_digest?: unknown }).proposal_terms_digest;
-    if (typeof suppliedTermsDigest === 'string') {
-      const expectedTermsDigest = outwardProposal(internalProposal, productMap).terms_digest;
-      if (suppliedTermsDigest !== expectedTermsDigest) {
-        return {
-          errors: [{
-            code: 'INVALID_REQUEST',
-            message: 'proposal_terms_digest does not match the committed proposal snapshot.',
-            field: 'proposal_terms_digest',
-            recovery: 'correctable',
-          }] as TaskError[],
-        };
-      }
-    }
+    const termsDigestMismatch = typeof suppliedTermsDigest === 'string'
+      && suppliedTermsDigest !== outwardProposal(internalProposal, productMap).terms_digest;
     if (internalProposal.__declined === true) {
       return {
         errors: [{
@@ -16547,7 +16589,7 @@ async function handleCreateMediaBuyUnlocked(
         }] as TaskError[],
       };
     }
-    if (compactProposal && internalProposal.__executed === true) {
+    if (compactProposal && internalProposal.__executed === true && !termsDigestMismatch) {
       return {
         errors: [{
           code: 'INVALID_STATE',
@@ -16587,6 +16629,17 @@ async function handleCreateMediaBuyUnlocked(
     if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
       return {
         errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Request and finalize a fresh proposal before retrying.` }] as TaskError[],
+      };
+    }
+
+    if (termsDigestMismatch) {
+      return {
+        errors: [{
+          code: 'PROPOSAL_TERMS_CHANGED',
+          message: "proposal_terms_digest does not match the committed proposal's current terms_digest; nothing was accepted. Re-read the proposal and accept its current terms with the current terms_digest.",
+          field: 'proposal_terms_digest',
+          recovery: 'correctable',
+        }] as TaskError[],
       };
     }
 
@@ -24239,7 +24292,7 @@ export async function handleBuyProducts(
     sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(args, ctx),
   );
-  const feed = productWholesaleFeedMeta(args, session);
+  const feed = productWholesaleFeedMeta(args, session, ctx);
   if (args.feed_version !== feed.wholesale_feed_version) {
     return { errors: [{
       code: 'INVALID_REQUEST',
@@ -24557,17 +24610,31 @@ function proposalAcceptanceSnapshot(
     return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was declined and cannot be accepted.`, field: 'proposal_id' }] } };
   }
   const proposal = canonicalProposalFromRecord(record);
-  if (record.accepted) {
+  const digestMatches = proposal.terms_digest === args.proposal_terms_digest;
+  if (record.accepted && digestMatches) {
     return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was already accepted.`, field: 'proposal_id' }] } };
   }
-  if (proposal.proposal_status !== 'committed') {
+  // The proposal-state codes take precedence over PROPOSAL_TERMS_CHANGED. A
+  // proposal already accepted under a different digest falls through to it.
+  if (!record.accepted && proposal.proposal_status !== 'committed') {
     return { response: { errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal ${args.proposal_id} is not committed.`, field: 'proposal_id' }] } };
   }
   if (proposal.expires_at && Date.parse(proposal.expires_at) <= Date.now()) {
     return { response: { errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal ${args.proposal_id} expired at ${proposal.expires_at}.`, field: 'proposal_id' }] } };
   }
-  if (proposal.terms_digest !== args.proposal_terms_digest) {
-    return { response: { errors: [{ code: 'INVALID_REQUEST', message: 'proposal_terms_digest does not match the committed proposal snapshot.', field: 'proposal_terms_digest' }] } };
+  if (!digestMatches) {
+    return {
+      response: {
+        errors: [{
+          code: 'PROPOSAL_TERMS_CHANGED',
+          message: record.accepted
+            ? "Proposal was already accepted under a different terms_digest; nothing changed. Find the existing MediaBuy through get_media_buys."
+            : "proposal_terms_digest does not match the committed proposal's current terms_digest; nothing was accepted. Re-read the proposal and accept its current terms with the current terms_digest.",
+          field: 'proposal_terms_digest',
+          recovery: 'correctable',
+        }],
+      },
+    };
   }
   return { proposal };
 }

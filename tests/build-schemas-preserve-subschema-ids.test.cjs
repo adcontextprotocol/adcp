@@ -126,7 +126,7 @@ test('bundled root keeps the canonical document identity', async () => {
     }));
 
     const result = await generateBundledSchemas(sourceDir, bundledDir, '3.2.1');
-    assert.deepEqual(result, { successCount: 1, errorCount: 0 });
+    assert.deepEqual(result, { successCount: 1, failures: [] });
     const bundled = JSON.parse(fs.readFileSync(path.join(bundledDir, relativePath), 'utf8'));
     assert.equal(
       bundled.$id,

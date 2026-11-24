@@ -1014,13 +1014,16 @@ function buildProduct(
     // auction-only. Guaranteed products can still steer allocation/pacing
     // toward the vendor signal, so do not gate this on delivery_type.
     ...(pub.vendorMetricOptimization && { vendor_metric_optimization: pub.vendorMetricOptimization }),
-    ...(forecast && { forecast }),
+    forecast,
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
     ...(collectionSelectors && { collections: collectionSelectors }),
     ...(exclusivity && { exclusivity }),
     ...(installments && { installments }),
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
     ...(offer && { audience_evidence: structuredClone(offer.audienceEvidence) as unknown as Product['audience_evidence'] }),
+    // The same inventory facts controller-seeded fixtures carry, so the
+    // countries and metros discovery filters can evaluate built-in products.
+    ext: { training: { coverage: structuredClone(offer?.coverage ?? pub.coverage) } },
   };
 
   // Every catalog product can join one counter shared across a MediaBuy so

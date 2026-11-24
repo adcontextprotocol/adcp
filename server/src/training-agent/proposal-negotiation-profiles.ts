@@ -359,6 +359,15 @@ export function evaluateTrainingProposal(
   evaluation: Evaluation
 ): ProposalRefinementResult {
   if (evaluation.refinement.action === "finalize") return finalize(evaluation);
+  // extend_hold is served by holds/service.ts, and @adcp/sdk's
+  // createProposalRefinementHandler refuses it before evaluation, so this
+  // profile never receives one; the guard narrows the SDK's refinement union.
+  if (evaluation.refinement.action === "extend_hold")
+    return unable(
+      evaluation.refinement.proposal_id,
+      {},
+      "Hold extensions are not evaluated by this profile."
+    );
   const sourceId = evaluation.refinement.proposal_id;
   const source = evaluation.source;
   if (!source)

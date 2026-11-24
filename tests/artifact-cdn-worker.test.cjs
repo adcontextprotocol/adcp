@@ -775,6 +775,54 @@ describe('artifact CDN Worker', () => {
     });
   });
 
+  describe('3.3.0-rc.1 superseded without publication', () => {
+    // Worst case: rc.1 objects reached R2 although no tag or GitHub Release
+    // exists. Its exact bytes stay addressable, but it must never be listed as
+    // a candidate or be what a missing later candidate resolves to.
+    const supersededEnv = () => ({
+      ARTIFACTS: new MockBucket([
+        ...['3.2.11', '3.3.0-rc.0', '3.3.0-rc.1'].flatMap((version) => [
+          object(`schemas/${version}/index.json`, JSON.stringify({ version })),
+          object(`compliance/${version}/index.json`, JSON.stringify({ version })),
+          object(`protocol/${version}.tgz`, `${version}-tarball`),
+        ]),
+      ]),
+    });
+    const fetchSuperseded = async (path) => {
+      const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+      clearVersionCacheForTests();
+      return handleRequest(new Request(`https://artifacts.example${path}`), supersededEnv(), {});
+    };
+
+    it('marks 3.3.0-rc.1 unpublished like build-schemas and the server middleware', async () => {
+      for (const mount of ['schemas', 'compliance']) {
+        const body = await (await fetchSuperseded(`/${mount}/`)).json();
+        assert.deepEqual(body.versions.find((entry) => entry.version === '3.3.0-rc.1'), {
+          version: '3.3.0-rc.1',
+          stability: 'unpublished',
+          prerelease: true,
+          deprecated: false,
+          published: false,
+          path: `/${mount}/3.3.0-rc.1/`,
+        });
+        assert.equal(body.latest_stable, '3.2.11');
+        assert.ok(!body.aliases.some((entry) => entry.resolves_to === '3.3.0-rc.1'));
+      }
+    });
+
+    it('never resolves a missing later candidate to the superseded 3.3.0-rc.1 bytes', async () => {
+      const { resolvePinnedFallback } = await loadWorker();
+      const known = ['3.3.0-rc.1', '3.3.0-rc.0', '3.2.11'];
+      assert.equal(resolvePinnedFallback(known, '3.3.0-rc.2'), '3.3.0-rc.0');
+      assert.equal(resolvePinnedFallback(known, '3.3.0'), '3.2.11');
+
+      const pending = await fetchSuperseded('/schemas/3.3.0-rc.2/index.json');
+      assert.equal(pending.status, 200);
+      assert.deepEqual(await pending.json(), { version: '3.3.0-rc.0' });
+      assert.equal(pending.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+    });
+  });
+
   it('serves protocol files without alias rewriting', async () => {
     const response = await fetchPath('/protocol/latest.tgz');
 

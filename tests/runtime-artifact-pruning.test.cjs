@@ -303,11 +303,12 @@ test("CDN archive verification rejects unavailable, different and interrupted bo
       async () => new Response(readFileSync(join(root, "dist", "protocol", "3.0.0.tgz")),
         { headers: { etag: '"0123456789abcdef0123456789abcdef"', "fly-request-id": "origin-fallback" } }),
       async () => { throw new Error("network interrupted"); },
+      async () => new Response("unavailable", { status: 503 }),
     ]) {
       await assert.rejects(() => verifyProtocolOffloads(root, (url, options) =>
         url === "https://adcontextprotocol.org/protocol/"
           ? Promise.resolve(Response.json({ versions: [{ tarball: "/protocol/3.0.0.tgz" }] }))
-          : fetchArtifact(url, options)));
+          : fetchArtifact(url, options), [0, 0]));
       assert.ok(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")));
       assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.2")));
       assert.equal(existsSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json")), false);
@@ -315,6 +316,64 @@ test("CDN archive verification rejects unavailable, different and interrupted bo
     assert.throws(() => pruneRuntimeArtifacts(root, ["3.9.9.tgz"]), /unknown protocol archive/);
     assert.throws(() => pruneRuntimeArtifacts(root, ["latest.tgz"]), /unknown protocol archive/);
     assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.2")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a stalled or 5xx CDN request is retried, but a definitive rejection is not", async () => {
+  const root = fixture();
+  try {
+    const serving = cdnServing(root, ["3.0.0.tgz", "3.1.1.tgz"]);
+    const calls = new Map();
+    // Discovery times out once; one archive answers 503 once, then succeeds.
+    const flaky = (url, options) => {
+      const n = (calls.get(url) ?? 0) + 1;
+      calls.set(url, n);
+      if (n === 1 && url === "https://adcontextprotocol.org/protocol/") {
+        return Promise.reject(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+      }
+      if (n === 1 && url.endsWith("/3.1.1.tgz")) return Promise.resolve(new Response("busy", { status: 503 }));
+      return serving(url, options);
+    };
+    assert.deepEqual(await verifyProtocolOffloads(root, flaky, [0, 0]), ["3.0.0.tgz", "3.1.1.tgz"]);
+    assert.equal(calls.get("https://adcontextprotocol.org/protocol/"), 2);
+    assert.equal(calls.get("https://adcontextprotocol.org/protocol/3.1.1.tgz"), 2);
+
+    // Different bytes are an answer, not a stall: one request, then fail.
+    let archiveCalls = 0;
+    await assert.rejects(() => verifyProtocolOffloads(root, (url, options) => {
+      if (!url.endsWith("/3.0.0.tgz")) return serving(url, options);
+      archiveCalls += 1;
+      return Promise.resolve(new Response("different bytes", { headers: { etag: '"0123456789abcdef0123456789abcdef"' } }));
+    }, [0, 0]), /differs from committed bytes/);
+    assert.equal(archiveCalls, 1);
+
+    // A stall that never clears gives up after one try per delay plus the first.
+    let stalls = 0;
+    await assert.rejects(() => verifyProtocolOffloads(root, () => {
+      stalls += 1;
+      return Promise.reject(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+    }, [0, 0]), /aborted due to timeout/);
+    assert.equal(stalls, 3);
+    assert.ok(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a committed candidate superseded without publication stays local without a runtime anchor", async () => {
+  const root = fixture();
+  try {
+    // 3.0.5 is neither hosted nor listed by R2: it was never published.
+    writeFileSync(join(root, "dist", "protocol", "3.0.5.tgz"), "3.0.5 archive\n");
+    const serving = cdnServing(root, ["3.0.0.tgz", "3.1.1.tgz"]);
+    await assert.rejects(() => verifyProtocolOffloads(root, serving, [0, 0]), /absent from R2 discovery/);
+
+    const indexPath = join(root, "dist", "schemas", "index.json");
+    const index = JSON.parse(readFileSync(indexPath, "utf8"));
+    index.versions.push({ version: "3.0.5", stability: "unpublished", published: false });
+    writeJson(indexPath, index);
+    const verified = await verifyProtocolOffloads(root, serving, [0, 0]);
+    assert.deepEqual(verified, ["3.0.0.tgz", "3.1.1.tgz"]);
+    pruneRuntimeArtifacts(root, verified);
+    assert.equal(readFileSync(join(root, "dist", "protocol", "3.0.5.tgz"), "utf8"), "3.0.5 archive\n");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

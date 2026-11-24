@@ -103,6 +103,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROPOSAL_EXPIRED` | correctable | call request_proposals and finalize a fresh proposal, or re-discover and finalize through legacy get_products |
 | `PROPOSAL_NOT_COMMITTED` | correctable | finalize the draft through refine_proposals, or through the legacy get_products refine action |
 | `PROPOSAL_NOT_FOUND` | correctable | request and finalize a fresh proposal, then retry |
+| `PROPOSAL_TERMS_CHANGED` | correctable | re-read the proposal; if it is accepted, do not accept again, and find the existing MediaBuy through get_media_buys; otherwise, if its current terms are acceptable, accept them with the current terms_digest and a fresh idempotency_key. Never resend the rejected digest |
 | `PROVENANCE_CLAIM_CONTRADICTED` | correctable | revise the provenance claim to match the verifier's observation or replace the creative; auto-retry without correction will not pass |
 | `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING` | correctable | set provenance.digital_source_type to a value from the digital-source-type enum and resubmit |
 | `PROVENANCE_DISCLOSURE_MISSING` | correctable | set provenance.disclosure.required and, when true, populate disclosure.jurisdictions |
@@ -1022,6 +1023,15 @@ The referenced proposal has proposal_status 'draft' and cannot be accepted into 
 **Suggested action:** request and finalize a fresh proposal, then retry
 
 The referenced proposal_id is not recognized by the seller — it belongs to a different tenant, was never issued, or was evicted from the seller's session cache before consumption. Distinct from <code>{"PROPOSAL_EXPIRED"}</code> (a known proposal whose <code>{"expires_at"}</code> window has passed) and <code>{"PROPOSAL_NOT_COMMITTED"}</code> (a known proposal still in <code>{"draft"}</code>). Recovery: correctable (request a fresh proposal, finalize it, then retry accept_proposal; 3.x compatibility callers retry create_media_buy).
+
+</Accordion>
+<a id="error-code-proposal-terms-changed"></a>
+
+<Accordion title="PROPOSAL_TERMS_CHANGED — correctable">
+
+**Suggested action:** re-read the proposal; if it is accepted, do not accept again, and find the existing MediaBuy through get_media_buys; otherwise, if its current terms are acceptable, accept them with the current terms_digest and a fresh idempotency_key. Never resend the rejected digest
+
+The proposal_terms_digest on an accept_proposal request does not match the current terms_digest of the committed proposal named by proposal_id. The buyer recorded the digest before the seller committed different terms under the same proposal_id, sent a stale or wrong digest, or the proposal was already accepted under a different digest. Nothing was accepted: no MediaBuy was created, amended, or cancelled, and the proposal's status is unchanged. Sellers SHOULD set error.field to 'proposal_terms_digest'. Idempotency checks (<code>{"IDEMPOTENCY_CONFLICT"}</code>) and the proposal-state codes (<code>{"PROPOSAL_NOT_FOUND"}</code>, <code>{"PROPOSAL_EXPIRED"}</code>, <code>{"PROPOSAL_NOT_COMMITTED"}</code>, and <code>{"INVALID_STATE"}</code> for a declined or withdrawn proposal) take precedence; this code applies to a committed proposal, or to one already accepted under a different digest. Distinct from <code>{"CONFLICT"}</code> (a transient concurrent write; resending the same digest can never succeed here) and <code>{"INVALID_REQUEST"}</code> (the request is well-formed; it names a different version of the terms). Sellers on releases before 3.3 may report this case with another code, so buyers act on recovery and error.field. Recovery: correctable (re-read the proposal; if it is accepted, do not accept again, and find the existing MediaBuy through get_media_buys; otherwise, if its current terms are acceptable, accept them with the current terms_digest and a fresh idempotency_key. Never resend the rejected digest).
 
 </Accordion>
 <a id="error-code-provenance-claim-contradicted"></a>

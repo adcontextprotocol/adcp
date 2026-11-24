@@ -39,6 +39,7 @@ import {
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import {
   authForStoryboard,
+  gradesAnotherTenant,
   multiAgentRoutingForStoryboard,
   testKitOptionsFromKit,
   type LoadedTestKit,
@@ -147,6 +148,7 @@ const { clearCatalogEventStores } = await import('../../src/training-agent/catal
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
 const { TRAINING_AGENT_URL: TRAINING_AGENT_PUBLIC_URL } = await import('../../src/training-agent/config.js');
+const { isInventoryTenant } = await import('../../src/training-agent/tenants/inventory.js');
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
 // version for schema selection and override only the request envelope. Source
@@ -322,21 +324,7 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
  * coverage. Every entry names a concrete removal condition; link an issue
  * when an active tracker exists.
  */
-const EXTEND_HOLD_RUNNER_GAP = 'The @adcp/sdk runner validates refine_proposals requests client-side and accepts only revise and finalize, so it never sends action extend_hold (experimental 3.3 media_buy.hold_extension). The training agent serves extend_hold and its behavior is graded in server/tests/unit/training-agent-hold-vectors.test.ts. Remove when adcontextprotocol/adcp-client#3601 is resolved.';
-
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
-  [
-    'media_buy_seller/hold_extension/extend_extendable_hold',
-    EXTEND_HOLD_RUNNER_GAP,
-  ],
-  [
-    'media_buy_seller/hold_extension/extend_capped_hold',
-    EXTEND_HOLD_RUNNER_GAP,
-  ],
-  [
-    'media_buy_seller/hold_extension/extend_fixed_hold',
-    EXTEND_HOLD_RUNNER_GAP,
-  ],
   [
     'sales_broadcast_tv/expect_window_update_webhook',
     'The training seller emits no delivery window_update webhooks: on AdCP 3.2 its synchronous create_media_buy completion is silent and it does not push delivery reports on simulated delivery. Every other step of the broadcast transaction is graded. Remove when the training agent emits C3 and C7 window_update webhooks to the registered push_notification_config.',
@@ -754,11 +742,19 @@ async function selectStoryboardsForTenant(
   const inDeclaredScope = new Set(resolved.storyboards.map(sb => sb.id));
   const versionExcluded = new Set(resolved.not_applicable.map(entry => entry.storyboard_id));
   const selectedCorpus = everything.filter(matchesExplicitSelection);
-  const declared = resolved.storyboards.filter(matchesExplicitSelection);
+  // Out of scope for this tenant, not failures: a multi-agent storyboard
+  // grades only its default_agent tenant, and signed_requests is graded on
+  // the /mcp-strict* routes, which the inventory tenants do not mount (they
+  // advertise no request_signing).
+  const tenantPath = process.env.TENANT_PATH ?? '';
+  const otherTenants = new Set(resolved.storyboards
+    .filter(sb => gradesAnotherTenant(sb, tenantPath) || (sb.id === 'signed_requests' && isInventoryTenant(tenantPath)))
+    .map(sb => sb.id));
+  const declared = resolved.storyboards.filter(sb => matchesExplicitSelection(sb) && !otherTenants.has(sb.id));
   const quarantined = declared.filter(sb => knownFailingReason(sb.id) !== undefined);
   const applicable = declared.filter(sb => knownFailingReason(sb.id) === undefined);
   const notApplicable = selectedCorpus.filter(sb => (
-    !inDeclaredScope.has(sb.id) || versionExcluded.has(sb.id)
+    !inDeclaredScope.has(sb.id) || versionExcluded.has(sb.id) || otherTenants.has(sb.id)
   ));
 
   return {

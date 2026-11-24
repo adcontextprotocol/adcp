@@ -237,13 +237,14 @@ function mergeFixture(t, { tamperTree = false, headFiles = {} } = {}) {
   fs.copyFileSync(fence, path.join(dir, "scripts/check-release-state.cjs"));
   const job = (name, conclusion = "success") => ({ name, status: "completed", conclusion });
   const passingJobs = [
-    ...["signals", "governance", "creative", "creative-builder", "brand", "si", "typed-negotiation", "constrained-seller", "finalization-failure"].map(
+    ...["signals", "governance", "creative", "creative-builder", "brand", "si", "typed-negotiation", "constrained-seller", "finalization-failure", "inventory-adserver", "inventory-content"].map(
       (tenant) => job(`Storyboards (current /${tenant})`),
     ),
     ...["signals", "sales", "governance", "creative", "creative-builder", "brand", "si"].map(
       (tenant) => job(`Storyboards (3.0-compat /${tenant})`),
     ),
     ...[0, 1, 2, 3, 4, 5, 6, 7].map((n) => job(`Sales storyboard orchestrator (${n}/8)`)),
+    ...["inventory-adserver", "inventory-content"].flatMap((tenant) => [0, 1].map((n) => job(`Inventory storyboard orchestrator (/${tenant} ${n}/2)`))),
     job("Storyboards (current /sales)"),
   ];
   const responses = {
@@ -575,7 +576,7 @@ const r=require('node:child_process').spawnSync(${JSON.stringify(realGit)},args,
 });
 
 test("verified-merge requires the full expected storyboard matrix", (t) => {
-  assert.equal(storyboardJobs.length, 25);
+  assert.equal(storyboardJobs.length, 31);
   const f = mergeFixture(t);
   // The narrowed shape the first version accepted: one job per surface plus
   // the aggregate /sales job.

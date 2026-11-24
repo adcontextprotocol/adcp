@@ -11,6 +11,7 @@ function loadMediaBuyStoryboard(name) {
 }
 
 const metricAndFormatScenarios = ['measurement_accountability', 'vendor_metric_accountability', 'canonical_formats'];
+const MANIFEST_ROUTING_PHASE = 'canonical_manifest_routing';
 
 test('authored literal auction packages carry bids without depending on brief ranking', () => {
   const storyboards = [
@@ -90,7 +91,9 @@ for (const name of metricAndFormatScenarios) {
   for (const pricing of [{ fixed_price: 14 }, { floor_price: 8 }]) {
     test(`${name} discovers and buys ${'fixed_price' in pricing ? 'fixed' : 'auction'} CPM inventory`, async () => {
       const storyboard = loadMediaBuyStoryboard(name);
-      const sourceSteps = storyboard.phases.flatMap(phase => phase.steps);
+      // Manifest routing buys its own seeded product after its own read, so it
+      // has its own suite in canonical-compatibility-slices.test.cjs.
+      const sourceSteps = storyboard.phases.filter(phase => phase.id !== MANIFEST_ROUTING_PHASE).flatMap(phase => phase.steps);
       const discovery = sourceSteps.find(step => step.task === 'get_products');
       const creates = sourceSteps.filter(step => step.task === 'create_media_buy' && !step.id.startsWith('reject_'));
       // Exercise real request construction and discovery assertions. Format

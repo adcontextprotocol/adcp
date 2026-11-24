@@ -29,7 +29,10 @@
     },
     {
       "type": "object",
-      "description": "Error response",
+      "description": "Error response. A body that is also a valid success response is the success shape, even when it lists `errors`.",
+      "not": {
+        "$ref": "#/oneOf/0"
+      },
       "properties": {
         "errors": {
           "type": "array",

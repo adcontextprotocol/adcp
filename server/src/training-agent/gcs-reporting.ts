@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { Storage } from '@google-cloud/storage';
 import { canonicalize } from '@adcp/sdk';
-import { AdcpError, type NotificationSubscriptionConfigInput, type ResolveContext } from '@adcp/sdk/server';
+import { AdcpError, projectNotificationSubscriptionReadback, type NotificationSubscriptionConfigInput,
+  type NotificationSubscriptionScope, type PersistentNotificationRuntime, type ResolveContext } from '@adcp/sdk/server';
 import { reportingManagedDeliveryBindingV1 } from '@adcp/sdk/reporting/ledger';
 import { reportingSchedulerErrorMessage, type ReliableReportingConfigurationInputV1 } from '@adcp/sdk/reporting/service';
 import { PostgresReportingLedgerStore, reportingObjectWriteScopeKey, type ReportingPgPool } from '@adcp/reporting-storage';
@@ -42,6 +44,93 @@ function unavailable(): never {
 }
 function denied(): never {
   throw new AdcpError('ACCOUNT_NOT_FOUND', { recovery: 'correctable', message: 'Reporting account was not found.' });
+}
+
+/** Attempt outcomes over the account's most recent webhook attempts. */
+export interface TrainingReportingSubscriberAttempts {
+  success: number; failed: number; timeout: number; connection_error: number; pending: number;
+  last_fired_at?: string; last_status?: string; last_http_status_code?: number;
+}
+/** An operator's view of one subscriber: identifiers and state, never its URL path, query or credentials. */
+export interface TrainingReportingSubscriber {
+  account_id: string;
+  subscriber_id: string;
+  active: boolean;
+  url_host: string | null;
+  event_types: string[];
+  /** Absent when webhook activity could not be read. */
+  recent_attempts?: TrainingReportingSubscriberAttempts;
+}
+export type TrainingReportingSubscriberUpdate = 'applied' | 'unchanged' | 'not_found';
+
+/**
+ * Sets one subscriber's `active` flag.
+ *
+ * Only `active` changes, so the destination generation and its proof survive:
+ * resuming needs no new challenge. An inactive subscriber is not resolved for
+ * new emissions, a pending activity settles it as terminal on its next claim
+ * instead of retrying, and an outbox retry is suppressed as
+ * `subscription_inactive`. Every write is a compare-and-set on the set's
+ * generation, so a concurrent replacement by the owning principal is never
+ * overwritten.
+ *
+ * Suspending writes the stored set directly, because stopping delivery must not
+ * depend on the destination still validating: the runtime's `replace`
+ * revalidates every destination, so a subscriber whose host stopped resolving
+ * could never be turned off. Resuming goes through `replace`, so a destination
+ * is revalidated before delivery to it restarts.
+ */
+export async function setNotificationSubscriberActive(
+  notifications: Pick<PersistentNotificationRuntime, 'read' | 'replace' | 'store'>,
+  scope: NotificationSubscriptionScope, subscriberId: string, active: boolean,
+): Promise<TrainingReportingSubscriberUpdate> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!active) {
+      const stored = await notifications.store.get(scope);
+      const subscriber = stored?.subscriptions.find(item => item.subscriberId === subscriberId);
+      if (!stored || !subscriber) return 'not_found';
+      if (!subscriber.active) return 'unchanged';
+      const written = await notifications.store.replace({
+        scope, expectedGeneration: stored.generation, nextGeneration: `cfg_${randomUUID()}`,
+        subscriptions: stored.subscriptions.map(item => item.subscriberId === subscriberId ? { ...item, active: false } : item),
+      });
+      if (written.outcome === 'conflict') continue;
+      return written.outcome === 'unchanged' ? 'unchanged' : 'applied';
+    }
+    const current = await notifications.read(scope);
+    const target = current.notificationConfigs.find(config => config.subscriber_id === subscriberId);
+    if (!target || current.generation === undefined) return 'not_found';
+    if (target.active === active) return 'unchanged';
+    const configs = projectNotificationSubscriptionReadback(current.notificationConfigs)
+      .map(config => config.subscriber_id === subscriberId ? { ...config, active } : config);
+    const result = await notifications.replace(scope, configs, { expectedGeneration: current.generation });
+    if (result.outcome === 'conflict') continue;
+    if (result.outcome === 'proof_failed') {
+      throw new Error('Notification subscriber update was refused: the destination needs a new proof');
+    }
+    return result.outcome === 'unchanged' ? 'unchanged' : 'applied';
+  }
+  throw new Error('Notification subscriber update kept conflicting with concurrent replacements');
+}
+
+function urlHost(url: string): string | null {
+  try { return new URL(url).hostname; } catch { return null; }
+}
+
+function summarizeAttempts(records: ReadonlyArray<{ status: string; fired_at: string; http_status_code?: number | null }>): TrainingReportingSubscriberAttempts {
+  const counts = { success: 0, failed: 0, timeout: 0, connection_error: 0, pending: 0 };
+  for (const record of records) {
+    if (Object.hasOwn(counts, record.status)) counts[record.status as keyof typeof counts]++;
+  }
+  const summary: TrainingReportingSubscriberAttempts = counts;
+  // Records arrive newest first.
+  const last = records[0];
+  if (last) {
+    summary.last_fired_at = last.fired_at;
+    summary.last_status = last.status;
+    if (typeof last.http_status_code === 'number') summary.last_http_status_code = last.http_status_code;
+  }
+  return summary;
 }
 
 /** Keep the PostgreSQL receipt when the storage layer wraps a query failure. */
@@ -393,6 +482,37 @@ export class TrainingGcsReporting {
     if (!await this.owns(principal, accountId)) denied();
     return this.service.notifications.replace({ kind: 'account', tenantId: 'sales', principalId: principal, accountId }, configs);
   }
+  /** Every subscriber on this installation's accounts, for operators; needs no principal credential. */
+  async listNotificationSubscribers(): Promise<TrainingReportingSubscriber[]> {
+    if (this.stopping) unavailable();
+    const { rows } = await this.db.query<{ principal_id: string; account_id: string }>(
+      'SELECT principal_id, account_id FROM host_accounts ORDER BY account_id LIMIT 200');
+    const subscribers: TrainingReportingSubscriber[] = [];
+    for (const row of rows) {
+      const [{ notificationConfigs }, activity] = await Promise.all([
+        this.service.notifications.read({ kind: 'account', tenantId: 'sales', principalId: row.principal_id, accountId: row.account_id }),
+        this.service.webhookActivity.listActivity({ tenantId: 'sales', principalId: row.principal_id, accountId: row.account_id, limit: 200 })
+          .catch(() => undefined),
+      ]);
+      for (const config of notificationConfigs) {
+        subscribers.push({
+          account_id: row.account_id, subscriber_id: config.subscriber_id, active: config.active,
+          url_host: urlHost(config.url), event_types: [...config.event_types],
+          ...(activity ? { recent_attempts: summarizeAttempts(activity.filter(record => record.subscriber_id === config.subscriber_id)) } : {}),
+        });
+      }
+    }
+    return subscribers;
+  }
+  /** Suspend (`active: false`) or resume one subscriber as an operator. */
+  async setNotificationSubscriberActive(accountId: string, subscriberId: string, active: boolean): Promise<TrainingReportingSubscriberUpdate> {
+    if (this.stopping) unavailable();
+    const { rows } = await this.db.query<{ principal_id: string }>(
+      'SELECT principal_id FROM host_accounts WHERE account_id = $1', [accountId]);
+    if (!rows[0]) return 'not_found';
+    return setNotificationSubscriberActive(this.service.notifications,
+      { kind: 'account', tenantId: 'sales', principalId: rows[0].principal_id, accountId }, subscriberId, active);
+  }
   async revoke(principal: string, accountId: string, destination: string, generation: number): Promise<boolean> {
     if (!await this.owns(principal, accountId)) denied();
     return this.service.stores.managed.revokeDestination({ account_id: accountId, destination_ref: destination, generation, revoked_at: new Date().toISOString() });
@@ -423,26 +543,100 @@ export class TrainingGcsReporting {
   assertServing(): void { if (this.stopping) unavailable(); }
 }
 
+// Startup runs before any account data is read, so its messages name the
+// failing check (authority, migration, credential or bucket policy). Redact
+// credential shapes anyway, and never pass the raw error to the logger: its
+// serializer would emit the unredacted message inside the stack.
+const CREDENTIAL_SHAPES: readonly RegExp[] = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
+  /\b(?:Bearer|Basic)\s+[\w.~+/=-]+/gi,
+  /\bya29\.[\w.-]+/g,
+  /\beyJ[\w-]+\.[\w-]+\.[\w-]*/g,
+  /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?=@)/gi,
+  /("?(?:private_key(?:_id)?|client_secret|access_token|refresh_token|id_token|password|token)"?\s*[:=]\s*)("[^"]*"|[^\s,}]+)/gi,
+];
+function redactCredentials(text: string): string {
+  let redacted = text;
+  for (const shape of CREDENTIAL_SHAPES) {
+    redacted = redacted.replace(shape, (match, prefix?: string) =>
+      typeof prefix === 'string' && match.startsWith(prefix) ? `${prefix}[redacted]` : '[redacted]');
+  }
+  return redacted.slice(0, 1000);
+}
+function ownValue(target: object, key: string): unknown {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** Name, message, code, the first stack frames and up to four causes, without credentials. */
+export function describeReportingInitFailure(error: unknown): Record<string, unknown> {
+  const describe = (value: unknown, depth: number, seen: Set<object>): Record<string, unknown> | string | undefined => {
+    if (typeof value !== 'object' || value === null) return value === undefined ? undefined : redactCredentials(String(value));
+    if (seen.has(value)) return '[cyclic cause]';
+    seen.add(value);
+    const stack = ownValue(value, 'stack') ?? (value instanceof Error ? value.stack : undefined);
+    const code = ownValue(value, 'code');
+    const name = ownValue(value, 'name') ?? (value instanceof Error ? value.name : undefined);
+    const message = ownValue(value, 'message');
+    return {
+      name: typeof name === 'string' ? name : value.constructor?.name,
+      message: typeof message === 'string' ? redactCredentials(message) : undefined,
+      code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+      at: typeof stack === 'string' ? stack.split('\n').filter(line => /^\s+at /.test(line)).slice(0, 6).map(line => line.trim()) : undefined,
+      cause: depth < 4 ? describe(ownValue(value, 'cause'), depth + 1, seen) : undefined,
+    };
+  };
+  try {
+    const described = describe(error, 0, new Set());
+    return typeof described === 'object' ? described : { message: described };
+  } catch {
+    return { message: '[undescribable error]' };
+  }
+}
+
 let runtime: TrainingGcsReporting | undefined;
 export function getTrainingGcsReporting(): TrainingGcsReporting | undefined {
   if (trainingGcsReportingConfig() && !runtime) unavailable();
   runtime?.assertServing();
   return runtime;
 }
-export async function initializeTrainingGcsReporting(): Promise<void> {
+// Waits between startup attempts. A bluegreen rollout boots new machines
+// while the old ones still hold their pools, and the primary can be slow to
+// accept a connection then; six attempts with a 10 s connect budget each take
+// about 90 s before the boot fails as before.
+export const TRAINING_REPORTING_INIT_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 16_000];
+
+export async function initializeTrainingGcsReporting(retryDelaysMs: readonly number[] = TRAINING_REPORTING_INIT_RETRY_DELAYS_MS): Promise<void> {
   const config = trainingGcsReportingConfig();
   if (!config || runtime) return;
   const database = getDatabaseConfig();
   if (!database) throw new Error('Reporting requires the application PostgreSQL primary.');
-  const db = new Pool({ connectionString: database.connectionString, ssl: database.ssl, max: 4,
-    connectionTimeoutMillis: database.connectionTimeoutMillis || 5000, idleTimeoutMillis: 30_000,
-    options: `-c search_path=${TRAINING_REPORTING_SCHEMA},pg_catalog -c statement_timeout=30000 -c lock_timeout=5000` });
-  db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
-  try {
-    runtime = await TrainingGcsReporting.create(config, db, new Storage({ projectId: 'adcp-production', keyFilename: config.credentialsFile, timeout: 10_000, retryOptions: { totalTimeout: 30, maxRetries: 2 } }));
-  } catch {
-    await db.end();
-    throw new Error('Durable GCS reporting initialization failed; check authority, migrations, credentials and bucket policy.');
+  const attempts = retryDelaysMs.length + 1;
+  for (let attempt = 1; ; attempt += 1) {
+    // A fresh pool per attempt, so a failed one holds no connection while
+    // the next waits.
+    const db = new Pool({ connectionString: database.connectionString, ssl: database.ssl, max: 4,
+      connectionTimeoutMillis: database.connectionTimeoutMillis || 5000, idleTimeoutMillis: 30_000,
+      options: `-c search_path=${TRAINING_REPORTING_SCHEMA},pg_catalog -c statement_timeout=30000 -c lock_timeout=5000` });
+    db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
+    try {
+      runtime = await TrainingGcsReporting.create(config, db, new Storage({ projectId: 'adcp-production', keyFilename: config.credentialsFile, timeout: 10_000, retryOptions: { totalTimeout: 30, maxRetries: 2 } }));
+      if (attempt > 1) logger.warn({ attempt, attempts }, 'Durable GCS reporting initialized after a retry');
+      return;
+    } catch (error) {
+      await db.end();
+      const retryInMs = retryDelaysMs[attempt - 1];
+      logger.error({ failure: describeReportingInitFailure(error), attempt, attempts, ...(retryInMs !== undefined && { retryInMs }) },
+        'Durable GCS reporting initialization failed');
+      // Fail closed: the boot still fails once every attempt has.
+      if (retryInMs === undefined) {
+        throw new Error('Durable GCS reporting initialization failed; check authority, migrations, credentials and bucket policy.');
+      }
+      await new Promise(resolve => setTimeout(resolve, retryInMs));
+    }
   }
 }
 export async function stopTrainingGcsReporting(): Promise<void> { await runtime?.stop(); }
