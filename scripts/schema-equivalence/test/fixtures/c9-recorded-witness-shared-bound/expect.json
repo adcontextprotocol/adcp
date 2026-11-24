@@ -1,0 +1,12 @@
+{
+  "why": "A recorded witness that two conjuncts at one site both reject (each caps the length at 10) verifies against the head with the whole schema at the site reverted, since reverting its own conjunct alone restores nothing.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 2,
+  "attribution": "site"
+}
