@@ -4,6 +4,7 @@ import type {
   ComplyOptions,
   ResolveOptions,
   StoryboardRunOptions,
+  TestKitAuth,
   TestOptions,
 } from '@adcp/sdk/testing';
 import { isComplianceVersionSupported } from '@adcp/sdk/testing';
@@ -55,12 +56,8 @@ export interface HostedComplianceTarget {
 
 type HostedResolveOptions = ResolveOptions & { schemaRoot: string };
 type HostedRunResolveOptions = HostedResolveOptions & Pick<TestOptions, 'servedReleaseSchemaRoots'>;
-type RuntimeTestKitAuth = {
-  api_key?: string;
-  basic?: { username: string; password: string };
-  probe_task?: string;
-  [key: string]: unknown;
-};
+// The kit's auth block while it is assembled: probe_task is filled in last.
+type RuntimeTestKitAuth = Partial<TestKitAuth>;
 type RuntimeTestKit = Omit<NonNullable<TestOptions['test_kit']>, 'auth'> & {
   auth?: RuntimeTestKitAuth;
 };

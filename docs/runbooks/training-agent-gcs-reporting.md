@@ -74,7 +74,12 @@ the obligation tombstone table that the SDK 15.8.1 Core ledger reads before
 planning any period; it has the same namespace prerequisite. Migration 624 adds
 the destination authorization `pattern`/`transport` columns that the SDK 15.9.2
 Managed Delivery store reads on provisioning, binding installs and every worker
-pass, plus the 15.9 tombstone retry columns; same prerequisite. Core and Managed
+pass, plus the 15.9 tombstone retry columns; same prerequisite. Migration 630
+adds the configuration `history_start` column for reporting-storage 0.3.0-beta.1.
+Migration 637 adds the configuration `subscription_key` column that
+reporting-storage 0.3.0-beta.9 writes on every configuration install, widens the
+configuration unique key to include it, and drops the three-column unique
+constraint on Managed Delivery bindings; same prerequisite. Core and Managed
 use the **same** pool on the application primary. Host tables freeze source
 facts, the destination, principal, bucket, namespace and trusted reader grants.
 The SDK's installation UUID survives migration replay and process reconstruction.

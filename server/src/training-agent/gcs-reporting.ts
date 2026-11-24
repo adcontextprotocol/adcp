@@ -9,6 +9,7 @@ import { reportingSchedulerErrorMessage, type ReliableReportingConfigurationInpu
 import { PostgresReportingLedgerStore, reportingObjectWriteScopeKey, type ReportingPgPool } from '@adcp/reporting-storage';
 import { PostgresReportingManagedDeliveryStore, type ReportingManagedDeliveryAdapterV1 } from '@adcp/reporting-storage/managed';
 import { createGcsReportingManagedDeliveryAdapterV1, createGcsReportingObjectFenceV1, isReportingGcsFenceError, type GcsReportingReaderOptionsV1 } from '@adcp/reporting-storage/gcs';
+import { ReportingNotificationAbandonedError, ReportingNotificationUnsettledError } from '@adcp/reporting-storage/notifications';
 import { createPostgresReliableReportingProductionService,
   type CreatePostgresReliableReportingProductionServiceOptionsV1,
   type PostgresReliableReportingProductionServiceV1,
@@ -133,9 +134,15 @@ function summarizeAttempts(records: ReadonlyArray<{ status: string; fired_at: st
   return summary;
 }
 
+/** `instanceof` that reports false instead of throwing on a hostile prototype chain. */
+function isInstance<T>(value: unknown, type: abstract new (...args: never[]) => T): value is T {
+  try { return value instanceof type; } catch { return false; }
+}
+
 /**
  * Non-secret identifiers from `ReportingNotificationUnsettledError` (or the
  * abandonment that follows it): enough to find the subscriber, never its URL.
+ * Fields are read as own data properties, so an accessor is never invoked.
  */
 function notificationRetryDetails(error: unknown): Record<string, unknown> {
   const details: Record<string, unknown> = {};
@@ -178,18 +185,17 @@ export function logTrainingReportingSchedulerFailure(error: unknown): void {
     } catch { break; }
   }
   const diagnostic = reportingSchedulerErrorMessage(error);
-  const name = ownValue(error, 'name');
   // A webhook subscriber that is not accepting deliveries is an expected retry,
   // bounded by the SDK's maxAttempts; only its abandonment needs an operator.
-  // SDKs that throw a plain Error here never report abandonment, so that form
-  // stays at error.
-  if (databaseCode === undefined && name === 'ReportingNotificationUnsettledError') {
+  // Any other failure, including a plain Error with the same message, stays at
+  // error.
+  if (databaseCode === undefined && isInstance(error, ReportingNotificationUnsettledError)) {
     logger.warn({ diagnostic, ...notificationRetryDetails(error) }, 'Reporting notification delivery is retrying');
     return;
   }
   logger.error({
     diagnostic, databaseCode,
-    ...(name === 'ReportingNotificationAbandonedError' ? notificationRetryDetails(error) : {}),
+    ...(isInstance(error, ReportingNotificationAbandonedError) ? notificationRetryDetails(error) : {}),
   }, 'Durable reporting scheduler failed');
 }
 
