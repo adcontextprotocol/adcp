@@ -139,6 +139,34 @@ describe.skipIf(!testUrl)('training GCS reporting against disposable PostgreSQL'
     await expect(host.provision(config.canaryPrincipal, accountId, 'source-daily', 'destination-b')).rejects.toThrow('pinned destination');
     expect(await host.grant('workos:other', accountId, 'destination-a', 1)).toBeNull();
   });
+  it('keeps the subscription_key generation schema from migration 637 and writes it on install', async () => {
+    const schema = TRAINING_REPORTING_SCHEMA;
+    const column = await db.query(`SELECT data_type, is_nullable, column_default FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'adcp_reporting_configurations' AND column_name = 'subscription_key'`, [schema]);
+    expect(column.rows).toEqual([{ data_type: 'text', is_nullable: 'NO', column_default: "''::text" }]);
+    const indexes = await db.query(`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1
+      AND indexname IN ('adcp_reporting_configurations_generation', 'adcp_reporting_managed_bindings_generation')`, [schema]);
+    const byName = new Map(indexes.rows.map(row => [row.indexname as string, row.indexdef as string]));
+    expect(byName.get('adcp_reporting_configurations_generation'))
+      .toContain('CREATE UNIQUE INDEX adcp_reporting_configurations_generation');
+    expect(byName.get('adcp_reporting_configurations_generation'))
+      .toContain('(account_id, delivery_config_id, delivery_config_version, subscription_key)');
+    expect(byName.get('adcp_reporting_managed_bindings_generation')).toBeDefined();
+    expect(byName.get('adcp_reporting_managed_bindings_generation')).not.toContain('UNIQUE');
+    // No unique constraint may remain on exactly (account_id, delivery_config_id, delivery_config_version).
+    const legacy = await db.query(`SELECT cls.relname AS table_name, con.conname FROM pg_constraint con
+      JOIN pg_class cls ON cls.oid = con.conrelid JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+      WHERE ns.nspname = $1 AND con.contype = 'u'
+        AND cls.relname IN ('adcp_reporting_configurations', 'adcp_reporting_managed_bindings')
+        AND (SELECT array_agg(att.attname::text ORDER BY att.attname::text) FROM unnest(con.conkey) AS k(attnum)
+             JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k.attnum)
+          = ARRAY['account_id', 'delivery_config_id', 'delivery_config_version']::text[]`, [schema]);
+    expect(legacy.rows).toEqual([]);
+    // The store installed the provisioned account configuration through production code with an empty key.
+    const installed = await db.query(`SELECT subscription_key FROM adcp_reporting_configurations WHERE account_id = $1`, [accountId]);
+    expect(installed.rows.length).toBeGreaterThan(0);
+    expect(installed.rows.every(row => row.subscription_key === '')).toBe(true);
+  });
   it('retains real source rows and manifest bytes across executor reconstruction', async () => {
     const offering = trainingGcsAdapter(db, config.bucket, host.contractPrefix).sourceOffering;
     const constituents = trainingConstituents([mediaBuyId]);

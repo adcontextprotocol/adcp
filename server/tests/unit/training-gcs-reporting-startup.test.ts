@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ReportingNotificationAbandonedError, ReportingNotificationUnsettledError } from '@adcp/reporting-storage/notifications';
 
 const state = vi.hoisted(() => ({
   database: {} as Record<string, unknown> | undefined,
@@ -237,19 +238,25 @@ describe('private GCS reporting startup connection budget', () => {
 describe('durable reporting scheduler failure logging', () => {
   const scope = { kind: 'account', tenantId: 'tenant-a', principalId: 'principal-secret', accountId: 'account-a' };
   const UNSETTLED = 'Reporting notification delivery is not settled for 1 recipient(s); retrying';
+  const FINAL = 'Reporting notification delivery is not settled for 1 recipient(s); attempt 100 of 100, not retrying';
+  const recipient = { scope, subscriberId: 'sub-1', destinationGeneration: 'gen-secret', reason: 'delivery_failed', finalStatus: 503 };
 
-  /** Shaped like the SDK error classes: an own `name` and own data properties. */
-  function sdkError(name: string, message: string, fields: Record<string, unknown> = {}) {
-    return Object.assign(new Error(message), { name }, fields);
-  }
-  function unsettled(overrides: Record<string, unknown> = {}, message = UNSETTLED) {
-    return sdkError('ReportingNotificationUnsettledError', message, {
-      transitionId: 'transition-1', unsettled: 1, attempt: 1, maxAttempts: 100,
-      recipients: [{
-        scope, subscriberId: 'sub-1', destinationGeneration: 'gen-secret', reason: 'delivery_failed', finalStatus: 503,
-      }],
-      ...overrides,
+  /** A real SDK instance; `fields` are redefined as own data properties afterwards, past what the constructor would accept. */
+  function unsettled(fields: Record<string, unknown> = {}, input: Record<string, unknown> = {}) {
+    const error = new ReportingNotificationUnsettledError({
+      transitionId: 'transition-1', unsettled: 1, attempt: 1, maxAttempts: 100, recipients: [recipient as never], ...input,
     });
+    for (const [key, value] of Object.entries(fields)) {
+      Object.defineProperty(error, key, { value, writable: true, enumerable: true, configurable: true });
+    }
+    return error;
+  }
+  function abandoned(cause: unknown = unsettled()) {
+    return new ReportingNotificationAbandonedError({ transitionId: 'transition-1', attempt: 100, maxAttempts: 100, cause });
+  }
+  /** Shaped like an SDK error class, but not an instance of it. */
+  function lookalike(name: string, message: string, fields: Record<string, unknown> = {}) {
+    return Object.assign(new Error(message), { name }, fields);
   }
   async function logger() {
     return (await import('../../src/training-agent/gcs-reporting.js')).logTrainingReportingSchedulerFailure;
@@ -269,10 +276,7 @@ describe('durable reporting scheduler failure logging', () => {
     }
   });
 
-  it.each([
-    UNSETTLED,
-    'Reporting notification delivery is not settled for 1 recipient(s); attempt 100 of 100, not retrying',
-  ])('downgrades only the typed error: a plain Error saying %j stays at error', async message => {
+  it.each([UNSETTLED, FINAL])('downgrades only the typed error: a plain Error saying %j stays at error', async message => {
     (await logger())(new Error(message));
     expect(state.logWarn).not.toHaveBeenCalled();
     expect(state.logError).toHaveBeenCalledOnce();
@@ -280,28 +284,45 @@ describe('durable reporting scheduler failure logging', () => {
       { diagnostic: message, databaseCode: undefined }, 'Durable reporting scheduler failed');
   });
 
+  it('keeps a name-only lookalike of the unsettled error at error, with no retry details', async () => {
+    const impostor = lookalike('ReportingNotificationUnsettledError', UNSETTLED, {
+      transitionId: 'transition-1', unsettled: 1, attempt: 1, maxAttempts: 100, recipients: [recipient],
+    });
+    (await logger())(impostor);
+    expect(state.logWarn).not.toHaveBeenCalled();
+    expect(state.logError).toHaveBeenCalledOnce();
+    expect(state.logError).toHaveBeenCalledWith(
+      { diagnostic: UNSETTLED, databaseCode: undefined }, 'Durable reporting scheduler failed');
+  });
+
+  it('does not throw, or warn, when the prototype chain is hostile', async () => {
+    const log = await logger();
+    const hostile = new Proxy(new Error(UNSETTLED), { getPrototypeOf() { throw new Error('hostile prototype'); } });
+    expect(() => log(hostile)).not.toThrow();
+    expect(state.logWarn).not.toHaveBeenCalled();
+    expect(state.logError).toHaveBeenCalledOnce();
+  });
+
   it('still warns on the final-attempt message because abandonment is reported separately', async () => {
-    const message = 'Reporting notification delivery is not settled for 1 recipient(s); attempt 100 of 100, not retrying';
-    (await logger())(unsettled({ attempt: 100 }, message));
+    (await logger())(unsettled({}, { attempt: 100 }));
     expect(state.logError).not.toHaveBeenCalled();
     expect(state.logWarn).toHaveBeenCalledWith(
-      expect.objectContaining({ diagnostic: message, attempt: 100, maxAttempts: 100 }),
+      expect.objectContaining({ diagnostic: FINAL, attempt: 100, maxAttempts: 100 }),
       'Reporting notification delivery is retrying',
     );
   });
 
-  it('logs abandonment at error with its identifiers', async () => {
-    const abandoned = sdkError('ReportingNotificationAbandonedError',
-      'Reporting notification was abandoned undelivered after 100 attempt(s); it will not be retried', {
-        transitionId: 'transition-1', attempt: 100, maxAttempts: 100, cause: unsettled(),
-      });
-    (await logger())(abandoned);
+  it('logs abandonment at error with its identifiers and no subscribers', async () => {
+    const error = abandoned();
+    (await logger())(error);
     expect(state.logWarn).not.toHaveBeenCalled();
     expect(state.logError).toHaveBeenCalledOnce();
     expect(state.logError).toHaveBeenCalledWith({
-      diagnostic: abandoned.message, databaseCode: undefined,
+      diagnostic: error.message, databaseCode: undefined,
       transitionId: 'transition-1', attempt: 100, maxAttempts: 100,
     }, 'Durable reporting scheduler failed');
+    expect(state.logError.mock.calls[0][0]).not.toHaveProperty('subscribers');
+    expect(JSON.stringify(state.logError.mock.calls)).not.toContain('gen-secret');
   });
 
   it('lets a nested database code beat the typed unsettled error', async () => {
@@ -314,7 +335,7 @@ describe('durable reporting scheduler failure logging', () => {
 
   it.each([
     ['a port that did not freeze', new Error('Reporting notification port did not freeze its recipient set; refusing')],
-    ['a retryable suppression', sdkError('ReportingNotificationRetryableSuppressionError', 'Reporting notification delivery was suppressed')],
+    ['a retryable suppression', lookalike('ReportingNotificationRetryableSuppressionError', 'Reporting notification delivery was suppressed')],
   ])('keeps %s at error', async (_label, error) => {
     (await logger())(error);
     expect(state.logWarn).not.toHaveBeenCalled();
@@ -326,12 +347,12 @@ describe('durable reporting scheduler failure logging', () => {
     const log = await logger();
     let getterCalls = 0;
     const getterRecipient = {};
-    for (const key of ['subscriberId', 'reason', 'finalStatus']) {
+    for (const key of ['subscriberId', 'reason', 'finalStatus', 'scope']) {
       Object.defineProperty(getterRecipient, key, { get() { getterCalls += 1; throw new Error('hostile getter'); } });
     }
-    Object.defineProperty(getterRecipient, 'scope', { get() { getterCalls += 1; throw new Error('hostile getter'); } });
     const hostileProxy = new Proxy({}, { getOwnPropertyDescriptor() { throw new Error('hostile'); } });
     const wrongTypes = { scope: 'nope', subscriberId: 42, reason: {}, finalStatus: '503' };
+    // A real instance whose fields are then redefined past what the constructor accepts.
     const cases = [
       unsettled({ recipients: 'not an array' }),
       unsettled({ recipients: { length: 1, 0: {} } }),
@@ -351,14 +372,19 @@ describe('durable reporting scheduler failure logging', () => {
     expect(calls[3][0]).not.toHaveProperty('maxAttempts');
   });
 
-  it('logs at most ten recipients', async () => {
-    const recipients = Array.from({ length: 15 }, (_, index) => ({
+  it('logs at most ten recipients, whether the constructor or a redefined field supplies them', async () => {
+    const many = Array.from({ length: 15 }, (_, index) => ({
       scope, subscriberId: `sub-${index}`, reason: 'delivery_failed', finalStatus: 503,
     }));
-    (await logger())(unsettled({ unsettled: 15, recipients }));
-    const [details] = state.logWarn.mock.calls[0];
-    expect(details.unsettled).toBe(15);
-    expect(details.subscribers).toHaveLength(10);
-    expect(details.subscribers.at(-1).subscriberId).toBe('sub-9');
+    const log = await logger();
+    // The SDK constructor already caps at ten; redefining the field proves the logger caps independently.
+    log(unsettled({}, { unsettled: 15, recipients: many }));
+    log(unsettled({ recipients: many }, { unsettled: 15 }));
+    for (const [details] of state.logWarn.mock.calls) {
+      expect(details.unsettled).toBe(15);
+      expect(details.subscribers).toHaveLength(10);
+      expect(details.subscribers.at(-1).subscriberId).toBe('sub-9');
+    }
+    expect(state.logWarn).toHaveBeenCalledTimes(2);
   });
 });
