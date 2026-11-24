@@ -48,7 +48,7 @@ import {
   resolveCreativeFormat,
   resolveSeededCreativeFormat,
   seedFormatDeclarations,
-  seededFormatDeclarations,
+  seededFormats,
   wireFormat,
   type FormatDeclaration,
 } from './creative-wire.js';
@@ -167,6 +167,9 @@ function apportion(total: number, weights: readonly number[]): number[] {
   return shares;
 }
 
+/** An RFC 3339 date-time with a time and an offset. */
+const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i;
+
 /** A count a simulate_* scenario sends: absent is none. */
 function controllerCount(params: Record<string, unknown>, key: string): number {
   const value = params[key];
@@ -185,8 +188,8 @@ function finalityFrom(params: Record<string, unknown>, previous: DeliveryFinalit
   const { is_final: isFinal, finalized_at: finalizedAt, measurement_window: windowId } = params;
   if (isFinal === undefined && finalizedAt === undefined && windowId === undefined) return previous;
   if (isFinal !== undefined && typeof isFinal !== 'boolean') throw new TestControllerError('INVALID_PARAMS', 'is_final must be a boolean');
-  if (finalizedAt !== undefined && (typeof finalizedAt !== 'string' || !Number.isFinite(Date.parse(finalizedAt)))) {
-    throw new TestControllerError('INVALID_PARAMS', 'finalized_at must be an ISO 8601 date-time');
+  if (finalizedAt !== undefined && (typeof finalizedAt !== 'string' || !DATE_TIME_RE.test(finalizedAt) || !Number.isFinite(Date.parse(finalizedAt)))) {
+    throw new TestControllerError('INVALID_PARAMS', 'finalized_at must be an RFC 3339 date-time, such as 2027-01-04T12:00:00Z');
   }
   if (finalizedAt !== undefined && isFinal === false) throw new TestControllerError('INVALID_PARAMS', 'finalized_at is only for final delivery');
   if (windowId !== undefined && (typeof windowId !== 'string' || windowId.length === 0 || windowId.length > 50)) {
@@ -196,7 +199,7 @@ function finalityFrom(params: Record<string, unknown>, previous: DeliveryFinalit
   const window = windowId ?? previous?.measurement_window;
   return {
     is_final: final,
-    ...(final && { finalized_at: (finalizedAt as string | undefined) ?? previous?.finalized_at ?? nowIso }),
+    ...(final && { finalized_at: typeof finalizedAt === 'string' ? new Date(Date.parse(finalizedAt)).toISOString() : previous?.finalized_at ?? nowIso }),
     ...(window !== undefined && { measurement_window: window }),
   };
 }
@@ -542,23 +545,21 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
   private catalogFor(market: OpenMarket): CreativeCatalog {
     const records = market.doc.seeded?.products ?? [];
     if (records.length === 0) return this.catalog;
-    const declaredBy = new Map(records.map(record => [record.product_id, seededFormatDeclarations(record.fixture.format_options)]));
-    const seeded = [...declaredBy.values()].flat();
+    const { declarations: seeded, byProduct } = seededFormats(records);
     const all = [...this.declarations, ...seeded];
+    const labels = new Map(seeded.map(declaration => [declaration.format_option_id, catalogIdOf(declaration)]));
     return {
       formats: new Set([...this.catalog.formats, ...seeded.map(declaration => declaration.format_option_id)]),
       productFormats: productId => {
         const own = this.catalog.productFormats(productId);
         if (own.size > 0 || !market.sim.traffic.products.has(productId)) return own;
-        return new Set([
-          ...this.formatsOf(market.sim.traffic.requireProduct(productId)),
-          ...(declaredBy.get(productId) ?? []).map(declaration => declaration.format_option_id),
-        ]);
+        return new Set([...this.formatsOf(market.sim.traffic.requireProduct(productId)), ...(byProduct.get(productId) ?? [])]);
       },
-      label: this.catalog.label,
+      label: formatOptionId => labels.get(formatOptionId) ?? this.catalog.label(formatOptionId),
       resolve: (input, field, allowed) => resolveSeededCreativeFormat(this.declarations, seeded, input, field, allowed),
       wire: formatOptionId => wireFormat(all, formatOptionId),
-      filter: filters => formatFilter(all, filters),
+      // Named formats are the seller's own.
+      filter: this.catalog.filter,
     };
   }
 
@@ -881,6 +882,8 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           fromEngine(error, error instanceof EngineError && error.code === 'INSUFFICIENT_INVENTORY' ? goalField : field);
         }
         const booking = market.sim.booking(packageId);
+        const billingWindow = (pkg.measurement_terms as { billing_measurement?: { measurement_window?: unknown } } | undefined)
+          ?.billing_measurement?.measurement_window;
         records.push({
           package_id: packageId,
           product_id: product.product_id,
@@ -895,6 +898,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           paused: false,
           canceled: false,
           ...(isContext(pkg.context) && { context: structuredClone(pkg.context) }),
+          ...(typeof billingWindow === 'string' && { billing_measurement_window: billingWindow }),
         });
         this.applyPackageCreatives(market, accountIdOf(ctx), records[records.length - 1], pkg, field, false);
       });
@@ -1083,12 +1087,16 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
       const toDate = typeof filter.end_date === 'string' ? filter.end_date : undefined;
       const inRange = (date: string) => (!fromDate || date >= fromDate) && (!toDate || date < toDate);
       const deliveries = buys.map(buy => {
-        // One finality covers every package of the buy, so the row's matches
-        // each package's.
+        // One finality covers every package of the buy. The row is final only
+        // when that is final for the window each package's billing reconciles
+        // on: a package final for an earlier window leaves the row provisional.
         const finality = buy.finality && {
           is_final: buy.finality.is_final,
           ...(buy.finality.finalized_at && { finalized_at: buy.finality.finalized_at }),
         };
+        const rowFinal = buy.finality?.is_final === true && buy.packages.every(pkg =>
+          pkg.billing_measurement_window === undefined || pkg.billing_measurement_window === buy.finality!.measurement_window);
+        const rowFinality = finality && (rowFinal ? finality : { is_final: false });
         const daily = new Map<string, { impressions: number; spend: number }>();
         const byPackage = buy.packages.map(pkg => {
           const report = market.sim.delivery(pkg.package_id, market.nowMs);
@@ -1131,7 +1139,7 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
           currency: buy.currency,
           status: this.buyStatus(buy, market.nowMs),
           pricing_model: 'cpm',
-          ...finality,
+          ...rowFinality,
           totals,
           by_package: byPackage,
           daily_breakdown: [...daily.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, row]) => ({ date, ...row })),

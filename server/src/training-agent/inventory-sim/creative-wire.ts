@@ -8,6 +8,7 @@
  * A caller's seeded products add their own format options (#9152), which
  * have no named format and are listed by format_kind and format_option_ref.
  */
+import { createHash } from 'node:crypto';
 import { getAgentUrl } from '../config.js';
 import { formatOptionsForTrainingFormats } from '../product-factory.js';
 import {
@@ -26,6 +27,18 @@ export interface FormatDeclaration {
   v1_format_ref?: Array<{ agent_url: string; id: string }>;
   /** A publisher-catalog option's publisher. */
   publisher_domain?: string;
+  /** An option a caller's seeded product declares. Its format_option_id is
+   * then an internal key (`seededFormats`), and `option_id` is the
+   * format_option_id it declares, if any. */
+  seeded?: true;
+  option_id?: string;
+}
+
+/** The options a caller's seeded products declare, and the ones each
+ * product serves, by key. */
+export interface SeededFormats {
+  declarations: FormatDeclaration[];
+  byProduct: Map<string, Set<string>>;
 }
 
 type Json = Record<string, unknown>;
@@ -39,68 +52,179 @@ export function seedFormatDeclarations(labels: readonly string[]): FormatDeclara
   return formatOptionsForTrainingFormats([...new Set(labels)], getAgentUrl()) as unknown as FormatDeclaration[];
 }
 
-/** The training catalogue id a declaration was made from. */
+/** The training catalogue id a declaration was made from; a seeded option's
+ * own id or kind. */
 export function catalogIdOf(declaration: FormatDeclaration): string {
+  if (declaration.seeded) return seededLabel(declaration);
   return declaration.v1_format_ref?.[0]?.id ?? declaration.format_option_id;
 }
 
-/** A seeded product's fixture format_options as declarations: each option
- * that names a format_option_id and a format_kind. */
-export function seededFormatDeclarations(formatOptions: unknown): FormatDeclaration[] {
-  return (Array.isArray(formatOptions) ? formatOptions : []).flatMap(option => {
-    if (!isObject(option) || typeof option.format_option_id !== 'string' || typeof option.format_kind !== 'string') return [];
-    return [{
-      format_option_id: option.format_option_id,
-      format_kind: option.format_kind,
-      params: isObject(option.params) ? option.params : {},
-      ...(typeof option.publisher_domain === 'string' && { publisher_domain: option.publisher_domain }),
-    }];
-  });
+/**
+ * Every option a caller's seeded products declare in their fixtures'
+ * format_options, including one that names no format_option_id. Each is keyed
+ * by its namespace (publisher, or none for a product-local option), id, kind
+ * and params, so the same option declared by two products is one format, and
+ * two options that share an id but differ in namespace or params are two.
+ */
+export function seededFormats(products: ReadonlyArray<{ product_id: string; fixture: Record<string, unknown> }>): SeededFormats {
+  const declarations = new Map<string, FormatDeclaration>();
+  const byProduct = new Map<string, Set<string>>();
+  for (const { product_id: productId, fixture } of products) {
+    const keys = new Set<string>();
+    for (const option of Array.isArray(fixture.format_options) ? fixture.format_options : []) {
+      if (!isObject(option) || typeof option.format_kind !== 'string') continue;
+      const optionId = typeof option.format_option_id === 'string' ? option.format_option_id : undefined;
+      const domain = typeof option.publisher_domain === 'string' ? option.publisher_domain : undefined;
+      const params = isObject(option.params) ? option.params : {};
+      const identity = JSON.stringify([domain ?? null, optionId ?? null, option.format_kind, params]);
+      const key = `seeded_${createHash('sha256').update(identity).digest('hex').slice(0, 16)}`;
+      if (!declarations.has(key)) {
+        declarations.set(key, {
+          format_option_id: key,
+          format_kind: option.format_kind,
+          params,
+          seeded: true,
+          ...(optionId !== undefined && { option_id: optionId }),
+          ...(domain !== undefined && { publisher_domain: domain }),
+        });
+      }
+      keys.add(key);
+    }
+    byProduct.set(productId, keys);
+  }
+  return { declarations: [...declarations.values()], byProduct };
 }
 
-/** The first declared value of a seeded option a creative's assets break. */
-function declaredValueViolation(declaration: FormatDeclaration, assets: Json): FormatOptionViolation | null {
+/** A seeded option's name for messages. */
+function seededLabel(declaration: FormatDeclaration): string {
+  return declaration.option_id ?? declaration.format_kind;
+}
+
+/** The first of a creative's assets that states a width and height. */
+function sizedAsset(input: Json): { key: string; width: number; height: number } | undefined {
+  for (const [key, asset] of Object.entries(isObject(input.assets) ? input.assets : {})) {
+    if (isObject(asset) && typeof asset.width === 'number' && typeof asset.height === 'number') {
+      return { key, width: asset.width, height: asset.height };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A creative that states a size or duration other than the fixed one its
+ * seeded option declares (width and height, duration_ms_exact, else
+ * duration_ms_range). A creative that states none is not refused here, as
+ * on /sales.
+ */
+function fixedConstraintError(declaration: FormatDeclaration, input: Json, field: string): CreativeError | undefined {
   const params = declaration.params ?? {};
-  if (declaration.format_kind === 'native_in_feed') return nativeInFeedParamViolation(assets, params);
-  if (declaration.format_kind === 'image_carousel') return imageCarouselParamViolation(assets, params);
-  return null;
+  const label = seededLabel(declaration);
+  if (typeof params.width === 'number' && typeof params.height === 'number') {
+    const stated = isObject(input.params) && typeof input.params.width === 'number' && typeof input.params.height === 'number'
+      ? { at: `${field}.params`, width: input.params.width, height: input.params.height }
+      : (asset => asset && { at: `${field}.assets.${asset.key}`, width: asset.width, height: asset.height })(sizedAsset(input));
+    if (stated && (stated.width !== params.width || stated.height !== params.height)) {
+      return {
+        code: 'CREATIVE_SIZE_MISMATCH',
+        message: `${label} is ${params.width}x${params.height}; this creative is ${stated.width}x${stated.height}`,
+        field: stated.at,
+        details: { constraint: 'size', allowed_sizes: [{ width: params.width, height: params.height }], format_option_id: label },
+      };
+    }
+  }
+  const exact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+  const range = exact === undefined && Array.isArray(params.duration_ms_range) ? params.duration_ms_range : undefined;
+  if (exact === undefined && !range) return undefined;
+  for (const [key, asset] of Object.entries(isObject(input.assets) ? input.assets : {})) {
+    if (!isObject(asset) || typeof asset.duration_ms !== 'number') continue;
+    const duration = asset.duration_ms;
+    const [min, max] = range ?? [];
+    const fits = exact !== undefined
+      ? duration === exact
+      : (typeof min !== 'number' || duration >= min) && (typeof max !== 'number' || duration <= max);
+    if (fits) continue;
+    return {
+      code: 'VALIDATION_ERROR',
+      message: `${label} runs ${exact !== undefined ? `${exact} ms` : `${min ?? 'any'} to ${max ?? 'any'} ms`}; this creative runs ${duration} ms`,
+      field: `${field}.assets.${key}.duration_ms`,
+      details: { constraint: exact !== undefined ? 'duration_ms_exact' : 'duration_ms_range', declared: exact ?? range, format_option_id: label },
+    };
+  }
+  return undefined;
 }
 
-/** A creative resolved to a seeded option, refused when it breaks a value
- * that option declares (cta_values, sizes, character limits). Products may
- * declare the same option id, so any one of them accepting it is enough. */
+/** The first declared value of a seeded option a creative's assets break
+ * (cta_values, image sizes, character limits), by the /sales checks. */
+function declaredValueError(declaration: FormatDeclaration, input: Json, field: string): CreativeError | undefined {
+  const params = declaration.params ?? {};
+  const assets = isObject(input.assets) ? input.assets : {};
+  let violation: FormatOptionViolation | null = null;
+  if (declaration.format_kind === 'native_in_feed') violation = nativeInFeedParamViolation(assets, params);
+  if (declaration.format_kind === 'image_carousel') violation = imageCarouselParamViolation(assets, params);
+  if (!violation) return undefined;
+  return {
+    code: violation.code,
+    message: violation.message,
+    field: `${field}.${violation.field}`,
+    details: {
+      constraint: violation.constraint,
+      declared: violation.expected,
+      ...(violation.code === 'CREATIVE_VALUE_NOT_ALLOWED' && { allowed_values: violation.expected }),
+      format_option_id: seededLabel(declaration),
+    },
+  };
+}
+
+/** A creative resolved to a seeded option, refused when it breaks a fixed
+ * constraint or a value that option declares. */
 function heldToSeededOption(
   seeded: readonly FormatDeclaration[],
   input: Json,
   field: string,
   resolved: { formatOptionId: string } | { error: CreativeError },
 ): { formatOptionId: string } | { error: CreativeError } {
-  if (!('formatOptionId' in resolved) || !isObject(input.assets)) return resolved;
-  let refusal: CreativeError | undefined;
-  for (const declaration of seeded.filter(candidate => candidate.format_option_id === resolved.formatOptionId)) {
-    const violation = declaredValueViolation(declaration, input.assets);
-    if (!violation) return resolved;
-    refusal ??= {
-      code: violation.code,
-      message: violation.message,
-      field: `${field}.${violation.field}`,
-      details: {
-        constraint: violation.constraint,
-        declared: violation.expected,
-        ...(violation.code === 'CREATIVE_VALUE_NOT_ALLOWED' && { allowed_values: violation.expected }),
-        format_option_id: declaration.format_option_id,
-      },
-    };
+  if (!('formatOptionId' in resolved)) return resolved;
+  const declaration = seeded.find(candidate => candidate.format_option_id === resolved.formatOptionId)!;
+  const error = fixedConstraintError(declaration, input, field) ?? declaredValueError(declaration, input, field);
+  return error ? { error } : resolved;
+}
+
+/**
+ * The seeded option a format_option_ref names, in the ref's namespace: a
+ * publisher ref the option that publisher declares, a product ref a
+ * product-local one and, given `allowed` (a package's product), only one
+ * that product declares.
+ */
+function seededRefFormat(
+  seeded: readonly FormatDeclaration[],
+  ref: Json,
+  refId: string,
+  field: string,
+  allowed?: ReadonlySet<string>,
+): { formatOptionId: string } | { error: CreativeError } {
+  const publisher = ref.scope === 'publisher' || (ref.scope === undefined && typeof ref.publisher_domain === 'string');
+  const scoped = seeded.filter(candidate => candidate.option_id === refId
+    && (publisher ? candidate.publisher_domain === ref.publisher_domain : candidate.publisher_domain === undefined));
+  const inContext = scoped.filter(candidate => !allowed || allowed.has(candidate.format_option_id));
+  if (inContext.length === 1) return { formatOptionId: inContext[0].format_option_id };
+  const at = `${field}.format_option_ref`;
+  if (inContext.length > 1) {
+    return { error: { code: 'INVALID_REQUEST', message: `The products you seeded declare ${inContext.length} different ${refId} options; reference it from a package of the product you mean`, field: at } };
   }
-  return refusal ? { error: refusal } : resolved;
+  const message = scoped.length > 0
+    ? `This package's product does not declare ${refId}`
+    : `None of the products you seeded declares ${refId}${publisher ? ` for ${String(ref.publisher_domain)}` : ' as a product option'}`;
+  return { error: { code: 'FORMAT_NOT_SUPPORTED', message, field: at } };
 }
 
 /**
  * The format of a creative among the seller's own formats and the options
- * of the products the caller seeded. A format_option_ref to a seeded option
- * resolves to it. Anything else resolves against the seller's own formats as
- * before, and only failing those against the seeded options. A creative in a
- * seeded option is held to the values the option declares.
+ * of the products the caller seeded. A format_option_ref naming a seeded
+ * option resolves within its namespace. Anything else resolves against the
+ * seller's own formats as before, and only failing those against the seeded
+ * options, whose refusal is the one returned when the seller has no format
+ * of the creative's kind but a seeded product does. A creative in a seeded
+ * option is held to the constraints and values the option declares.
  */
 export function resolveSeededCreativeFormat(
   own: readonly FormatDeclaration[],
@@ -110,14 +234,19 @@ export function resolveSeededCreativeFormat(
   allowed?: ReadonlySet<string>,
 ): { formatOptionId: string } | { error: CreativeError } {
   if (seeded.length === 0) return resolveCreativeFormat(own, input, field, allowed);
-  const refId = isObject(input.format_option_ref) ? input.format_option_ref.format_option_id : undefined;
-  const refsSeeded = !own.some(candidate => candidate.format_option_id === refId)
-    && seeded.some(candidate => candidate.format_option_id === refId);
-  if (refsSeeded) return heldToSeededOption(seeded, input, field, resolveCreativeFormat(seeded, input, field, allowed));
+  const ref = isObject(input.format_option_ref) ? input.format_option_ref : undefined;
+  const refId = ref?.format_option_id;
+  if (ref && typeof refId === 'string' && !own.some(candidate => candidate.format_option_id === refId)
+    && seeded.some(candidate => candidate.option_id === refId)) {
+    return heldToSeededOption(seeded, input, field, seededRefFormat(seeded, ref, refId, field, allowed));
+  }
   const resolved = resolveCreativeFormat(own, input, field, allowed);
-  if ('formatOptionId' in resolved) return resolved;
+  // A named format_id is the seller's own; a seeded option has none.
+  if ('formatOptionId' in resolved || isObject(input.format_id)) return resolved;
   const fallback = resolveCreativeFormat(seeded, input, field, allowed);
-  return 'formatOptionId' in fallback ? heldToSeededOption(seeded, input, field, fallback) : resolved;
+  if ('formatOptionId' in fallback) return heldToSeededOption(seeded, input, field, fallback);
+  const seededKind = seeded.some(candidate => candidate.format_kind === input.format_kind && (!allowed || allowed.has(candidate.format_option_id)));
+  return resolved.error.code === 'FORMAT_NOT_SUPPORTED' && seededKind ? fallback : resolved;
 }
 
 /**
@@ -184,17 +313,20 @@ function byParams(candidates: readonly FormatDeclaration[], hints: Json): Format
   return candidates.filter(candidate => keys.every(key => !(key in params(candidate)) || same(params(candidate)[key], hints[key])));
 }
 
-/** The format a creative is listed in: its named format, or for a seeded
- * option that has none, its canonical kind and option. */
+/** The format a creative is listed in: its named format or, in a seeded
+ * option, which has none, its canonical kind and the option it declares. */
 export function wireFormat(declarations: readonly FormatDeclaration[], formatOptionId: string): Json {
   const declaration = declarations.find(candidate => candidate.format_option_id === formatOptionId);
   if (!declaration) return {};
-  if (!declaration.v1_format_ref?.length) {
+  if (declaration.seeded) {
+    const optionId = declaration.option_id;
     return {
       format_kind: declaration.format_kind,
-      format_option_ref: declaration.publisher_domain
-        ? { scope: 'publisher', publisher_domain: declaration.publisher_domain, format_option_id: declaration.format_option_id }
-        : { scope: 'product', format_option_id: declaration.format_option_id },
+      ...(optionId !== undefined && {
+        format_option_ref: declaration.publisher_domain
+          ? { scope: 'publisher', publisher_domain: declaration.publisher_domain, format_option_id: optionId }
+          : { scope: 'product', format_option_id: optionId },
+      }),
     };
   }
   return { format_id: { agent_url: getAgentUrl(), id: catalogIdOf(declaration) } };

@@ -48,6 +48,10 @@ export interface PackageRecord {
   creative_assignments?: AssignmentRecord[];
   /** The buyer's opaque package correlation data, echoed unchanged. */
   context?: Record<string, unknown>;
+  /** The measurement window the package's billing reconciles on
+   * (measurement_terms.billing_measurement.measurement_window), when the
+   * buyer named one. */
+  billing_measurement_window?: string;
 }
 
 export interface MediaBuyRecord {
