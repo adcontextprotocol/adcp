@@ -81,7 +81,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
-import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease, undeclaredMembers } from './served-release-fields.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedLifecycleTools, servedReleaseEnum, toolAddedAfterRelease, undeclaredMembers } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -21280,6 +21280,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
+  // Declared from the tools served at this release, so it cannot drift from
+  // tools/list (adcp#8981).
+  const lifecycleTools = servedLifecycleTools(tasks, servedAdcpVersion);
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   const signingCap = selectSigningCapability(ctx);
@@ -21439,8 +21442,8 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       ...(acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId) && {
         acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId),
       }),
-      ...(supportsGetProductsRejected(servedAdcpVersion) && {
-        lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS],
+      ...(supportsGetProductsRejected(servedAdcpVersion) && lifecycleTools.length > 0 && {
+        lifecycle_tools: lifecycleTools,
         proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
       }),
       supports_proposals: true,
