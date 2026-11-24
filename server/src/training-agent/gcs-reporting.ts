@@ -9,6 +9,7 @@ import { reportingSchedulerErrorMessage, type ReliableReportingConfigurationInpu
 import { PostgresReportingLedgerStore, reportingObjectWriteScopeKey, type ReportingPgPool } from '@adcp/reporting-storage';
 import { PostgresReportingManagedDeliveryStore, type ReportingManagedDeliveryAdapterV1 } from '@adcp/reporting-storage/managed';
 import { createGcsReportingManagedDeliveryAdapterV1, createGcsReportingObjectFenceV1, isReportingGcsFenceError, type GcsReportingReaderOptionsV1 } from '@adcp/reporting-storage/gcs';
+import { ReportingNotificationAbandonedError, ReportingNotificationUnsettledError } from '@adcp/reporting-storage/notifications';
 import { createPostgresReliableReportingProductionService,
   type CreatePostgresReliableReportingProductionServiceOptionsV1,
   type PostgresReliableReportingProductionServiceV1,
@@ -133,6 +134,48 @@ function summarizeAttempts(records: ReadonlyArray<{ status: string; fired_at: st
   return summary;
 }
 
+/** `instanceof` that reports false instead of throwing on a hostile prototype chain. */
+function isInstance<T>(value: unknown, type: abstract new (...args: never[]) => T): value is T {
+  try { return value instanceof type; } catch { return false; }
+}
+
+/**
+ * Non-secret identifiers from `ReportingNotificationUnsettledError` (or the
+ * abandonment that follows it): enough to find the subscriber, never its URL.
+ * Fields are read as own data properties, so an accessor is never invoked.
+ */
+function notificationRetryDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {};
+  for (const key of ['transitionId', 'unsettled', 'attempt', 'maxAttempts']) {
+    const value = ownValue(error, key);
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isSafeInteger(value))) details[key] = value;
+  }
+  const recipients = ownValue(error, 'recipients');
+  let isArray = false;
+  try { isArray = Array.isArray(recipients); } catch { /* a revoked proxy */ }
+  if (isArray) {
+    // Read the length and indexes as own data properties too: no array method or element accessor runs.
+    const length = ownValue(recipients, 'length');
+    const count = typeof length === 'number' && Number.isSafeInteger(length) ? Math.min(Math.max(length, 0), 10) : 0;
+    const subscribers: Record<string, unknown>[] = [];
+    for (let index = 0; index < count; index++) {
+      const recipient = ownValue(recipients, String(index));
+      const subscriberId = ownValue(recipient, 'subscriberId');
+      const accountId = ownValue(ownValue(recipient, 'scope'), 'accountId');
+      const reason = ownValue(recipient, 'reason');
+      const finalStatus = ownValue(recipient, 'finalStatus');
+      subscribers.push({
+        ...(typeof subscriberId === 'string' ? { subscriberId } : {}),
+        ...(typeof accountId === 'string' ? { accountId } : {}),
+        ...(typeof reason === 'string' ? { reason } : {}),
+        ...(typeof finalStatus === 'number' ? { finalStatus } : {}),
+      });
+    }
+    details.subscribers = subscribers;
+  }
+  return details;
+}
+
 /** Keep the PostgreSQL receipt when the storage layer wraps a query failure. */
 export function logTrainingReportingSchedulerFailure(error: unknown): void {
   let databaseCode: string | undefined;
@@ -149,8 +192,19 @@ export function logTrainingReportingSchedulerFailure(error: unknown): void {
       cause = next && 'value' in next ? next.value : undefined;
     } catch { break; }
   }
-  logger.error({ diagnostic: reportingSchedulerErrorMessage(error), databaseCode },
-    'Durable reporting scheduler failed');
+  const diagnostic = reportingSchedulerErrorMessage(error);
+  // A webhook subscriber that is not accepting deliveries is an expected retry,
+  // bounded by the SDK's maxAttempts; only its abandonment needs an operator.
+  // Any other failure, including a plain Error with the same message, stays at
+  // error.
+  if (databaseCode === undefined && isInstance(error, ReportingNotificationUnsettledError)) {
+    logger.warn({ diagnostic, ...notificationRetryDetails(error) }, 'Reporting notification delivery is retrying');
+    return;
+  }
+  logger.error({
+    diagnostic, databaseCode,
+    ...(isInstance(error, ReportingNotificationAbandonedError) ? notificationRetryDetails(error) : {}),
+  }, 'Durable reporting scheduler failed');
 }
 
 /** Reserve one active or unfinished canary account per organization. Retired
@@ -563,7 +617,9 @@ function redactCredentials(text: string): string {
   }
   return redacted.slice(0, 1000);
 }
-function ownValue(target: object, key: string): unknown {
+/** Own data property only: never invokes an accessor. */
+function ownValue(target: unknown, key: string): unknown {
+  if (typeof target !== 'object' || target === null) return undefined;
   try {
     const descriptor = Object.getOwnPropertyDescriptor(target, key);
     return descriptor && 'value' in descriptor ? descriptor.value : undefined;

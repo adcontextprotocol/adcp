@@ -218,8 +218,8 @@
     "test:auction-only-compliance": "node --import tsx --test --test-concurrency=1 --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/creative-format-gate-compliance.test.cjs tests/currency-filter-compliance.test.cjs tests/optional-seller-capabilities.test.cjs tests/product-filter-auction-compliance.test.cjs tests/canonical-compatibility-slices.test.cjs tests/governance-recovery-pricing-scope.test.cjs tests/literal-auction-bid-compliance.test.cjs tests/optional-discovery-contract.test.cjs tests/storyboard-exclusion-compat.test.cjs tests/operator-fee-seller-exclusion.test.cjs"
   },
   "dependencies": {
-    "@adcp/reporting-storage": "0.3.0-beta.1",
-    "@adcp/sdk": "17.0.0-beta.35",
+    "@adcp/reporting-storage": "0.3.0-beta.9",
+    "@adcp/sdk": "17.0.0-beta.40",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.10.0",
