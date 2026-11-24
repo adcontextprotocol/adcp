@@ -372,6 +372,54 @@ describe('durable reporting scheduler failure logging', () => {
     expect(calls[3][0]).not.toHaveProperty('maxAttempts');
   });
 
+  it('projects hostile recipient arrays without running any accessor, array method or proxy trap that throws', async () => {
+    const log = await logger();
+    let calls = 0;
+    const boom = () => { calls += 1; throw new Error('hostile'); };
+    const trap = () => { throw new Error('hostile trap'); };
+    const normal = { scope, subscriberId: 'sub-1', reason: 'delivery_failed', finalStatus: 503 };
+    const normalProjection = { subscriberId: 'sub-1', accountId: 'account-a', reason: 'delivery_failed', finalStatus: 503 };
+    const second = { scope, subscriberId: 'sub-2' };
+
+    const throwingIndex: unknown[] = [normal, second];
+    Object.defineProperty(throwingIndex, '0', { get: boom, configurable: true });
+    const throwingMethods: unknown[] = [normal, second];
+    for (const key of ['slice', 'map']) Object.defineProperty(throwingMethods, key, { get: boom, configurable: true });
+    const { proxy: revoked, revoke } = Proxy.revocable([], {});
+    revoke();
+    const throwingDescriptorTrap = new Proxy([normal], { getOwnPropertyDescriptor: trap });
+    // Unreadable length: the trap throws for `length` only, then (second proxy) lies about it, which the proxy invariant rejects.
+    const throwingLength = new Proxy([normal], {
+      getOwnPropertyDescriptor(target, key) { if (key === 'length') trap(); return Reflect.getOwnPropertyDescriptor(target, key); },
+    });
+    const accessorLength = new Proxy([normal], {
+      getOwnPropertyDescriptor(target, key) {
+        return key === 'length' ? { get: trap, configurable: true, enumerable: false } : Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    });
+
+    const expected: [string, unknown, unknown][] = [
+      ['throwing index getter', throwingIndex, [{}, { subscriberId: 'sub-2', accountId: 'account-a' }]],
+      ['throwing slice and map getters', throwingMethods, [normalProjection, { subscriberId: 'sub-2', accountId: 'account-a' }]],
+      ['revoked proxy', revoked, undefined],
+      ['throwing descriptor trap', throwingDescriptorTrap, []],
+      ['unreadable length', throwingLength, []],
+      ['length reported as an accessor', accessorLength, []],
+    ];
+    for (const [label, recipients, subscribers] of expected) {
+      state.logWarn.mockClear();
+      state.logError.mockClear();
+      expect(() => log(unsettled({ recipients })), label).not.toThrow();
+      expect(state.logError, label).not.toHaveBeenCalled();
+      expect(state.logWarn, label).toHaveBeenCalledOnce();
+      const [details, message] = state.logWarn.mock.calls[0];
+      expect(message, label).toBe('Reporting notification delivery is retrying');
+      if (subscribers === undefined) expect(details, label).not.toHaveProperty('subscribers');
+      else expect(details.subscribers, label).toEqual(subscribers);
+    }
+    expect(calls).toBe(0);
+  });
+
   it('logs at most ten recipients, whether the constructor or a redefined field supplies them', async () => {
     const many = Array.from({ length: 15 }, (_, index) => ({
       scope, subscriberId: `sub-${index}`, reason: 'delivery_failed', finalStatus: 503,

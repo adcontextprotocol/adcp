@@ -151,19 +151,27 @@ function notificationRetryDetails(error: unknown): Record<string, unknown> {
     if (typeof value === 'string' || (typeof value === 'number' && Number.isSafeInteger(value))) details[key] = value;
   }
   const recipients = ownValue(error, 'recipients');
-  if (Array.isArray(recipients)) {
-    details.subscribers = recipients.slice(0, 10).map(recipient => {
+  let isArray = false;
+  try { isArray = Array.isArray(recipients); } catch { /* a revoked proxy */ }
+  if (isArray) {
+    // Read the length and indexes as own data properties too: no array method or element accessor runs.
+    const length = ownValue(recipients, 'length');
+    const count = typeof length === 'number' && Number.isSafeInteger(length) ? Math.min(Math.max(length, 0), 10) : 0;
+    const subscribers: Record<string, unknown>[] = [];
+    for (let index = 0; index < count; index++) {
+      const recipient = ownValue(recipients, String(index));
       const subscriberId = ownValue(recipient, 'subscriberId');
       const accountId = ownValue(ownValue(recipient, 'scope'), 'accountId');
       const reason = ownValue(recipient, 'reason');
       const finalStatus = ownValue(recipient, 'finalStatus');
-      return {
+      subscribers.push({
         ...(typeof subscriberId === 'string' ? { subscriberId } : {}),
         ...(typeof accountId === 'string' ? { accountId } : {}),
         ...(typeof reason === 'string' ? { reason } : {}),
         ...(typeof finalStatus === 'number' ? { finalStatus } : {}),
-      };
-    });
+      });
+    }
+    details.subscribers = subscribers;
   }
   return details;
 }
