@@ -1154,13 +1154,13 @@ describe('inventory tenants', () => {
         expect(forecast.points[0].metrics.impressions.mid).toBe(1_000_000);
       });
 
-      it('prices and names the first option whose id fits when the first id is too long', async () => {
-        await seedOne('seeded_label_129', 'guaranteed', { ['r'.repeat(129)]: 1, cpm_ten_fits: 10 });
-        const forecast = await forecastOf('seeded_label_129', 1000);
-        expect(forecast.points[0].label).toBe('Priced at pricing option cpm_ten_fits');
+      it('labels the forecast by position when the first option\'s id is too long to name', async () => {
+        await seedOne('seeded_label_129', 'guaranteed', { ['r'.repeat(129)]: 1, ['s'.repeat(129)]: 10 });
+        const forecast = await forecastOf('seeded_label_129', 100);
+        expect(forecast.points[0].label).toBe('Priced at the first pricing option listed');
         expect(forecast.points[0].metrics.impressions.mid).toBe(100_000);
-        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
-        const buy = await bookAt('inventory-forecast-long-id-0001', 'cpm_ten_fits', 1000, 'seeded_label_129');
+        expect(forecast.points[0].metrics.spend.mid).toBe(100);
+        const buy = await bookAt('inventory-forecast-long-id-0001', 'r'.repeat(129), 100, 'seeded_label_129');
         expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
       });
 
