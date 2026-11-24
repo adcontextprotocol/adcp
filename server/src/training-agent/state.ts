@@ -542,23 +542,37 @@ export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
 
 /**
  * Default delivery state for read-through compliance fixtures that report
- * something other than elapsed-time pacing. A comply_test_controller
- * simulation on the same media buy replaces it.
+ * something other than elapsed-time pacing. Fixtures live outside every
+ * session, so comply_test_controller cannot simulate delivery on them.
  *
  * The broadcast flight closed five days ago. Live and C3 reads are in for
  * every airing; C7 DVR accumulation for the last airings closes seven days
  * after air and lands a day later, so the package reports the provisional
  * C3 window at 87% of the planned audience. That shortfall is maturation by
  * design, not under-delivery: billing settles on C7.
+ *
+ * A dated read reports the share of the flight inside [start, end), spread
+ * evenly across the flight; a period outside the flight reports nothing.
  */
-export function getComplianceDeliverySimulation(mediaBuyId: string): ComplyDeliveryAccumulator | undefined {
+export function getComplianceDeliverySimulation(
+  mediaBuyId: string,
+  period?: { start: Date; end: Date },
+): ComplyDeliveryAccumulator | undefined {
   if (mediaBuyId !== BROADCAST_FIXTURE_MEDIA_BUY_ID) return undefined;
+  const fixture = getComplianceMediaBuy(mediaBuyId);
+  if (!fixture) return undefined;
+  const flightStart = Date.parse(fixture.startTime);
+  const flightEnd = Date.parse(fixture.endTime);
+  const overlap = period
+    ? Math.max(0, Math.min(period.end.getTime(), flightEnd) - Math.max(period.start.getTime(), flightStart))
+    : flightEnd - flightStart;
+  const share = overlap / (flightEnd - flightStart);
   // At the fixture's $10 CPM the budget plans 12,000,000 impressions.
-  const c3Spend = Math.round(BROADCAST_FIXTURE_BUDGET * 0.87);
+  const c3Spend = Math.round(BROADCAST_FIXTURE_BUDGET * 0.87 * share * 100) / 100;
   return {
-    impressions: c3Spend * 100,
+    impressions: Math.round(c3Spend * 100),
     clicks: 0,
-    plays: 48,
+    plays: Math.round(48 * share),
     reportedSpend: { amount: c3Spend, currency: 'USD' },
     conversions: 0,
     measurementWindow: 'c3',

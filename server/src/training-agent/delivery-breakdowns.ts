@@ -71,11 +71,23 @@ const COUNTRY_NAMES: Readonly<Record<string, string>> = {
   KR: 'South Korea', AU: 'Australia',
 };
 
-/** Default region rows per country when the package names no regions. */
+/** Default ISO 3166-2 region rows per country when the package names no
+ * regions. Covers every country in the catalog's inventory coverage; a
+ * country outside it has no region breakdown, so the slice is omitted. */
 const DEFAULT_REGIONS: Readonly<Record<string, ReadonlyArray<[string, string]>>> = {
   US: [['US-CA', 'California'], ['US-TX', 'Texas'], ['US-NY', 'New York'], ['US-FL', 'Florida'], ['US-IL', 'Illinois']],
   CA: [['CA-ON', 'Ontario'], ['CA-QC', 'Quebec'], ['CA-BC', 'British Columbia']],
   GB: [['GB-ENG', 'England'], ['GB-SCT', 'Scotland'], ['GB-WLS', 'Wales']],
+  MX: [['MX-CMX', 'Mexico City'], ['MX-JAL', 'Jalisco'], ['MX-NLE', 'Nuevo León']],
+  BR: [['BR-SP', 'São Paulo'], ['BR-RJ', 'Rio de Janeiro'], ['BR-MG', 'Minas Gerais']],
+  DE: [['DE-NW', 'North Rhine-Westphalia'], ['DE-BY', 'Bavaria'], ['DE-BE', 'Berlin']],
+  FR: [['FR-IDF', 'Île-de-France'], ['FR-ARA', 'Auvergne-Rhône-Alpes'], ['FR-PAC', "Provence-Alpes-Côte d'Azur"]],
+  ES: [['ES-MD', 'Madrid'], ['ES-CT', 'Catalonia'], ['ES-AN', 'Andalusia']],
+  IT: [['IT-25', 'Lombardy'], ['IT-62', 'Lazio'], ['IT-72', 'Campania']],
+  IN: [['IN-MH', 'Maharashtra'], ['IN-DL', 'Delhi'], ['IN-KA', 'Karnataka']],
+  JP: [['JP-13', 'Tokyo'], ['JP-27', 'Osaka'], ['JP-23', 'Aichi']],
+  KR: [['KR-11', 'Seoul'], ['KR-41', 'Gyeonggi'], ['KR-26', 'Busan']],
+  AU: [['AU-NSW', 'New South Wales'], ['AU-VIC', 'Victoria'], ['AU-QLD', 'Queensland']],
 };
 
 const DEFAULT_DMAS: ReadonlyArray<[string, string]> = [
@@ -189,7 +201,10 @@ function geoRowKeys(
     if (support.region !== true) return undefined;
     const targeted = stringArray(targeting?.geo_regions);
     if (targeted.length > 0) return targeted.map(code => ({ geo_level: 'region', geo_code: code }));
-    return countries.flatMap(country => (DEFAULT_REGIONS[country] ?? []).map(([code, name]) => ({
+    // Rows must account for the whole package, so one country without
+    // region data means no region slice at all, not a partial one.
+    if (!countries.every(country => DEFAULT_REGIONS[country] !== undefined)) return undefined;
+    return countries.flatMap(country => DEFAULT_REGIONS[country]!.map(([code, name]) => ({
       geo_level: 'region', geo_code: code, geo_name: name,
     })));
   }
@@ -201,7 +216,8 @@ function geoRowKeys(
       .filter(entry => entry.system === system)
       .flatMap(entry => stringArray(entry.values));
     if (targeted.length > 0) return targeted.map(code => ({ geo_level: 'metro', system, geo_code: code }));
-    if (!countries.includes('US')) return [];
+    // Nielsen DMAs partition US delivery only.
+    if (countries.some(country => country !== 'US')) return undefined;
     return DEFAULT_DMAS.map(([code, name]) => ({ geo_level: 'metro', system, geo_code: code, geo_name: name }));
   }
   return undefined;
