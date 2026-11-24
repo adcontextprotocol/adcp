@@ -342,8 +342,10 @@ Each entry has the following fields:
   head for `tighten` (the reverse for `loosen`), and with only this line
   reverted at its site it must get the base verdict again. When the line's
   keyword cannot be reverted alone (it comes from a normalization, or a
-  `discriminator` needs the union), the whole schema at the line's site is
-  reverted instead, and the report says `attribution: site`. A recorded
+  `discriminator` needs the union), or reverting it alone does not restore
+  the verdict because another conjunct at the site states the same rule, the
+  whole schema at the line's site is reverted instead, and the report says
+  `attribution: site`. A recorded
   witness that does not verify fails the line, and one that verifies is
   reported with `from: recorded`. A prose note is not a witness.
 

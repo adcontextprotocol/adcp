@@ -955,23 +955,25 @@ async function generateWitnesses({ baseTree, headTree, manifest, match, corpus, 
         recordedReasons.push(`the recorded witness is ${atBase ? 'valid' : 'invalid'} at the base and ${atHead ? 'valid' : 'invalid'} at the head, not a ${open.join('/')}`);
         continue;
       }
-      // Attributed to the line where its keyword can be reverted alone, else
-      // to its site: the head with the whole schema at the site reverted.
-      const hybrid = hybridFor(entry);
-      let h = hybrid.hv ? await hybrid.hv.get(`${rel}#`) : null;
-      let attribution = 'line';
-      if (typeof h !== 'function') {
-        const site = hybridFor({ ...entry, keyword: '(schema)' });
-        const hs = site.hv ? await site.hv.get(`${rel}#`) : null;
-        if (typeof hs !== 'function') {
-          recordedReasons.push(`cannot attribute the recorded witness: ${hybrid.reason || 'the head with this line reverted does not compile'}`);
-          continue;
-        }
-        h = hs;
-        attribution = 'site';
+      // Attributed to the line: with its keyword alone reverted, the payload
+      // gets the base verdict again. Where that revert does not exist or does
+      // not restore it (another conjunct at the site states the same rule),
+      // attributed to the line's site: the head with the whole schema there
+      // reverted.
+      const restores = h => (typeof h === 'function' ? (dir === 'tighten' ? h(w.instance) : !h(w.instance)) : null);
+      const lineHybrid = hybridFor(entry);
+      const atLine = restores(lineHybrid.hv ? await lineHybrid.hv.get(`${rel}#`) : null);
+      let attribution = atLine ? 'line' : null;
+      let atSite = null;
+      if (!attribution) {
+        const siteHybrid = hybridFor({ ...entry, keyword: '(schema)' });
+        atSite = restores(siteHybrid.hv ? await siteHybrid.hv.get(`${rel}#`) : null);
+        if (atSite) attribution = 'site';
       }
-      if (dir === 'tighten' ? !h(w.instance) : h(w.instance)) {
-        recordedReasons.push(`the recorded witness changes verdict for another reason: with this line reverted it is still ${dir === 'tighten' ? 'invalid' : 'valid'}`);
+      if (!attribution) {
+        recordedReasons.push(atLine === false || atSite === false
+          ? `the recorded witness changes verdict for another reason: with this line, or the whole schema at its site, reverted it is still ${dir === 'tighten' ? 'invalid' : 'valid'}`
+          : `cannot attribute the recorded witness: ${lineHybrid.reason || 'the head with this line reverted does not compile'}`);
         continue;
       }
       found[dir] = { root: rel, payload: w.instance, at: [], recorded: true, attribution };
