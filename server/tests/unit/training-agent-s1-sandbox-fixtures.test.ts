@@ -45,6 +45,28 @@ function purchases(response: Json): Json[] {
   return (response.proposals as Json[]).flatMap(proposal => proposal.commercial_terms.purchases as Json[]);
 }
 
+/** Finalize a draft and accept it, returning the accepted media buy id. */
+async function finalizeAndAccept(server: Server, version: string, draft: Json): Promise<Json> {
+  const refined = await callTool(server, 'refine_proposals', {
+    adcp_version: version,
+    refinements: [{ proposal_id: draft.proposal_id, action: 'finalize' }],
+  });
+  expect(refined.code, JSON.stringify(refined).slice(0, 500)).toBeUndefined();
+  const finalized = refined.results[0].proposal as Json;
+  return callTool(server, 'accept_proposal', {
+    account: ACCOUNT, adcp_version: version,
+    proposal_id: finalized.proposal_id,
+    proposal_terms_digest: finalized.terms_digest,
+    ...(finalized.insertion_order && {
+      io_acceptance: {
+        io_id: finalized.insertion_order.io_id,
+        accepted_at: new Date().toISOString(),
+        signatory: 'Sam Buyer',
+      },
+    }),
+  });
+}
+
 beforeEach(async () => {
   await clearSessions();
   clearIdempotencyCache();
@@ -398,6 +420,166 @@ describe.each(COMPACT_VERSIONS)('list_products availability_horizon in an ordina
         dimensions: [{ kind: 'time', start_time: HORIZON.start_time, end_time: HORIZON.end_time }],
         availability_status: 'available',
       });
+    }
+  });
+});
+
+describe('getComplianceDeliverySimulation periods', () => {
+  const buy = () => getComplianceMediaBuy('seed_mb_broadcast_q4')!;
+
+  it('reports the whole read with no period and for a period covering the flight', () => {
+    const full = getComplianceDeliverySimulation('seed_mb_broadcast_q4')!;
+    expect(full).toMatchObject({ impressions: 10_440_000, plays: 48, reportedSpend: { amount: 104_400, currency: 'USD' } });
+    const covering = getComplianceDeliverySimulation('seed_mb_broadcast_q4', {
+      start: new Date(Date.parse(buy().startTime) - 86_400_000),
+      end: new Date(Date.parse(buy().endTime) + 86_400_000),
+    })!;
+    expect(covering.impressions).toBe(full.impressions);
+    expect(covering.plays).toBe(48);
+  });
+
+  it('reports nothing for a period outside the flight and a proportional share inside it', () => {
+    const outside = getComplianceDeliverySimulation('seed_mb_broadcast_q4', {
+      start: new Date('2000-01-01T00:00:00Z'), end: new Date('2000-01-02T00:00:00Z'),
+    })!;
+    expect(outside).toMatchObject({ impressions: 0, plays: 0, reportedSpend: { amount: 0 } });
+    const start = Date.parse(buy().startTime);
+    const half = getComplianceDeliverySimulation('seed_mb_broadcast_q4', {
+      start: new Date(start), end: new Date((start + Date.parse(buy().endTime)) / 2),
+    })!;
+    expect(half.reportedSpend!.amount).toBeCloseTo(104_400 / 2, 0);
+    expect(half.impressions).toBe(Math.round(half.reportedSpend!.amount * 100));
+    expect(half.plays).toBe(24);
+  });
+});
+
+describe.each(COMPACT_VERSIONS)('dated reads of seed_mb_broadcast_q4 (%s)', version => {
+  const read = (server: Server, period: Json) => callTool(server, 'get_media_buy_delivery', {
+    account: ACCOUNT, adcp_version: version, media_buy_id: 'seed_mb_broadcast_q4', ...period,
+  });
+  const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+  it('reports zero delivery for a period before the flight', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const result = await read(server, { start_date: '2000-01-01', end_date: '2000-01-02' });
+    expect(result.errors).toBeUndefined();
+    const delivery = result.media_buy_deliveries[0];
+    expect(delivery.totals).toMatchObject({ impressions: 0, spend: 0, plays: 0 });
+    expect(delivery.by_package[0]).toMatchObject({ impressions: 0, spend: 0, plays: 0 });
+  });
+
+  it('reports the full flight for a covering period', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const flight = getComplianceMediaBuy('seed_mb_broadcast_q4')!;
+    const result = await read(server, {
+      start_date: isoDay(Date.parse(flight.startTime) - 2 * 86_400_000),
+      end_date: isoDay(Date.now() + 86_400_000),
+    });
+    expect(result.media_buy_deliveries[0].totals).toMatchObject({ impressions: 10_440_000, spend: 104_400, plays: 48 });
+  });
+
+  it('reports a proportional share for a period covering part of the flight', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const flight = getComplianceMediaBuy('seed_mb_broadcast_q4')!;
+    const start = Date.parse(flight.startTime);
+    const result = await read(server, {
+      start_date: isoDay(start),
+      end_date: isoDay(start + 3 * 86_400_000),
+    });
+    const totals = result.media_buy_deliveries[0].totals;
+    expect(totals.spend).toBeGreaterThan(0);
+    expect(totals.spend).toBeLessThan(104_400);
+    expect(totals.impressions).toBe(Math.round(totals.spend * 100));
+    expect(totals.plays).toBeGreaterThan(0);
+    expect(totals.plays).toBeLessThan(48);
+  });
+});
+
+describe.each(COMPACT_VERSIONS)('synthesized request_proposals plans stay executable (%s)', version => {
+  const request = (server: Server, criteria: Json) => callTool(server, 'request_proposals', {
+    account: ACCOUNT, adcp_version: version, brief: 'Demonstrate the requested criteria', criteria,
+  });
+
+  it('carries criteria.media_buy_frequency_cap into the plan and onto the accepted buy', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const cap = { max_impressions: 3, per: 'individuals', window: { interval: 1, unit: 'campaign' } };
+    const response = await request(server, {
+      offer_filters: { channels: ['search'] },
+      media_buy_frequency_cap: cap,
+      required_media_buy_support: { frequency_cap: true },
+    });
+    expect(response.outcome, JSON.stringify(response).slice(0, 500)).toBe('proposed');
+    const draft = response.proposals[0] as Json;
+    expect(draft.commercial_terms.frequency_cap).toEqual(cap);
+
+    const accepted = await finalizeAndAccept(server, version, draft);
+    expect(accepted.code, JSON.stringify(accepted).slice(0, 500)).toBeUndefined();
+    const readback = await callTool(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [accepted.media_buy_id] });
+    expect(readback.media_buys[0].frequency_cap).toEqual(cap);
+  });
+
+  it('sizes the plan to each offer\'s min_spend_per_package and accepts it', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const response = await request(server, {
+      offer_filters: { channels: ['linear_tv'] },
+      targeting_overlay: { geo_countries: ['US'] },
+    });
+    expect(response.outcome, JSON.stringify(response).slice(0, 500)).toBe('proposed');
+    const draft = response.proposals[0] as Json;
+    const items = draft.commercial_terms.purchases as Json[];
+    expect(items.length).toBeGreaterThan(0);
+    for (const purchase of items) {
+      expect(purchase.budget).toBeGreaterThanOrEqual(purchase.pricing.min_spend_per_package);
+    }
+    expect(items.map(p => p.pricing.min_spend_per_package)).toContain(25_000);
+    expect(draft.commercial_terms.total_budget.amount).toBeGreaterThanOrEqual(25_000 * items.length);
+
+    const accepted = await finalizeAndAccept(server, version, draft);
+    expect(accepted.code, JSON.stringify(accepted).slice(0, 500)).toBeUndefined();
+    expect(accepted.media_buy_id).toEqual(expect.any(String));
+  });
+
+  it('names criteria.offer_filters.budget_range when no offer fits the ceiling', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const response = await request(server, {
+      offer_filters: { channels: ['linear_tv'], budget_range: { max: 5000, currency: 'USD' } },
+      targeting_overlay: { geo_countries: ['US'] },
+    });
+    expect(response.outcome).toBe('rejected');
+    expect(response.reason).toContain('criteria.offer_filters.budget_range');
+  });
+
+  it('plans a cost_per target only on offers priced in its currency', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const response = await request(server, {
+      offer_filters: { channels: ['display'] },
+      targeting_overlay: { geo_countries: ['US'] },
+      outcome_target: {
+        goal: { kind: 'metric', metric: 'clicks' },
+        cost_per: { amount: 1, currency: 'EUR', strength: 'target' },
+      },
+    });
+    expect(response.outcome, JSON.stringify(response).slice(0, 500)).toBe('proposed');
+    const draft = response.proposals[0] as Json;
+    const items = draft.commercial_terms.purchases as Json[];
+    expect(items.length).toBeGreaterThan(0);
+    for (const purchase of items) expect(purchase.pricing.currency).toBe('EUR');
+    expect(draft.total_budget_guidance?.currency ?? draft.commercial_terms.total_budget.currency).toBe('EUR');
+  });
+});
+
+describe.each(COMPACT_VERSIONS)('list_products open calendar with a sub-day horizon (%s)', version => {
+  it('answers a 12-hour future horizon as available', async () => {
+    const server = createTrainingAgentServer({ mode: 'open' });
+    const horizon = { start_time: '2099-09-01T00:00:00Z', end_time: '2099-09-01T12:00:00Z' };
+    const response = await callTool(server, 'list_products', {
+      account: ACCOUNT, adcp_version: version, criteria: { offer_filters: { availability_horizon: horizon } },
+    });
+    expect(response.code, JSON.stringify(response).slice(0, 400)).toBeUndefined();
+    expect((response.products as Json[]).length).toBeGreaterThan(0);
+    for (const product of response.products as Json[]) {
+      expect(product.forecast.points, product.product_id).toHaveLength(1);
+      expect(product.forecast.points[0].availability_status, product.product_id).toBe('available');
     }
   });
 });

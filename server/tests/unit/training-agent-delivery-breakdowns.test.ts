@@ -128,8 +128,26 @@ describe('dimensionalDeliveryBreakdowns — geo', () => {
     expect(geo({ geo_level: 'metro', system: 'uk_itl1' })).toEqual({});
     expect(geo({ geo_level: 'metro', system: 'eurostat_nuts2' })).toEqual({});
 
-    const nonUs = geo({ geo_level: 'metro', system: 'nielsen_dma' }, { targeting: { geo_countries: ['GB'] } });
-    expect(nonUs.by_geo).toEqual([]);
+    // DMAs partition US delivery only: any non-US country omits the slice rather than returning a partial one.
+    expect(geo({ geo_level: 'metro', system: 'nielsen_dma' }, { targeting: { geo_countries: ['GB'] } })).toEqual({});
+    expect(geo({ geo_level: 'metro', system: 'nielsen_dma' }, { targeting: { geo_countries: ['US', 'CA'] } })).toEqual({});
+    const usOnly = geo({ geo_level: 'metro', system: 'nielsen_dma' }, { targeting: { geo_countries: ['US'] } });
+    expect((usOnly.by_geo as Array<Record<string, unknown>>).map(r => r.geo_code)).toEqual(
+      expect.arrayContaining(['501', '803']),
+    );
+  });
+
+  it('has default region rows for non-US catalog countries that reconcile to totals', () => {
+    const out = geo({ geo_level: 'region' }, { targeting: { geo_countries: ['DE'] } });
+    const rows = out.by_geo as Array<Record<string, unknown>>;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every(r => String(r.geo_code).startsWith('DE-'))).toBe(true);
+    expectReconciles(rows);
+  });
+
+  it('omits the region slice when any country has no region table', () => {
+    expect(geo({ geo_level: 'region' }, { targeting: { geo_countries: ['NL'] } })).toEqual({});
+    expect(geo({ geo_level: 'region' }, { targeting: { geo_countries: ['US', 'NL'] } })).toEqual({});
   });
 
   it('uses targeted nielsen_dma metros and ignores other systems in targeting', () => {
