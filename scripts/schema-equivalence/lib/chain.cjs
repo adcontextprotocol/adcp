@@ -36,9 +36,83 @@
  * lines. So the range reports such a widening as a note, not a failure.
  */
 
-const { git, loadFromRef } = require('./tree.cjs');
+const { git, loadFromRef, isRootFile, SOURCE_PREFIX } = require('./tree.cjs');
 const { compare } = require('./compare.cjs');
 const { matchManifest, siteOf } = require('./manifest.cjs');
+const { refTarget } = require('./graph.cjs');
+
+const DIST_PREFIX = 'dist/schemas/';
+
+/** Document keys (src:<rel>, dist:<rel>) whose files differ between two commits. */
+function changedDocs(repo, from, to) {
+  const out = new Set();
+  for (const f of git(repo, ['diff', '--name-only', from, to, '--', SOURCE_PREFIX, DIST_PREFIX]).toString('utf8').split('\n')) {
+    if (f.startsWith(SOURCE_PREFIX)) out.add(`src:${f.slice(SOURCE_PREFIX.length)}`);
+    else if (f.startsWith(DIST_PREFIX)) out.add(`dist:${f.slice(DIST_PREFIX.length)}`);
+  }
+  return out;
+}
+
+const depsCache = new WeakMap();
+
+/** For one tree: document key -> the document keys its `$ref`s name. */
+function refDeps(tree) {
+  if (depsCache.has(tree)) return depsCache.get(tree);
+  const deps = new Map();
+  for (const [rel, doc] of tree.files) {
+    const key = `src:${rel}`;
+    const out = new Set();
+    const walk = (v) => {
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === 'object') {
+        for (const [k, x] of Object.entries(v)) {
+          if (k === '$ref' && typeof x === 'string') {
+            const t = refTarget(key, x);
+            if (t) out.add(t.doc);
+          } else walk(x);
+        }
+      }
+    };
+    walk(doc);
+    deps.set(key, out);
+  }
+  depsCache.set(tree, deps);
+  return deps;
+}
+
+/**
+ * The root files whose schema can differ between two trees: those that reach
+ * a changed document through `$ref`s in either tree. Every other root reaches
+ * only byte-identical documents, so its canonical form is the same.
+ */
+function affectedRoots(base, head, changed) {
+  // Released documents reference each other, and only source documents are
+  // indexed: a changed release compares every root.
+  if ([...changed].some(d => d.startsWith('dist:'))) {
+    return [...new Set([...base.files.keys(), ...head.files.keys()])].filter(isRootFile).sort();
+  }
+  const users = new Map(); // document -> documents that reference it
+  for (const tree of [base, head]) {
+    for (const [from, targets] of refDeps(tree)) {
+      for (const t of targets) {
+        if (!users.has(t)) users.set(t, new Set());
+        users.get(t).add(from);
+      }
+    }
+  }
+  const seen = new Set(changed);
+  const queue = [...changed];
+  while (queue.length) {
+    const d = queue.pop();
+    for (const u of users.get(d) || []) {
+      if (!seen.has(u)) {
+        seen.add(u);
+        queue.push(u);
+      }
+    }
+  }
+  return [...seen].filter(d => d.startsWith('src:')).map(d => d.slice(4)).filter(isRootFile).sort();
+}
 
 function parentsOf(repo, commit) {
   return git(repo, ['rev-list', '--parents', '-n', '1', commit]).toString('utf8').trim().split(' ').slice(1);
@@ -90,7 +164,17 @@ function checkChain({ repo, base, head, files, changes, dir, rules }) {
   const steps = [];
   for (const c of commits) {
     const parent = c.parents[0];
-    const result = compare(tree(parent), tree(c.commit), { rules });
+    // Only the roots that reach a changed document are compared, without the
+    // informational channel; a commit that changes no schema file shares its
+    // parent's tree and has no difference.
+    const changed = changedDocs(repo, parent, c.commit);
+    let result = { entries: [] };
+    if (!changed.size) {
+      trees.set(c.commit, tree(parent));
+    } else {
+      const roots = affectedRoots(tree(parent), tree(c.commit), changed);
+      if (roots.length) result = compare(tree(parent), tree(c.commit), { rules, info: false, pairs: roots.map(rel => ({ name: rel, baseRel: rel, headRel: rel })) });
+    }
     const subject = git(repo, ['log', '-1', '--format=%s', c.commit]).toString('utf8').trim();
     if (c.parents.length > 1) {
       steps.push({ commit: c.commit, parent, subject, merge: true, entries: result.entries });

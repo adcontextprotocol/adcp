@@ -179,6 +179,7 @@ async function main() {
   let manifest = null;
   let chain = null;
   let chainMs = null;
+  let rangeMatch = null;
   if (values.manifest) {
     let files;
     if (values.manifest === 'auto') {
@@ -196,6 +197,7 @@ async function main() {
     }
     manifest = { changes, label: files.join(', ') };
     const match = matchManifest(result.entries, manifest);
+    rangeMatch = match;
     report.manifest = { files: files.map(displayPath), ...match };
     // A range of several commits whose lines do not match the range as a
     // whole: compose them commit by commit (lib/chain.cjs).
@@ -258,13 +260,21 @@ async function main() {
     if (!manifest) fail('--witness needs --manifest');
     const t0 = Date.now();
     if (chain) {
-      // Each line's witness comes from the commit that declares it.
-      report.witnesses = [];
+      // A line that matches the range's differences on its own gets its
+      // witness from the range, with one pair of validators for every such
+      // line. The others, and any line the range search does not confirm,
+      // get theirs from the commit that declares it.
+      const results = new Map();
+      const atRange = manifest.changes.filter(c => rangeMatch.matched.some(m => m.change.index === c.index));
+      if (atRange.length) {
+        const found = await generateWitnesses({ baseTree: base, headTree: head, manifest: { changes: atRange }, match: rangeMatch, corpus, validators: getValidators() });
+        for (const w of found) if (w.ok) results.set(w.index, { ...w, from: 'range' });
+      }
       for (const s of chain.steps) {
-        if (s.merge || !s.lines.length) continue;
+        if (s.merge || !s.lines.length || s.lines.every(l => results.has(l.index))) continue;
         const stepBase = loadFromRef(REPO, s.parent);
         const stepHead = loadFromRef(REPO, s.commit);
-        report.witnesses.push(...await generateWitnesses({
+        const found = await generateWitnesses({
           baseTree: stepBase,
           headTree: stepHead,
           manifest: { changes: s.lines },
@@ -272,10 +282,11 @@ async function main() {
           corpus,
           // Only the roots a line reaches get compiled.
           validators: { base: new TreeValidator(stepBase, { lazy: true }), head: new TreeValidator(stepHead, { lazy: true }) },
-        }));
+        });
+        for (const w of found) if (!results.has(w.index)) results.set(w.index, { ...w, from: s.commit });
       }
-      for (const c of chain.unowned) report.witnesses.push({ index: c.index, direction: c.direction, ok: false, payloads: [], reason: 'no commit of the range adds or changes its manifest file' });
-      report.witnesses.sort((a, b) => a.index - b.index);
+      for (const c of chain.unowned) results.set(c.index, { index: c.index, direction: c.direction, ok: false, payloads: [], reason: 'no commit of the range adds or changes its manifest file' });
+      report.witnesses = [...results.values()].sort((a, b) => a.index - b.index);
     } else report.witnesses = await generateWitnesses({ baseTree: base, headTree: head, manifest, match: report.manifest, corpus, validators: getValidators() });
     timings.witness_ms = Date.now() - t0;
     const missing = report.witnesses.filter(w => !w.ok);

@@ -187,6 +187,8 @@ describe('schema-equivalence CLI on a range of commits', () => {
       assert.deepEqual(report.manifest.range, { extra: 1, missing: 2, problems: 0 }, 'the range alone shows absent -> 8');
       assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.steps));
       assert.equal(report.witnesses.filter(w => w.ok).length, 2, JSON.stringify(report.witnesses));
+      // Neither line matches the range (absent -> 8), so each witness comes from its own commit.
+      assert.ok(report.witnesses.every(w => w.from !== 'range' && /^[0-9a-f]{40}$/.test(w.from)), JSON.stringify(report.witnesses.map(w => w.from)));
       assert.equal(code, 0, report.failures.join('; '));
     } finally {
       r.cleanup();
@@ -243,6 +245,38 @@ describe('schema-equivalence CLI on a range of commits', () => {
     }
   });
 
+  it('a commit\'s change two $refs away from a root is found, and an unrelated commit compares nothing', async () => {
+    const r = scratchRepo();
+    try {
+      r.schema('leaf.json', { type: 'string' });
+      r.schema('mid.json', { type: 'object', properties: { leaf: { $ref: '/schemas/leaf.json' } } });
+      r.schema('top-request.json', { type: 'object', properties: { mid: { $ref: '/schemas/mid.json' } } });
+      r.schema('other-request.json', { type: 'object', properties: { note: { type: 'string' } } });
+      const base = r.commit('base');
+      r.schema('leaf.json', { type: 'string', maxLength: 64 });
+      r.manifest('first', [{ location: 'leaf.json#', keyword: 'maxLength', new: 64, direction: 'tighten', side: 'request' }]);
+      r.commit('bound the leaf');
+      fs.writeFileSync(path.join(r.repo, 'NOTES.md'), 'no schema change\n');
+      r.commit('notes only');
+      r.schema('leaf.json', { type: 'string', maxLength: 32 });
+      r.schema('other-request.json', { type: 'object', properties: { note: { type: 'string', maxLength: 10 } } });
+      r.manifest('second', [
+        { location: 'leaf.json#', keyword: 'maxLength', old: 64, new: 32, direction: 'tighten', side: 'request' },
+        { location: 'other-request.json#/properties/note', keyword: 'maxLength', new: 10, direction: 'tighten', side: 'request' },
+      ]);
+      const head = r.commit('lower the leaf bound and bound the note');
+      const { report, stderr } = await run(['--repo', r.repo, '--base', base, '--head', head, '--manifest', 'auto'], r.repo);
+      assert.ok(report, stderr);
+      assert.equal(report.manifest.mode, 'chain');
+      // leaf.json, mid.json and top-request.json each show the leaf bound;
+      // the notes commit compares nothing.
+      assert.deepEqual(report.manifest.steps.map(s => s.entries), [3, 0, 4]);
+      assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.problems));
+    } finally {
+      r.cleanup();
+    }
+  });
+
   it('a site that a later commit makes reachable from the other side keeps each line\'s own side', async () => {
     const r = scratchRepo();
     try {
@@ -263,6 +297,8 @@ describe('schema-equivalence CLI on a range of commits', () => {
       assert.deepEqual(report.manifest.range, { extra: 0, missing: 0, problems: 2 }, 'the range alone reaches the site on both sides');
       assert.equal(report.manifest.ok, true, JSON.stringify(report.manifest.problems));
       assert.deepEqual(report.manifest.notes.map(n => [n.index, n.declared, n.range_side]), [[0, 'response', 'both'], [1, 'request', 'both']]);
+      // Both lines match the range's differences, so their witnesses come from the range.
+      assert.deepEqual(report.witnesses.map(w => [w.index, w.ok, w.from]), [[0, true, 'range'], [1, true, 'range']]);
       assert.equal(code, 0, report.failures.join('; '));
     } finally {
       r.cleanup();

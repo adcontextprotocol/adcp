@@ -374,8 +374,15 @@ declares.
 `side` belongs to the commit that declares the line: the roots its change
 reaches in that commit. A later commit can make the same site reachable from
 roots on the other side, and that commit's differences are checked against
-its own lines. The report notes such a widening instead of failing it. Each
-line's witness comes from its own commit.
+its own lines. The report notes such a widening instead of failing it.
+
+Each commit compares only the roots that reach a changed document through
+`$ref`s, in its parent or in itself; every other root reaches byte-identical
+documents, so its canonical form is the same. A commit that changes no
+schema file has no difference. A line that matches the range's differences
+on its own gets its witness from the range, with one pair of validators for
+all such lines; the others, and any line the range search does not confirm,
+get theirs from the commit that declares it (`from` in the report).
 
 The report's manifest section then has `mode: chain`, one step per commit,
 the range-wide counts the lines left unmatched (`range`), and the side notes.
