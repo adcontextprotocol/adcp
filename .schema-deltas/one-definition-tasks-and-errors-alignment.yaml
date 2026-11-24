@@ -117,7 +117,7 @@ changes:
   - correctable
   - terminal
   - transient
-  direction: tighten
+  direction: none
   side: response
   note: >-
     core/catalog-item-reference-not-found-error.json recovery references enums/error-recovery.json beside its const correctable,
@@ -138,6 +138,9 @@ changes:
     in 3.3 (no reporting subscription in 3.2.12). Hand-checked with Ajv (the witness search does not try . or ..): get_principal_request
     reporting_subscription_page.subscription_id "." is valid at base and invalid at head; "sub_1" is valid at both; restoring
     the old pattern makes "." valid again.
+  witness:
+    root: /schemas/core/reporting-subscription-id.json
+    instance: .
 - location: >-
     media-buy/get-reporting-status-response.json#/definitions/ReportingStatusUnavailableError
   keyword: required

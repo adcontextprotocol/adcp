@@ -236,7 +236,7 @@ changes:
       Hand check (creatives[] item): {creative_id, name, status, created_date, updated_date, format_kind: "image",
       component_assets: {}} is valid at base, invalid at head (allOf/3/else/not); the same with format_kind
       "coordinated_placements" is valid at both; removing the guard restores the base verdict.
-  - location: creative/list-creatives-response.json#/properties/creatives/items/allOf/0
+  - location: creative/list-creatives-response.json#/properties/creatives/items/allOf/3
     keyword: not
     new:
       anyOf:
@@ -341,6 +341,13 @@ changes:
       and its third-party id "format": "uri"
       https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/creative/validate-input-request.json#L80-L83.
       lint:additive-minor does not see format.
+    witness:
+      root: /schemas/creative/validate-input-result.json
+      instance:
+        target:
+          kind: third_party_format
+          id: not a uri
+        result_kind: validated_pass
   - location: core/validation-target.json#
     keyword: if
     old:

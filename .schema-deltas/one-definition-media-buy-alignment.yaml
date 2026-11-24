@@ -185,7 +185,7 @@ changes:
   - location: media-buy/get-products-response.json#/properties/suggestions
     keyword: minItems
     new: 1
-    direction: tighten
+    direction: none
     side: both
     note: >-
       get_products suggestions take the GetProductsRejected arm's contract, the only arm that may carry them.
@@ -260,6 +260,16 @@ changes:
       Hand-checked payload against core/media-buy-available-action.json: { "action": "replace_creative", "mode":
       "self_serve", "task": "control_media_buy", "review_sla": { "completion_max": "P1D" } } is valid at the base
       and invalid at the head (task must be sync_creatives); without the task line it is valid again.
+    witness:
+      root: /schemas/core/media-buy-available-action.json
+      instance:
+        action: replace_creative
+        mode: self_serve
+        task: control_media_buy
+        applicable_package_ids:
+        - a
+        review_sla:
+          completion_max: P1D
   - location: media-buy/refine-proposals-response.json#/definitions/draft_successor
     keyword: properties
     new:

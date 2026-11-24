@@ -8,14 +8,15 @@ changes:
 - location: core/domain-name.json#
   keyword: pattern
   old: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
-  direction: tighten
+  direction: none
   side: both
   note: >-
     The same delivery-provider domain -> new:core/provider-domain.json. The domain pattern limits each label to 63 characters,
     as RFC 1035 does (the #8536 label line). The pattern alone would also admit a single-label name; the provider-domain allOf
-    line restates the dotted rule, so this line only tightens. Checked by hand with Ajv: the dataset share destination provider
-    domain "localhost" is valid at the base (core/domain-name.json admits one label) and invalid at the head (the dotted rule
-    core/provider-domain.json adds); a domain with a 64-character label is invalid at both.
+    line restates the dotted rule. Masked: the label pattern stays in effect as its own conjunct beside the dotted one, and the
+    check reports it as removed from the merged object, so no payload changes verdict because of this line. The single-label
+    tightening ("localhost" valid at the base, invalid at the head) is the allOf line's, with its recorded witness; a domain
+    with a 64-character label is invalid at both.
 - location: core/reporting-destination-provider.json#/properties/domain
   keyword: allOf
   new:
@@ -31,6 +32,15 @@ changes:
     Both schemas are experimental. The lint does not see pattern; the quote is here. Checked by hand with Ajv: the dataset
     share destination provider domain "localhost" is valid at the base (core/domain-name.json admits one label) and invalid
     at the head (the dotted rule core/provider-domain.json adds); a domain with a 64-character label is invalid at both.
+  witness:
+    root: /schemas/core/reporting-dataset-share-destination.json
+    instance:
+      mode: provision
+      access_mode: a
+      recipient:
+        identity: a
+      provider:
+        domain: localhost
 - location: core/reporting-destination-provider.json#/properties/domain
   keyword: allOf
   new:
@@ -63,6 +73,12 @@ changes:
     the reporting schedule {period_duration: "P" + 63 zeros + "1D" (66 characters), alignment: utc, delivery_sla: PT0S} is
     valid at the base, invalid at the head, and valid again with maxLength removed. The tool's length candidates do not match
     the duration pattern, so its search finds none.
+  witness:
+    root: /schemas/core/reporting-schedule.json
+    instance:
+      period_duration: P1D
+      alignment: utc
+      delivery_sla: P0000000000000000000000000000000000000000000000000000000000000001D
 - location: core/reporting-period-duration.json#
   keyword: maxLength
   new: 64
@@ -79,6 +95,12 @@ changes:
     P1D, alignment: utc, delivery_sla: "P" + 63 zeros + "1D" (66 characters)} is valid at the base, invalid at the head, and
     valid again with maxLength removed. The tool's length candidates do not match the duration pattern, so its search finds
     none.
+  witness:
+    root: /schemas/core/reporting-schedule.json
+    instance:
+      period_duration: P0000000000000000000000000000000000000000000000000000000000000001D
+      alignment: utc
+      delivery_sla: PT1H
 - location: core/measurement-window-id.json#
   keyword: minLength
   new: 1
@@ -184,6 +206,46 @@ changes:
     (the reporting-status contract test's dataset_share offering otherwise) is valid at the base, invalid at the head, and
     valid again with the dotted allOf member removed. The tool's candidates do not reach the offering roots, so its search
     finds none.
+  witness:
+    root: /schemas/core/reporting-delivery-offering.json
+    instance:
+      offering_id: a
+      feed_purpose: pacing
+      report_definition_id: a
+      report_definition_uri: https://example.com/x
+      report_definition_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      reporting_profile:
+        id: a
+        version: a
+        schema_uri: https://example.com/x
+        schema_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        schema_dialect: https://json-schema.org/draft/2020-12/schema
+        schema_ref_policy: local_fragment_only
+        grain: a
+        primary_keys:
+        - a
+        canonicalization_contract_version: '1.0'
+        canonicalization_media_type: application/vnd.adcp.reporting-canonicalization+json
+      schedule:
+        period_duration: P1D
+        alignment: utc
+        delivery_sla: PT1H
+      supported_finality:
+      - snapshot
+      reconciliation_mode: delivery_only
+      method:
+        pattern: file_transfer
+        transport: a
+        orchestration: producer_managed
+        destination_modes:
+        - provision
+        producer_identity:
+          identity: a
+          provider:
+            domain: localhost
+        provider:
+          domain: a
+        format: jsonl
 - location: core/delivery-provider.json#/properties/domain
   keyword: allOf
   new:
@@ -199,6 +261,10 @@ changes:
     Both schemas are experimental. The lint does not see pattern; the quote is here. Checked by hand with Ajv: a delivery
     provider domain with a 64-character label ('a' x 64 + '.example.com') is valid at the base and invalid at the head (the
     core/domain-name.json label limit), and example.com is valid at both.
+  witness:
+    root: /schemas/core/delivery-provider.json
+    instance:
+      domain: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com
 - location: core/canonical-reporting-capabilities.json#/properties/vendor_metrics/items
   keyword: properties
   new:
