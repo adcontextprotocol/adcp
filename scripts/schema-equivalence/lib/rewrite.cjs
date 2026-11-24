@@ -104,6 +104,11 @@ class Rewriter {
   /** A plain node equal to `node` with its union keyword replaced. */
   withUnion(node, fromKey, toKey, refs) {
     const g = this.graph;
+    // A copy keeps naming the source objects that write its keywords.
+    const keep = (id) => {
+      if (node.kwOrigins) g.nodes[id].kwOrigins = node.kwOrigins;
+      return id;
+    };
     const kids = { ...node.kids };
     const kw = { ...node.kw };
     delete kids[fromKey];
@@ -111,19 +116,19 @@ class Rewriter {
     if (refs.length === 1 && !kids[toKey]) {
       // A one-branch union is the branch.
       const rest = Object.keys(kids).length || Object.keys(kw).length || Object.keys(node.info).length
-        ? g.addPlain(node.origin, kw, kids, node.info)
+        ? keep(g.addPlain(node.origin, kw, kids, node.info))
         : null;
       if (rest === null) return g.kid(refs[0]).n;
       return g.add({ kind: 'conj', origin: node.origin, members: [{ n: rest, via: '' }, { ...g.kid(refs[0]) }] });
     }
     if (kids[toKey]) {
-      const rest = g.addPlain(node.origin, kw, kids, node.info);
-      const other = g.addPlain(node.origin, {}, { [toKey]: refs }, {});
+      const rest = keep(g.addPlain(node.origin, kw, kids, node.info));
+      const other = keep(g.addPlain(node.origin, {}, { [toKey]: refs }, {}));
       g.nodes[other].srcUnion = { [toKey]: (node.srcUnion && node.srcUnion[fromKey]) || fromKey };
       return g.add({ kind: 'conj', origin: node.origin, members: [{ n: rest, via: '' }, { n: other, via: '' }] });
     }
     kids[toKey] = refs;
-    const id = g.addPlain(node.origin, kw, kids, node.info);
+    const id = keep(g.addPlain(node.origin, kw, kids, node.info));
     // Reports keep naming the keyword the source wrote.
     g.nodes[id].srcUnion = { ...(node.srcUnion || {}), [toKey]: (node.srcUnion && node.srcUnion[fromKey]) || fromKey };
     return id;
@@ -217,6 +222,10 @@ class Rewriter {
       delete restKids.not;
       const rest = g.addPlain(node.origin, node.kw, restKids, node.info);
       const notPart = g.addPlain(node.origin, {}, { not: node.kids.not }, {});
+      if (node.kwOrigins) {
+        g.nodes[rest].kwOrigins = node.kwOrigins;
+        g.nodes[notPart].kwOrigins = node.kwOrigins;
+      }
       let members = [{ n: rest, via: '' }, { n: notPart, via: '' }];
       const afterNot = this.notRule(members, contextOf(g, [g.nodes[rest]], inherited(id)), node);
       if (!afterNot) continue;

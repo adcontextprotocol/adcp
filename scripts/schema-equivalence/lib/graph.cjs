@@ -663,6 +663,7 @@ class Graph {
     if (!empty) {
       const copy = this.addPlain(node.origin, kw, kids, node.info);
       this.nodes[copy].copyOf = node.copyOf !== undefined ? node.copyOf : node.id;
+      if (node.kwOrigins) this.nodes[copy].kwOrigins = node.kwOrigins;
       members.push({ n: copy, via: '' });
     }
     if (members.length === 0) return this.TRUE;
