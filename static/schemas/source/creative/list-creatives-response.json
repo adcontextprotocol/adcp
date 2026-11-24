@@ -70,6 +70,13 @@
             "$comment": "x-entity deliberately omitted: seller-opaque identifier in the seller's own namespace; buyers echo creative_id, never platform_id, on AdCP requests.",
             "x-added-in": "3.3.0"
           },
+          "merged_into_creative_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Present on a seller-assigned creative that a library-level sync_creatives merge bound to a buyer creative: the buyer's creative_id, which now holds every assignment of this creative and is reported in delivery from the merge onward. Such a creative has no assignments of its own. Delivery before the merge stays under this creative's creative_id; buyers join the two IDs to report its whole history.",
+            "x-entity": "creative",
+            "x-added-in": "4.0.0"
+          },
           "revision_id": {
             "$ref": "/schemas/core/creative-revision-id.json",
             "description": "Current buyer-authored input revision for this creative. Present when the current effective content has revision identity and the seller advertises creative.supports_revisions; omitted after an accepted content-bearing legacy update without revision_id. Sellers MUST NOT mint one for a creative that entered the library outside sync_creatives; it appears only after a buyer supplies one through sync_creatives.",
