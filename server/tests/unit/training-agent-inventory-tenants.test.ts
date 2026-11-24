@@ -1895,6 +1895,7 @@ describe('inventory tenants', () => {
     const TOKEN_COLLIDE = 'demo-inventory-seeded-round2-collide-v1';
     const TOKEN_SIZES = 'demo-inventory-seeded-round2-sizes-v1';
     const TOKEN_ORDER = 'demo-inventory-seeded-round2-order-v1';
+    const TOKEN_ARRAYS = 'demo-inventory-seeded-round2-arrays-v1';
     const controller = (token: string, scenario: string, params: Record<string, unknown>) =>
       call(tenant, 'comply_test_controller', { scenario, account: ACCOUNT, params }, token);
     const seed = async (token: string, productId: string, formatOptions: Structured[]) => {
@@ -1938,12 +1939,16 @@ describe('inventory tenants', () => {
       }, token);
 
     beforeAll(async () => {
-      for (const token of [TOKEN_TYPO, TOKEN_COLLIDE, TOKEN_SIZES, TOKEN_ORDER]) await provision(token);
+      for (const token of [TOKEN_TYPO, TOKEN_COLLIDE, TOKEN_SIZES, TOKEN_ORDER, TOKEN_ARRAYS]) await provision(token);
       await seed(TOKEN_TYPO, 'only_feed', [{ format_option_id: 'real_feed', format_kind: 'native_in_feed', params: { title_max_chars: 20 } }]);
       await seed(TOKEN_COLLIDE, 'collide', [{
         format_option_id: 'display_300x250_image', format_kind: 'image', publisher_domain: 'b.example', params: { width: 300, height: 250 },
       }]);
       await seed(TOKEN_SIZES, 'sized', [{ format_option_id: 'sized_rect', format_kind: 'image', params: { width: 300, height: 250 } }]);
+      await seed(TOKEN_ARRAYS, 'arrays', [
+        { format_option_id: 'rect', format_kind: 'image', params: { width: 300, height: 250 } },
+        { format_option_id: 'clip_15s', format_kind: 'video_hosted', params: { duration_ms_exact: 15000 } },
+      ]);
       await seed(TOKEN_ORDER, 'order_a', [{ format_option_id: 'rect', format_kind: 'image', params: { width: 300, height: 250, extra: { a: 1, b: 2 } } }]);
       await seed(TOKEN_ORDER, 'order_b', [{ format_option_id: 'rect', format_kind: 'image', params: { extra: { b: 2, a: 1 }, height: 250, width: 300 } }]);
     });
@@ -1989,6 +1994,38 @@ describe('inventory tenants', () => {
         });
         expect(assigned.errors, JSON.stringify(assigned).slice(0, 800)).toBeUndefined();
       }
+    });
+
+    it('checks the seeded size on an array-valued asset slot and reports the element index', async () => {
+      const arrayImage = (id: string, width: number, height: number, extra: Record<string, unknown> = {}) => {
+        const base = image(id, product('rect'), width, height, extra);
+        return { ...base, assets: { ...base.assets, image: [base.assets.image] } };
+      };
+      const wrong = await sync(TOKEN_ARRAYS, [arrayImage('arr_wrong', 728, 90)]);
+      expect(errorOf(wrong), JSON.stringify(wrong).slice(0, 800)).toMatchObject({
+        code: 'CREATIVE_SIZE_MISMATCH', field: 'creatives[0].assets.image[0]',
+      });
+      const withParams = await sync(TOKEN_ARRAYS, [arrayImage('arr_params', 728, 90, { params: { width: 300, height: 250 } })]);
+      expect(errorOf(withParams), JSON.stringify(withParams).slice(0, 800)).toMatchObject({
+        code: 'CREATIVE_SIZE_MISMATCH', field: 'creatives[0].assets.image[0]',
+      });
+      const ok = await sync(TOKEN_ARRAYS, [arrayImage('arr_ok', 300, 250)]);
+      expect(ok.errors, JSON.stringify(ok).slice(0, 800)).toBeUndefined();
+    });
+
+    it('checks the seeded duration on an array-valued video slot', async () => {
+      const arrayVideo = (id: string, durationMs: number) => ({
+        creative_id: id, name: id, format_kind: 'video_hosted', format_option_ref: product('clip_15s'),
+        assets: {
+          video: [{ asset_type: 'video', url: `https://cdn.example/${id}.mp4`, width: 1920, height: 1080, duration_ms: durationMs }],
+        },
+      });
+      const long = await sync(TOKEN_ARRAYS, [arrayVideo('arr_long', 30000)]);
+      expect(errorOf(long), JSON.stringify(long).slice(0, 800)).toMatchObject({
+        code: 'VALIDATION_ERROR', field: 'creatives[0].assets.video[0].duration_ms',
+      });
+      const ok = await sync(TOKEN_ARRAYS, [arrayVideo('arr_exact', 15000)]);
+      expect(ok.errors, JSON.stringify(ok).slice(0, 800)).toBeUndefined();
     });
   });
 });
