@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/logo-orientation.json",
+  "title": "Logo Orientation",
+  "description": "Aspect ratio orientation of a logo.",
+  "type": "string",
+  "enum": [
+    "square",
+    "horizontal",
+    "vertical",
+    "stacked"
+  ]
+}

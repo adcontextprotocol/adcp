@@ -852,11 +852,13 @@ test('DOOH placement schemas declare cross-field and publisher-resolution rules'
   const canonicalPlacement = require('../static/schemas/source/core/canonical-placement.json');
   const publisherPlacement = require('../static/schemas/source/core/placement-definition.json');
   const productRules = productPlacement.definitions.ProductDoohPlacementAttributes['x-adcp-validation'].verifier_constraints;
-  const canonicalRules = canonicalPlacement.definitions.CanonicalDoohPlacementAttributes['x-adcp-validation'].verifier_constraints;
+  const canonicalAttributes = require('../static/schemas/source/core/canonical-dooh-placement-attributes.json');
+  const canonicalRules = canonicalAttributes['x-adcp-validation'].verifier_constraints;
   const publisherRules = publisherPlacement.definitions.PublisherDoohPlacementAttributes['x-adcp-validation'].verifier_constraints;
 
   assert.equal(productPlacement.properties.dooh_placement_attributes.$ref, '#/definitions/ProductDoohPlacementAttributes');
   assert.equal(canonicalPlacement.properties.dooh_placement_attributes.$ref, '#/definitions/CanonicalDoohPlacementAttributes');
+  assert.equal(canonicalPlacement.definitions.CanonicalDoohPlacementAttributes.$ref, '/schemas/core/canonical-dooh-placement-attributes.json');
   assert.equal(publisherPlacement.properties.dooh_placement_attributes.$ref, '#/definitions/PublisherDoohPlacementAttributes');
   assert.equal(productRules.slot_fits_loop.operator, 'less_than_or_equal');
   assert.equal(productRules.slot_fits_loop.evaluate_after, 'publisher_ref_resolution');

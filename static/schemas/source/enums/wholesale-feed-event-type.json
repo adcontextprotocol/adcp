@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/wholesale-feed-event-type.json",
+  "title": "Wholesale Feed Event Type",
+  "description": "Type of a wholesale feed event, such as product.priced or collection_card.updated.",
+  "type": "string",
+  "enum": [
+    "product.created",
+    "product.updated",
+    "product.priced",
+    "product.removed",
+    "signal.created",
+    "signal.updated",
+    "signal.priced",
+    "signal.removed",
+    "wholesale_feed.bulk_change",
+    "collection_card.updated",
+    "collection_card.removed",
+    "collection_catalog.bulk_change"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-delivery-pattern.json",
+  "title": "Signal Delivery Pattern",
+  "description": "A delivery pattern a signal agent can use to deliver to an agent destination (see core/signal-delivery-method.json).",
+  "type": "string",
+  "enum": [
+    "sync_audiences",
+    "file_transfer",
+    "dataset_query",
+    "clean_room",
+    "platform_distribution"
+  ]
+}

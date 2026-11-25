@@ -10,7 +10,9 @@
     "value": { "$ref": "/schemas/core/forecast-range.json" },
     "unit": { "type": "string" },
     "measurable_impressions": { "$ref": "/schemas/core/forecast-range.json" },
-    "breakdown": { "type": "object", "additionalProperties": true }
+    "breakdown": {
+      "$ref": "/schemas/core/vendor-metric-breakdown.json"
+    }
   },
   "required": ["vendor", "metric_id", "value"],
   "additionalProperties": true

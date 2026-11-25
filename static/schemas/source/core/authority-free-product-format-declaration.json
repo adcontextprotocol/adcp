@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/authority-free-product-format-declaration.json",
+  "title": "Authority Free Product Format Declaration",
+  "description": "A product format declaration that carries no seller execution authority: `tracker_execution_contract` and `tracker_execution_contract_digest` are not allowed.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/product-format-declaration.json"
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "tracker_execution_contract"
+            ]
+          },
+          {
+            "required": [
+              "tracker_execution_contract_digest"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-property.json",
+  "title": "Brand Property",
+  "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare direct, delegated, or ad_network properties. For direct, delegated, and network paths, these values match the delegation_type field in adagents.json, creating a bilateral verification chain: the operator declares the relationship here, the publisher confirms by setting the same delegation_type on the agent's authorization in their adagents.json. 'owned' is an inline ownership declaration with no adagents.json counterpart.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "/schemas/enums/property-type.json",
+      "description": "Property type"
+    },
+    "identifier": {
+      "type": "string",
+      "description": "Property identifier - domain for websites, bundle ID for apps",
+      "minLength": 1
+    },
+    "store": {
+      "$ref": "/schemas/enums/app-store.json",
+      "description": "App store for mobile/CTV apps"
+    },
+    "region": {
+      "type": "string",
+      "description": "ISO 3166-1 alpha-2 country code or 'global'",
+      "pattern": "^([A-Z]{2}|global)$"
+    },
+    "primary": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is the primary property for the brand"
+    },
+    "relationship": {
+      "type": "string",
+      "enum": [
+        "owned",
+        "direct",
+        "delegated",
+        "ad_network"
+      ],
+      "default": "owned",
+      "description": "How this brand relates to the property. 'owned': the brand owns and operates this property (default) and has no adagents.json delegation_type counterpart. 'direct': the brand is the direct sales path for this property, even if a third party operates the software (e.g., a publisher's in-house ad team using a vendor's tech). 'delegated': the brand manages monetization for this property — they are in charge of ad sales (e.g., Mediavine managing a food blog). 'ad_network': the brand sells this property's inventory as part of a network or exchange — they are a path to the inventory, not the path (e.g., PubMatic as an SSP). For non-owned properties, the publisher confirms the relationship by setting the matching delegation_type on the agent's authorization in their adagents.json."
+    }
+  },
+  "required": [
+    "type",
+    "identifier"
+  ],
+  "additionalProperties": true
+}

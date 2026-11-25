@@ -76,6 +76,8 @@ describe('request-only targeting null-clear semantics', () => {
       assert.deepEqual(nullBranch, { type: 'null' });
       const strictPropertyRef = `/schemas/core/targeting.json#/properties/${dimension}`;
       if (nonNull.$ref === strictPropertyRef) continue;
+      // Both may reference the same named definition, each with its own description.
+      if (nonNull.$ref && nonNull.$ref === strict.properties[dimension].$ref) continue;
       assert.deepEqual(
         nonNull,
         strict.properties[dimension],

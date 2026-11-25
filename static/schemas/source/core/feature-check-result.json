@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/feature-check-result.json",
+  "title": "Feature Check Result",
+  "description": "The result of checking one feature against a policy: status, the requirement checked, an explanation, and a confidence.",
+  "type": "object",
+  "properties": {
+    "feature_id": {
+      "type": "string",
+      "description": "Which feature was evaluated. Data features come from the governance agent's feature catalog (e.g., 'mfa_score', 'carbon_score'). Record-level structural checks use reserved namespaces: 'record:list_membership', 'record:excluded', 'delivery:seller_authorization', 'delivery:click_url_presence'. Reserved prefixes: 'record:', 'delivery:'."
+    },
+    "status": {
+      "$ref": "/schemas/enums/feature-check-status.json"
+    },
+    "policy_id": {
+      "type": "string",
+      "description": "Optional attribution — when this feature was evaluated for the purpose of a specific policy, policy_id references the authorizing PolicyEntry. Property-list agents populate when the validation was motivated by a specific policy. See /docs/governance/policy-attribution.",
+      "$comment": "x-entity deliberately omitted — a PolicyEntry reference can resolve to either a governance_registry_policy or a governance_inline_policy depending on the authorizing entry's source. See issue #2685."
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Directional human-readable explanation of the result."
+    },
+    "requirement": {
+      "type": "object",
+      "description": "The feature requirement that was not met. MAY be present on failed features when the caller authored the requirement (e.g., feature_requirements on a property list). The buyer set these thresholds — echoing them back enables fix-and-retry loops without looking up the list definition.",
+      "properties": {
+        "min_value": {
+          "type": "number",
+          "description": "Minimum value that was required"
+        },
+        "max_value": {
+          "type": "number",
+          "description": "Maximum value that was allowed"
+        },
+        "allowed_values": {
+          "type": "array",
+          "description": "Values that would have been acceptable",
+          "items": {},
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "confidence": {
+      "$ref": "/schemas/core/fraction.json",
+      "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
+    }
+  },
+  "required": [
+    "feature_id",
+    "status"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/house-summary.json",
+  "title": "House Summary",
+  "description": "The house (corporate entity) a brand belongs to.",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "$ref": "/schemas/core/domain-name.json",
+      "description": "House domain (e.g., nikeinc.com)"
+    },
+    "name": {
+      "$ref": "/schemas/core/parent-organization-name.json",
+      "description": "House display name"
+    }
+  },
+  "required": [
+    "domain",
+    "name"
+  ],
+  "additionalProperties": true
+}

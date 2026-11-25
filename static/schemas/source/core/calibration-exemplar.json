@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/calibration-exemplar.json",
+  "title": "Content Standards Calibration Exemplar",
+  "description": "One calibration example: a URL reference to fetch and evaluate, or a full content artifact.",
+  "oneOf": [
+    {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/calibration-url-reference.json"
+        }
+      ],
+      "description": "URL reference - specific page to fetch and evaluate. An entry that is also a valid artifact is the artifact.",
+      "not": {
+        "$ref": "/schemas/content-standards/artifact.json"
+      }
+    },
+    {
+      "$ref": "/schemas/content-standards/artifact.json",
+      "description": "Full artifact with pre-extracted content (text, images, video, audio)"
+    }
+  ]
+}

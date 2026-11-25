@@ -6,12 +6,10 @@
   "type": "object",
   "definitions": {
     "VerificationTokenMode": {
-      "type": "string",
-      "enum": ["spec", "live"]
+      "$ref": "/schemas/enums/verification-token-mode.json"
     },
     "VerificationTokenGradingProfile": {
-      "type": "string",
-      "enum": ["legacy", "spec"]
+      "$ref": "/schemas/enums/verification-grading-profile.json"
     }
   },
   "required": [
@@ -56,15 +54,7 @@
       "format": "uri"
     },
     "role": {
-      "type": "string",
-      "enum": [
-        "media-buy",
-        "creative",
-        "signals",
-        "governance",
-        "brand",
-        "sponsored-intelligence"
-      ]
+      "$ref": "/schemas/enums/verification-badge-role.json"
     },
     "verified_specialisms": {
       "type": "array",
@@ -88,8 +78,7 @@
       "description": "Start of the current Strict Spec failure episode. Omitted when no Strict Spec failure clock is active. The registry remains authoritative for real-time status."
     },
     "adcp_version": {
-      "type": "string",
-      "pattern": "^[1-9][0-9]*\\.[0-9]+$"
+      "$ref": "/schemas/core/verification-badge-version.json"
     },
     "protocol_version": {
       "type": "string"

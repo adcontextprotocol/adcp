@@ -22,21 +22,7 @@
       "description": "Stable logical event identifier for this wholesale feed change. MUST equal the enclosing webhook notification_id. UUID v7 is RECOMMENDED so receivers can detect obvious out-of-order delivery; missed or distrusted pushes are repaired through list_products / get_signals / list_collections."
     },
     "event_type": {
-      "type": "string",
-      "enum": [
-        "product.created",
-        "product.updated",
-        "product.priced",
-        "product.removed",
-        "signal.created",
-        "signal.updated",
-        "signal.priced",
-        "signal.removed",
-        "wholesale_feed.bulk_change",
-        "collection_card.updated",
-        "collection_card.removed",
-        "collection_catalog.bulk_change"
-      ],
+      "$ref": "/schemas/enums/wholesale-feed-event-type.json",
       "description": "Discriminator. Determines the shape of `payload`."
     },
     "entity_type": {
@@ -59,6 +45,7 @@
       "description": "ISO 8601 timestamp when the agent emitted the event. Advisory — consumers MUST order by event_id (UUID v7), not by created_at, to avoid clock-skew artifacts."
     },
     "payload": {
+      "title": "Wholesale Feed Event Payload",
       "type": "object",
       "description": "Event-type-specific payload. Shape is determined by event_type per the oneOf below."
     }
@@ -68,7 +55,8 @@
       "description": "product.created — a new product was added to the agent's wholesale product feed.",
       "properties": {
         "event_type": {
-          "const": "product.created"
+          "const": "product.created",
+          "default": "product.created"
         },
         "entity_type": {
           "const": "product"
@@ -78,7 +66,7 @@
           "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "product": {
               "$ref": "/schemas/core/product.json",
@@ -109,7 +97,8 @@
       "description": "product.updated — product metadata changed (name, description, formats, properties, targeting capabilities, measurement terms). Use changed_fields for fine-grained re-render, but be prepared to handle a full replacement.",
       "properties": {
         "event_type": {
-          "const": "product.updated"
+          "const": "product.updated",
+          "default": "product.updated"
         },
         "entity_type": {
           "const": "product"
@@ -119,7 +108,7 @@
           "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "product": {
               "$ref": "/schemas/core/product.json",
@@ -156,17 +145,19 @@
       "description": "product.priced — the pricing-option set changed (new option or retirement/replacement of an option). A binding price, floor, currency, model, or priced applicability change MUST use a new pricing_option_id; the event never reinterprets an issued option ID at new terms. Existing media buys are unaffected; composition replaces its cached option set.",
       "properties": {
         "event_type": {
-          "const": "product.priced"
+          "const": "product.priced",
+          "default": "product.priced"
         },
         "entity_type": {
           "const": "product"
         },
         "payload": {
+          "title": "Wholesale product priced payload",
           "type": "object",
           "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "pricing_options": {
               "type": "array",
@@ -219,12 +210,14 @@
       "description": "product.removed — product no longer available. In-flight buys honor existing cancellation policy regardless of removal_reason; storefront UX differs by reason.",
       "properties": {
         "event_type": {
-          "const": "product.removed"
+          "const": "product.removed",
+          "default": "product.removed"
         },
         "entity_type": {
           "const": "product"
         },
         "payload": {
+          "title": "Wholesale product removed payload",
           "type": "object",
           "required": [
             "product_id",
@@ -232,7 +225,7 @@
           ],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "removal_reason": {
               "$ref": "#/$defs/removalReason"
@@ -252,7 +245,8 @@
       "description": "signal.created — a new signal was added to the agent's wholesale signals feed.",
       "properties": {
         "event_type": {
-          "const": "signal.created"
+          "const": "signal.created",
+          "default": "signal.created"
         },
         "entity_type": {
           "const": "signal"
@@ -266,7 +260,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -291,7 +285,8 @@
       "description": "signal.updated — signal metadata changed (description, coverage, deployments).",
       "properties": {
         "event_type": {
-          "const": "signal.updated"
+          "const": "signal.updated",
+          "default": "signal.updated"
         },
         "entity_type": {
           "const": "signal"
@@ -305,7 +300,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -336,12 +331,14 @@
       "description": "signal.priced — signal pricing options changed.",
       "properties": {
         "event_type": {
-          "const": "signal.priced"
+          "const": "signal.priced",
+          "default": "signal.priced"
         },
         "entity_type": {
           "const": "signal"
         },
         "payload": {
+          "title": "Wholesale signal priced payload",
           "type": "object",
           "required": [
             "signal_agent_segment_id",
@@ -350,7 +347,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -394,12 +391,14 @@
       "description": "signal.removed — signal no longer available.",
       "properties": {
         "event_type": {
-          "const": "signal.removed"
+          "const": "signal.removed",
+          "default": "signal.removed"
         },
         "entity_type": {
           "const": "signal"
         },
         "payload": {
+          "title": "Wholesale signal removed payload",
           "type": "object",
           "required": [
             "signal_agent_segment_id",
@@ -407,7 +406,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -430,7 +429,8 @@
       "description": "wholesale_feed.bulk_change — fast-forward event emitted when a single operation affects many entities in one feed. Consumers SHOULD repair products through list_products and signals through get_signals.",
       "properties": {
         "event_type": {
-          "const": "wholesale_feed.bulk_change"
+          "const": "wholesale_feed.bulk_change",
+          "default": "wholesale_feed.bulk_change"
         },
         "entity_type": {
           "const": "feed"
@@ -454,10 +454,7 @@
               "description": "Approximate count of affected entities."
             },
             "recommendation": {
-              "type": "string",
-              "enum": [
-                "wholesale_resync"
-              ],
+              "$ref": "#/$defs/repair_recommendation",
               "description": "Advisory recommendation. Consumers SHOULD repair by re-reading the affected feed named by affected_entity_type; the recommendation is not a synchronized trigger. Modeled as a single-value enum (not a boolean) so future minor versions can extend the recommendation vocabulary without a breaking shape change. Consumers MUST be prepared to ignore unknown recommendation values."
             },
             "applies_to": {
@@ -485,12 +482,14 @@
       "x-added-in": "3.3.0",
       "properties": {
         "event_type": {
-          "const": "collection_card.updated"
+          "const": "collection_card.updated",
+          "default": "collection_card.updated"
         },
         "entity_type": {
           "const": "collection"
         },
         "payload": {
+          "title": "Wholesale collection card upsert payload",
           "type": "object",
           "required": ["collection", "applies_to"],
           "properties": {
@@ -523,20 +522,23 @@
       "x-added-in": "3.3.0",
       "properties": {
         "event_type": {
-          "const": "collection_card.removed"
+          "const": "collection_card.removed",
+          "default": "collection_card.removed"
         },
         "entity_type": {
           "const": "collection"
         },
         "payload": {
+          "title": "Wholesale collection card removed payload",
           "type": "object",
           "required": ["publisher_domain", "collection_id", "applies_to"],
           "properties": {
             "publisher_domain": {
-              "$ref": "/schemas/core/collection-selector.json#/properties/publisher_domain"
+              "$ref": "/schemas/core/domain-name.json",
+              "description": "Domain where the adagents.json declaring the collection is hosted. With collection_id, the key of the card mirror entry."
             },
             "collection_id": {
-              "type": "string",
+              "$ref": "/schemas/core/collection-id.json",
               "x-entity": "collection"
             },
             "removal_reason": {
@@ -560,7 +562,8 @@
       "x-added-in": "3.3.0",
       "properties": {
         "event_type": {
-          "const": "collection_catalog.bulk_change"
+          "const": "collection_catalog.bulk_change",
+          "default": "collection_catalog.bulk_change"
         },
         "entity_type": {
           "const": "feed"
@@ -583,10 +586,7 @@
               "description": "Approximate count of affected cards."
             },
             "recommendation": {
-              "type": "string",
-              "enum": [
-                "wholesale_resync"
-              ],
+              "$ref": "#/$defs/repair_recommendation",
               "description": "Advisory recommendation, the same vocabulary as wholesale_feed.bulk_change: replace the card mirror from a complete unfiltered list_collections read. Consumers MUST be prepared to ignore unknown recommendation values."
             },
             "applies_to": {
@@ -621,7 +621,8 @@
           "description": "Public layer — invalidate the public-layer cache for the entity; all account overlays referencing that public version are also stale.",
           "properties": {
             "scope": {
-              "const": "public"
+              "const": "public",
+              "default": "public"
             }
           },
           "required": [
@@ -633,7 +634,8 @@
           "description": "Account overlay — invalidate the named account overlays only; public layer unaffected. The seller MAY omit account_ids when the affected set is competitively sensitive, but MUST ensure account-scoped webhook fan-out only delivers changes to subscribers authorized for the affected account overlays.",
           "properties": {
             "scope": {
-              "const": "account"
+              "const": "account",
+              "default": "account"
             },
             "account_ids": {
               "type": "array",
@@ -663,110 +665,17 @@
       "description": "Why the entity was removed. For collection_card.removed the reason describes why this seller stopped offering the card, not a change to the publisher's declaration. 'withdrawn': seller-initiated, no resubmit path. 'cancellation': resource cancelled, may return. 'expired': time-bounded availability ended (flight ended, seasonal product retired). 'depublication': underlying property depublished (see publisher.adagents_changed in the registry feed). 'policy_takedown': governance-driven removal (AdCP governance agent OR external regulator/legal takedown). In-flight buys honor existing cancellation policy regardless of reason; storefront UX differs."
     },
     "signal": {
-      "type": "object",
+      "$ref": "/schemas/core/signal-catalog-entry.json",
       "title": "Wholesale signal object",
-      "description": "One signal entry using the same wire shape as an item in get_signals.signals[].",
-      "allOf": [
-        {
-          "$ref": "/schemas/core/signal-listing.json"
-        }
-      ],
-      "properties": {
-        "signal_ref": {
-          "$ref": "/schemas/core/signal-ref.json",
-          "description": "Canonical signal reference for this wholesale signal. New events SHOULD use signal_ref."
-        },
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
-          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
-          "deprecated": true
-        },
-        "signal_agent_segment_id": {
-          "type": "string",
-          "description": "Opaque activation handle returned by the signals agent.",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable signal name",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "description": "Detailed signal description",
-          "minLength": 1
-        },
-        "value_type": {
-          "$ref": "/schemas/enums/signal-value-type.json"
-        },
-        "categories": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1
-        },
-        "range": {
-          "type": "object",
-          "properties": {
-            "min": {
-              "type": "number"
-            },
-            "max": {
-              "type": "number"
-            }
-          },
-          "required": [
-            "min",
-            "max"
-          ],
-          "additionalProperties": true
-        },
-        "signal_type": {
-          "$ref": "/schemas/enums/signal-catalog-type.json"
-        },
-        "data_provider": {
-          "type": "string",
-          "minLength": 1
-        },
-        "coverage_percentage": {
-          "type": "number",
-          "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only.",
-          "minimum": 0,
-          "maximum": 100,
-          "deprecated": true
-        },
-        "coverage_forecast": {
-          "$ref": "/schemas/core/signal-coverage-forecast.json",
-          "description": "Optional forecast-shaped signal availability guidance using the same wire shape as get_signals.signals[].coverage_forecast. When present, this is authoritative for signal-level discovery coverage."
-        },
-        "deployments": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/deployment.json"
-          },
-          "minItems": 1
-        },
-        "pricing_options": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/vendor-pricing-option.json"
-          },
-          "minItems": 1
-        }
-      },
-      "required": [
-        "signal_agent_segment_id",
-        "name",
-        "description",
-        "signal_type",
-        "deployments"
-      ],
-      "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
-      ],
-      "additionalProperties": true
+      "description": "One signal entry using the same wire shape as an item in get_signals.signals[]."
+    },
+    "repair_recommendation": {
+      "title": "Feed Repair Recommendation",
+      "description": "Advisory recommendation for repairing a wholesale feed mirror.",
+      "type": "string",
+      "enum": [
+        "wholesale_resync"
+      ]
     }
   }
 }

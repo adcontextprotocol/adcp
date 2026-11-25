@@ -41,11 +41,7 @@
       "minItems": 1
     },
     "reporting_revision_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-      "x-entity": "reporting_revision",
+      "$ref": "/schemas/core/reporting-revision-id.json",
       "description": "Exact immutable reporting revision to retrieve. This additive Reliable Reporting selector returns content bound to that revision, including its immutable row count, control totals, and content SHA-256. It is mutually exclusive with media-buy, date, metric, and breakdown selectors."
     },
     "pagination": {
@@ -72,13 +68,11 @@
       "description": "Filter by status. Can be a single status or array of statuses"
     },
     "start_date": {
-      "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "$ref": "/schemas/core/calendar-date.json",
       "description": "Inclusive start date for the reporting period (YYYY-MM-DD), as a calendar date in the reporting timezone: the reporting_capabilities.timezone of the products behind the in-scope packages. It is a UTC day only when that timezone is UTC. When omitted along with end_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'. A date-bounded request whose in-scope packages span more than one reporting timezone MUST be rejected with VALIDATION_ERROR. The buyer narrows media_buy_ids to buys that share one reporting timezone, or omits both dates when a single buy's packages span reporting timezones."
     },
     "end_date": {
-      "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "$ref": "/schemas/core/calendar-date.json",
       "description": "Exclusive end date for the reporting period (YYYY-MM-DD), as a calendar date in the same reporting timezone as start_date. Must be later than start_date. When omitted along with start_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
     "include_package_daily_breakdown": {
@@ -103,101 +97,24 @@
       "description": "When true, the response includes media_buy_deliveries[].windows[] — an array of per-window delivery slices over the date range at the requested time_granularity. Ignored when time_granularity is omitted. Each window's payload mirrors what reporting_webhook would have delivered for the same window, enabling lossless GET-path recovery for buyers who missed webhook fires. Omit or set false to reduce response size when only cumulative aggregates are needed."
     },
     "attribution_window": {
-      "type": "object",
-      "description": "Attribution window to apply for conversion metrics. When provided, the seller returns conversion data using the requested lookback windows instead of their platform default. The seller echoes the applied window in the response. Sellers that do not support configurable windows ignore this field and return their default. Check get_adcp_capabilities conversion_tracking.attribution_windows for available options.",
-      "properties": {
-        "post_click": {
-          "allOf": [
-            {
-              "$ref": "/schemas/core/duration.json"
-            }
-          ],
-          "description": "Post-click attribution window to apply."
-        },
-        "post_view": {
-          "allOf": [
-            {
-              "$ref": "/schemas/core/duration.json"
-            }
-          ],
-          "description": "Post-view attribution window to apply."
-        },
-        "model": {
-          "$ref": "/schemas/enums/attribution-model.json",
-          "description": "Attribution model to use. When omitted, the seller applies their default model."
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/attribution-window.json",
+      "description": "Attribution window to apply for conversion metrics. When provided, the seller returns conversion data using the requested lookback windows instead of their platform default. The seller echoes the applied window in the response. Sellers that do not support configurable windows ignore this field and return their default. Check get_adcp_capabilities conversion_tracking.attribution_windows for available options."
     },
     "reporting_dimensions": {
       "type": "object",
       "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package — include as an empty object (e.g., \"device_type\": {}) to activate with defaults. Omit entirely for no breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response. For every requested dimension that the product declares supported, the seller MUST return the corresponding array (possibly empty) and its truncated flag. Metric-sorted dimensions also return their applied-sort echoes; demographic and property-grain arrays also return their suppressed flag. Spot uses aired_at ordering and has no sort echoes. Note: keyword, catalog_item, and creative breakdowns are returned automatically when the seller supports them; including their keys here is optional and upgrades them to this negotiated contract without changing the automatic default.",
       "properties": {
         "catalog_item": {
-          "type": "object",
-          "description": "Request a negotiated catalog_item breakdown. Omitting this key preserves the automatic behavior — sellers return catalog_item rows at their discretion with no truncation contract. Including it (even as {}) makes the truncation disclosure and applied-sort echo binding.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum number of catalog_item entries to return. When omitted, the seller returns its automatic default set."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/automatic-limit-breakdown-controls.json",
+          "description": "Request a negotiated catalog_item breakdown. Omitting this key preserves the automatic behavior — sellers return catalog_item rows at their discretion with no truncation contract. Including it (even as {}) makes the truncation disclosure and applied-sort echo binding. Maximum number of catalog_item entries to return. When omitted, the seller returns its automatic default set."
         },
         "creative": {
-          "type": "object",
-          "description": "Request a negotiated creative breakdown. Omitting this key preserves the automatic behavior — sellers return creative rows at their discretion with no truncation contract. Including it (even as {}) makes the truncation disclosure and applied-sort echo binding.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum number of creative entries to return. When omitted, the seller returns its automatic default set."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/automatic-limit-breakdown-controls.json",
+          "description": "Request a negotiated creative breakdown. Omitting this key preserves the automatic behavior — sellers return creative rows at their discretion with no truncation contract. Including it (even as {}) makes the truncation disclosure and applied-sort echo binding. Maximum number of creative entries to return. When omitted, the seller returns its automatic default set."
         },
         "keyword": {
-          "type": "object",
-          "description": "Request a negotiated keyword breakdown. Omitting this key preserves the automatic behavior — sellers return keyword rows at their discretion with no truncation contract. Including it (even as {}) makes the truncation disclosure and applied-sort echo binding.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum number of keyword entries to return. When omitted, the seller returns its automatic default set."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/automatic-limit-breakdown-controls.json",
+          "description": "Request a negotiated keyword breakdown. Omitting this key preserves the automatic behavior — sellers return keyword rows at their discretion with no truncation contract. Including it (even as {}) makes the truncation disclosure and applied-sort echo binding. Maximum number of keyword entries to return. When omitted, the seller returns its automatic default set."
         },
         "geo": {
           "type": "object",
@@ -222,13 +139,11 @@
               "description": "Optional classification system for metro or postal_area levels. Metro uses metro-system values (e.g., 'nielsen_dma'); native postal_area uses country-local postal-system values with country (e.g., country 'US', system 'zip'); deprecated legacy postal_area requests may use legacy-postal-system values such as 'us_zip'. Omit to request the level without selecting a specific system."
             },
             "country": {
-              "type": "string",
-              "pattern": "^[A-Z]{2}$",
+              "$ref": "/schemas/core/country-code.json",
               "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area requests; omitted for legacy postal_area and non-postal geo requests."
             },
             "limit": {
-              "type": "integer",
-              "minimum": 1,
+              "$ref": "/schemas/core/delivery-breakdown-limit.json",
               "default": 25,
               "description": "Maximum number of geo entries to return. Defaults to 25. When truncated, by_geo_truncated is true in the response."
             },
@@ -313,109 +228,25 @@
           "additionalProperties": true
         },
         "device_type": {
-          "type": "object",
-          "description": "Request device type breakdown.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum number of entries to return. When omitted, all entries are returned (the enum is small and bounded)."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            },
-            "cursor": {
-              "type": "string",
-              "description": "Opaque cursor from a previous response's by_device_type_pagination to fetch the next page of a truncated by_device_type breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/automatic-limit-paged-breakdown-controls.json",
+          "description": "Request device type breakdown. Maximum number of entries to return. When omitted, all entries are returned (the enum is small and bounded). Opaque cursor from a previous response's by_device_type_pagination to fetch the next page of a truncated by_device_type breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
         },
         "device_platform": {
-          "type": "object",
-          "description": "Request device platform breakdown.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum number of entries to return. When omitted, all entries are returned (the enum is small and bounded)."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            },
-            "cursor": {
-              "type": "string",
-              "description": "Opaque cursor from a previous response's by_device_platform_pagination to fetch the next page of a truncated by_device_platform breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/automatic-limit-paged-breakdown-controls.json",
+          "description": "Request device platform breakdown. Maximum number of entries to return. When omitted, all entries are returned (the enum is small and bounded). Opaque cursor from a previous response's by_device_platform_pagination to fetch the next page of a truncated by_device_platform breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
         },
         "format": {
-          "type": "object",
-          "description": "Request delivery broken down by canonical creative format kind. This dimension is negotiated on the GET path. Reporting webhook configuration does not negotiate or guarantee dimensional breakdowns, although a webhook payload may carry the same fields as an extension.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum number of format rows to return. When omitted, all rows are returned because the canonical format-kind vocabulary is small and bounded."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/automatic-limit-breakdown-controls.json",
+          "description": "Request delivery broken down by canonical creative format kind. This dimension is negotiated on the GET path. Reporting webhook configuration does not negotiate or guarantee dimensional breakdowns, although a webhook payload may carry the same fields as an extension. Maximum number of format rows to return. When omitted, all rows are returned because the canonical format-kind vocabulary is small and bounded."
         },
         "audience": {
-          "type": "object",
-          "description": "Request audience segment breakdown.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 25,
-              "description": "Maximum number of entries to return. Defaults to 25."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            },
-            "cursor": {
-              "type": "string",
-              "description": "Opaque cursor from a previous response's by_audience_pagination to fetch the next page of a truncated by_audience breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/paged-delivery-breakdown-controls.json",
+          "description": "Request audience segment breakdown."
         },
         "demographic": {
           "type": "object",
           "description": "Request delivery broken down by demographic. Check the product's reporting_capabilities.supports_demographic_breakdown independently from demographic_targeting. When age_ranges is present, every requested range MUST be exactly supported by exact_predicates or equal one of the declared enumerated_intervals; sellers MUST reject unsupported ranges with UNSUPPORTED_FEATURE rather than silently widen or narrow them.",
+          "allOf": [{ "$ref": "/schemas/core/delivery-breakdown-controls.json" }],
           "properties": {
             "age_ranges": {
               "type": "array",
@@ -427,8 +258,7 @@
               "uniqueItems": true
             },
             "limit": {
-              "type": "integer",
-              "minimum": 1,
+              "$ref": "/schemas/core/delivery-breakdown-limit.json",
               "default": 25,
               "description": "Maximum number of demographic entries to return. Defaults to 25."
             },
@@ -450,39 +280,15 @@
           "description": "Request a spot-level as-run airing log for broadcast TV, radio, or other scheduled inventory. Rows are ordered ascending by aired_at, or by scheduled_at for rows without aired_at. Rows are selected for the reporting period by that same timestamp. Because the order is ascending, a limit truncates the latest rows first, which for a log that includes scheduled rows are the planned ones; scope the request with reporting_period instead of relying on limit. When limit is omitted, sellers SHOULD return the complete log for the requested reporting period.",
           "properties": {
             "limit": {
-              "type": "integer",
-              "minimum": 1,
+              "$ref": "/schemas/core/delivery-breakdown-limit.json",
               "description": "Optional maximum number of spot rows to return. When the response is incomplete because of this limit or a seller-imposed maximum, by_spot_truncated is true."
             }
           },
           "additionalProperties": true
         },
         "placement": {
-          "type": "object",
-          "description": "Request placement breakdown.",
-          "properties": {
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 25,
-              "description": "Maximum number of entries to return. Defaults to 25."
-            },
-            "sort_by": {
-              "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
-              "default": "spend"
-            },
-            "sort_direction": {
-              "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
-              "default": "desc"
-            },
-            "cursor": {
-              "type": "string",
-              "description": "Opaque cursor from a previous response's by_placement_pagination to fetch the next page of a truncated by_placement breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/paged-delivery-breakdown-controls.json",
+          "description": "Request placement breakdown."
         },
         "property": {
           "$ref": "/schemas/core/delivery-breakdown-controls.json",

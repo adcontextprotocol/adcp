@@ -3,6 +3,7 @@
   "$id": "/schemas/core/media-buy-change-term-id.json",
   "title": "Media Buy Change Term ID",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[A-Za-z0-9_.:-]+$",
   "x-entity": "media_buy_change_term",
   "description": "The accepted proposal change_terms[].term_id from which this current-state action projection was derived."

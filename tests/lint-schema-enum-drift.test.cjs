@@ -69,6 +69,51 @@ test('lint reports an inline enum that is a strict subset of a canonical enum', 
   ]);
 });
 
+// property-type.json without linear_tv: a strict subset, so a declaration of it drifts.
+const PROPERTY_TYPES_WITHOUT_LINEAR_TV = [
+  'website',
+  'mobile_app',
+  'ctv_app',
+  'desktop_app',
+  'dooh',
+  'podcast',
+  'radio',
+  'streaming_audio',
+  'ai_assistant',
+];
+
+function lintOneSchema(t, schema) {
+  const schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-enum-drift-'));
+  t.after(() => fs.rmSync(schemaDir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(schemaDir, 'schema.json'), JSON.stringify(schema));
+  return lint(schemaDir).driftViolations;
+}
+
+test('lint skips a strict subset that an if condition names', (t) => {
+  const violations = lintOneSchema(t, {
+    type: 'object',
+    properties: { surface: { $ref: '/schemas/enums/property-type.json' } },
+    if: { properties: { surface: { enum: PROPERTY_TYPES_WITHOUT_LINEAR_TV } } },
+    then: { required: ['surface'] },
+  });
+  assert.deepEqual(violations, []);
+});
+
+test('lint reports a strict subset on a property named not', (t) => {
+  const violations = lintOneSchema(t, {
+    type: 'object',
+    properties: { not: { type: 'string', enum: PROPERTY_TYPES_WITHOUT_LINEAR_TV } },
+  });
+  assert.deepEqual(violations, [
+    {
+      file: 'schema.json',
+      path: '/properties/not',
+      canonicalEnum: 'property-type.json',
+      missing: ['linear_tv'],
+    },
+  ]);
+});
+
 test('capabilities trusted_match.surfaces uses $ref to property-type.json', () => {
   const capFile = path.resolve(
     __dirname,

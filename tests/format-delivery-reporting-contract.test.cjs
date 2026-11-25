@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -38,7 +39,7 @@ describe("canonical format delivery reporting", () => {
       "/schemas/media-buy/get-media-buy-delivery-response.json"
     );
     const byPackage =
-      response.properties.media_buy_deliveries.items.properties.by_package.items;
+      resolveSchema(response.properties.media_buy_deliveries.items).properties.by_package.items;
     const byPackageExtension = byPackage.allOf.find(
       (schema) => schema.properties
     );
@@ -93,7 +94,7 @@ describe("canonical format delivery reporting", () => {
     const response = readSchema(
       "/schemas/media-buy/get-media-buy-delivery-response.json"
     );
-    const extension = response.properties.media_buy_deliveries.items.properties
+    const extension = resolveSchema(response.properties.media_buy_deliveries.items).properties
       .by_package.items.allOf.find((schema) => schema.properties);
     assert.equal(
       extension.properties.by_format_sorted_by.$ref,
@@ -168,7 +169,7 @@ describe("canonical format delivery reporting", () => {
       "/schemas/media-buy/get-media-buy-delivery-response.json"
     );
     const byPackage =
-      response.properties.media_buy_deliveries.items.properties.by_package.items;
+      resolveSchema(response.properties.media_buy_deliveries.items).properties.by_package.items;
     const extension = byPackage.allOf.find((schema) => schema.properties);
     assert.equal(
       extension.properties.by_format_truncated.type,

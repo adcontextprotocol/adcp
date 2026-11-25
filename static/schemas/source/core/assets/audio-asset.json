@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "audio",
+      "default": "audio",
       "description": "Discriminator identifying this as an audio asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {
@@ -42,8 +43,7 @@
       "description": "Channel configuration"
     },
     "bit_depth": {
-      "type": "integer",
-      "enum": [16, 24, 32],
+      "$ref": "/schemas/enums/audio-bit-depth.json",
       "description": "Bit depth"
     },
     "bitrate_kbps": {

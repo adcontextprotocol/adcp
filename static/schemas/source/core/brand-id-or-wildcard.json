@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-id-or-wildcard.json",
+  "title": "Brand ID or Wildcard",
+  "description": "Brand identifier within a parent organization's portfolio, or * for every brand.",
+  "type": "string",
+  "pattern": "^([a-z0-9_]+|\\*)$"
+}

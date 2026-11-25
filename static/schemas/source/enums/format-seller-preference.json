@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/format-seller-preference.json",
+  "title": "Format Seller Preference",
+  "description": "Soft routing hint within a product's accepted set of formats.",
+  "type": "string",
+  "enum": [
+    "preferred",
+    "accepted",
+    "discouraged"
+  ]
+}

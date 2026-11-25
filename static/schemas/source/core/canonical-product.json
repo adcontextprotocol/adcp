@@ -10,8 +10,8 @@
       "x-added-in": "3.3.0",
       "description": "Product creative requirements, including optional review_sla."
     },
-    "product_id": { "type": "string", "minLength": 1, "x-entity": "product" },
-    "name": { "type": "string", "minLength": 1 },
+    "product_id": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" },
+    "name": { "$ref": "/schemas/core/product-name.json" },
     "description": { "type": "string" },
     "publisher_properties": {
       "type": "array",
@@ -29,15 +29,18 @@
     "sponsored_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/sponsored-placement-type.json" }, "minItems": 1, "uniqueItems": true },
     "social_placement_surfaces": { "type": "array", "items": { "$ref": "/schemas/enums/social-placement-surface.json" }, "minItems": 1, "uniqueItems": true },
     "format_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-format-option.json" }, "minItems": 1 },
-    "placements": { "type": "array", "items": { "$ref": "/schemas/core/canonical-placement.json" } },
+    "placements": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/canonical-placement.json"
+      },
+      "minItems": 1
+    },
     "collections": {
       "type": "array",
       "description": "A non-empty array is the complete roster. `[]` means undisclosed. MUST NOT be `[]` below 3.3. Each entry references collections declared in an adagents.json by domain and explicit collection_ids. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/collection-selector.json" },
-          { "required": ["collection_ids"] }
-        ]
+        "$ref": "/schemas/core/explicit-collection-selector.json"
       }
     },
     "collection_targeting_allowed": {
@@ -77,7 +80,10 @@
       "description": "Default performance thresholds and measurement vendors inherited by a direct purchase."
     },
     "catalog_types": { "type": "array", "items": { "$ref": "/schemas/enums/catalog-type.json" }, "minItems": 1, "uniqueItems": true },
-    "signal_targeting_allowed": { "type": "boolean" },
+    "signal_targeting_allowed": {
+      "type": "boolean",
+      "default": false
+    },
     "signal_targeting_rules": { "$ref": "/schemas/core/signal-targeting-rules.json" },
     "demographic_targeting": { "$ref": "/schemas/core/demographic-targeting-capability.json" },
     "overlay_support": {
@@ -113,17 +119,9 @@
       "minItems": 1,
       "description": "Exact evidence snapshots that affected eligibility or ranking. Returned whenever evidence requirements affected the result, even if not requested explicitly."
     },
-    "max_optimization_goals": { "type": "integer", "minimum": 0 },
+    "max_optimization_goals": { "type": "integer", "minimum": 1 },
     "catalog_match": {
-      "type": "object",
-      "properties": {
-        "matched_gtins": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{8,14}$" } },
-        "matched_ids": { "type": "array", "items": { "type": "string" } },
-        "matched_count": { "type": "integer", "minimum": 0 },
-        "submitted_count": { "type": "integer", "minimum": 0 }
-      },
-      "required": ["submitted_count"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/catalog-match.json"
     },
     "list_applications": {
       "type": "array",
@@ -144,7 +142,8 @@
     "allowed_actions": {
       "type": "array",
       "items": { "$ref": "/schemas/core/canonical-product-action.json" },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "minItems": 1
     },
     "hold_policy": {
       "$ref": "/schemas/core/hold-policy.json",

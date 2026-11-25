@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-url-reference.json",
+  "title": "Agent URL Reference",
+  "description": "An agent named by its HTTPS URL.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "$ref": "/schemas/core/https-url.json",
+      "description": "The agent's URL."
+    }
+  },
+  "required": ["agent_url"],
+  "additionalProperties": true
+}

@@ -6,9 +6,8 @@
   "type": "object",
   "properties": {
     "installment_id": {
-      "type": "string",
-      "description": "Unique identifier for this installment within the collection",
-      "x-entity": "installment"
+      "$ref": "/schemas/core/installment-id.json",
+      "description": "Unique identifier for this installment within the collection"
     },
     "collection_ref": {
       "$ref": "/schemas/core/collection-ref.json",
@@ -64,7 +63,8 @@
       "description": "Content topics for this installment. Uses the same taxonomy as the collection's genre_taxonomy when present. Enables installment-level brand safety evaluation beyond content_rating.",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "special": {
       "$ref": "/schemas/core/special.json",
@@ -75,7 +75,8 @@
       "description": "Installment-specific guests and talent. Additive to the collection's recurring talent.",
       "items": {
         "$ref": "/schemas/core/talent.json"
-      }
+      },
+      "minItems": 1
     },
     "ad_inventory": {
       "$ref": "/schemas/core/ad-inventory-config.json",
@@ -86,13 +87,13 @@
       "description": "Booking, cancellation, and material submission deadlines for this installment. Present when the installment has time-sensitive inventory that requires advance commitment or material delivery."
     },
     "derivative_of": {
+      "title": "Installment Derivation",
       "type": "object",
       "description": "When this installment is a clip, highlight, or recap derived from a full installment. The source installment_id must reference an installment within the same response.",
       "properties": {
         "installment_id": {
-          "type": "string",
-          "description": "The source installment this content is derived from",
-          "x-entity": "installment"
+          "$ref": "/schemas/core/installment-id.json",
+          "description": "The source installment this content is derived from"
         },
         "type": {
           "$ref": "/schemas/enums/derivative-type.json",

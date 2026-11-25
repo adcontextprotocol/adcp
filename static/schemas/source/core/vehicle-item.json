@@ -44,22 +44,27 @@
       "description": "Trim level (e.g., 'EX', 'Limited', 'Sport')."
     },
     "mileage": {
-      "type": "object",
+      "title": "Vehicle Mileage",
       "description": "Odometer reading.",
-      "properties": {
-        "value": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Mileage value."
+      "allOf": [
+        {
+          "$ref": "/schemas/core/distance.json"
         },
-        "unit": {
-          "type": "string",
-          "enum": ["km", "mi"],
-          "description": "Distance unit."
+        {
+          "properties": {
+            "value": {
+              "description": "Mileage value."
+            },
+            "unit": {
+              "enum": [
+                "km",
+                "mi"
+              ],
+              "description": "Distance unit: kilometers or miles."
+            }
+          }
         }
-      },
-      "required": ["value", "unit"],
-      "additionalProperties": true
+      ]
     },
     "body_style": {
       "type": "string",
@@ -85,24 +90,8 @@
       "description": "Interior color."
     },
     "location": {
-      "type": "object",
-      "description": "Dealer or vehicle location.",
-      "properties": {
-        "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lng": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
-          "description": "Longitude in decimal degrees (WGS 84)."
-        }
-      },
-      "required": ["lat", "lng"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/geo-coordinates.json",
+      "description": "Dealer or vehicle location."
     },
     "image_url": {
       "type": "string",

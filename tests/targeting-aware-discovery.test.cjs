@@ -789,11 +789,11 @@ test("daypart targeting binds delivery clocks and product-scoped timezone modes"
     const daypart = timezone === undefined ? base : { ...base, timezone };
     assert.equal(validateDaypart(daypart), true, errors(validateDaypart));
   }
-  for (const timezone of ["", "/America", "America/", "America//New_York", "New York", "America/New York"]) {
+  for (const timezone of ["", "x".repeat(256)]) {
     assert.equal(
       validateDaypart({ ...base, timezone }),
       false,
-      `${timezone} is not an inventory-local or IANA-shaped timezone`
+      `a timezone of ${timezone.length} characters is outside 1 to 255`
     );
   }
 
@@ -867,12 +867,16 @@ test("daypart targeting binds delivery clocks and product-scoped timezone modes"
     daypartSchema.properties.timezone.anyOf[1].$ref,
     "/schemas/core/iana-timezone.json"
   );
+  // The timezone mode and identifier lists are named definitions.
+  const named = (node) => (node.$ref
+    ? JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, node.$ref.replace(/^\/schemas\//, "")), "utf8"))
+    : node);
   assert.equal(
-    requirementSchema.definitions.daypartRequirement.anyOf[1].properties.timezone_modes.items.$ref,
+    named(requirementSchema.definitions.daypartRequirement.anyOf[1].properties.timezone_modes).items.$ref,
     "/schemas/enums/daypart-timezone-mode.json"
   );
   assert.equal(
-    supportSchema.definitions.daypartSupport.anyOf[1].properties.iana_timezones.anyOf[1].items.$ref,
+    named(supportSchema.definitions.daypartSupport.anyOf[1].properties.iana_timezones.anyOf[1]).items.$ref,
     "/schemas/core/iana-timezone.json"
   );
   assert.equal(

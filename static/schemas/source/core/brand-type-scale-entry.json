@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-type-scale-entry.json",
+  "title": "Brand Type Scale Entry",
+  "description": "A single entry in the type scale",
+  "type": "object",
+  "properties": {
+    "font": {
+      "type": "string",
+      "description": "Font reference. Use a key from the fonts object (e.g., 'primary', 'secondary') to reference a defined font role, or a literal CSS font-family string as a fallback."
+    },
+    "size": {
+      "type": "string",
+      "description": "Font size (e.g., '48px', '2rem')"
+    },
+    "weight": {
+      "type": "string",
+      "description": "Font weight (e.g., '700', 'bold')"
+    },
+    "line_height": {
+      "type": "string",
+      "description": "Line height (e.g., '1.2', '56px')"
+    },
+    "letter_spacing": {
+      "type": "string",
+      "description": "Letter spacing (e.g., '-0.02em', '0.5px')"
+    },
+    "text_transform": {
+      "type": "string",
+      "enum": [
+        "none",
+        "uppercase",
+        "lowercase",
+        "capitalize"
+      ],
+      "description": "Text transformation"
+    }
+  },
+  "additionalProperties": true
+}

@@ -5,7 +5,7 @@
   "description": "The submitted task acknowledgement: status is submitted and task_id identifies the task the caller polls and webhooks reference. Every submitted response body and branch composes this schema through allOf, so the rule lives in one place.",
   "type": "object",
   "properties": {
-    "status": { "const": "submitted" },
+    "status": { "const": "submitted", "default": "submitted" },
     "task_id": { "$ref": "/schemas/core/task-id.json" }
   },
   "required": ["status", "task_id"]

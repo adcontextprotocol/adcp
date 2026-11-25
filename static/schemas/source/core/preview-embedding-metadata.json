@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/preview-embedding-metadata.json",
+  "title": "Preview Embedding Metadata",
+  "description": "Security and embedding metadata for showing a preview in an iframe: sandbox, HTTPS, fullscreen, and content security policy.",
+  "type": "object",
+  "properties": {
+    "recommended_sandbox": {
+      "type": "string",
+      "const": "",
+      "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
+    },
+    "requires_https": {
+      "type": "boolean",
+      "description": "Whether this output requires HTTPS for secure embedding"
+    },
+    "supports_fullscreen": {
+      "type": "boolean",
+      "description": "Whether this output supports fullscreen mode"
+    },
+    "csp_policy": {
+      "type": "string",
+      "description": "Content Security Policy requirements for embedding"
+    }
+  }
+}

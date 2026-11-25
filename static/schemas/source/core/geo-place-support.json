@@ -6,22 +6,8 @@
   "type": "object",
   "properties": {
     "countries": {
-      "type": "object",
-      "description": "Supported place types keyed by ISO 3166-1 alpha-2 country. Only explicitly listed country/type pairs are supported.",
-      "propertyNames": {
-        "pattern": "^[A-Z]{2}$"
-      },
-      "additionalProperties": {
-        "type": "array",
-        "items": {
-          "$ref": "/schemas/core/geo-place-type.json"
-        },
-        "minItems": 1,
-        "uniqueItems": true,
-        "x-max-items-4.0": 32
-      },
-      "minProperties": 1,
-      "x-max-properties-4.0": 8
+      "$ref": "/schemas/core/geo-country-place-types.json",
+      "description": "Supported place types keyed by ISO 3166-1 alpha-2 country. Only explicitly listed country/type pairs are supported."
     },
     "catalog": {
       "$ref": "/schemas/core/geo-place-catalog-capability.json"

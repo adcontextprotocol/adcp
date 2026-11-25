@@ -6,6 +6,25 @@
   "discriminator": {
     "propertyName": "output_format"
   },
+  "definitions": {
+    "dimensions": {
+      "title": "Preview Render Dimensions",
+      "type": "object",
+      "description": "Width and height of a rendered preview piece.",
+      "properties": {
+        "width": {
+          "$ref": "/schemas/core/dimension-length.json"
+        },
+        "height": {
+          "$ref": "/schemas/core/dimension-length.json"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ]
+    }
+  },
   "oneOf": [
     {
       "type": "object",
@@ -18,6 +37,7 @@
         "output_format": {
           "type": "string",
           "const": "url",
+          "default": "url",
           "description": "Discriminator indicating preview_url is provided"
         },
         "preview_url": {
@@ -30,45 +50,12 @@
           "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
         },
         "dimensions": {
-          "type": "object",
-          "description": "Dimensions for this rendered piece",
-          "properties": {
-            "width": {
-              "type": "number",
-              "minimum": 0
-            },
-            "height": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": [
-            "width",
-            "height"
-          ]
+          "$ref": "#/definitions/dimensions",
+          "description": "Dimensions for this rendered piece"
         },
         "embedding": {
-          "type": "object",
-          "description": "Optional security and embedding metadata for safe iframe integration",
-          "properties": {
-            "recommended_sandbox": {
-              "type": "string",
-              "const": "",
-              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
-            },
-            "requires_https": {
-              "type": "boolean",
-              "description": "Whether this output requires HTTPS for secure embedding"
-            },
-            "supports_fullscreen": {
-              "type": "boolean",
-              "description": "Whether this output supports fullscreen mode"
-            },
-            "csp_policy": {
-              "type": "string",
-              "description": "Content Security Policy requirements for embedding"
-            }
-          }
+          "$ref": "/schemas/core/preview-embedding-metadata.json",
+          "description": "Optional security and embedding metadata for safe iframe integration"
         },
         "renderer": {
           "$ref": "/schemas/core/preview-renderer-metadata.json",
@@ -94,6 +81,7 @@
         "output_format": {
           "type": "string",
           "const": "html",
+          "default": "html",
           "description": "Discriminator indicating preview_html is provided"
         },
         "preview_html": {
@@ -105,45 +93,12 @@
           "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
         },
         "dimensions": {
-          "type": "object",
-          "description": "Dimensions for this rendered piece",
-          "properties": {
-            "width": {
-              "type": "number",
-              "minimum": 0
-            },
-            "height": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": [
-            "width",
-            "height"
-          ]
+          "$ref": "#/definitions/dimensions",
+          "description": "Dimensions for this rendered piece"
         },
         "embedding": {
-          "type": "object",
-          "description": "Optional security and embedding metadata",
-          "properties": {
-            "recommended_sandbox": {
-              "type": "string",
-              "const": "",
-              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
-            },
-            "requires_https": {
-              "type": "boolean",
-              "description": "Whether this output requires HTTPS for secure embedding"
-            },
-            "supports_fullscreen": {
-              "type": "boolean",
-              "description": "Whether this output supports fullscreen mode"
-            },
-            "csp_policy": {
-              "type": "string",
-              "description": "Content Security Policy requirements for embedding"
-            }
-          }
+          "$ref": "/schemas/core/preview-embedding-metadata.json",
+          "description": "Optional security and embedding metadata"
         },
         "renderer": {
           "$ref": "/schemas/core/preview-renderer-metadata.json",
@@ -169,6 +124,7 @@
         "output_format": {
           "type": "string",
           "const": "both",
+          "default": "both",
           "description": "Discriminator indicating both preview_url and preview_html are provided"
         },
         "preview_url": {
@@ -185,45 +141,12 @@
           "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
         },
         "dimensions": {
-          "type": "object",
-          "description": "Dimensions for this rendered piece",
-          "properties": {
-            "width": {
-              "type": "number",
-              "minimum": 0
-            },
-            "height": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": [
-            "width",
-            "height"
-          ]
+          "$ref": "#/definitions/dimensions",
+          "description": "Dimensions for this rendered piece"
         },
         "embedding": {
-          "type": "object",
-          "description": "Optional security and embedding metadata for safe iframe integration",
-          "properties": {
-            "recommended_sandbox": {
-              "type": "string",
-              "const": "",
-              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
-            },
-            "requires_https": {
-              "type": "boolean",
-              "description": "Whether this output requires HTTPS for secure embedding"
-            },
-            "supports_fullscreen": {
-              "type": "boolean",
-              "description": "Whether this output supports fullscreen mode"
-            },
-            "csp_policy": {
-              "type": "string",
-              "description": "Content Security Policy requirements for embedding"
-            }
-          }
+          "$ref": "/schemas/core/preview-embedding-metadata.json",
+          "description": "Optional security and embedding metadata for safe iframe integration"
         },
         "renderer": {
           "$ref": "/schemas/core/preview-renderer-metadata.json",

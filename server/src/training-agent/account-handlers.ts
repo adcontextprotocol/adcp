@@ -2430,8 +2430,12 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     }
 
     if (status === 'pending_approval') {
+      // core/account-setup.json takes an https URL. Local and CI runs serve the
+      // agent on an http loopback, so the human-facing setup link uses the public
+      // training-agent origin there.
+      const setupBase = agentUrl.startsWith('https://') ? agentUrl.replace('/mcp', '') : TRAINING_AGENT_URL;
       result.setup = {
-        url: `${agentUrl.replace('/mcp', '')}/account-setup/${accountId}`,
+        url: `${setupBase}/account-setup/${accountId}`,
         message: 'Complete advertiser registration and credit application. A sales representative will review your account within 1 business day.',
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       };

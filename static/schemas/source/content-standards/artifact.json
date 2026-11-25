@@ -54,7 +54,7 @@
             "type": "object",
             "description": "Text block (paragraph, heading, etc.)",
             "properties": {
-              "type": { "type": "string", "const": "text" },
+              "type": { "type": "string", "const": "text", "default": "text" },
               "role": {
                 "type": "string",
                 "enum": ["title", "paragraph", "heading", "caption", "quote", "list_item", "description"],
@@ -92,7 +92,7 @@
             "type": "object",
             "description": "Image asset",
             "properties": {
-              "type": { "type": "string", "const": "image" },
+              "type": { "type": "string", "const": "image", "default": "image" },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -129,7 +129,7 @@
             "type": "object",
             "description": "Video asset",
             "properties": {
-              "type": { "type": "string", "const": "video" },
+              "type": { "type": "string", "const": "video", "default": "video" },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -144,19 +144,16 @@
                 "description": "Video duration in milliseconds"
               },
               "transcript": {
-                "type": "string",
-                "description": "Video transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation.",
-                "maxLength": 200000
+                "$ref": "#/$defs/transcript",
+                "description": "Video transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation."
               },
               "transcript_format": {
-                "type": "string",
-                "enum": ["text/plain", "text/markdown", "application/json"],
+                "$ref": "#/$defs/transcript_format",
                 "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
                 "default": "text/plain"
               },
               "transcript_source": {
-                "type": "string",
-                "enum": ["original_script", "subtitles", "closed_captions", "dub", "generated"],
+                "$ref": "#/$defs/transcript_source",
                 "description": "How the transcript was generated"
               },
               "thumbnail_url": {
@@ -175,7 +172,7 @@
             "type": "object",
             "description": "Audio asset",
             "properties": {
-              "type": { "type": "string", "const": "audio" },
+              "type": { "type": "string", "const": "audio", "default": "audio" },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -190,19 +187,16 @@
                 "description": "Audio duration in milliseconds"
               },
               "transcript": {
-                "type": "string",
-                "description": "Audio transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation.",
-                "maxLength": 200000
+                "$ref": "#/$defs/transcript",
+                "description": "Audio transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation."
               },
               "transcript_format": {
-                "type": "string",
-                "enum": ["text/plain", "text/markdown", "application/json"],
+                "$ref": "#/$defs/transcript_format",
                 "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
                 "default": "text/plain"
               },
               "transcript_source": {
-                "type": "string",
-                "enum": ["original_script", "closed_captions", "generated"],
+                "$ref": "#/$defs/transcript_source",
                 "description": "How the transcript was generated"
               },
               "provenance": {
@@ -216,6 +210,7 @@
       }
     },
     "metadata": {
+      "title": "ArtifactMetadata",
       "type": "object",
       "description": "Rich metadata extracted from the artifact",
       "properties": {
@@ -233,11 +228,13 @@
           "description": "Artifact keywords"
         },
         "open_graph": {
+          "title": "Open Graph Metadata",
           "type": "object",
           "description": "Open Graph protocol metadata",
           "additionalProperties": true
         },
         "twitter_card": {
+          "title": "Twitter Card Metadata",
           "type": "object",
           "description": "Twitter Card metadata",
           "additionalProperties": true
@@ -245,7 +242,7 @@
         "json_ld": {
           "type": "array",
           "description": "JSON-LD structured data (schema.org)",
-          "items": { "type": "object" }
+          "items": { "title": "JSON-LD Block", "type": "object" }
         }
       },
       "additionalProperties": true
@@ -255,6 +252,7 @@
       "description": "Provenance metadata for this artifact. Serves as the default provenance for all assets within this artifact — individual assets can override with their own provenance."
     },
     "identifiers": {
+      "title": "Artifact Platform Identifiers",
       "type": "object",
       "description": "Platform-specific identifiers for this artifact",
       "properties": {
@@ -297,7 +295,7 @@
           "type": "object",
           "description": "Short-lived bearer-token access for origins that cannot use signed URLs or pre-configured workload identity. The token is a live secret and must be scoped to the asset. Consumers MUST send it only to the HTTPS origin authorized for that asset and MUST NOT forward the Authorization header across redirects.",
           "properties": {
-            "method": { "type": "string", "const": "bearer_token" },
+            "method": { "type": "string", "const": "bearer_token", "default": "bearer_token" },
             "token": {
               "type": "string",
               "description": "Short-lived, asset-scoped bearer token for the Authorization header. Producers MUST NOT issue a standing or broadly scoped credential here. Consumers MUST redact the token from logs, traces, errors, metrics, analytics, model context, and durable storage. Any temporary encrypted cache MUST be bounded by the credential expiry and the consumer's configured maximum lifetime."
@@ -309,13 +307,14 @@
           "type": "object",
           "description": "Credential-free workload-identity access. The asset origin authorizes an identity already controlled by the component that performs the asset fetch, such as a GCP service account or AWS IAM role, through authenticated out-of-band onboarding. The consumer MUST use workload credentials only for the pre-authorized HTTPS origin and resource prefix; the payload's method, provider, and URL are not authorization. No provider key or access secret crosses the AdCP payload.",
           "properties": {
-            "method": { "type": "string", "const": "service_account" },
+            "method": { "type": "string", "const": "service_account", "default": "service_account" },
             "provider": {
               "type": "string",
               "enum": ["gcp", "aws"],
               "description": "Cloud provider"
             },
             "credentials": {
+              "title": "Inline Asset Credentials",
               "type": "object",
               "deprecated": true,
               "description": "Deprecated in AdCP 3.2 and eligible for removal in 4.0 or later only after the deprecation-policy notice and release-cycle gates are satisfied. Presence denotes the legacy inline-credential form, not workload-identity authorization. New producers MUST omit this field. Consumers MUST NOT activate received credentials automatically; they may process them only for an explicitly allowlisted legacy peer and otherwise MUST reject or quarantine them. Consumers MUST redact the complete value from logs, traces, errors, metrics, analytics, model context, and durable storage. Use the consumer's pre-authorized workload identity or `signed_url` instead.",
@@ -328,10 +327,38 @@
           "type": "object",
           "description": "Recommended default for one-off access. The asset `url` is a time-limited bearer capability and requires no additional authentication. Producers SHOULD scope it to one asset and the shortest practical access window under their documented maximum TTL. Consumers MUST redact the complete URL from logs, traces, errors, metrics, analytics, model context, and durable storage, and MUST NOT forward it outside the intended recipient trust boundary.",
           "properties": {
-            "method": { "type": "string", "const": "signed_url" }
+            "method": { "type": "string", "const": "signed_url", "default": "signed_url" }
           },
           "required": ["method"]
         }
+      ]
+    },
+    "transcript_format": {
+      "title": "Transcript Format",
+      "description": "MIME type that says how to parse a transcript.",
+      "type": "string",
+      "enum": [
+        "text/plain",
+        "text/markdown",
+        "application/json"
+      ]
+    },
+    "transcript": {
+      "title": "Media Transcript",
+      "description": "Transcript of a video or audio asset. Consumers treat it as untrusted input to LLM evaluation.",
+      "type": "string",
+      "maxLength": 200000
+    },
+    "transcript_source": {
+      "title": "Transcript Source",
+      "description": "How a transcript was generated.",
+      "type": "string",
+      "enum": [
+        "original_script",
+        "subtitles",
+        "closed_captions",
+        "dub",
+        "generated"
       ]
     }
   }

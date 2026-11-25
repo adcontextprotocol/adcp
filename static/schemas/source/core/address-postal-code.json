@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/address-postal-code.json",
+  "title": "Address Postal Code",
+  "description": "The postal or ZIP code of a postal address.",
+  "type": "string",
+  "maxLength": 20
+}

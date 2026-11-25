@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "daast",
+      "default": "daast",
       "description": "Discriminator identifying this as a DAAST asset. See /schemas/creative/asset-types for the registry."
     },
     "daast_version": {
@@ -56,6 +57,7 @@
         "delivery_type": {
           "type": "string",
           "const": "url",
+          "default": "url",
           "description": "Discriminator indicating DAAST is delivered via URL endpoint"
         },
         "url": {
@@ -63,7 +65,9 @@
           "description": "URL endpoint returning DAAST XML. Macro delimiters remain byte-preserved and are processed only under attached occurrence declarations."
         },
         "macro_declarations": {
-          "items": { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
+          "items": {
+            "$ref": "/schemas/core/url-macro-location.json"
+          }
         }
       },
       "required": [
@@ -76,6 +80,7 @@
         "delivery_type": {
           "type": "string",
           "const": "inline",
+          "default": "inline",
           "description": "Discriminator indicating DAAST is delivered as inline XML content"
         },
         "content": {
@@ -83,7 +88,9 @@
           "description": "Inline DAAST XML content"
         },
         "macro_declarations": {
-          "items": { "properties": { "location": { "properties": { "field": { "const": "content" } } } } }
+          "items": {
+            "$ref": "/schemas/core/content-macro-location.json"
+          }
         }
       },
       "required": [

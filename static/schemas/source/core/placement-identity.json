@@ -10,17 +10,15 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "publisher_ref"
+          "const": "publisher_ref",
+          "default": "publisher_ref"
         },
         "publisher_domain": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Domain whose adagents.json declares placement_id."
         },
         "placement_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "placement"
+          "$ref": "/schemas/core/placement-id.json"
         }
       },
       "required": ["kind", "publisher_domain", "placement_id"],
@@ -32,17 +30,16 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "seller_inline"
+          "const": "seller_inline",
+          "default": "seller_inline"
         },
         "seller_agent": {
           "$ref": "/schemas/core/seller-agent-ref.json",
           "description": "Sales agent that defines and maintains the inline placement namespace."
         },
         "placement_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Stable placement ID within the defining sales agent's namespace. The agent MUST NOT reuse it for a different semantic placement.",
-          "x-entity": "placement"
+          "$ref": "/schemas/core/placement-id.json",
+          "description": "Stable placement ID within the defining sales agent's namespace. The agent MUST NOT reuse it for a different semantic placement."
         }
       },
       "required": ["kind", "seller_agent", "placement_id"],

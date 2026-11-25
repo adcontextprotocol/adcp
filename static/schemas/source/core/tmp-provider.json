@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/tmp-provider.json",
+  "title": "TMP Provider",
+  "description": "A Trusted Match Protocol (TMP) provider: its agent URL, whether it supports context match or identity match, and the countries and user ID types it covers.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Provider's agent URL from the registry. Canonical identifier for this TMP provider."
+    },
+    "context_match": {
+      "type": "boolean",
+      "description": "Whether this provider handles context match for this product.",
+      "default": false
+    },
+    "identity_match": {
+      "type": "boolean",
+      "description": "Whether this provider handles identity match for this product.",
+      "default": false
+    },
+    "countries": {
+      "type": "array",
+      "description": "ISO 3166-1 alpha-2 country codes this provider serves for identity match. The router uses this to select the correct regional provider based on the request's country field. Required when identity_match is true.",
+      "items": {
+        "$ref": "/schemas/core/country-code.json"
+      },
+      "minItems": 1
+    },
+    "uid_types": {
+      "type": "array",
+      "description": "Identity types this regional provider can resolve. The router filters providers whose uid_types includes the request's uid_type. Required when identity_match is true.",
+      "items": {
+        "$ref": "/schemas/enums/uid-type.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "agent_url"
+  ],
+  "if": {
+    "properties": {
+      "identity_match": {
+        "const": true
+      }
+    },
+    "required": [
+      "identity_match"
+    ]
+  },
+  "then": {
+    "required": [
+      "agent_url",
+      "countries",
+      "uid_types"
+    ]
+  },
+  "additionalProperties": true
+}

@@ -20,11 +20,12 @@
       "description": "The sales agent URL that was validated"
     },
     "violation": {
+      "title": "Authorization Violation",
       "type": "object",
       "description": "Details about the authorization failure (only present for unauthorized status)",
       "properties": {
         "code": {
-          "type": "string",
+          "$ref": "/schemas/core/authorization-violation-code.json",
           "description": "Machine-readable violation code"
         },
         "message": {

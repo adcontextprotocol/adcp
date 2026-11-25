@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -60,13 +61,13 @@ const ROW_SCHEMAS = [
 
 // Inline rows in get-media-buy-delivery-response.json.
 const BY_PACKAGE = (r) =>
-  r.properties.media_buy_deliveries.items.properties.by_package.items;
+  resolveSchema(r.properties.media_buy_deliveries.items).properties.by_package.items;
 const byPackageProps = (r) =>
   BY_PACKAGE(r).allOf.find((s) => s.properties).properties;
 const INLINE_ROWS = [
   [
     "media_buy_deliveries[].daily_breakdown",
-    (r) => r.properties.media_buy_deliveries.items.properties.daily_breakdown.items,
+    (r) => resolveSchema(r.properties.media_buy_deliveries.items).properties.daily_breakdown.items,
     { date: "2026-09-01" },
   ],
   [

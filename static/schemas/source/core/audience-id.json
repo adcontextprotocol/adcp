@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-id.json",
+  "title": "Audience ID",
+  "description": "Buyer-assigned identifier of an audience synced to a seller account with sync_audiences. Targeting overlays reference audiences by this identifier; it is not portable across sellers.",
+  "type": "string",
+  "x-entity": "audience",
+  "minLength": 1
+}

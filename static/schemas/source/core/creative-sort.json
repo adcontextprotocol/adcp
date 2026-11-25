@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-sort.json",
+  "title": "Creative Sort",
+  "description": "How a creative library listing is sorted: a sort field and a direction.",
+  "type": "object",
+  "properties": {
+    "field": {
+      "$ref": "/schemas/enums/creative-sort-field.json",
+      "default": "created_date",
+      "description": "Field to sort by"
+    },
+    "direction": {
+      "$ref": "/schemas/enums/sort-direction.json",
+      "default": "desc",
+      "description": "Sort direction"
+    }
+  },
+  "additionalProperties": true
+}

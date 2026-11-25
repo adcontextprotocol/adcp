@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-graphic-element.json",
+  "title": "Brand Graphic Element",
+  "description": "A reusable decorative or structural visual element that is part of the brand identity (e.g., torn paper edges, watermarks, dividers, background patterns)",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Element name (e.g., 'Paper Tear', 'Brand Watermark', 'Section Divider')"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "border",
+        "divider",
+        "frame",
+        "watermark",
+        "pattern",
+        "texture_overlay",
+        "decorative"
+      ],
+      "description": "Element type"
+    },
+    "description": {
+      "type": "string",
+      "description": "How the element is used in layouts"
+    },
+    "orientation": {
+      "type": "string",
+      "enum": [
+        "horizontal",
+        "vertical",
+        "any"
+      ],
+      "description": "Preferred orientation when used in layouts"
+    },
+    "colors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/hex-color.json"
+      },
+      "description": "Colors this element may appear in"
+    },
+    "max_per_layout": {
+      "type": "integer",
+      "description": "Maximum instances per layout"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": true
+}

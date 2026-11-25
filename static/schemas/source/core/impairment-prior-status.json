@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/impairment-prior-status.json",
+  "title": "Impairment Prior Status",
+  "description": "Status a resource held before an impairment, such as ready or approved.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$"
+}

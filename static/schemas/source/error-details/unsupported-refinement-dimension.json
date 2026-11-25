@@ -6,14 +6,13 @@
   "type": "object",
   "properties": {
     "unsupported_dimension": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "#/definitions/refinement_dimension",
       "description": "The first typed revision dimension in the request that the seller does not support, named with the supported_dimensions vocabulary."
     },
     "supported_dimensions": {
       "type": "array",
       "description": "The seller's complete supported_dimensions declaration, echoed so the buyer can reconstruct a valid request. An empty array means ask-only refinement.",
-      "items": { "type": "string", "minLength": 1 },
+      "items": { "$ref": "#/definitions/refinement_dimension" },
       "uniqueItems": true
     }
   },
@@ -28,5 +27,13 @@
       "unsupported_dimension": "total_budget",
       "supported_dimensions": []
     }
-  ]
+  ],
+  "definitions": {
+    "refinement_dimension": {
+      "title": "Refinement Dimension",
+      "description": "Name of a typed proposal-refinement dimension from the supported_dimensions vocabulary.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
 }

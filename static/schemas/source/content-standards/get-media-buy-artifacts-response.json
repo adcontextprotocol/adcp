@@ -34,7 +34,7 @@
                 "description": "When the delivery occurred"
               },
               "package_id": {
-                "type": "string",
+                "$ref": "/schemas/core/package-id.json",
                 "description": "Which package this delivery belongs to"
               },
               "artifact": {
@@ -50,18 +50,8 @@
                 "description": "Channel type (e.g., display, video, audio, social)"
               },
               "brand_context": {
-                "type": "object",
-                "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers.",
-                "properties": {
-                  "brand_id": {
-                    "type": "string",
-                    "description": "Brand identifier"
-                  },
-                  "sku_id": {
-                    "type": "string",
-                    "description": "Product/SKU identifier if applicable"
-                  }
-                }
+                "$ref": "/schemas/core/brand-context.json",
+                "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers."
               },
               "local_verdict": {
                 "type": "string",
@@ -128,28 +118,15 @@
       ]
     },
     {
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "description": "Error response. A body that is also a valid success response is the success shape, even when it lists `errors`.",
       "not": {
         "$ref": "#/oneOf/0"
-      },
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ]
+      }
     }
   ],
   "properties": {}

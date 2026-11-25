@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/flight-endpoint.json",
+  "title": "Flight Endpoint",
+  "description": "One end of a flight: an airport code and an optional city.",
+  "type": "object",
+  "properties": {
+    "airport_code": {
+      "$ref": "/schemas/core/airport-code.json",
+      "description": "IATA airport code (e.g., 'AMS', 'JFK', 'LHR')."
+    },
+    "city": {
+      "type": "string",
+      "description": "City name (e.g., 'Amsterdam', 'New York')."
+    }
+  },
+  "required": [
+    "airport_code"
+  ],
+  "additionalProperties": true
+}

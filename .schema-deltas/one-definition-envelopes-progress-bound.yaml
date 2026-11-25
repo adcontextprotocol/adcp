@@ -1,0 +1,17 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per envelope: the sync_catalogs progress current_step takes the shared bound of a working task's
+  current step (core/task-current-step.json, at most 500 characters).
+changes:
+  - location: core/task-current-step.json#
+    keyword: maxLength
+    new: 500
+    direction: tighten
+    side: response
+    note: >-
+      media-buy/sync-catalogs-async-response-working.json current_step -> core/task-current-step.json, which
+      core/compact-task-working.json and the sync_creatives progress payload already reference. Correction under DR-0036:
+      3.2.12 core/compact-task-working.json, the progress payload of a working task, sets "current_step": { "type":
+      "string", "maxLength": 500 }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/compact-task-working.json#L13-L16).
+      Register entry media-buy/sync-catalogs-async-response-working.json /properties/current_step.

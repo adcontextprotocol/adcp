@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-claim-verification-details.json",
+  "title": "Brand Claim Verification Details",
+  "description": "Per-claim-type fields of a brand claim verification result, as an open object. The fields vary by claim_type; the verify_brand_claim task page lists each claim_type's expected fields.",
+  "type": "object",
+  "additionalProperties": true
+}

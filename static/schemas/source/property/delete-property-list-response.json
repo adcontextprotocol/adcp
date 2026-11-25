@@ -15,9 +15,8 @@
       "description": "Whether the list was successfully deleted"
     },
     "list_id": {
-      "type": "string",
-      "description": "ID of the deleted list",
-      "x-entity": "property_list"
+      "$ref": "/schemas/core/property-list-id.json",
+      "description": "ID of the deleted list"
     },
     "context": {
       "$ref": "/schemas/core/context.json"

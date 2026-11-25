@@ -63,13 +63,19 @@ describe('sync_principal contract', () => {
     const syncRequest = readSchema('/schemas/protocol/sync-principal-request.json');
     const syncResponse = readSchema('/schemas/protocol/sync-principal-response.json');
 
+    // Each response's result is a local definition of its document.
+    const result = (schema) => {
+      assert.equal(schema.properties.result.$ref, '#/definitions/principal_result');
+      return schema.definitions.principal_result;
+    };
+
     assert.equal(declarations.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
     assert.equal(capabilities.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
-    assert.equal(getResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
-    assert.equal(getResponse.properties.result.oneOf[1].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
-    assert.equal(getResponse.properties.result.oneOf[1].properties.kind.const, 'recognized');
+    assert.equal(result(getResponse).oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(result(getResponse).oneOf[1].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(result(getResponse).oneOf[1].properties.kind.const, 'recognized');
     assert.equal(syncRequest.properties.expected_principal_kind.$ref, '/schemas/enums/principal-kind.json');
-    assert.equal(syncResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(result(syncResponse).oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
   });
 
   let validateRequest;

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/representation-rejection-message.json",
+  "title": "Representation Rejection Message",
+  "description": "Explanation of why one creative representation candidate is incompatible.",
+  "type": "string",
+  "minLength": 1
+}

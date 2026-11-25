@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/attestation-issuer-key.json",
+  "title": "Attestation Issuer Key",
+  "description": "Stable-key form of an attestation issuer identity: a brand by BrandKey, an agent by URL, or an HTTPS origin. It carries no brand assets or content provenance.",
+  "discriminator": {
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "brand",
+          "default": "brand"
+        },
+        "brand": {
+          "$ref": "/schemas/core/brand-key.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "brand"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "$ref": "/schemas/core/attestation-agent-identity.json"
+    },
+    {
+      "$ref": "/schemas/core/attestation-origin-issuer.json"
+    }
+  ]
+}

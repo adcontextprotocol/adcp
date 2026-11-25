@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/asset-source.json",
+  "title": "Asset Source",
+  "description": "Where the rendered asset bytes of a canonical format come from.",
+  "type": "string",
+  "enum": [
+    "buyer_uploaded",
+    "publisher_host_recorded",
+    "seller_pre_rendered_from_brief",
+    "seller_human_designed",
+    "agent_synthesized",
+    "publisher_owned_reference"
+  ]
+}

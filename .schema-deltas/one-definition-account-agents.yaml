@@ -1,0 +1,13 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: account agents. The corrections the review chose; every other change is a $ref to an
+  identical definition.
+changes:
+  - location: core/https-url.json#
+    keyword: pattern
+    new: ^https://
+    direction: tighten
+    side: both
+    note: >-
+      core/account.json#/properties/setup -> new:core/account-setup.json. Witness: core/account.json /setup/url =
+      "HTTPS://EXAMPLE.COM/X" (tighten).

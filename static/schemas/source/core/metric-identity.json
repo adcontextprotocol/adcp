@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/metric-identity.json",
+  "title": "Metric Identity",
+  "description": "The identity of one metric: a standard or vendor metric, discriminated by `scope`, with an optional qualifier. Rows join on `(scope, metric_id, qualifier)`.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "scope"
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "standard",
+          "default": "standard",
+          "description": "Standard metric from the closed `available-metric.json` enum."
+        },
+        "metric_id": {
+          "$ref": "/schemas/enums/available-metric.json",
+          "description": "Identifier for the standard metric."
+        },
+        "qualifier": {
+          "$ref": "/schemas/core/canonical-metric-qualifier.json",
+          "description": "Disambiguator — same shape as `committed_metrics.qualifier`. Carry `viewability_standard` for MRC vs GroupM viewability feedback; `completion_source` for seller- vs vendor-attested completion feedback; `attribution_methodology` and `attribution_window` for outcome-metric feedback (the buyer pinning a specific methodology or window when the feedback is methodology-sensitive). Closed (`additionalProperties: false`), because consumers join on the key set; new keys ship in a major release."
+        }
+      },
+      "required": [
+        "scope",
+        "metric_id"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "vendor",
+          "default": "vendor",
+          "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor that defines and computes this metric. Same identity discipline as `vendor_metric_value.vendor` and `committed_metrics` vendor-scope entries. Distinct from the row-level `vendor` field at the top of `performance-feedback`, which identifies the *source* of the feedback (the party producing it); this nested vendor identifies the *vendor that defines the metric* (which may or may not be the same party). Typically the same when third-party verification reports its own metric; can differ when a buyer's MMM tool reports on a separately-defined vendor metric."
+        },
+        "metric_id": {
+          "$ref": "/schemas/core/vendor-metric-id.json",
+          "description": "Identifier for the metric within the vendor's vocabulary."
+        },
+        "qualifier": {
+          "$ref": "/schemas/core/canonical-metric-qualifier.json",
+          "description": "Optional disambiguator mirroring the vendor-scope qualifier on `committed_metrics` — same closed key set as standard-scope entries."
+        }
+      },
+      "required": [
+        "scope",
+        "vendor",
+        "metric_id"
+      ],
+      "additionalProperties": true
+    }
+  ]
+}

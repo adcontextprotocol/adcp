@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/radius.json",
+  "title": "Radius",
+  "description": "A distance from a point, with its unit: a distance that is positive.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/distance.json"
+    },
+    {
+      "properties": {
+        "value": {
+          "exclusiveMinimum": 0,
+          "description": "Radius distance."
+        }
+      }
+    }
+  ]
+}

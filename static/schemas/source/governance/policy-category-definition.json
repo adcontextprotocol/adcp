@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "category_id": {
-      "type": "string",
-      "x-entity": "governance_policy_category",
-      "pattern": "^[a-z][a-z0-9_]*$",
+      "$ref": "/schemas/core/policy-category-id.json",
       "description": "Unique identifier for this category. Used in plan.policy_categories, signal-definition.policy_categories, and policy-entry.policy_categories."
     },
     "name": {
@@ -26,12 +24,10 @@
         "type": "object",
         "properties": {
           "facet_id": {
-            "type": "string",
-            "x-entity": "governance_policy_category_facet",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "$ref": "/schemas/core/policy-category-facet-id.json"
           },
-          "name": { "type": "string", "minLength": 1 },
-          "description": { "type": "string", "minLength": 1 }
+          "name": { "$ref": "/schemas/core/policy-facet-name.json" },
+          "description": { "$ref": "/schemas/core/policy-facet-description.json" }
         },
         "required": ["facet_id", "name", "description"],
         "additionalProperties": true
@@ -42,29 +38,7 @@
       "type": "array",
       "description": "Key regulations and standards grouped under this category. Governance agents use this to resolve specific policies from the registry.",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Name of the regulation or standard (e.g., 'US COPPA')."
-          },
-          "jurisdictions": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "ISO 3166-1 alpha-2 codes where this framework applies."
-          },
-          "summary": {
-            "type": "string",
-            "description": "Brief summary of what the framework requires or prohibits."
-          },
-          "policy_ids": {
-            "type": "array",
-            "items": { "type": "string", "x-entity": "governance_registry_policy" },
-            "description": "Registry policy IDs that implement this framework."
-          }
-        },
-        "required": ["name", "summary"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/regulatory-framework-reference.json"
       }
     },
     "restricted_attributes": {

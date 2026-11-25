@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-guideline-severity.json",
+  "title": "Brand Guideline Severity",
+  "description": "Strength of a machine-readable brand guideline constraint.",
+  "type": "string",
+  "enum": [
+    "must",
+    "should"
+  ]
+}

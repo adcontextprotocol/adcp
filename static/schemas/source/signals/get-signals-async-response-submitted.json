@@ -3,32 +3,21 @@
   "$id": "/schemas/signals/get-signals-async-response-submitted.json",
   "title": "Get Signals - Submitted",
   "description": "Async task envelope returned when get_signals cannot be confirmed before the response — for example, when semantic discovery depends on slow provider queries or review. This envelope is valid only for `discovery_mode: \"brief\"`; `discovery_mode: \"wholesale\"` is a synchronous wholesale signals feed read and MUST NOT use the Submitted arm. The caller can always poll `get_task_status` (legacy `tasks/get`) with `task_id`. If the originating request carried `push_notification_config`, the agent also delivers at least the terminal completion/failure notification to that webhook URL; intermediate progress notifications are MAY. The signals array lands on the completion artifact, not this envelope.",
-  "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-submitted.json" }
+    {
+      "$ref": "/schemas/core/compact-task-submitted.json"
+    }
   ],
   "properties": {
+    "errors": {
+      "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories or partial provider unavailability). Terminal failures belong in the error branch, not here."
+    },
     "estimated_completion": {
       "type": "string",
       "format": "date-time",
       "description": "Estimated completion time for the signal discovery task."
-    },
-    "errors": {
-      "type": "array",
-      "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories or partial provider unavailability). Terminal failures belong in the error branch, not here.",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      }
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true,
   "not": {
     "anyOf": [
       {

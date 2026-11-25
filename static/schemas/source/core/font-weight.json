@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/font-weight.json",
+  "title": "Font Weight",
+  "description": "CSS numeric font weight from 100 to 900.",
+  "type": "integer",
+  "minimum": 100,
+  "maximum": 900
+}

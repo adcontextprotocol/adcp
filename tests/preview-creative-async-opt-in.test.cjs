@@ -56,11 +56,14 @@ describe('preview_creative opt-in async contract', () => {
   it('adds one submitted task arm without changing build_creative', () => {
     const submitted = response.oneOf.find((arm) => arm.title === 'PreviewCreativeSubmitted');
     assert.ok(submitted);
-    // core/task-submitted.json carries status: submitted and the required
-    // task_id; the arm keeps only its response_type discriminator.
+    // core/task-submitted-response.json, the shared submitted body, composes
+    // core/task-submitted.json (status: submitted and the required task_id);
+    // the arm keeps only its response_type discriminator.
     assert.deepEqual(submitted.required, ['response_type']);
     assert.equal(submitted.properties.response_type.const, 'submitted');
-    assert.ok(submitted.allOf.some((member) => member.$ref === '/schemas/core/task-submitted.json'));
+    assert.ok(submitted.allOf.some((member) => member.$ref === '/schemas/core/task-submitted-response.json'));
+    const body = JSON.parse(fs.readFileSync(path.join(schemaRoot, 'core', 'task-submitted-response.json'), 'utf8'));
+    assert.ok(body.allOf.some((member) => member.$ref === '/schemas/core/task-submitted.json'));
     assert.equal(submitted.properties.status, undefined);
     assert.equal(submitted.properties.task_id, undefined);
     assert.equal(response.oneOf.length, 4);

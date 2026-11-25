@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-batch-id.json",
+  "title": "Account Change Batch ID",
+  "description": "Groups account change records from one committed operation or one ingestion batch.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+}

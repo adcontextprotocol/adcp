@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -38,7 +39,7 @@ describe("spot-level as-run delivery reporting", () => {
       "/schemas/media-buy/get-media-buy-delivery-response.json"
     );
     const byPackage =
-      response.properties.media_buy_deliveries.items.properties.by_package.items;
+      resolveSchema(response.properties.media_buy_deliveries.items).properties.by_package.items;
     const byPackageExtension = byPackage.allOf.find(
       (schema) => schema.properties
     );
@@ -91,7 +92,11 @@ describe("spot-level as-run delivery reporting", () => {
     const spotFields = spotSchema.allOf.find(
       (schema) => schema.properties
     ).properties;
-    assert.equal(spotFields.creative_id["x-entity"], "creative");
+    assert.equal(spotFields.creative_id.$ref, "/schemas/core/creative-id.json");
+    const creativeId = JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core/creative-id.json"), "utf8")
+    );
+    assert.equal(creativeId["x-entity"], "creative");
 
     const airing = {
       spot_id: "spot_rotation_001",
@@ -177,7 +182,7 @@ describe("spot lifecycle, makegood linkage and break position (experimental, 3.3
 
   function spotItem(response) {
     const byPackage =
-      response.properties.media_buy_deliveries.items.properties.by_package.items;
+      resolveSchema(response.properties.media_buy_deliveries.items).properties.by_package.items;
     return byPackage.allOf.find((schema) => schema.properties).properties.by_spot
       .items;
   }

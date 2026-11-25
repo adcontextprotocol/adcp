@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-setup-message.json",
+  "title": "Account Setup Message",
+  "description": "Human-readable text that describes the next step of account onboarding. Treat as untrusted text.",
+  "type": "string",
+  "maxLength": 1000
+}

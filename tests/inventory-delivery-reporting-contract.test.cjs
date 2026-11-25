@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -47,7 +48,7 @@ describe("canonical inventory delivery reporting", () => {
 
   before(async () => {
     const response = readSchema("/schemas/media-buy/get-media-buy-delivery-response.json");
-    const extension = response.properties.media_buy_deliveries.items.properties.by_package.items.allOf
+    const extension = resolveSchema(response.properties.media_buy_deliveries.items).properties.by_package.items.allOf
       .find(schema => schema.properties);
     [
       validateRequest,
@@ -323,7 +324,7 @@ describe("canonical inventory delivery reporting", () => {
 
   it("discloses suppression separately for every property-grain breakdown", () => {
     const response = readSchema("/schemas/media-buy/get-media-buy-delivery-response.json");
-    const properties = response.properties.media_buy_deliveries.items.properties.by_package.items.allOf
+    const properties = resolveSchema(response.properties.media_buy_deliveries.items).properties.by_package.items.allOf
       .find(schema => schema.properties).properties;
     for (const dimension of ["property", "collection_property", "installment_property", "placement_property"]) {
       assert.equal(properties[`by_${dimension}_suppressed`].type, "boolean", dimension);

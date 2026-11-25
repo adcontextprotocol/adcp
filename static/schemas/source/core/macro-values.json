@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-values.json",
+  "title": "Macro Values",
+  "description": "Raw macro values keyed by AdCP universal macro name, for example `CLICK_URL` or `CACHEBUSTER`.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "string"
+  }
+}

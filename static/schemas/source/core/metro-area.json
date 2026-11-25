@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/metro-area.json",
+  "title": "Metro Area",
+  "description": "A metro area, identified by a metro system and a code in that system.",
+  "type": "object",
+  "properties": {
+    "system": {
+      "$ref": "/schemas/enums/metro-system.json",
+      "description": "Metro classification system"
+    },
+    "code": {
+      "type": "string",
+      "description": "Metro code within the system (e.g., '501' for NYC DMA)"
+    }
+  },
+  "required": [
+    "system",
+    "code"
+  ],
+  "additionalProperties": true
+}

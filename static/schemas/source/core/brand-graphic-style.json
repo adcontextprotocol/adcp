@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-graphic-style.json",
+  "title": "Brand Graphic Style",
+  "description": "Visual language for brand graphics and illustrations",
+  "type": "object",
+  "properties": {
+    "style_type": {
+      "type": "string",
+      "enum": [
+        "flat_illustration",
+        "geometric",
+        "gradient_mesh",
+        "editorial_collage",
+        "hand_drawn",
+        "minimal_line_art",
+        "3d_render",
+        "isometric",
+        "photographic_composite"
+      ],
+      "description": "Primary graphic style"
+    },
+    "stroke_style": {
+      "type": "string",
+      "enum": [
+        "rounded",
+        "square",
+        "mixed",
+        "none"
+      ],
+      "description": "Stroke end/join style"
+    },
+    "stroke_weight": {
+      "type": "string",
+      "description": "Stroke weight (e.g., '2px', 'thin', 'bold')"
+    },
+    "corner_radius": {
+      "type": "string",
+      "description": "Default corner radius for graphic and illustration elements (e.g., '12px', '8px', 'sharp'). For UI component radii (buttons, cards, inputs), see visual_guidelines.border_radius."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional style descriptors"
+    }
+  },
+  "additionalProperties": true
+}

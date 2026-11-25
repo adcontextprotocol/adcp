@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/css-length.json",
+  "title": "CSS Length",
+  "description": "A length written as a number with a CSS unit, such as 48px, 12mm, or 1.5em.",
+  "type": "string"
+}

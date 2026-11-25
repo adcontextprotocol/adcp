@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -42,10 +43,6 @@ function readSchema(uri) {
   );
 }
 
-function dereference(schema) {
-  return schema?.$ref ? readSchema(schema.$ref) : schema;
-}
-
 async function compile(schema) {
   const ajv = new Ajv({
     allErrors: true,
@@ -77,8 +74,8 @@ describe("delivery reporting sort contract", () => {
     const response = readSchema(
       "/schemas/media-buy/get-media-buy-delivery-response.json"
     );
-    const byPackage =
-      response.properties.media_buy_deliveries.items.properties.by_package.items;
+    const byPackage = resolveSchema(response.properties.media_buy_deliveries.items)
+      .properties.by_package.items;
     byPackageExtension = byPackage.allOf.find((schema) => schema.properties);
 
     [validateRequest, validateByPackage] = await Promise.all([
@@ -111,7 +108,7 @@ describe("delivery reporting sort contract", () => {
 
   for (const dimension of SORTABLE_DIMENSIONS) {
     it(`request schema declares both sort_by and sort_direction for ${dimension}`, () => {
-      const dimensionSchema = dereference(
+      const dimensionSchema = resolveSchema(
         requestJson.properties.reporting_dimensions.properties[dimension]
       );
       assert.ok(dimensionSchema, `missing dimension schema for ${dimension}`);
@@ -188,7 +185,7 @@ describe("delivery reporting sort contract", () => {
       requestJson.properties.reporting_dimensions.properties;
     const responseProperties = byPackageExtension.properties;
     for (const [name, rawSchema] of Object.entries(dimensions)) {
-      const schema = dereference(rawSchema);
+      const schema = resolveSchema(rawSchema);
       if (!schema.properties || !schema.properties.sort_by) continue;
       assert.equal(
         schema.properties.sort_by.$ref,
@@ -215,11 +212,11 @@ describe("delivery reporting sort contract", () => {
 
   for (const dimension of PAGINATED_DIMENSIONS) {
     it(`request schema declares a cursor for ${dimension}`, () => {
-      const dimensionSchema = dereference(
+      const dimensionSchema = resolveSchema(
         requestJson.properties.reporting_dimensions.properties[dimension]
       );
       assert.ok(dimensionSchema, `missing dimension schema for ${dimension}`);
-      assert.equal(dimensionSchema.properties.cursor.type, "string");
+      assert.equal(resolveSchema(dimensionSchema.properties.cursor).type, "string");
     });
 
     it(`response declares by_${dimension}_pagination reusing the shared pagination-response shape`, () => {
@@ -275,7 +272,7 @@ describe("delivery reporting sort contract", () => {
   }
 
   it("geo does not get per-package cursor pagination (deferred to bulk-export, #5669/#5666)", () => {
-    const geoSchema = dereference(
+    const geoSchema = resolveSchema(
       requestJson.properties.reporting_dimensions.properties.geo
     );
     assert.equal(geoSchema.properties.cursor, undefined);

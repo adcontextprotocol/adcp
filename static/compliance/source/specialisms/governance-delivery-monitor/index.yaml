@@ -548,7 +548,7 @@ phases:
             currency: "USD"
           delivery_metrics:
             statement_id: "governance_delivery_monitor_0001"
-            statement_digest: "sha256:7a1a1cf8cdd13f1c470dce0e2e00da1cd1403876dd6f2b231b6b83924e2489d5"
+            statement_digest: "sha256:b40519596812d0a7a3fa605de6fb0ccf3cfa677ac275ce24bcc56831636fae9b"
             sequence: 1
             issued_at: "2099-05-16T00:00:00Z"
             reporting_period:
@@ -559,7 +559,7 @@ phases:
             currency: "USD"
             channel_distribution:
               ctv: 70
-              video: 30
+              olv: 30
             pacing: "ahead"
 
           context:
@@ -1157,7 +1157,7 @@ phases:
             currency: "USD"
           delivery_metrics:
             statement_id: "governance_delivery_monitor_0002"
-            statement_digest: "sha256:511d4229097028b41eed7179c0c8e13cb430c0798797ac0f95dc8858511df8fc"
+            statement_digest: "sha256:2a5140f48e726f97ccadb7f853b2e2ef5b14b5f93b08a8a273e2ef15ecf98611"
             sequence: 2
             issued_at: "2099-05-30T00:00:00Z"
             reporting_period:
@@ -1168,7 +1168,7 @@ phases:
             currency: "USD"
             channel_distribution:
               ctv: 70
-              video: 30
+              olv: 30
             pacing: "on_track"
 
           context:

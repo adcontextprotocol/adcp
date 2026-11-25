@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "webhook",
+      "default": "webhook",
       "description": "Discriminator identifying this as a webhook asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {

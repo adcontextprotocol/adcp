@@ -24,17 +24,12 @@
         }
       },
       "properties": {
-        "status": { "type": "string", "const": "completed" },
+        "status": { "type": "string", "const": "completed", "default": "completed" },
         "media_buy_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "media_buy"
+          "$ref": "/schemas/core/media-buy-id.json"
         },
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "pattern": "\\S",
+          "$ref": "/schemas/core/media-buy-name.json",
           "description": "Persisted human-readable MediaBuy name for trafficking UI display and operational communication. The seller MUST echo a buyer-supplied request name unchanged; when the seller seeded a new MediaBuy name from an already-valid proposal.name, it MUST return that value unchanged here. Existing named MediaBuys return the stored value on amendment or cancellation commitments. This operational metadata is outside accepted_proposal and is not covered by terms_digest. This display label is not an identifier or financial reference."
         },
         "revision": {
@@ -49,16 +44,7 @@
           "format": "date-time"
         },
         "accepted_proposal": {
-          "allOf": [
-            { "$ref": "/schemas/core/canonical-proposal.json" },
-            {
-              "properties": {
-                "proposal_status": { "type": "string", "const": "accepted" },
-                "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" }
-              },
-              "required": ["proposal_status", "media_buy_id", "accepted_at", "commercial_terms", "terms_digest"]
-            }
-          ]
+          "$ref": "/schemas/core/accepted-proposal.json"
         },
         "purchase_bindings": {
           "type": "array",
@@ -78,8 +64,8 @@
             "type": "object",
             "properties": {
               "purchase_index": { "type": "integer", "minimum": 0 },
-              "product_id": { "type": "string", "minLength": 1, "x-entity": "product" },
-              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" }
+              "product_id": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" },
+              "package_id": { "$ref": "/schemas/core/package-id.json" }
             },
             "required": ["purchase_index", "product_id", "package_id"],
             "additionalProperties": true
@@ -122,45 +108,10 @@
       "not": { "required": ["errors"] }
     },
     {
-      "title": "Commitment Error",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "failed" },
-        "errors": {
-          "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
-          "minItems": 1
-        },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status", "errors"],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["media_buy_id"] },
-          { "required": ["warnings"] }
-        ]
-      }
+      "$ref": "/schemas/core/media-buy-failed-result.json"
     },
     {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "Commitment Submitted",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "submitted" },
-        "expected_confirmation_at": {
-          "type": "string",
-          "format": "date-time",
-          "x-added-in": "3.3.0",
-          "description": "Optional estimate of when the seller expects to confirm this request, used when confirmation depends on a scheduled event such as a booking round or a manual review window. A seller SHOULD set it when it knows that event; omit it when it does not. Buyers SHOULD schedule a status check (get_task_status, or reconciling against the webhook) for this time rather than polling tightly before it. This is an estimate, not a commitment: the seller MAY confirm earlier or later, the task status remains authoritative, and buyers MUST NOT treat a passed timestamp as a failure or auto-cancel on it. Sellers SHOULD NOT send a timestamp in the past. Not an expiry or SLA."
-        },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/media-buy-submitted.json"
     }
   ]
 }

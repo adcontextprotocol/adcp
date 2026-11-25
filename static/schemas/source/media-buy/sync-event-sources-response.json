@@ -22,7 +22,7 @@
             "type": "object",
             "properties": {
               "event_source_id": {
-                "type": "string",
+                "$ref": "/schemas/core/event-source-id.json",
                 "description": "Event source ID from the request",
                 "x-entity": "event_source"
               },
@@ -46,14 +46,14 @@
                 "description": "Event types this source handles",
                 "items": {
                   "$ref": "/schemas/enums/event-type.json"
-                }
+                },
+                "minItems": 1
               },
               "value_currencies": {
                 "type": "array",
                 "description": "ISO 4217 currencies accepted for monetary event values from this source. Canonical ROAS buys require their media-buy currency in this list.",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{3}$"
+                  "$ref": "/schemas/core/currency-code.json"
                 },
                 "minItems": 1,
                 "uniqueItems": true
@@ -67,14 +67,11 @@
                 "description": "Optional structured surface this source represents, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store. Complements `action_source`; use it when optimization-relevant source meaning would otherwise live only in platform-specific `ext` metadata."
               },
               "managed_by": {
-                "type": "string",
-                "enum": [
-                  "buyer",
-                  "seller"
-                ],
+                "$ref": "/schemas/enums/event-source-manager.json",
                 "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
               },
               "setup": {
+                "title": "Event Source Implementation Setup",
                 "type": "object",
                 "description": "Implementation details for activating this event source (e.g. JavaScript tag, pixel URL)",
                 "properties": {
@@ -163,27 +160,19 @@
     {
       "title": "SyncEventSourcesError",
       "description": "Error response - operation failed completely",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors that prevented processing",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
         }
-      },
+      ],
       "required": [
         "errors"
       ],
-      "additionalProperties": true,
+      "properties": {
+        "errors": {
+          "description": "Operation-level errors that prevented processing"
+        }
+      },
       "not": {
         "anyOf": [
           {

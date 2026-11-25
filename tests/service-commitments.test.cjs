@@ -5,6 +5,7 @@ const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+const { resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 ensureBuiltSchemas();
 
@@ -62,10 +63,25 @@ test('SLA windows keep their 3.2.8 elapsed-time shape (#8501)', async () => {
   const { $id: releasedId, ...releasedRest } = released;
   assert.equal(sourceId, '/schemas/core/sla-window.json');
   assert.match(releasedId, /\/3\.2\.8\/core\/sla-window\.json$/);
-  assert.deepEqual(sourceRest, releasedRest, 'core/sla-window.json must match its 3.2.8 publication');
+  // The durations reference core/sla-duration.json (#8525); resolved, they are the 3.2.8 text,
+  // except the duration pattern, which no longer accepts a bare T such as PT or P1DT (#8905).
+  const slaDurationPattern = readJson(path.join(SOURCE, 'core/sla-duration.json')).pattern;
+  const resolvedProperties = Object.fromEntries(
+    Object.entries(sourceRest.properties).map(([name, site]) => [name, resolveScalar(site, source)]),
+  );
+  const releasedProperties = Object.fromEntries(
+    Object.entries(releasedRest.properties).map(([name, site]) => [name, { ...site, pattern: slaDurationPattern }]),
+  );
+  assert.deepEqual(
+    { ...sourceRest, properties: resolvedProperties },
+    { ...releasedRest, properties: releasedProperties },
+    'core/sla-window.json must match its 3.2.8 publication',
+  );
 
   const validate = await compile('core/sla-window.json');
   for (const value of [{}, escalation, { completion_max: 'PT24H' }, { response_max: 'PT4H', completion_max: 'PT2H' }]) accepts(validate, value);
+  accepts(validate, { response_max: 'PT0S', completion_max: 'P0D' });
+  for (const duration of ['PT', 'P1DT', 'P']) rejects(validate, { completion_max: duration });
   rejects(validate, { response_time_minutes: 15 });
   for (const value of [
     { clock: 'elapsed', completion_max: 'P1D' },
@@ -111,7 +127,7 @@ test('calendars carry an explicit working day, weekly schedule, coverage, and co
     rejects(validate, value);
   }
   for (const value of [
-    { timezone: 'inventory_local' }, { timezone: '' }, { business_day_minutes: 0 },
+    { timezone: 'x'.repeat(256) }, { timezone: '' }, { business_day_minutes: 0 },
     { business_day_minutes: 1441 }, { working_periods: [] }, { non_working_dates: ['2027-02-30'] },
     { valid_through: 'next month' }, { non_working_dates: ['2027-01-01', '2027-01-01'] },
   ]) rejects(validate, { ...calendar, ...value });
@@ -305,7 +321,7 @@ test('capability declarations publish calendars without implying a product timin
   const value = { status: 'completed', adcp_version: '3.3', adcp: { major_versions: [3], supported_versions: ['3.3'], idempotency: { supported: true, replay_ttl_seconds: 86400 } }, supported_protocols: ['media_buy'], business_calendars: [calendar], media_buy: { issue_reporting: true } };
   accepts(validate, value);
   rejects(validate, { ...value, business_calendars: [] });
-  rejects(validate, { ...value, business_calendars: [{ ...calendar, timezone: 'inventory_local' }] });
+  rejects(validate, { ...value, business_calendars: [{ ...calendar, timezone: '' }] });
   rejects(validate, { ...value, media_buy: { issue_reporting: 'yes' } });
   rejects(validate, { ...value, adcp: { ...value.adcp, idempotency: { supported: false } } });
   rejects(validate, { ...value, adcp: { ...value.adcp, idempotency: { supported: true } } });

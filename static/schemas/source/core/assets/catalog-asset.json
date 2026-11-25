@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "catalog",
+      "default": "catalog",
       "description": "Discriminator identifying this as a catalog asset. See /schemas/creative/asset-types for the registry."
     }
   },

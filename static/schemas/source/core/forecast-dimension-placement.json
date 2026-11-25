@@ -8,6 +8,7 @@
     "kind": {
       "type": "string",
       "const": "placement",
+      "default": "placement",
       "description": "Dimension family discriminator."
     },
     "placement_ref": {

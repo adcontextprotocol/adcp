@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/webhook-activity-limit.json",
+  "title": "Webhook Activity Limit",
+  "description": "Maximum number of webhook delivery records a read returns for each parent resource when it includes webhook activity.",
+  "type": "integer",
+  "minimum": 1,
+  "maximum": 200
+}

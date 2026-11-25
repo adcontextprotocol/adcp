@@ -14,6 +14,7 @@
         "mode": {
           "type": "string",
           "const": "fixed",
+          "default": "fixed",
           "description": "Packages have independent budgets. The seller does not automatically move budget between packages."
         }
       },
@@ -28,6 +29,7 @@
         "mode": {
           "type": "string",
           "const": "seller_optimized",
+          "default": "seller_optimized",
           "description": "Packages draw from a shared media-buy budget. The seller continuously allocates spend across packages to optimize the declared goals."
         },
         "optimization_goals": {

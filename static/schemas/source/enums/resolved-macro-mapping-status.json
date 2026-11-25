@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/resolved-macro-mapping-status.json",
+  "title": "Resolved Macro Mapping Status",
+  "description": "Mapping status of a macro that resolves to a value: verified_universal or dialect_defined.",
+  "type": "string",
+  "enum": [
+    "verified_universal",
+    "dialect_defined"
+  ]
+}

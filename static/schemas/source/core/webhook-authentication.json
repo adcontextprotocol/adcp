@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/webhook-authentication.json",
+  "title": "Webhook Authentication",
+  "description": "Legacy Bearer or HMAC-SHA256 authentication for webhook delivery (A2A-compatible). Deprecated and removed in AdCP 4.0; new integrations omit it and use the RFC 9421 webhook signing profile.",
+  "type": "object",
+  "properties": {
+    "schemes": {
+      "$ref": "/schemas/core/webhook-auth-schemes.json",
+      "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead."
+    },
+    "credentials": {
+      "$ref": "/schemas/core/auth-credential.json",
+      "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+      "x-max-length-4.0": 512
+    }
+  },
+  "required": [
+    "schemes",
+    "credentials"
+  ],
+  "additionalProperties": true
+}

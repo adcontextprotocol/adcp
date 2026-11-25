@@ -1,0 +1,287 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: media buy alignment. Product, catalog, package, audience, and event source IDs, product
+  names, applicable package IDs, audience source locators and segment references, incomplete scope entries, and the
+  sync_catalogs error item each have one definition; the corrections below follow published 3.x text, and every other
+  change is a $ref to an identical definition.
+changes:
+  - location: core/product-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/product.json#/properties/product_id -> core/product-id.json. Correction under DR-0036: 3.2.12 defines the
+      product ID with minLength 1 in core/canonical-product.json, the compact form of the same product ("product_id": {
+      "type": "string", "minLength": 1, "x-entity": "product" },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-product.json#L8-L12).
+      Register entry core/product.json /properties/product_id.
+  - location: core/product-name.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/product.json#/properties/name -> core/product-name.json. Correction under DR-0036: 3.2.12 defines the
+      product name with minLength 1 in core/canonical-product.json ("name": { "type": "string", "minLength": 1 },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-product.json#L13-L16).
+      Register entry core/product.json /properties/name.
+  - location: core/product.json#/properties/installments
+    keyword: maxItems
+    new: 500
+    direction: tighten
+    side: both
+    note: >-
+      core/product.json installments. Correction under DR-0036: 3.2.12 bounds no product installment list, and
+      3.3.0-beta.1 (a 3.3 prerelease the register already cites) published installments with "minItems": 1,
+      "maxItems": 500 in core/canonical-product.json, the compact form of the same product
+      (https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/canonical-product.json#L116-L124).
+      Register entry core/product.json /properties/installments.
+  - location: core/product.json#/properties/installments
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/product.json installments, on the same 3.3.0-beta.1 basis as the maxItems line. An empty list is not
+      run-of-collection: the field description says absence means that. Register entry core/product.json
+      /properties/installments.
+  - location: core/product.json#/properties/conversion_tracking/properties/supported_targets
+    keyword: uniqueItems
+    new: true
+    direction: tighten
+    side: both
+    note: >-
+      Product conversion_tracking.supported_targets, the event-goal target kinds a product accepts. Correction under
+      DR-0036: 3.2.12 defines the seller-level form of the same list ("Event-goal target kinds this seller can compute
+      against.", values cost_per, per_ad_spend, maximize_value, "same concept (which target kinds are supported), one
+      at seller-capability granularity and one at product granularity") with "uniqueItems": true
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/protocol/get-adcp-capabilities-response.json#L2496-L2508).
+      The additive-minor lint does not see uniqueItems. Hand-checked payload: a valid core/product.json with
+      conversion_tracking { "supported_targets": ["cost_per", "cost_per"] } is valid at the base and invalid at the
+      head (duplicate items); removing uniqueItems makes it valid again.
+  - location: core/canonical-product.json#/properties/allowed_actions
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      Canonical product allowed_actions take the product's array contract. Correction under DR-0036: 3.2.12
+      core/product.json sets "minItems": 1 on allowed_actions
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/product.json#L182-L190),
+      and core/canonical-product.json is the compact form of the same product. Register entry.
+  - location: core/canonical-product.json#/properties/max_optimization_goals
+    keyword: minimum
+    old: 0
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      Canonical product max_optimization_goals. Correction under DR-0036: 3.2.12 core/product.json sets
+      "max_optimization_goals": { "type": "integer", "minimum": 1, with "When absent, no limit is declared."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/product.json#L367-L370).
+      Register entry.
+  - location: core/canonical-product.json#/properties/placements
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      Canonical product placements. Correction under DR-0036: 3.2.12 core/product.json sets "minItems": 1 on
+      placements
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/product.json#L75-L81).
+      Register entry.
+  - location: core/catalog-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: >-
+      core/catalog.json catalog_id, core/catalog-selection.json catalog_id, and
+      core/catalog-item-availability-update-result.json catalog_id -> core/catalog-id.json. Correction under DR-0036:
+      3.2.12 core/catalog-item-availability-update.json defines the buyer-assigned catalog ID as "catalog_id": {
+      "type": "string", "minLength": 1, "maxLength": 255, "description": "Buyer-assigned ID of the buyer-managed
+      catalog containing the item."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/catalog-item-availability-update.json#L8-L14).
+      Register entries for the three sites.
+  - location: core/catalog-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      Same sites and basis as the maxLength line. catalog-selection already had minLength 1, so its entry covers
+      maxLength only.
+  - location: core/catalog-item-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: response
+    note: >-
+      core/catalog-item-availability-update-result.json item_id ("Item ID from the request.") ->
+      core/catalog-item-id.json. Correction under DR-0036: 3.2.12 core/catalog-item-availability-update.json, the
+      request this result echoes, defines "item_id": { "type": "string", "minLength": 1, "maxLength": 255
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/catalog-item-availability-update.json#L22-L28).
+      Register entry. Hand-checked payload: the update result in the next line's note with item_id set to 256 characters is valid at
+      the base and invalid at the head (more than 255 characters); without maxLength it is valid again.
+  - location: core/catalog-item-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      Same site and basis as the maxLength line. Register entry. Hand-checked payloads against
+      core/catalog-item-availability-update-result.json: { "request_index": 0, "catalog_id": "feed_1",
+      "catalog_generation": "gen_1", "item_id": "", "action": "suppress", "status": "unchanged", "availability":
+      "suppressed", "overlay_revision": 1 } is valid at the base and invalid at the head (fewer than 1 character);
+      without minLength it is valid again.
+  - location: core/package-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      core/media-buy-delivery.json by_package[].package_id and windows[].by_package[].package_id (the
+      get_media_buy_delivery and media_buy_delivery webhook rows) -> core/package-id.json. Correction under DR-0036:
+      3.2.12 media-buy/package-control.json defines the package ID as "package_id": { "type": "string", "minLength":
+      1, "x-entity": "package" }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/package-control.json#L8-L12).
+      Register entries for the three published pointers.
+  - location: core/event-source-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      sync_event_sources request and response event_source_id -> core/event-source-id.json. Correction under DR-0036:
+      3.2.12 core/optimization-goal.json defines "event_source_id": { "type": "string", "minLength": 1,
+      "description": "Event source to include (must be configured on this account via sync_event_sources)" }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/optimization-goal.json#L242-L246).
+      Register entries for both sites.
+  - location: media-buy/sync-event-sources-response.json#/oneOf/0/properties/event_sources/items/properties/event_types
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      sync_event_sources result event_types take the request item's contract. Correction under DR-0036: 3.2.12
+      media-buy/sync-event-sources-request.json defines event_types, "Event types this source handles (e.g. purchase,
+      lead). If omitted, accepts all event types.", with "minItems": 1
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/sync-event-sources-request.json#L42-L49).
+      Register entry.
+  - location: core/incomplete-scope-description.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      get_products incomplete[] -> core/incomplete-scope-entry.json, and get_signals incomplete[].description ->
+      core/incomplete-scope-description.json. Correction under DR-0036: 3.2.12 media-buy/list-products-response.json
+      defines the same incomplete scope entry with "description": { "type": "string", "minLength": 1 }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/list-products-response.json#L61-L64).
+      Register entries for both sites. Hand-checked payload: static/examples/get_products_responses/canonical/meta_with_bundled_extensions.json
+      plus "incomplete": [{ "scope": "products", "description": "" }] is valid at the base and invalid at the head
+      against media-buy/get-products-response.json (fewer than 1 character); without minLength it is valid again.
+  - location: media-buy/get-products-response.json#/properties/suggestions
+    keyword: minItems
+    new: 1
+    direction: none
+    side: both
+    note: >-
+      get_products suggestions take the GetProductsRejected arm's contract, the only arm that may carry them.
+      Correction under DR-0036: 3.2.12 media-buy/get-products-rejected.json sets "minItems": 1 on suggestions
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/get-products-rejected.json#L27-L31).
+      Register entry. The site tightens, but no root payload changes verdict because of this line, so no witness exists: status is required, a status other than
+      rejected forbids suggestions, and a rejected response composes get-products-rejected.json, which already
+      requires at least one suggestion. Hand-checked: the canonical sample response with suggestions [] is invalid
+      at both refs with status rejected, completed, or absent.
+  - location: core/country-subdivision-code.json#
+    keyword: pattern
+    old: ^[A-Z]{2}-[A-Z0-9]+$
+    new: ^[A-Z]{2}-[A-Z0-9]{1,3}$
+    direction: tighten
+    side: request
+    note: >-
+      Deprecated get_products filters.regions[] -> core/country-subdivision-code.json. Correction under DR-0036: the
+      3.2.12 field says "On compact discovery tasks use criteria.offer_filters.regions"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/product-filters.json#L139),
+      and 3.2.12 defines that field as "Inventory coverage in the specified ISO 3166-2 subdivisions" with "pattern":
+      "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/product-offer-filters.json#L112-L115).
+      ISO 3166-2 subdivision codes have one to three characters after the country code. The additive-minor lint does
+      not see pattern.
+  - location: core/audience-source-locator.json#
+    keyword: maxLength
+    new: 512
+    direction: tighten
+    side: response
+    note: >-
+      sync_audiences result source.locator, an echo of the request's dataset locator, and the dataset branch of
+      core/audience-source.json -> core/audience-source-locator.json. The source echo is experimental. Correction
+      under DR-0036 for the echo: 3.2.12 core/audience-source.json defines the locator with "minLength": 1,
+      "maxLength": 512
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/audience-source.json#L22-L25),
+      and an echo carries the value the request accepted.
+  - location: core/audience-source-locator.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: Same site and basis as the maxLength line.
+  - location: core/audience-source-segment-ref.json#
+    keyword: maxLength
+    new: 256
+    direction: tighten
+    side: response
+    note: >-
+      sync_audiences result source.segment_ref, an echo of the request's platform segment reference, and the platform
+      segment branch of core/audience-source.json -> core/audience-source-segment-ref.json. The source echo is
+      experimental. Correction under DR-0036 for the echo: 3.2.12 core/audience-source.json defines segment_ref with
+      "minLength": 1, "maxLength": 256
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/audience-source.json#L59-L62).
+  - location: core/audience-source-segment-ref.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: Same site and basis as the maxLength line.
+  - location: core/media-buy-available-action.json#/allOf/3/then
+    keyword: properties
+    new:
+      const: sync_creatives
+    direction: tighten
+    side: both
+    note: >-
+      The legacy available action's review_sla guard also pins task to sync_creatives, as the canonical action fields
+      do. review_sla is new in 3.3 (3.2.12 has no review_sla), so no 3.2.12 payload carries it. Basis: the 3.3
+      canonical form of the same action states "if": { "required": [ "review_sla" ] }, "then": { "properties": {
+      "task": { "const": "sync_creatives" }
+      (https://github.com/adcontextprotocol/adcp/blob/c5f39849d5be6d8521d089ba35fe7faaa1b68380/dist/schemas/3.3.0-rc.3/core/canonical-media-buy-action-fields.json#L53-L62).
+      Hand-checked payload against core/media-buy-available-action.json: { "action": "replace_creative", "mode":
+      "self_serve", "task": "control_media_buy", "review_sla": { "completion_max": "P1D" } } is valid at the base
+      and invalid at the head (task must be sync_creatives); without the task line it is valid again.
+    witness:
+      root: /schemas/core/media-buy-available-action.json
+      instance:
+        action: replace_creative
+        mode: self_serve
+        task: control_media_buy
+        applicable_package_ids:
+        - a
+        review_sla:
+          completion_max: P1D
+  - location: media-buy/refine-proposals-response.json#/definitions/draft_successor
+    keyword: properties
+    new:
+      maxLength: 255
+      minLength: 1
+      type:
+        - string
+    direction: none
+    side: response
+    note: >-
+      The two revised and partial result branches repeated one draft successor fragment for proposals[] items; it is
+      now the local definition draft_successor. The fragment required parent_proposal_id without declaring it, so the
+      definition declares it as core/proposal-id.json, the declaration core/canonical-proposal.json already gives
+      every proposals[] item. No payload changes verdict: the same items already validate against
+      core/canonical-proposal.json through the results item's proposals property.

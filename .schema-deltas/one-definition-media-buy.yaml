@@ -1,0 +1,86 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: media buy. The corrections the review chose; every other change is a $ref to an identical
+  definition.
+changes:
+  - location: core/catalog-item-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: >-
+      core/product.json#/properties/catalog_match -> new:core/catalog-match.json. Witness: core/canonical-product.json
+      /catalog_match/matched_ids/0 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...
+      (tighten).
+  - location: core/catalog-item-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/product.json#/properties/catalog_match -> new:core/catalog-match.json. Witness: core/canonical-product.json
+      /catalog_match/matched_ids/0 = "" (tighten).
+  - location: core/build-catalog-item-ref.json#
+    keyword: required
+    new:
+      - item_id
+    direction: tighten
+    side: response
+    note: >-
+      media-buy/build-creative-response.json#/oneOf/3/properties/estimate/properties/per_leaf/items/properties/catalog_item_ref
+      -> new:core/build-catalog-item-ref.json. Verdict delta: catalog_item_ref:required:tighten:plausible_impact.
+      Witness: media-buy/build-creative-response.json /estimate/per_leaf/0/catalog_item_ref = {} (tighten).
+  - location: core/build-catalog-item-ref.json#
+    keyword: properties
+    new:
+      catalog_type:
+        type:
+          - string
+      item_id:
+        type:
+          - string
+    direction: tighten
+    side: response
+    note: >-
+      media-buy/build-creative-response.json#/oneOf/3/properties/estimate/properties/per_leaf/items/properties/catalog_item_ref
+      -> new:core/build-catalog-item-ref.json. Verdict delta: catalog_item_ref:properties:tighten:correction. The tool's
+      witness search found none (cannot attribute: properties/$ref is not written at core/build-catalog-item-ref.json#).
+  - location: core/cancellation.json#
+    keyword: properties
+    new:
+      format: date-time
+      type:
+        - string
+    direction: tighten
+    side: response
+    note: >-
+      core/media-buy.json#/properties/cancellation -> new:core/cancellation.json. Verdict delta:
+      acknowledged_at:property:tighten:correction. Witness: core/media-buy.json /cancellation/acknowledged_at = {}
+      (tighten).
+  - location: core/io-acceptance.json#/properties/io_id
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: request
+    note: >-
+      media-buy/accept-proposal-request.json#/properties/io_acceptance -> new:core/io-acceptance.json. Verdict delta:
+      io_id:maxLength:tighten:correction. Witness: media-buy/accept-proposal-request.json /io_acceptance/io_id =
+      "IO-2026-ACME-Q4IO-2026-ACME-Q4IO-2026-ACME-Q4IO-2026-ACME-Q4IO-2026-ACME-Q4I... (tighten).
+  - location: core/io-acceptance.json#/properties/io_id
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: request
+    note: >-
+      media-buy/create-media-buy-request.json#/properties/io_acceptance -> new:core/io-acceptance.json. Verdict delta:
+      io_id:minLength:tighten:correction; signature_id:minLength:tighten:correction. Witness:
+      media-buy/create-media-buy-request.json /io_acceptance/io_id = "" (tighten).
+  - location: core/io-acceptance.json#/properties/signature_id
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: request
+    note: >-
+      media-buy/create-media-buy-request.json#/properties/io_acceptance -> new:core/io-acceptance.json. Verdict delta:
+      io_id:minLength:tighten:correction; signature_id:minLength:tighten:correction. Witness:
+      media-buy/create-media-buy-request.json /io_acceptance/signature_id = "" (tighten).

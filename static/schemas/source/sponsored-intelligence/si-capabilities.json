@@ -22,9 +22,8 @@
               "type": "object",
               "properties": {
                 "provider": {
-                  "type": "string",
-                  "description": "TTS provider (elevenlabs, openai, etc.)",
-                  "maxLength": 128
+                  "$ref": "/schemas/core/voice-provider.json",
+                  "description": "TTS provider (elevenlabs, openai, etc.)"
                 },
                 "voice_id": {
                   "type": "string",
@@ -66,9 +65,8 @@
               "type": "object",
               "properties": {
                 "provider": {
-                  "type": "string",
-                  "description": "Avatar provider (d-id, heygen, synthesia, etc.)",
-                  "maxLength": 128
+                  "$ref": "/schemas/core/avatar-provider.json",
+                  "description": "Avatar provider (d-id, heygen, synthesia, etc.)"
                 },
                 "avatar_id": {
                   "type": "string",
@@ -85,6 +83,7 @@
       "additionalProperties": true
     },
     "components": {
+      "title": "SI Supported Visual Components",
       "type": "object",
       "description": "Visual components supported",
       "properties": {
@@ -98,6 +97,7 @@
           "maxItems": 16
         },
         "extensions": {
+          "title": "SI Component Platform Extensions",
           "type": "object",
           "description": "Platform-specific extensions (chatgpt_apps_sdk, maps, forms, etc.)",
           "additionalProperties": true

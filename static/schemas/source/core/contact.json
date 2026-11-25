@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/contact.json",
+  "title": "Contact",
+  "description": "Contact information for an entity: its name, plus optional email, domain, and registry identifiers.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "$ref": "/schemas/core/contact-name.json",
+      "description": "Name of the entity."
+    },
+    "email": {
+      "$ref": "/schemas/core/email-address.json",
+      "description": "Contact email address."
+    },
+    "domain": {
+      "$ref": "/schemas/core/domain-name.json",
+      "description": "Primary domain of the entity."
+    },
+    "seller_id": {
+      "type": "string",
+      "description": "Seller ID from IAB Tech Lab sellers.json (if applicable)",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "tag_id": {
+      "type": "string",
+      "description": "TAG Certified Against Fraud ID for verification (if applicable)",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "privacy_policy_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the entity's privacy policy. Used for consumer consent flows when interacting with this sales agent."
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": true
+}

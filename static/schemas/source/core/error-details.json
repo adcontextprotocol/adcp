@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/error-details.json",
+  "title": "Error Details",
+  "description": "Additional error details as an open object. To report a value rejected against a closed set, use the `rejected_value` and `accepted_values` keys.",
+  "type": "object",
+  "additionalProperties": true
+}

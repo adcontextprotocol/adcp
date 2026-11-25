@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -26,8 +27,11 @@ async function compile(schema) {
 
 // Finds the oneOf branch whose `scope` discriminator is pinned to `scopeConst`
 // (e.g. "standard" or "vendor") — the shared shape for every hand-maintained
-// copy of the (scope, metric_id, qualifier) row.
-function findScopeBranch(oneOf, scopeConst) {
+// copy of the (scope, metric_id, qualifier) row. `schema` holds the oneOf,
+// directly or through a reference to the shared metric identity.
+function findScopeBranch(schema, scopeConst) {
+  const oneOf = resolveSchema(schema).oneOf;
+  assert.ok(Array.isArray(oneOf), `no scope oneOf for scope=${scopeConst}`);
   const branch = oneOf.find(
     (entry) => entry.properties && entry.properties.scope && entry.properties.scope.const === scopeConst
   );
@@ -35,9 +39,10 @@ function findScopeBranch(oneOf, scopeConst) {
   return branch;
 }
 
+// Each copy references the canonical qualifier; read the key set through it.
 function keySet(qualifierSchema) {
   assert.ok(qualifierSchema, "qualifier schema missing");
-  return Object.keys(qualifierSchema.properties).sort();
+  return Object.keys(resolveSchema(qualifierSchema).properties).sort();
 }
 
 describe("metric qualifier parity across reporting surfaces", () => {
@@ -66,29 +71,29 @@ describe("metric qualifier parity across reporting surfaces", () => {
 
     const copies = {
       "committed-metric.json (standard)": keySet(
-        findScopeBranch(committedMetric.oneOf, "standard").properties.qualifier
+        findScopeBranch(committedMetric, "standard").properties.qualifier
       ),
       "missing-metric.json (standard)": keySet(
-        findScopeBranch(missingMetric.oneOf, "standard").properties.qualifier
+        findScopeBranch(missingMetric, "standard").properties.qualifier
       ),
       "delivery-metric-aggregate.json (standard)": keySet(
-        findScopeBranch(deliveryMetricAggregate.oneOf, "standard").properties
+        findScopeBranch(deliveryMetricAggregate, "standard").properties
           .qualifier
       ),
       "performance-feedback-metric.json (standard)": keySet(
-        findScopeBranch(performanceFeedbackMetric.oneOf, "standard").properties
+        findScopeBranch(performanceFeedbackMetric, "standard").properties
           .qualifier
       ),
       // Inline copy nested under properties.metric.oneOf.
       "performance-feedback.json (metric, standard)": keySet(
-        findScopeBranch(performanceFeedback.properties.metric.oneOf, "standard")
+        findScopeBranch(performanceFeedback.properties.metric, "standard")
           .properties.qualifier
       ),
       // package-request.json's committed_metrics array items carry their own
       // inline (scope, metric_id, qualifier) oneOf under properties.committed_metrics.items.
       "package-request.json (committed_metrics, standard)": keySet(
         findScopeBranch(
-          packageRequest.properties.committed_metrics.items.oneOf,
+          packageRequest.properties.committed_metrics.items,
           "standard"
         ).properties.qualifier
       ),
@@ -111,14 +116,14 @@ describe("metric qualifier parity across reporting surfaces", () => {
       const schema = readSchema(uri);
       vendorQualifiers.push([
         uri,
-        findScopeBranch(schema.oneOf, "vendor").properties.qualifier,
+        findScopeBranch(schema, "vendor").properties.qualifier,
       ]);
     }
     vendorQualifiers.push([
       "performance-feedback.json (metric, vendor)",
       findScopeBranch(
         readSchema("/schemas/core/performance-feedback.json").properties.metric
-          .oneOf,
+          ,
         "vendor"
       ).properties.qualifier,
     ]);
@@ -126,7 +131,7 @@ describe("metric qualifier parity across reporting surfaces", () => {
       "package-request.json (committed_metrics, vendor)",
       findScopeBranch(
         readSchema("/schemas/media-buy/package-request.json").properties
-          .committed_metrics.items.oneOf,
+          .committed_metrics.items,
         "vendor"
       ).properties.qualifier,
     ]);
@@ -146,7 +151,7 @@ describe("metric qualifier parity across reporting surfaces", () => {
         `${label} vendor qualifier key set does not match standard`
       );
       assert.equal(
-        vendorQualifier.additionalProperties,
+        resolveSchema(vendorQualifier).additionalProperties,
         false,
         `${label} vendor qualifier must be closed`
       );
@@ -186,45 +191,53 @@ describe("metric qualifier parity across reporting surfaces", () => {
 
     const closedQualifiers = {
       "committed-metric.json (standard)": findScopeBranch(
-        committedMetric.oneOf,
+        committedMetric,
         "standard"
       ).properties.qualifier,
       "committed-metric.json (vendor)": findScopeBranch(
-        committedMetric.oneOf,
+        committedMetric,
         "vendor"
       ).properties.qualifier,
       "missing-metric.json (standard)": findScopeBranch(
-        missingMetric.oneOf,
+        missingMetric,
         "standard"
       ).properties.qualifier,
-      "missing-metric.json (vendor)": findScopeBranch(missingMetric.oneOf, "vendor")
+      "missing-metric.json (vendor)": findScopeBranch(missingMetric, "vendor")
         .properties.qualifier,
       "delivery-metric-aggregate.json (standard)": findScopeBranch(
-        deliveryMetricAggregate.oneOf,
+        deliveryMetricAggregate,
         "standard"
       ).properties.qualifier,
       "delivery-metric-aggregate.json (vendor)": findScopeBranch(
-        deliveryMetricAggregate.oneOf,
+        deliveryMetricAggregate,
         "vendor"
       ).properties.qualifier,
       "performance-feedback-metric.json (standard)": findScopeBranch(
-        performanceFeedbackMetric.oneOf,
+        performanceFeedbackMetric,
         "standard"
       ).properties.qualifier,
       "performance-feedback.json (metric, standard)": findScopeBranch(
-        performanceFeedback.properties.metric.oneOf,
+        performanceFeedback.properties.metric,
         "standard"
       ).properties.qualifier,
       "package-request.json (committed_metrics, standard)": findScopeBranch(
-        packageRequest.properties.committed_metrics.items.oneOf,
+        packageRequest.properties.committed_metrics.items,
         "standard"
       ).properties.qualifier,
       "canonical-metric-qualifier.json": canonicalMetricQualifier,
     };
 
     for (const [label, qualifierSchema] of Object.entries(closedQualifiers)) {
+      // Every copy references the one canonical qualifier, so none can drift.
+      if (qualifierSchema !== canonicalMetricQualifier) {
+        assert.equal(
+          qualifierSchema.$ref,
+          "/schemas/core/canonical-metric-qualifier.json",
+          `${label} qualifier must reference the canonical qualifier`
+        );
+      }
       assert.equal(
-        qualifierSchema.additionalProperties,
+        resolveSchema(qualifierSchema).additionalProperties,
         false,
         `${label} qualifier must be closed`
       );

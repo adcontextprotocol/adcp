@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/demographic-signals-execution.json",
+  "title": "Demographic Signals Execution",
+  "description": "A demographic targeting execution through signals: one or more signal references.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "signals",
+      "default": "signals"
+    },
+    "signal_refs": {
+      "type": "array",
+      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+      "items": {
+        "$ref": "/schemas/core/signal-ref.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "type",
+    "signal_refs"
+  ],
+  "additionalProperties": true
+}

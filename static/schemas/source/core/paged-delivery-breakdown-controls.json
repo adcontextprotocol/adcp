@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/paged-delivery-breakdown-controls.json",
+  "title": "Paged Delivery Breakdown Controls",
+  "description": "Controls for a delivery breakdown that pages: row limit, sort, and a page cursor.",
+  "type": "object",
+  "properties": {
+    "limit": {
+      "$ref": "/schemas/core/delivery-breakdown-limit.json",
+      "default": 25,
+      "description": "Maximum number of entries to return. Defaults to 25."
+    },
+    "sort_by": {
+      "$ref": "/schemas/enums/sort-metric.json",
+      "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
+      "default": "spend"
+    },
+    "sort_direction": {
+      "$ref": "/schemas/enums/sort-direction.json",
+      "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
+      "default": "desc"
+    },
+    "cursor": {
+      "$ref": "/schemas/core/page-cursor.json",
+      "description": "Opaque cursor from the previous response's pagination for this breakdown, to fetch its next page. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
+    }
+  },
+  "additionalProperties": true
+}

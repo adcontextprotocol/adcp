@@ -5,22 +5,18 @@
   "description": "Brand identity and discovery file. Hosted at /.well-known/brand.json on house domains. Contains the full brand portfolio with identity, creative assets, and digital properties. Brands are identified by house + brand_id (like properties are identified by publisher + property_id). Supports variants: house portfolio (full brand data), brand agent (agent provides brand info via MCP), house redirect (pointer to house domain), or authoritative location redirect.",
   "definitions": {
     "domain": {
-      "type": "string",
-      "description": "A valid domain name",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json",
+      "description": "A valid domain name"
     },
     "brand_id": {
-      "type": "string",
-      "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID.",
-      "pattern": "^[a-z0-9_]+$"
+      "$ref": "/schemas/core/brand-id.json",
+      "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID."
     },
     "logo_slot": {
       "$ref": "/schemas/enums/logo-slot.json"
     },
     "logo_id": {
-      "type": "string",
-      "description": "Stable identifier for a logo entry within this brand.json document. Use lowercase words separated by underscores or hyphens; do not key integrations on mutable asset URLs.",
-      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+      "$ref": "/schemas/core/brand-logo-id.json"
     },
     "trademark": {
       "type": "object",
@@ -54,7 +50,7 @@
         },
         "countries": {
           "type": "array",
-          "items": { "type": "string", "minLength": 2, "maxLength": 2 },
+          "items": { "$ref": "/schemas/core/country-code.json" },
           "description": "ISO 3166-1 alpha-2 country codes where this registration applies. Omit for global or where the registry's jurisdiction is implicit."
         },
         "nice_classes": {
@@ -92,52 +88,16 @@
       "additionalProperties": true
     },
     "localized_name": {
-      "type": "object",
-      "description": "A localized name using the legacy underscore-separated language/region key convention (for example 'en_US', 'fr_CA', or 'zh_CN') and a name value. Bare language codes such as 'en' are also accepted for backwards compatibility. These keys are not AdCP locale-tag values: a bridge to /schemas/core/locale-tag.json replaces '_' with '-', applies the AdCP canonical wire profile, and validates the result rather than passing the key through unchanged.",
-      "minProperties": 1,
-      "maxProperties": 1,
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "/schemas/core/brand-localized-name.json"
     },
     "localized_scalar": {
-      "description": "A legacy plain string or an ordered set of one-locale string maps. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile. Readers resolve the requested locale using the document default_language fallback contract and MUST NOT choose an arbitrary available translation.",
-      "oneOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "array",
-          "items": { "$ref": "#/definitions/localized_name" },
-          "minItems": 1
-        }
-      ]
+      "$ref": "/schemas/core/brand-localized-scalar.json"
     },
     "localized_string_list_entry": {
-      "type": "object",
-      "description": "One locale mapped to a complete ordered string list. The list is selected as a unit so readers never assemble mixed-language output from independently localized elements.",
-      "minProperties": 1,
-      "maxProperties": 1,
-      "additionalProperties": {
-        "type": "array",
-        "items": { "type": "string" },
-        "minItems": 1
-      }
+      "$ref": "/schemas/core/brand-localized-string-list-entry.json"
     },
     "localized_string_list": {
-      "description": "A legacy plain string list or an ordered set of one-locale maps whose values are complete string lists. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile.",
-      "oneOf": [
-        {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        {
-          "type": "array",
-          "items": { "$ref": "#/definitions/localized_string_list_entry" },
-          "minItems": 1
-        }
-      ]
+      "$ref": "/schemas/core/brand-localized-string-list.json"
     },
     "default_language": {
       "allOf": [
@@ -147,113 +107,27 @@
       "description": "BCP 47 language tag for legacy plain-string and plain-array content in this document. Readers assume en when omitted."
     },
     "keller_type": {
-      "type": "string",
-      "enum": ["master", "sub_brand", "endorsed", "independent"],
+      "$ref": "/schemas/enums/brand-architecture-type.json",
       "description": "Brand architecture type from Keller's theory. master: primary brand of house. sub_brand: carries parent name (Nike SB). endorsed: independent identity backed by parent (Air Jordan 'by Nike'). independent: operates separately (Converse under Nike, Inc.)"
     },
     "logo": {
-      "type": "object",
-      "description": "Brand logo asset with structured fields for orientation, background compatibility, and variant type",
-      "properties": {
-        "id": {
-          "$ref": "#/definitions/logo_id",
-          "description": "Stable identifier for this logo entry. Recommended when logo usage rules or mark lockups need to bind to a specific logo asset."
-        },
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to the logo asset"
-        },
-        "orientation": {
-          "type": "string",
-          "enum": ["square", "horizontal", "vertical", "stacked"],
-          "description": "Logo aspect ratio orientation. square: ~1:1, horizontal: wide, vertical: tall, stacked: vertically arranged elements"
-        },
-        "background": {
-          "type": "string",
-          "enum": ["dark-bg", "light-bg", "transparent-bg"],
-          "description": "Background compatibility. dark-bg: use on dark backgrounds, light-bg: use on light backgrounds, transparent-bg: has transparent background"
-        },
-        "variant": {
-          "type": "string",
-          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
-          "description": "Logo variant type. primary: main logo, secondary: alternative, icon: symbol only, wordmark: text only, full-lockup: complete logo"
-        },
-        "tags": {
-          "type": "array",
-          "description": "Additional semantic tags for custom categorization beyond the standard orientation, background, and variant fields",
-          "items": { "type": "string" }
-        },
-        "slots": {
-          "type": "array",
-          "description": "Canonical renderer slots where this logo is appropriate. Consumers SHOULD prefer this over inferring from tags or usage prose when selecting a logo for a specific UI surface.",
-          "items": { "$ref": "#/definitions/logo_slot" },
-          "uniqueItems": true
-        },
-        "usage": {
-          "type": "string",
-          "description": "Human-readable description of when to use this logo variant (e.g., 'Primary logo for use on light backgrounds')"
-        },
-        "width": { "type": "integer", "description": "Width in pixels" },
-        "height": { "type": "integer", "description": "Height in pixels" }
-      },
-      "required": ["url"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-logo.json"
     },
     "hex_color": {
-      "type": "string",
-      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "$ref": "/schemas/core/hex-color.json",
       "description": "A single hex color value"
     },
     "color_value": {
       "oneOf": [
-        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "5.0.0", "description": "Deprecated in 3.3. The single-value form: send a one-item array instead. brand.json is read without version negotiation, so readers accept this form until 5.0." },
-        { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+        { "$ref": "/schemas/core/hex-color.json", "deprecated": true, "x-deprecated-in": "3.3.0", "x-removed-in": "5.0.0", "description": "Deprecated in 3.3. The single-value form: send a one-item array instead. brand.json is read without version negotiation, so readers accept this form until 5.0." },
+        { "type": "array", "items": { "$ref": "/schemas/core/hex-color.json" }, "minItems": 1 }
       ]
     },
     "color_ref": {
-      "type": "object",
-      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use kind=name for palette lookup keys in colors, kind=value for a literal hex color, and kind=surface for layout surfaces such as background or text.",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "enum": ["name", "value", "surface"],
-          "description": "Discriminator for the color reference variant."
-        },
-        "name": {
-          "type": "string",
-          "description": "Key from the colors object, such as market_yellow, river_green, or any custom palette key. Unambiguous lookup into colors{}."
-        },
-        "value": {
-          "$ref": "#/definitions/hex_color",
-          "description": "Literal hex color when no palette key exists."
-        },
-        "surface": {
-          "type": "string",
-          "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"],
-          "description": "Usage surface rather than a specific color value."
-        }
-      },
-      "oneOf": [
-        {
-          "properties": { "kind": { "const": "name" } },
-          "required": ["kind", "name"]
-        },
-        {
-          "properties": { "kind": { "const": "value" } },
-          "required": ["kind", "value"]
-        },
-        {
-          "properties": { "kind": { "const": "surface" } },
-          "required": ["kind", "surface"]
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-color-ref.json"
     },
     "guideline_severity": {
-      "type": "string",
-      "enum": ["must", "should"],
-      "description": "Strength of a machine-readable brand guideline constraint."
+      "$ref": "/schemas/core/brand-guideline-severity.json"
     },
     "colors": {
       "type": "object",
@@ -275,144 +149,20 @@
       "additionalProperties": { "$ref": "#/definitions/color_value" }
     },
     "font_file": {
-      "type": "object",
-      "description": "A font file with weight, style, and variable font metadata",
-      "properties": {
-        "url": { "type": "string", "format": "uri", "pattern": "^https://", "description": "HTTPS URL to the font file (WOFF2, TTF, or OTF)" },
-        "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight for static fonts (100-900)" },
-        "weight_range": {
-          "type": "array",
-          "items": { "type": "integer", "minimum": 100, "maximum": 900 },
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "Variable font weight axis range as [min, max] (e.g., [100, 900]). Use instead of weight for variable fonts."
-        },
-        "style": {
-          "type": "string",
-          "enum": ["normal", "italic", "oblique"],
-          "description": "CSS font-style"
-        }
-      },
-      "required": ["url"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/font-file.json",
+      "description": "A font file with weight, style, and variable font metadata"
     },
     "font_role": {
-      "description": "A font role entry. Either a CSS font-family string (simple) or a structured object with family name and font files (rich).",
-      "oneOf": [
-        { "type": "string", "description": "CSS font-family name (e.g., 'Montserrat', 'Arial, sans-serif')" },
-        {
-          "type": "object",
-          "description": "Structured font with family name, downloadable font files, and typographic metadata",
-          "properties": {
-            "family": { "type": "string", "description": "CSS font-family name (e.g., 'Brand Sans')" },
-            "files": {
-              "type": "array",
-              "items": { "$ref": "#/definitions/font_file" },
-              "maxItems": 36,
-              "description": "Font files for different weights and styles"
-            },
-            "opentype_features": {
-              "type": "array",
-              "items": { "type": "string", "pattern": "^[a-z0-9]{4}$" },
-              "maxItems": 20,
-              "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum', 'cv01']). These are four-character tags per the OpenType spec."
-            },
-            "fallbacks": {
-              "type": "array",
-              "items": { "type": "string", "maxLength": 100 },
-              "maxItems": 10,
-              "description": "Ordered fallback font-family names for when the primary font is unavailable or does not support the required script (e.g., ['Noto Sans Arabic', 'Noto Sans SC', 'sans-serif'])"
-            }
-          },
-          "required": ["family"],
-          "additionalProperties": true
-        }
-      ]
+      "$ref": "/schemas/core/brand-font-role.json"
     },
     "fonts": {
-      "type": "object",
-      "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with font files for reliable resolution.",
-      "maxProperties": 20,
-      "properties": {
-        "primary": { "$ref": "#/definitions/font_role", "description": "Primary font family" },
-        "secondary": { "$ref": "#/definitions/font_role", "description": "Secondary font family" }
-      },
-      "additionalProperties": { "$ref": "#/definitions/font_role" }
+      "$ref": "/schemas/core/brand-fonts.json"
     },
     "asset": {
-      "type": "object",
-      "description": "Brand asset (image, video, audio, text)",
-      "properties": {
-        "asset_id": { "type": "string", "description": "Unique identifier" },
-        "asset_type": {
-          "$ref": "/schemas/enums/asset-content-type.json",
-          "description": "Type of asset content"
-        },
-        "url": { "type": "string", "format": "uri", "description": "URL to CDN-hosted asset file" },
-        "tags": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Tags for discovery (e.g., 'hero', 'lifestyle', 'product', 'holiday')"
-        },
-        "name": {
-          "$ref": "#/definitions/localized_scalar",
-          "description": "Human-readable name, either a legacy plain string or localized values."
-        },
-        "description": {
-          "$ref": "#/definitions/localized_scalar",
-          "description": "Asset description or usage notes, either a legacy plain string or localized values."
-        },
-        "width": { "type": "integer", "description": "Image/video width in pixels" },
-        "height": { "type": "integer", "description": "Image/video height in pixels" },
-        "duration_seconds": { "type": "number", "description": "Video/audio duration in seconds" },
-        "file_size_bytes": { "type": "integer", "description": "File size in bytes" },
-        "format": { "type": "string", "description": "File format (e.g., 'jpg', 'mp4', 'mp3')" },
-        "metadata": {
-          "type": "object",
-          "description": "Additional asset-specific metadata",
-          "additionalProperties": true
-        }
-      },
-      "required": ["asset_id", "asset_type", "url"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-asset.json"
     },
     "property": {
-      "type": "object",
-      "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare direct, delegated, or ad_network properties. For direct, delegated, and network paths, these values match the delegation_type field in adagents.json, creating a bilateral verification chain: the operator declares the relationship here, the publisher confirms by setting the same delegation_type on the agent's authorization in their adagents.json. 'owned' is an inline ownership declaration with no adagents.json counterpart.",
-      "properties": {
-        "type": {
-          "$ref": "/schemas/enums/property-type.json",
-          "description": "Property type"
-        },
-        "identifier": {
-          "type": "string",
-          "description": "Property identifier - domain for websites, bundle ID for apps",
-          "minLength": 1
-        },
-        "store": {
-          "type": "string",
-          "enum": ["apple", "google", "amazon", "roku", "samsung", "lg", "other"],
-          "description": "App store for mobile/CTV apps"
-        },
-        "region": {
-          "type": "string",
-          "description": "ISO 3166-1 alpha-2 country code or 'global'",
-          "pattern": "^([A-Z]{2}|global)$"
-        },
-        "primary": {
-          "type": "boolean",
-          "default": false,
-          "description": "Whether this is the primary property for the brand"
-        },
-        "relationship": {
-          "type": "string",
-          "enum": ["owned", "direct", "delegated", "ad_network"],
-          "default": "owned",
-          "description": "How this brand relates to the property. 'owned': the brand owns and operates this property (default) and has no adagents.json delegation_type counterpart. 'direct': the brand is the direct sales path for this property, even if a third party operates the software (e.g., a publisher's in-house ad team using a vendor's tech). 'delegated': the brand manages monetization for this property — they are in charge of ad sales (e.g., Mediavine managing a food blog). 'ad_network': the brand sells this property's inventory as part of a network or exchange — they are a path to the inventory, not the path (e.g., PubMatic as an SSP). For non-owned properties, the publisher confirms the relationship by setting the matching delegation_type on the agent's authorization in their adagents.json."
-        }
-      },
-      "required": ["type", "identifier"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-property.json"
     },
     "product_catalog": {
       "type": "object",
@@ -434,8 +184,7 @@
           "description": "When the product catalog was last updated"
         },
         "update_frequency": {
-          "type": "string",
-          "enum": ["realtime", "hourly", "daily", "weekly"],
+          "$ref": "/schemas/enums/update-frequency.json",
           "description": "How frequently the product catalog is updated"
         },
         "agentic_checkout": {
@@ -457,33 +206,8 @@
       "additionalProperties": true
     },
     "data_subject_contestation": {
-      "type": "object",
-      "description": "Contact point where a data subject can request human intervention, express their view, or contest an automated decision — satisfying GDPR Article 22(3) and EU AI Act Article 26(11) transparency obligations. This is a contact reference (URL, email, or both), not a machine-callable API. AdCP surfaces the pointer; the deployer runs the contestation workflow.",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
-          "description": "HTTPS URL to a human-accessible contestation form or information page."
-        },
-        "email": {
-          "type": "string",
-          "format": "email",
-          "description": "Email address for contestation requests. Deployer MUST monitor and respond within the timelines set by applicable law (e.g., 1 month under GDPR Art. 12(3))."
-        },
-        "languages": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "BCP 47 language tags the contestation channel supports (e.g., ['en', 'de', 'fr']). At minimum SHOULD include a language spoken in every jurisdiction where the brand runs regulated-vertical campaigns."
-        }
-      },
-      "anyOf": [
-        { "required": ["url"] },
-        { "required": ["email"] }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/data-subject-contestation.json",
+      "description": "Contact point where a data subject can request human intervention, express their view, or contest an automated decision — satisfying GDPR Article 22(3) and EU AI Act Article 26(11) transparency obligations. This is a contact reference (URL, email, or both), not a machine-callable API. AdCP surfaces the pointer; the deployer runs the contestation workflow."
     },
     "brand": {
       "type": "object",
@@ -543,26 +267,8 @@
               "description": "Simple tone descriptors for backwards compatibility"
             },
             {
-              "type": "object",
-              "description": "Structured brand voice guidelines",
-              "properties": {
-                "voice": {
-                  "$ref": "#/definitions/localized_scalar",
-                  "description": "High-level voice descriptor, either a legacy plain string or localized values."
-                },
-                "attributes": {
-                  "$ref": "#/definitions/localized_string_list",
-                  "description": "Personality traits that characterize the brand voice. Localized lists are selected as a whole."
-                },
-                "dos": {
-                  "$ref": "#/definitions/localized_string_list",
-                  "description": "Guidance for copy generation - what TO do. Localized lists are selected as a whole."
-                },
-                "donts": {
-                  "$ref": "#/definitions/localized_string_list",
-                  "description": "Guardrails to avoid brand violations - what NOT to do. Localized lists are selected as a whole."
-                }
-              }
+              "$ref": "/schemas/core/brand-tone.json",
+              "description": "Structured brand voice guidelines"
             }
           ]
         },
@@ -625,14 +331,8 @@
           "description": "Brand-level registered trademarks. Use for marks the brand owns or controls (e.g., a sub-brand's own marks distinct from the corporate parent). House-level trademarks live on the house object; resolution between the two is union — both lists are valid claims."
         },
         "voice_synthesis": {
-          "type": "object",
-          "description": "TTS voice synthesis configuration for AI-generated audio",
-          "properties": {
-            "provider": { "type": "string" },
-            "voice_id": { "type": "string" },
-            "settings": { "type": "object", "additionalProperties": true }
-          },
-          "additionalProperties": true
+          "$ref": "/schemas/core/voice-synthesis.json",
+          "description": "TTS voice synthesis configuration for AI-generated audio"
         },
         "avatar": {
           "type": "object",
@@ -640,7 +340,7 @@
           "properties": {
             "provider": { "type": "string" },
             "avatar_id": { "type": "string" },
-            "settings": { "type": "object", "additionalProperties": true }
+            "settings": { "title": "Avatar Provider Settings", "type": "object", "additionalProperties": true }
           },
           "additionalProperties": true
         },
@@ -663,10 +363,14 @@
           "deprecated": true
         },
         "contact": {
+          "title": "Brand Contact",
           "type": "object",
           "description": "Brand-level contact information",
           "properties": {
-            "email": { "type": "string", "format": "email", "description": "Contact email" },
+            "email": {
+              "$ref": "/schemas/core/email-address.json",
+              "description": "Contact email"
+            },
             "phone": { "type": "string", "description": "Contact phone number" }
           }
         },
@@ -677,14 +381,13 @@
             "type": "object",
             "properties": {
               "publisher_domain": {
-                "type": "string",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                "$ref": "/schemas/core/domain-name.json",
                 "description": "Experimental (brand.collection_links). Publisher namespace that declares the collection in its adagents.json. collection_id is unique only within this namespace, so together they form the {publisher_domain, collection_ids} selector that products use.",
                 "x-status": "experimental",
                 "x-added-in": "3.3.0"
               },
               "collection_id": {
-                "type": "string",
+                "$ref": "/schemas/core/collection-id.json",
                 "description": "Collection identifier as used in the seller's get_products responses. Scoped to publisher_domain when present."
               },
               "name": {
@@ -718,9 +421,8 @@
           "description": "The house's domain where brand.json is hosted"
         },
         "name": {
-          "type": "string",
-          "description": "Primary display name of the house",
-          "minLength": 1
+          "$ref": "/schemas/core/parent-organization-name.json",
+          "description": "Primary display name of the house"
         },
         "names": {
           "type": "array",
@@ -754,38 +456,20 @@
       "description": "Alias for the shared core identity relying party schema, kept so existing references to brand.json#/definitions/identity_relying_party keep resolving."
     },
     "brand_agent": {
-      "type": "object",
-      "description": "Reference to a brand agent that provides brand data via MCP",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
-          "description": "Brand agent MCP endpoint URL. Callers comparing this URL against another value (e.g., resolving 'is this the brand's declared agent?' against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
-        },
-        "id": {
-          "type": "string",
-          "description": "Agent identifier (useful for logging, multi-tenant DAMs)",
-          "pattern": "^[a-z0-9_]+$"
-        }
-      },
-      "required": ["url", "id"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-agent.json",
+      "description": "Reference to a brand agent that provides brand data via MCP"
     },
     "rights_agent": {
       "type": "object",
       "description": "Rights licensing agent for this brand. Provides discovery, pricing, and acquisition of licensable rights via MCP. Use get_rights and acquire_rights tasks to interact.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Rights agent MCP endpoint URL. Callers comparing this URL against another value (e.g., matching against a brand's declared rights endpoint) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
         },
         "id": {
-          "type": "string",
-          "description": "Agent identifier",
-          "pattern": "^[a-z0-9_]+$"
+          "$ref": "/schemas/core/brand-agent-id.json",
+          "description": "Agent identifier"
         },
         "available_uses": {
           "type": "array",
@@ -803,8 +487,7 @@
           "type": "array",
           "description": "Countries where rights are available (ISO 3166-1 alpha-2)",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         }
       },
@@ -820,26 +503,19 @@
           "description": "Functional role of this agent"
         },
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Agent endpoint URL (MCP or A2A). Callers comparing a brand's declared agent URL against another value (e.g., resolving 'is this the agent that signed this artifact?' or matching against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. After the publication chain and an authorized request-signing key verify, this exact entry's canonical URL is the stable Agent identity input for principal mapping; the domain, JWKS URI, kid, and key material are credential or trust facts beneath it, not the Agent identity. See docs/reference/url-canonicalization."
         },
         "id": {
-          "type": "string",
-          "description": "Agent identifier (useful for logging, multi-tenant platforms)",
-          "pattern": "^[a-z0-9_]+$",
-          "maxLength": 100
+          "$ref": "/schemas/core/brand-agent-id.json",
+          "description": "Agent identifier (useful for logging, multi-tenant platforms)"
         },
         "description": {
-          "type": "string",
-          "description": "Human-readable description of this agent's capabilities or scope",
-          "maxLength": 500
+          "$ref": "/schemas/core/brand-agent-description.json",
+          "description": "Human-readable description of this agent's capabilities or scope"
         },
         "jwks_uri": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the agent's JWKS (RFC 7517) containing public keys used to verify artifacts this agent signs or requests it sends. Verified artifacts include signed governance_context tokens (for governance agents) and RFC 9421 HTTP Signatures on outgoing requests (for any agent). When absent, verifiers MUST default to /.well-known/jwks.json on the origin of `url`. Keys are identified by `kid` in the JWS header or RFC 9421 `keyid` parameter; JWKS MAY contain multiple keys to support rotation and per-purpose separation via `key_ops` and `use`."
         },
         "available_uses": {
@@ -858,8 +534,7 @@
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where this agent operates. Omit for global scope.",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         }
       },
@@ -883,8 +558,7 @@
           "type": "array",
           "description": "Brand IDs this operator is authorized for. Use ['*'] for all brands in the portfolio.",
           "items": {
-            "type": "string",
-            "pattern": "^([a-z0-9_]+|\\*)$"
+            "$ref": "/schemas/core/brand-id-or-wildcard.json"
           },
           "minItems": 1
         },
@@ -892,8 +566,7 @@
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where this authorization applies. Omit for global authorization.",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         },
         "scopes": {
@@ -921,822 +594,97 @@
       "additionalProperties": true
     },
     "photography_style": {
-      "type": "object",
-      "description": "Photography style rules for generative creative systems. Defines how brand photography should look when selected or generated.",
-      "properties": {
-        "realism": {
-          "type": "string",
-          "enum": ["natural", "stylized", "hyperreal", "abstract"],
-          "description": "Level of photographic realism"
-        },
-        "lighting": {
-          "type": "string",
-          "description": "Lighting style (e.g., 'soft daylight', 'studio', 'golden hour', 'high-key', 'low-key')"
-        },
-        "color_temperature": {
-          "type": "string",
-          "enum": ["warm", "neutral", "cool"],
-          "description": "Overall color temperature of photography"
-        },
-        "contrast": {
-          "type": "string",
-          "enum": ["low", "medium", "high"],
-          "description": "Contrast level in photography"
-        },
-        "depth_of_field": {
-          "type": "string",
-          "enum": ["shallow", "medium", "deep"],
-          "description": "Depth of field preference. shallow: blurred background with subject isolation, deep: everything in focus"
-        },
-        "subject": {
-          "type": "object",
-          "description": "Subject matter guidelines",
-          "properties": {
-            "people": {
-              "type": "object",
-              "description": "People photography guidelines",
-              "properties": {
-                "age_range": { "type": "string", "description": "Target age range (e.g., '20-35')" },
-                "diversity": { "type": "string", "description": "Diversity representation (e.g., 'mixed', 'varied')" },
-                "mood": {
-                  "type": "array",
-                  "items": { "type": "string" },
-                  "description": "Mood descriptors (e.g., ['confident', 'relaxed'])"
-                }
-              },
-              "additionalProperties": true
-            },
-            "product_focus": {
-              "type": "string",
-              "enum": ["in-use", "isolated", "lifestyle", "detail"],
-              "description": "How products are shown"
-            },
-            "setting": {
-              "type": "string",
-              "description": "Environmental context for photography (e.g., 'indoor', 'outdoor', 'studio', 'urban', 'nature', 'workplace')"
-            }
-          },
-          "additionalProperties": true
-        },
-        "framing": {
-          "type": "object",
-          "description": "Camera framing rules",
-          "properties": {
-            "subject_position": {
-              "type": "string",
-              "description": "Where the subject sits in frame (e.g., 'center', 'center-left', 'rule-of-thirds')"
-            },
-            "crop_style": {
-              "type": "string",
-              "description": "Cropping convention (e.g., 'waist-up', 'full-body', 'close-up', 'wide')"
-            },
-            "perspective": {
-              "type": "string",
-              "description": "Camera perspective (e.g., 'eye-level', 'overhead', 'low-angle')"
-            }
-          },
-          "additionalProperties": true
-        },
-        "preferred_aspect_ratios": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^\\d+:\\d+$"
-          },
-          "description": "Preferred aspect ratios for brand photography (e.g., '16:9', '4:5', '1:1')"
-        },
-        "tags": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Additional style descriptors"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-photography-style.json"
     },
     "graphic_style": {
-      "type": "object",
-      "description": "Visual language for brand graphics and illustrations",
-      "properties": {
-        "style_type": {
-          "type": "string",
-          "enum": ["flat_illustration", "geometric", "gradient_mesh", "editorial_collage", "hand_drawn", "minimal_line_art", "3d_render", "isometric", "photographic_composite"],
-          "description": "Primary graphic style"
-        },
-        "stroke_style": {
-          "type": "string",
-          "enum": ["rounded", "square", "mixed", "none"],
-          "description": "Stroke end/join style"
-        },
-        "stroke_weight": {
-          "type": "string",
-          "description": "Stroke weight (e.g., '2px', 'thin', 'bold')"
-        },
-        "corner_radius": {
-          "type": "string",
-          "description": "Default corner radius for graphic and illustration elements (e.g., '12px', '8px', 'sharp'). For UI component radii (buttons, cards, inputs), see visual_guidelines.border_radius."
-        },
-        "tags": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Additional style descriptors"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-graphic-style.json"
     },
     "border_radius": {
-      "type": "object",
-      "description": "Named border radius presets for UI components and layout elements. One of the most visible brand differentiators — Airbnb uses generous 20px, Stripe uses precise 4–8px, Spotify uses pill/999px.",
-      "properties": {
-        "none": {
-          "type": "string",
-          "description": "Explicitly sharp corners (e.g., '0')"
-        },
-        "default": {
-          "type": "string",
-          "description": "Default border radius for UI components (e.g., '8px', '12px', '0'). For graphic/illustration elements, see graphic_style.corner_radius."
-        },
-        "small": {
-          "type": "string",
-          "description": "Small border radius for compact elements (e.g., '4px')"
-        },
-        "large": {
-          "type": "string",
-          "description": "Large border radius for cards and containers (e.g., '16px', '24px')"
-        },
-        "pill": {
-          "type": "string",
-          "description": "Fully rounded / pill shape (e.g., '999px')"
-        }
-      },
-      "additionalProperties": {
-        "type": "string"
-      }
+      "$ref": "/schemas/core/brand-border-radius.json"
     },
     "elevation": {
-      "type": "object",
-      "description": "Named shadow/elevation levels. Brands use elevation as identity — from Stripe's blue-tinted multi-layer shadows to Apple's single diffuse shadow. Values are CSS box-shadow syntax.",
-      "properties": {
-        "none": {
-          "type": "string",
-          "description": "No shadow (e.g., 'none')"
-        },
-        "subtle": {
-          "type": "string",
-          "description": "Subtle shadow for slight lift (e.g., '0 1px 2px rgba(0,0,0,0.05)')"
-        },
-        "card": {
-          "type": "string",
-          "description": "Card-level shadow (e.g., '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)')"
-        },
-        "modal": {
-          "type": "string",
-          "description": "Modal/overlay shadow (e.g., '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)')"
-        }
-      },
-      "additionalProperties": {
-        "type": "string"
-      }
+      "$ref": "/schemas/core/brand-elevation.json"
     },
     "spacing": {
-      "type": "object",
-      "description": "Spacing system for consistent layout rhythm. Most design systems use an 8px base grid.",
-      "properties": {
-        "unit": {
-          "type": "string",
-          "description": "Base grid unit this scale was designed from (e.g., '8px', '4px'). Informational — agents should use the named scale values, not compute from this."
-        },
-        "scale": {
-          "type": "object",
-          "description": "Named spacing scale built from the base unit",
-          "properties": {
-            "xs": { "type": "string", "description": "Extra small spacing (e.g., '4px')" },
-            "sm": { "type": "string", "description": "Small spacing (e.g., '8px')" },
-            "md": { "type": "string", "description": "Medium spacing (e.g., '16px')" },
-            "lg": { "type": "string", "description": "Large spacing (e.g., '24px')" },
-            "xl": { "type": "string", "description": "Extra large spacing (e.g., '32px')" },
-            "2xl": { "type": "string", "description": "Section-level spacing (e.g., '48px', '64px')" }
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-spacing.json"
     },
     "brand_shapes": {
-      "type": "object",
-      "description": "Distinctive shapes used as part of brand visual identity",
-      "properties": {
-        "primary_shape": {
-          "type": "string",
-          "description": "Primary brand shape (e.g., 'rounded_rectangle', 'circle', 'hexagon')"
-        },
-        "secondary_shapes": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Secondary shapes in the brand vocabulary"
-        },
-        "usage": {
-          "type": "object",
-          "description": "Shape usage rules",
-          "properties": {
-            "max_per_layout": {
-              "type": "integer",
-              "description": "Maximum distinct shapes per layout"
-            },
-            "overlap_allowed": {
-              "type": "boolean",
-              "description": "Whether shapes may overlap"
-            }
-          },
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-shapes.json"
     },
     "iconography": {
-      "type": "object",
-      "description": "Icon style system and usage rules",
-      "properties": {
-        "style": {
-          "type": "string",
-          "enum": ["outline", "filled", "duotone", "flat", "glyph", "hand_drawn"],
-          "description": "Icon rendering style"
-        },
-        "stroke_weight": {
-          "type": "string",
-          "description": "Icon stroke weight (e.g., '2px', '1.5px')"
-        },
-        "corner_style": {
-          "type": "string",
-          "enum": ["rounded", "square", "mixed"],
-          "description": "Corner style for icon paths"
-        },
-        "usage": {
-          "type": "object",
-          "description": "Icon usage rules",
-          "properties": {
-            "max_per_frame": {
-              "type": "integer",
-              "description": "Maximum icons per creative frame"
-            },
-            "size_ratio": {
-              "type": "string",
-              "description": "Icon-to-layout size ratio (e.g., '1:8')"
-            }
-          },
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-iconography.json"
     },
     "composition_rules": {
-      "type": "object",
-      "description": "Layout composition rules including overlays, textures, and backgrounds",
-      "properties": {
-        "overlays": {
-          "type": "object",
-          "description": "Graphic overlay rules",
-          "properties": {
-            "gradient_style": {
-              "type": "string",
-              "enum": ["linear", "radial", "conic", "none"],
-              "description": "Gradient type for overlays"
-            },
-            "gradient_direction": {
-              "type": "string",
-              "description": "Gradient direction (e.g., '45deg', 'to-bottom-right')"
-            },
-            "opacity": {
-              "type": "string",
-              "description": "Overlay opacity (e.g., '70%')"
-            }
-          },
-          "additionalProperties": true
-        },
-        "texture": {
-          "type": "object",
-          "description": "Texture treatment rules",
-          "properties": {
-            "style": {
-              "type": "string",
-              "enum": ["none", "subtle_grain", "noise", "paper", "fabric", "concrete"],
-              "description": "Texture style applied to creative assets"
-            },
-            "intensity": {
-              "type": "string",
-              "enum": ["low", "medium", "high"],
-              "description": "Texture intensity"
-            }
-          },
-          "additionalProperties": true
-        },
-        "backgrounds": {
-          "type": "object",
-          "description": "Background treatment rules",
-          "properties": {
-            "types_allowed": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": ["solid_color", "gradient", "blurred_photo", "image", "video", "pattern", "transparent"]
-              },
-              "description": "Permitted background types"
-            }
-          },
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-composition-rules.json"
     },
     "colorway": {
-      "type": "object",
-      "description": "A named color pairing that defines how colors work together. Colorways ensure foreground/background combinations are always on-brand and accessible.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Colorway name (e.g., 'primary', 'inverted', 'subtle')"
-        },
-        "foreground": { "$ref": "#/definitions/hex_color" },
-        "background": { "$ref": "#/definitions/hex_color" },
-        "accent": { "$ref": "#/definitions/hex_color" },
-        "border": { "$ref": "#/definitions/hex_color" },
-        "cta_foreground": { "$ref": "#/definitions/hex_color", "description": "CTA text/icon color, if different from foreground" },
-        "cta_background": { "$ref": "#/definitions/hex_color", "description": "CTA button/container color, if different from accent" },
-        "channels": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Channels or contexts where this colorway applies (e.g., 'online', 'print', 'pos', 'social', 'outdoor'). Omit for universal colorways."
-        }
-      },
-      "required": ["name", "foreground", "background"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-colorway.json"
     },
     "color_constraint": {
-      "type": "object",
-      "description": "Machine-readable rule constraining how a brand color may be used or paired. Use for accent-only colors, forbidden foreground/background combinations, and palette pairs that should never appear together.",
-      "properties": {
-        "color": {
-          "$ref": "#/definitions/color_ref",
-          "description": "Color role or value this constraint governs."
-        },
-        "applies_to": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"]
-          },
-          "description": "Surfaces where this color may be used."
-        },
-        "allowed_on": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
-          "description": "Backgrounds, surfaces, or color roles where this color is allowed."
-        },
-        "forbidden_on": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
-          "description": "Backgrounds, surfaces, or color roles where this color is forbidden."
-        },
-        "never_pair_with": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
-          "description": "Color roles or values that must not be paired with this color."
-        },
-        "contexts": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Channels or creative contexts where this constraint applies, such as digital, print, social, or ctv_end_card."
-        },
-        "severity": { "$ref": "#/definitions/guideline_severity" },
-        "description": {
-          "type": "string",
-          "description": "Human-readable rationale or source-language summary for the rule."
-        }
-      },
-      "required": ["color"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-color-constraint.json"
     },
     "logo_usage_rule": {
-      "type": "object",
-      "description": "Machine-readable logo selection and placement rule. Complements logos[].usage by making enforceable minimum size, clear-space, background, and context constraints queryable.",
-      "properties": {
-        "logo_url": {
-          "type": "string",
-          "format": "uri",
-          "description": "Specific logo asset URL this rule applies to. Omit when the rule applies by variant or tags."
-        },
-        "logo_id": {
-          "$ref": "#/definitions/logo_id",
-          "description": "Stable `logos[].id` this rule applies to. Prefer this over logo_url when the rule targets a specific logo entry."
-        },
-        "logo_variant": {
-          "type": "string",
-          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
-          "description": "Logo variant this rule applies to."
-        },
-        "logo_tags": {
-          "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1,
-          "description": "Logo tags this rule applies to."
-        },
-        "contexts": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Creative contexts where this rule applies."
-        },
-        "slots": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/logo_slot" },
-          "minItems": 1,
-          "uniqueItems": true,
-          "description": "Canonical renderer slots where this rule applies. Use this for deterministic logo-card, profile-mark, end-card, and lockup selection."
-        },
-        "minimum_size": {
-          "type": "object",
-          "description": "Minimum rendered size needed for legibility.",
-          "properties": {
-            "width": { "type": "string", "description": "Minimum width, such as 48px or 12mm." },
-            "height": { "type": "string", "description": "Minimum height, such as 18px or 6mm." }
-          },
-          "additionalProperties": true
-        },
-        "clear_space": {
-          "type": "string",
-          "description": "Minimum clear space around the logo, expressed in brand terms or units."
-        },
-        "allowed_backgrounds": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
-          "description": "Background color roles, values, or surfaces where this logo may be placed."
-        },
-        "forbidden_backgrounds": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
-          "description": "Background color roles, values, or surfaces where this logo must not be placed."
-        },
-        "forbidden_contexts": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Contexts where this logo must not be used, such as photography_without_knockout."
-        },
-        "severity": { "$ref": "#/definitions/guideline_severity" },
-        "description": {
-          "type": "string",
-          "description": "Human-readable rationale or source-language summary for the rule."
-        }
-      },
-      "anyOf": [
-        { "required": ["logo_id"] },
-        { "required": ["logo_url"] },
-        { "required": ["logo_variant"] },
-        { "required": ["logo_tags"] },
-        { "required": ["slots"] }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-logo-usage-rule.json"
     },
     "mark_lockup": {
-      "type": "object",
-      "description": "Machine-readable layout constraints for co-brand, partner, sponsor, program, or secondary-mark lockups.",
-      "properties": {
-        "lockup_type": {
-          "type": "string",
-          "enum": ["co_brand", "secondary_mark", "partner", "sponsor", "program", "talent", "custom"],
-          "description": "Type of mark relationship governed by this lockup rule."
-        },
-        "ordering": {
-          "type": "string",
-          "enum": ["brand_first", "partner_first", "equal", "contextual"],
-          "description": "Required visual ordering of the brand mark relative to partner or secondary marks."
-        },
-        "contexts": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Creative contexts where this lockup rule applies."
-        },
-        "brand_logo_id": {
-          "$ref": "#/definitions/logo_id",
-          "description": "Stable `logos[].id` for the brand logo this lockup rule is anchored on."
-        },
-        "secondary_logo_ids": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/logo_id" },
-          "uniqueItems": true,
-          "description": "Stable `logos[].id` values for secondary, program, sponsor, or partner marks governed by this lockup rule when those marks are represented in this brand.json."
-        },
-        "separator": {
-          "type": "object",
-          "description": "Separator between marks, when required.",
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": ["none", "keyline", "space", "divider"],
-              "description": "Separator style."
-            },
-            "color": { "$ref": "#/definitions/color_ref" },
-            "width": { "type": "string", "description": "Separator width, such as 1px." }
-          },
-          "required": ["type"],
-          "additionalProperties": true
-        },
-        "min_gap": {
-          "type": "string",
-          "description": "Minimum gap between marks, expressed in brand terms or units."
-        },
-        "brand_min_optical_weight_ratio": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "description": "Minimum optical weight of the brand mark relative to partner marks. 1 means at least equal."
-        },
-        "partner_max_optical_weight_ratio": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "description": "Maximum optical weight of partner marks relative to the brand mark. 1 means no larger than the brand mark. Enforcement is at layout time, not parse time — this value signals to renderers and creative agents how much space to provision for each mark."
-        },
-        "severity": { "$ref": "#/definitions/guideline_severity" },
-        "description": {
-          "type": "string",
-          "description": "Human-readable rationale or source-language summary for the lockup rule."
-        }
-      },
-      "required": ["lockup_type"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-mark-lockup.json"
     },
     "type_scale_entry": {
-      "type": "object",
-      "description": "A single entry in the type scale",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font reference. Use a key from the fonts object (e.g., 'primary', 'secondary') to reference a defined font role, or a literal CSS font-family string as a fallback."
-        },
-        "size": { "type": "string", "description": "Font size (e.g., '48px', '2rem')" },
-        "weight": { "type": "string", "description": "Font weight (e.g., '700', 'bold')" },
-        "line_height": { "type": "string", "description": "Line height (e.g., '1.2', '56px')" },
-        "letter_spacing": { "type": "string", "description": "Letter spacing (e.g., '-0.02em', '0.5px')" },
-        "text_transform": {
-          "type": "string",
-          "enum": ["none", "uppercase", "lowercase", "capitalize"],
-          "description": "Text transformation"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-type-scale-entry.json"
     },
     "motion_guidelines": {
-      "type": "object",
-      "description": "Motion and animation rules for video, animated display, and interactive formats",
-      "properties": {
-        "transition_style": {
-          "type": "string",
-          "enum": ["cut", "dissolve", "slide", "wipe", "zoom", "fade"],
-          "description": "Primary transition style between scenes"
-        },
-        "animation_speed": {
-          "type": "string",
-          "enum": ["slow", "moderate", "fast"],
-          "description": "Overall animation pacing"
-        },
-        "easing": {
-          "type": "string",
-          "description": "Default easing function (e.g., 'ease-in-out', 'spring', 'linear')"
-        },
-        "text_entrance": {
-          "type": "string",
-          "enum": ["fade", "typewriter", "slide_up", "slide_left", "scale", "none"],
-          "description": "How text enters the frame"
-        },
-        "pacing": {
-          "type": "string",
-          "enum": ["lingering", "moderate", "fast_cuts"],
-          "description": "Overall editing rhythm"
-        },
-        "kinetic_typography": {
-          "type": "boolean",
-          "description": "Whether animated/kinetic typography is allowed"
-        },
-        "tags": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Additional motion style descriptors"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-motion-guidelines.json"
     },
     "logo_placement": {
-      "type": "object",
-      "description": "Logo placement and clear space rules for automated creative production",
-      "properties": {
-        "preferred_position": {
-          "type": "string",
-          "enum": ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right", "center"],
-          "description": "Preferred logo position in layouts"
-        },
-        "min_clear_space": {
-          "type": "string",
-          "description": "Minimum clear space around the logo, expressed as a multiple of logo height (e.g., '0.5x', '1x') or fixed value (e.g., '16px')"
-        },
-        "min_height": {
-          "type": "string",
-          "description": "Minimum logo height to maintain legibility (e.g., '40px', '24px')"
-        },
-        "background_contrast": {
-          "type": "string",
-          "enum": ["light_only", "dark_only", "any"],
-          "description": "Permitted background contrast behind logo"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-logo-placement.json"
     },
     "graphic_element": {
-      "type": "object",
-      "description": "A reusable decorative or structural visual element that is part of the brand identity (e.g., torn paper edges, watermarks, dividers, background patterns)",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Element name (e.g., 'Paper Tear', 'Brand Watermark', 'Section Divider')"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["border", "divider", "frame", "watermark", "pattern", "texture_overlay", "decorative"],
-          "description": "Element type"
-        },
-        "description": {
-          "type": "string",
-          "description": "How the element is used in layouts"
-        },
-        "orientation": {
-          "type": "string",
-          "enum": ["horizontal", "vertical", "any"],
-          "description": "Preferred orientation when used in layouts"
-        },
-        "colors": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/hex_color" },
-          "description": "Colors this element may appear in"
-        },
-        "max_per_layout": {
-          "type": "integer",
-          "description": "Maximum instances per layout"
-        }
-      },
-      "required": ["name"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-graphic-element.json"
     },
     "asset_library": {
-      "type": "object",
-      "description": "A managed asset library (icon set, illustration system, image collection). The URL is for human access; agent-facing DAM integration is under investigation.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Display name of the asset library"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["icon_set", "illustration_system", "image_library", "video_library", "template_library"],
-          "description": "Type of asset library"
-        },
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to the asset library (for human access)"
-        },
-        "description": {
-          "type": "string",
-          "description": "Description of the library contents and usage"
-        },
-        "color_guide": {
-          "type": "object",
-          "description": "Color guide for the asset library defining roles and palettes",
-          "properties": {
-            "roles": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Named color roles used in the library (e.g., base, shadow_1, highlight_1, stroke)"
-            },
-            "palettes": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "Palette name"
-                  },
-                  "colors": {
-                    "type": "object",
-                    "additionalProperties": { "$ref": "#/definitions/hex_color" },
-                    "description": "Map of role names to hex color values"
-                  }
-                },
-                "required": ["name", "colors"],
-                "additionalProperties": true
-              },
-              "description": "Named color palettes mapping roles to specific colors"
-            }
-          },
-          "additionalProperties": true
-        }
-      },
-      "required": ["name", "url"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-asset-library.json"
     },
     "visual_guidelines": {
-      "type": "object",
-      "description": "Structured visual rules for generative creative systems. Defines how brand photography, graphics, typography, and composition should be produced to maintain brand consistency at scale.",
-      "properties": {
-        "photography": { "$ref": "#/definitions/photography_style" },
-        "graphic_style": { "$ref": "#/definitions/graphic_style" },
-        "shapes": { "$ref": "#/definitions/brand_shapes" },
-        "iconography": { "$ref": "#/definitions/iconography" },
-        "composition": { "$ref": "#/definitions/composition_rules" },
-        "border_radius": { "$ref": "#/definitions/border_radius" },
-        "elevation": { "$ref": "#/definitions/elevation" },
-        "spacing": { "$ref": "#/definitions/spacing" },
-        "graphic_elements": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/graphic_element" },
-          "description": "Reusable decorative elements that are part of the brand visual identity (e.g., torn paper edges, watermarks, dividers)"
-        },
-        "motion": { "$ref": "#/definitions/motion_guidelines" },
-        "logo_placement": { "$ref": "#/definitions/logo_placement" },
-        "colorways": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/colorway" },
-          "description": "Named color pairings for consistent foreground/background combinations"
-        },
-        "color_constraints": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/color_constraint" },
-          "description": "Machine-readable constraints for color usage and pairings, such as accent-only rules or forbidden foreground/background combinations."
-        },
-        "logo_usage_rules": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/logo_usage_rule" },
-          "description": "Machine-readable logo selection and placement constraints for minimum size, clear space, backgrounds, and contexts."
-        },
-        "mark_lockups": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/mark_lockup" },
-          "description": "Machine-readable co-brand, partner, sponsor, program, or secondary-mark lockup rules."
-        },
-        "type_scale": {
-          "type": "object",
-          "description": "Typography scale defining sizes and weights for different text roles. When sizes are in px, use base_width to indicate the reference canvas.",
-          "properties": {
-            "base_width": {
-              "type": "string",
-              "description": "Reference canvas width these sizes were designed for (e.g., '1080px'). Generative systems should scale proportionally for other canvas sizes."
-            },
-            "heading": { "$ref": "#/definitions/type_scale_entry" },
-            "subheading": { "$ref": "#/definitions/type_scale_entry" },
-            "body": { "$ref": "#/definitions/type_scale_entry" },
-            "caption": { "$ref": "#/definitions/type_scale_entry" },
-            "cta": { "$ref": "#/definitions/type_scale_entry" }
-          },
-          "additionalProperties": { "$ref": "#/definitions/type_scale_entry" }
-        },
-        "asset_libraries": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/asset_library" },
-          "description": "References to managed asset libraries (icon sets, illustration systems, image collections). URLs are intended for human access; agent-facing DAM integration is under investigation."
-        },
-        "restrictions": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Visual prohibitions and guardrails (e.g., 'Never use black backgrounds', 'Do not crop the logo', 'No stock photography of people on phones')"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-visual-guidelines.json"
     },
     "contact": {
-      "type": "object",
-      "description": "Contact information",
-      "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "email": { "type": "string", "format": "email", "maxLength": 255 },
-        "domain": { "$ref": "#/definitions/domain" }
-      },
-      "required": ["name"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/contact.json",
+      "description": "Contact information"
+    },
+    "color_surface": {
+      "$ref": "/schemas/core/brand-color-surface.json"
+    },
+    "intensity_level": {
+      "$ref": "/schemas/core/brand-intensity-level.json"
+    },
+    "redirect_reason": {
+      "title": "Redirect Reason",
+      "description": "Why a brand.json redirect was put in place.",
+      "type": "string",
+      "enum": [
+        "acquisition",
+        "divestiture",
+        "rebrand",
+        "regional",
+        "legacy",
+        "consolidation",
+        "other"
+      ]
     }
   },
   "oneOf": [
     {
       "type": "object",
-      "title": "Authoritative Location Redirect",
+      "title": "Brand Location Redirect",
       "description": "Redirects to a hosted brand.json file at another URL",
       "properties": {
         "$schema": { "type": "string" },
         "authoritative_location": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the authoritative brand.json file"
         },
         "redirect_reason": {
-          "type": "string",
-          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "$ref": "#/definitions/redirect_reason",
           "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {
@@ -1764,13 +712,11 @@
           "description": "House domain to fetch brand portfolio from"
         },
         "region": {
-          "type": "string",
-          "pattern": "^[A-Z]{2}$",
+          "$ref": "/schemas/core/country-code.json",
           "description": "ISO 3166-1 alpha-2 country code if this is a regional domain"
         },
         "redirect_reason": {
-          "type": "string",
-          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "$ref": "#/definitions/redirect_reason",
           "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {
@@ -1789,7 +735,7 @@
     },
     {
       "type": "object",
-      "title": "Brand Agent",
+      "title": "Agent-Represented Brand",
       "description": "Brand represented by agents that provide brand info via MCP",
       "properties": {
         "$schema": { "type": "string" },

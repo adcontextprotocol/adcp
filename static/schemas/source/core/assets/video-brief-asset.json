@@ -6,7 +6,7 @@
   "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
-    "asset_type": { "type": "string", "const": "video_brief" },
+    "asset_type": { "type": "string", "const": "video_brief", "default": "video_brief" },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this asset, overriding manifest-level provenance."

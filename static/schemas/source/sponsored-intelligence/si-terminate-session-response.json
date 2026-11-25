@@ -38,6 +38,7 @@
           "description": "Opaque token for the checkout flow. The host passes this to the checkout endpoint to correlate the SI session with the transaction."
         },
         "payload": {
+          "title": "ACP Checkout Payload",
           "type": "object",
           "description": "Rich checkout context to pass to the ACP endpoint (product details, applied offers, pricing). Alternative to checkout_token for integrations that need structured data.",
           "additionalProperties": true
@@ -64,6 +65,7 @@
           ]
         },
         "data": {
+          "title": "SI Follow-Up Action Data",
           "type": "object",
           "description": "Data for follow-up action"
         }

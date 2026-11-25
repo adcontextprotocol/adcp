@@ -27,16 +27,12 @@
       "minimum": 0
     },
     "max_percent": {
-      "type": "number",
-      "description": "Maximum percent-of-media rate filter. Signals where all percent_of_media pricing options exceed this value are excluded. Does not account for max_cpm caps.",
-      "minimum": 0,
-      "maximum": 100
+      "$ref": "/schemas/core/percentage.json",
+      "description": "Maximum percent-of-media rate filter. Signals where all percent_of_media pricing options exceed this value are excluded. Does not account for max_cpm caps."
     },
     "min_coverage_percentage": {
-      "type": "number",
-      "description": "Minimum coverage requirement",
-      "minimum": 0,
-      "maximum": 100
+      "$ref": "/schemas/core/percentage.json",
+      "description": "Minimum coverage requirement"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json",

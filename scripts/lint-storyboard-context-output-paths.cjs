@@ -261,6 +261,23 @@ function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
   return null;
 }
 
+/**
+ * Whether a branch requires a property name, itself or through what it
+ * composes (`allOf` members and `$ref` targets): a failed branch requires
+ * `errors` through core/task-error-response.json.
+ */
+function requiresName(node, name, seen = new Set()) {
+  if (!node || typeof node !== 'object') return false;
+  if (Array.isArray(node.required) && node.required.includes(name)) return true;
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return false;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    if (requiresName(loadSchema(node.$ref), name, next)) return true;
+  }
+  return Array.isArray(node.allOf) && node.allOf.some((member) => requiresName(member, name, seen));
+}
+
 /** Mirrors `findErrorArm` in lint-storyboard-validations-paths.cjs. */
 function findErrorArm(node, seen = new Set()) {
   if (!node || typeof node !== 'object') return null;
@@ -274,8 +291,7 @@ function findErrorArm(node, seen = new Set()) {
   if (!Array.isArray(variants)) return null;
   for (const variant of variants) {
     if (!variant || typeof variant !== 'object') continue;
-    const required = Array.isArray(variant.required) ? variant.required : [];
-    if (!required.includes('errors')) continue;
+    if (!requiresName(variant, 'errors')) continue;
     const props = variant.properties || {};
     let hasConstDiscriminator = false;
     for (const propName of Object.keys(props)) {

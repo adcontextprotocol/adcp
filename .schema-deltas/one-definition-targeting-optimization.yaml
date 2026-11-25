@@ -1,0 +1,44 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: targeting optimization. The corrections the review chose; every other change is a $ref to
+  an identical definition.
+changes:
+  - location: core/custom-event-name.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/optimization-goal.json#/oneOf/1/properties/event_sources/items -> new:core/optimization-event-source.json.
+      Verdict delta: value_field:minLength:tighten:correction. Witness: core/optimization-goal.json
+      /event_sources/0/custom_event_name = "" (tighten).
+  - location: core/optimization-event-source.json#/properties/value_field
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/optimization-goal.json#/oneOf/1/properties/event_sources/items -> new:core/optimization-event-source.json.
+      Verdict delta: value_field:minLength:tighten:correction. Witness: core/optimization-goal.json
+      /event_sources/0/value_field = "" (tighten).
+  - location: core/keyword-target.json#
+    keyword: properties
+    new:
+      minimum: 0
+      type:
+        - number
+    direction: tighten
+    side: request
+    note: >-
+      media-buy/package-update.json#/properties/keyword_targets_remove/items -> core/keyword-target.json#. Witness:
+      media-buy/package-update.json /keyword_targets_remove/0/bid_price = {} (tighten).
+  - location: core/keyword-match-capabilities.json#/properties/supported_match_types
+    keyword: uniqueItems
+    new: true
+    direction: tighten
+    side: response
+    note: >-
+      protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/execution/properties/targeting/properties/keyword_targets
+      -> new:core/keyword-match-capabilities.json. Verdict delta:
+      /properties/supported_match_types:uniqueItems:tighten:correction. The tool's witness search found none (no tighten
+      witness attributed to this line in 1 root(s)).

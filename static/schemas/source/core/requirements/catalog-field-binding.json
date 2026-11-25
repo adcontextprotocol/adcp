@@ -8,7 +8,7 @@
       "type": "object",
       "description": "Maps an individual format asset to a catalog item field via dot-notation path.",
       "properties": {
-        "kind": { "type": "string", "const": "scalar" },
+        "kind": { "type": "string", "const": "scalar", "default": "scalar" },
         "asset_id": {
           "type": "string",
           "description": "The asset_id from the format's assets array. Identifies which individual template slot this binding applies to."
@@ -28,7 +28,7 @@
       "type": "object",
       "description": "Maps an individual format asset to a typed asset pool on the catalog item (e.g., images_landscape, images_vertical, logo). The format slot receives the first item in the pool.",
       "properties": {
-        "kind": { "type": "string", "const": "asset_pool" },
+        "kind": { "type": "string", "const": "asset_pool", "default": "asset_pool" },
         "asset_id": {
           "type": "string",
           "description": "The asset_id from the format's assets array. Identifies which individual template slot this binding applies to."
@@ -55,7 +55,7 @@
       "type": "object",
       "description": "A format repeatable_group where each repetition corresponds to one catalog item. Iterates the group over catalog items in catalog item order.",
       "properties": {
-        "kind": { "type": "string", "const": "catalog_group" },
+        "kind": { "type": "string", "const": "catalog_group", "default": "catalog_group" },
         "format_group_id": {
           "type": "string",
           "description": "The asset_group_id of a repeatable_group in the format's assets array."

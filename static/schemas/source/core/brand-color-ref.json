@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-color-ref.json",
+  "title": "Brand Color Ref",
+  "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use kind=name for palette lookup keys in colors, kind=value for a literal hex color, and kind=surface for layout surfaces such as background or text.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "name",
+        "value",
+        "surface"
+      ],
+      "description": "Discriminator for the color reference variant."
+    },
+    "name": {
+      "type": "string",
+      "description": "Key from the colors object, such as market_yellow, river_green, or any custom palette key. Unambiguous lookup into colors{}."
+    },
+    "value": {
+      "$ref": "/schemas/core/hex-color.json",
+      "description": "Literal hex color when no palette key exists."
+    },
+    "surface": {
+      "$ref": "/schemas/core/brand-color-surface.json",
+      "description": "Usage surface rather than a specific color value."
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "kind": {
+          "const": "name",
+          "default": "name"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ]
+    },
+    {
+      "properties": {
+        "kind": {
+          "const": "value",
+          "default": "value"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ]
+    },
+    {
+      "properties": {
+        "kind": {
+          "const": "surface",
+          "default": "surface"
+        }
+      },
+      "required": [
+        "kind",
+        "surface"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

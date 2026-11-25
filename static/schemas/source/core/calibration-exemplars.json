@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/calibration-exemplars.json",
+  "title": "Content Standards Calibration Exemplars",
+  "description": "Example pass and fail cases that calibrate how a policy is interpreted. Each example is a URL reference or a full content artifact.",
+  "type": "object",
+  "properties": {
+    "pass": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/calibration-exemplar.json"
+      },
+      "description": "Content that passes the standards"
+    },
+    "fail": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/calibration-exemplar.json"
+      },
+      "description": "Content that fails the standards"
+    }
+  }
+}

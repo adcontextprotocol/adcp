@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/render-dimensions.json",
+  "title": "Render Dimensions",
+  "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels.",
+  "type": "object",
+  "properties": {
+    "width": {
+      "$ref": "/schemas/core/dimension-length.json",
+      "description": "Fixed width. Interpretation depends on unit (default: pixels)."
+    },
+    "height": {
+      "$ref": "/schemas/core/dimension-length.json",
+      "description": "Fixed height. Interpretation depends on unit (default: pixels)."
+    },
+    "min_width": {
+      "$ref": "/schemas/core/dimension-length.json",
+      "description": "Minimum width for responsive renders"
+    },
+    "min_height": {
+      "$ref": "/schemas/core/dimension-length.json",
+      "description": "Minimum height for responsive renders"
+    },
+    "max_width": {
+      "$ref": "/schemas/core/dimension-length.json",
+      "description": "Maximum width for responsive renders"
+    },
+    "max_height": {
+      "$ref": "/schemas/core/dimension-length.json",
+      "description": "Maximum height for responsive renders"
+    },
+    "unit": {
+      "$ref": "/schemas/enums/dimension-unit.json",
+      "description": "Unit of measurement for width/height values. Defaults to 'px' when absent. Print formats use 'inches' or 'cm'."
+    },
+    "responsive": {
+      "title": "Responsive Dimension Flags",
+      "type": "object",
+      "description": "Indicates which dimensions are responsive/fluid",
+      "properties": {
+        "width": {
+          "$ref": "/schemas/core/responsive-flag.json"
+        },
+        "height": {
+          "$ref": "/schemas/core/responsive-flag.json"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ]
+    },
+    "aspect_ratio": {
+      "$ref": "/schemas/core/aspect-ratio.json",
+      "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1', '1.91:1')"
+    }
+  }
+}

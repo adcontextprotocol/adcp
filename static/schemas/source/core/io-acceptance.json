@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/io-acceptance.json",
+  "title": "IO Acceptance",
+  "description": "Acceptance of an insertion order from a committed proposal.",
+  "type": "object",
+  "properties": {
+    "io_id": {
+      "type": "string",
+      "description": "The io_id from the proposal's insertion_order being accepted",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the IO was accepted"
+    },
+    "signatory": {
+      "$ref": "/schemas/core/io-signatory.json",
+      "description": "Who accepted the IO — agent identifier or human name"
+    },
+    "signature_id": {
+      "type": "string",
+      "description": "Reference to the electronic signature from the signing service, when signing_url was used",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "io_id",
+    "accepted_at",
+    "signatory"
+  ],
+  "additionalProperties": true
+}

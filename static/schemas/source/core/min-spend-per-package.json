@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/min-spend-per-package.json",
+  "title": "Minimum Spend per Package",
+  "description": "Minimum spend for each package that uses a pricing option, in the option's currency.",
+  "type": "number",
+  "minimum": 0
+}

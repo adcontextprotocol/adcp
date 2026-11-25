@@ -13,6 +13,7 @@
         "asset_kind": {
           "type": "string",
           "const": "media",
+          "default": "media",
           "description": "Discriminator indicating this is a media asset with content_uri"
         },
         "asset_type": {
@@ -43,6 +44,7 @@
         "asset_kind": {
           "type": "string",
           "const": "text",
+          "default": "text",
           "description": "Discriminator indicating this is a text asset with content"
         },
         "asset_type": {

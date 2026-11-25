@@ -38,26 +38,20 @@
       ]
     },
     "vast_target": {
-      "type": "string",
-      "enum": ["linear", "non_linear", "companion"],
+      "$ref": "/schemas/enums/vast-tracker-target.json",
       "default": "linear"
     },
     "vast_offset": {
-      "type": "string",
-      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
-    },
-    "vast_versions": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/vast-version.json" },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/tracker-offset.json"
     }
   },
   "properties": {
     "vast_event": { "$ref": "#/definitions/vast_event" },
     "target": { "$ref": "#/definitions/vast_target" },
     "offset": { "$ref": "#/definitions/vast_offset" },
-    "vast_versions": { "$ref": "#/definitions/vast_versions" }
+    "vast_versions": {
+      "$ref": "/schemas/core/vast-versions.json"
+    }
   },
   "allOf": [
     {
@@ -163,7 +157,7 @@
       },
       "then": {
         "properties": {
-          "vast_versions": { "items": { "enum": ["2.0", "3.0"] } }
+          "vast_versions": { "items": { "$ref": "/schemas/enums/vast-fullscreen-version.json" } }
         }
       }
     },

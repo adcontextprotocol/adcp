@@ -9,9 +9,7 @@
       "enum": ["geonames", "google_ads", "microsoft_ads"]
     },
     {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://"
+      "$ref": "/schemas/core/https-url.json"
     }
   ],
   "examples": ["geonames", "google_ads", "microsoft_ads", "https://seller.example/geo/catalogs/places"]

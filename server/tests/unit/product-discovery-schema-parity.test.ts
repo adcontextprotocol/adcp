@@ -3,7 +3,10 @@ import { join } from 'node:path';
 import Ajv from 'ajv';
 import { describe, expect, it } from 'vitest';
 import { productDiscoveryAliasToolDefinitions } from '../../src/training-agent/task-handlers.js';
-import { validateProductDiscoverySourceInput } from '../../src/training-agent/source-schema.js';
+import {
+  loadProductDiscoveryInputSchema,
+  validateProductDiscoverySourceInput,
+} from '../../src/training-agent/source-schema.js';
 
 type JsonSchema = Record<string, any>;
 
@@ -22,6 +25,30 @@ function resolveLocalRef(root: JsonSchema, value: JsonSchema): JsonSchema {
   ), root);
 }
 
+/** Expand every local `$ref` against its root, so two schemas that differ only
+ * in where a definition lives compare equal. A ref already being expanded
+ * becomes a cycle marker naming its target. */
+function dereference(root: JsonSchema): unknown {
+  function walk(node: unknown, stack: string[]): unknown {
+    if (Array.isArray(node)) return node.map(entry => walk(entry, stack));
+    if (!node || typeof node !== 'object') return node;
+    const record = node as JsonSchema;
+    if (typeof record.$ref === 'string' && record.$ref.startsWith('#/')) {
+      const { $ref, ...siblings } = record;
+      const target = stack.includes($ref)
+        ? { $cycle: $ref }
+        : walk(resolveLocalRef(root, { $ref }), [...stack, $ref]);
+      return Object.keys(siblings).length === 0
+        ? target
+        : { $dereferenced: target, ...(walk(siblings, stack) as JsonSchema) };
+    }
+    return Object.fromEntries(Object.entries(record)
+      .filter(([key]) => !(record === root && key === '$defs'))
+      .map(([key, value]) => [key, walk(value, stack)]));
+  }
+  return walk(root, []);
+}
+
 // tools/list omits `additionalProperties: true` inside bundled definitions (it
 // is JSON Schema's default), so compare openness rather than the keyword.
 function openness(schema: JsonSchema): boolean {
@@ -31,6 +58,10 @@ function openness(schema: JsonSchema): boolean {
 describe('product discovery MCP schema parity', () => {
   it('keeps runtime discovery constraints aligned with source schemas', () => {
     const tools = new Map(productDiscoveryAliasToolDefinitions().map(tool => [tool.name, tool.inputSchema as JsonSchema]));
+    const idempotencyKey = JSON.parse(readFileSync(
+      join(process.cwd(), 'static/schemas/source/core/idempotency-key.json'),
+      'utf8',
+    )) as JsonSchema;
     for (const [toolName, fileName] of [
       ['list_products', 'list-products-request'],
       ['request_proposals', 'request-proposals-request'],
@@ -44,10 +75,12 @@ describe('product discovery MCP schema parity', () => {
       expect(runtime.additionalProperties).toBe(source.additionalProperties);
       expect(Object.keys(runtime.properties).sort()).toEqual(Object.keys(source.properties).sort());
       if (source.properties.idempotency_key) {
-        expect(runtime.properties.idempotency_key).toMatchObject({
-          minLength: source.properties.idempotency_key.minLength,
-          maxLength: source.properties.idempotency_key.maxLength,
-          pattern: source.properties.idempotency_key.pattern,
+        expect(source.properties.idempotency_key.$ref).toBe('/schemas/core/idempotency-key.json');
+        const key = runtime.properties.idempotency_key as JsonSchema;
+        expect(resolveLocalRef(runtime, key.allOf?.[0] ?? key)).toMatchObject({
+          minLength: idempotencyKey.minLength,
+          maxLength: idempotencyKey.maxLength,
+          pattern: idempotencyKey.pattern,
         });
       }
     }
@@ -109,6 +142,23 @@ describe('product discovery MCP schema parity', () => {
     }
   });
 
+  it('inlines single-use definitions without changing any dereferenced tools/list schema', () => {
+    for (const fileName of [
+      'list-products-request',
+      'request-proposals-request',
+      'refine-proposals-request',
+      'decline-proposals-request',
+      'buy-products-request',
+      'accept-proposal-request',
+      'control-media-buy-request',
+    ]) {
+      const inlined = loadProductDiscoveryInputSchema(fileName);
+      const shared = loadProductDiscoveryInputSchema(fileName, { inlineSingleUse: false });
+      expect(JSON.stringify(inlined).length, fileName).toBeLessThan(JSON.stringify(shared).length);
+      expect(dereference(inlined), fileName).toEqual(dereference(shared));
+    }
+  });
+
   it('keeps compact discovery within its tools/list context budget', () => {
     const tools = productDiscoveryAliasToolDefinitions().filter(tool => (
       ['list_products', 'request_proposals', 'refine_proposals', 'decline_proposals'].includes(tool.name)
@@ -155,8 +205,15 @@ describe('product discovery MCP schema parity', () => {
     // measured, bounded at 160 KiB.
     // Core gender adds its shared predicate and overlay support; merged
     // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
-    // without relaxing standalone-schema parity.
-    expect(totalBytes).toBeLessThanOrEqual(162 * 1024);
+    // without relaxing standalone-schema parity. Naming repeated scalar
+    // constraints (#8525) makes them shared definitions in the bundled tools;
+    // 169,806 bytes / 165.83 KiB measured. Naming every remaining repeat
+    // brings it to 172,361 bytes / 168.32 KiB, and pointing every site at one
+    // definition to 173,355 bytes / 169.29 KiB. Inlining each definition
+    // that only one site references removes its $defs key and its pointer;
+    // shared definitions stay in $defs, and the dereferenced schemas are
+    // unchanged: 146,682 bytes / 143.24 KiB measured, bounded at 144 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(144 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

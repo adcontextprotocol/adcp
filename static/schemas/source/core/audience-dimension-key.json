@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-dimension-key.json",
+  "title": "Audience Dimension Key",
+  "description": "Key of an audience distribution index, written as dimension:value.",
+  "type": "string",
+  "pattern": "^[a-z_]+:.+$"
+}

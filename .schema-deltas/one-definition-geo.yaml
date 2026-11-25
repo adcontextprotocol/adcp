@@ -1,0 +1,111 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: geo. The corrections the review chose; every other change is a $ref to an identical
+  definition.
+changes:
+  - location: core/postal-country-system.json#
+    keyword: anyOf
+    new:
+      - properties:
+          country:
+            const: US
+          system:
+            enum:
+              - zip
+              - zip_plus_four
+      - properties:
+          country:
+            const: GB
+          system:
+            enum:
+              - full
+              - outward
+      - properties:
+          country:
+            const: CA
+          system:
+            enum:
+              - fsa
+              - full
+      - properties:
+          country:
+            enum:
+              - AT
+              - CH
+              - DE
+          system:
+            const: plz
+      - properties:
+          country:
+            const: FR
+          system:
+            const: code_postal
+      - properties:
+          country:
+            const: AU
+          system:
+            const: postcode
+      - properties:
+          country:
+            const: BR
+          system:
+            const: cep
+      - properties:
+          country:
+            const: IN
+          system:
+            const: pin
+      - properties:
+          country:
+            const: ZA
+          system:
+            const: postal_code
+      - properties:
+          country:
+            not:
+              enum:
+                - AT
+                - AU
+                - BR
+                - CA
+                - CH
+                - DE
+                - FR
+                - GB
+                - IN
+                - US
+                - ZA
+          system:
+            enum:
+              - custom
+              - postal_code
+    direction: tighten
+    side: both
+    note: >-
+      core/targeting-modification.json#/oneOf/1/properties/selector -> core/postal-country-system.json#. Verdict lists
+      no delta for this keyword. The tool's witness search found none (cannot attribute: no revert for keyword anyOf).
+  - location: core/geo-metro.json#
+    keyword: properties
+    new:
+      type:
+        - object
+      additionalProperties:
+        minLength: 1
+        type:
+          - string
+    direction: tighten
+    side: none
+    note: >-
+      core/offering.json#/properties/geo_targets/properties/metros/items -> core/geo-metro.json. Verdict delta:
+      value_labels:property:tighten:correction. Witness: core/offering.json /geo_targets/metros/0/value_labels = null
+      (tighten).
+  - location: core/geo-proximity.json#
+    keyword: properties
+    new:
+      type:
+        - object
+    direction: tighten
+    side: request
+    note: >-
+      core/product-filters.json#/properties/geo_proximity/items -> new:core/geo-proximity.json. Verdict delta:
+      ext:property:tighten:correction. Witness: core/product-filters.json /geo_proximity/0/ext = null (tighten).

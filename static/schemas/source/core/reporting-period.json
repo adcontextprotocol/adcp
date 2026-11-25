@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-period.json",
+  "title": "Reporting Period",
+  "description": "A half-open reporting period with the time zone of its calendar boundaries.",
+  "type": "object",
+  "properties": {
+    "start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_timezone": {
+      "$ref": "/schemas/core/iana-timezone.json"
+    }
+  },
+  "required": [
+    "start",
+    "end",
+    "source_timezone"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,1215 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: brand. The corrections the review chose; every other change is a $ref to an identical
+  definition.
+changes:
+  - location: core/email-address.json#
+    keyword: maxLength
+    old: 255
+    new: 254
+    direction: tighten
+    side: none
+    note: >-
+      adagents.json#/oneOf/1/properties/contact -> new:core/contact.json. Verdict delta:
+      email:maxLength:tighten:correction. The tool's witness search found none (no tighten witness attributed to this
+      line in 2 root(s)).
+  - location: core/email-address.json#
+    keyword: minLength
+    old: 1
+    direction: none
+    side: none
+    note: >-
+      adagents.json#/oneOf/1/properties/contact -> new:core/contact.json. Masked by the format:
+      core/email-address.json states format email, which rejects the empty string, so removing minLength 1 changes no
+      payload's verdict (checked with Ajv and ajv-formats: "" is invalid with and without the bound).
+  - location: core/voice-synthesis.json#
+    keyword: properties
+    new:
+      type:
+        - string
+    direction: tighten
+    side: none
+    note: >-
+      brand.json#/definitions/brand/properties/voice_synthesis -> new:core/voice-synthesis.json. Verdict delta:
+      rights_offering_id:property:tighten:correction. The tool's witness search found none (no tighten witness
+      attributed to this line in 1 root(s)).
+  - location: core/contact.json#
+    keyword: properties
+    new:
+      format: uri
+      type:
+        - string
+    direction: tighten
+    side: none
+    note: >-
+      brand.json#/definitions/contact -> new:core/contact.json. Verdict delta: seller_id:property:tighten:correction;
+      tag_id:property:tighten:correction; privacy_policy_url:property:tighten:correction. Witness: brand.json
+      /contact/privacy_policy_url = null (tighten).
+  - location: core/contact.json#
+    keyword: properties
+    new:
+      maxLength: 255
+      minLength: 1
+      type:
+        - string
+    direction: tighten
+    side: none
+    note: >-
+      brand.json#/definitions/contact -> new:core/contact.json. Verdict delta: seller_id:property:tighten:correction;
+      tag_id:property:tighten:correction; privacy_policy_url:property:tighten:correction. Witness: brand.json
+      /contact/seller_id = null (tighten).
+  - location: core/contact.json#
+    keyword: properties
+    new:
+      maxLength: 100
+      minLength: 1
+      type:
+        - string
+    direction: tighten
+    side: none
+    note: >-
+      brand.json#/definitions/contact -> new:core/contact.json. Verdict delta: seller_id:property:tighten:correction;
+      tag_id:property:tighten:correction; privacy_policy_url:property:tighten:correction. Witness: brand.json
+      /contact/tag_id = null (tighten).
+  - location: core/rights-disclosure.json#/allOf/0
+    keyword: if
+    new:
+      required:
+        - required
+      properties:
+        required:
+          const: true
+    direction: tighten
+    side: response
+    note: >-
+      brand/acquire-rights-response.json#/oneOf/0/properties/disclosure -> new:core/rights-disclosure.json. The tool's
+      witness search found none (no tighten witness attributed to this line in 1 root(s)).
+  - location: core/rights-disclosure.json#/properties/text
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      brand/acquire-rights-response.json#/oneOf/0/properties/disclosure -> new:core/rights-disclosure.json. Verdict
+      delta: text:minLength:tighten:correction. The tool's witness search found none (no tighten witness attributed to
+      this line in 1 root(s)).
+  - location: core/rights-disclosure.json#/allOf/0
+    keyword: then
+    new:
+      required:
+        - text
+    direction: tighten
+    side: response
+    note: >-
+      brand/acquire-rights-response.json#/oneOf/0/properties/disclosure -> new:core/rights-disclosure.json. The tool's
+      witness search found none (no tighten witness attributed to this line in 1 root(s)).
+  - location: core/brand-localized-scalar.json#
+    keyword: type
+    old:
+      - string
+    direction: loosen
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/assets/items -> core/brand-asset.json#. Verdict
+      delta: name:type:loosen:correction; description:type:loosen:correction. Witness, checked by hand: a
+      get_brand_identity asset
+      {"asset_id":"a1","asset_type":"image","url":"https://cdn.example.com/a.png","name":[{"en":"Acme"}]} is invalid
+      at the base (name must be a string) and valid at the head (the localized-array branch of the oneOf), and
+      restoring type string alone makes it invalid again.
+  - location: core/brand-localized-scalar.json#
+    keyword: oneOf
+    new:
+      - type:
+          - string
+      - minItems: 1
+        type:
+          - array
+        items:
+          maxProperties: 1
+          minProperties: 1
+          type:
+            - object
+          additionalProperties:
+            minLength: 1
+            type:
+              - string
+    direction: none
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/assets/items -> core/brand-asset.json#. Masked by the
+      type line: the string branch is the removed type string, and the array branch admits only what the type removal
+      (the line above) admits. Every payload the base accepts is a string, which the head accepts; checked by hand
+      with "Acme", [{"en":"Acme"}], [], 5, and a two-key map.
+  - location: core/brand-asset.json#
+    keyword: properties
+    new:
+      type:
+        - object
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/assets/items -> core/brand-asset.json#. Verdict
+      delta: metadata:property:tighten:correction. Witness: brand/get-brand-identity-response.json /assets/0/metadata =
+      null (tighten).
+  - location: core/domain-name.json#
+    keyword: maxLength
+    new: 253
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/house -> new:core/house-summary.json. Witness:
+      brand/get-brand-identity-response.json /house/domain =
+      "aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.aaa.... (tighten).
+  - location: core/domain-name.json#
+    keyword: pattern
+    new: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/house -> new:core/house-summary.json. Witness:
+      brand/get-brand-identity-response.json /house/domain = "A" (tighten).
+  - location: core/parent-organization-name.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/house -> new:core/house-summary.json. Witness:
+      brand/get-brand-identity-response.json /house/name = "" (tighten).
+  - location: core/brand-logo.json#
+    keyword: properties
+    new:
+      pattern: ^[a-z0-9][a-z0-9_-]*$
+      type:
+        - string
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/logos/items -> core/brand-logo.json#. Verdict
+      delta: id:property:tighten:correction; slots:property:tighten:correction. Witness:
+      brand/get-brand-identity-response.json /logos/0/id = {} (tighten).
+  - location: core/brand-logo.json#
+    keyword: properties
+    new:
+      type:
+        - array
+      uniqueItems: true
+      items:
+        enum:
+          - ad_end_card
+          - app_icon
+          - co_brand_lockup
+          - email_header
+          - favicon
+          - footer
+          - logo_card_dark
+          - logo_card_light
+          - marketplace_listing
+          - nav_header
+          - profile_mark
+          - social_profile_mark
+          - watermark
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/logos/items -> core/brand-logo.json#. Verdict
+      delta: id:property:tighten:correction; slots:property:tighten:correction. Witness:
+      brand/get-brand-identity-response.json /logos/0/slots = {} (tighten).
+  - location: core/brand-localized-name.json#
+    keyword: maxProperties
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/names/items -> core/brand-localized-name.json#.
+      Verdict delta: /oneOf/0/properties/names/items:maxProperties:tighten:correction. The tool's witness search found
+      none (no tighten witness attributed to this line in 2 root(s)).
+  - location: core/brand-localized-name.json#/additionalProperties
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/names/items -> core/brand-localized-name.json#.
+      Verdict delta: /oneOf/0/properties/names/items/additionalProperties:minLength:tighten:correction. Witness:
+      brand/get-brand-identity-response.json /names/0/__witness_extra = "" (tighten).
+  - location: core/brand-visual-guidelines.json#
+    keyword: properties
+    new:
+      asset_libraries:
+        type:
+          - array
+        items:
+          required:
+            - name
+            - url
+          type:
+            - object
+          properties:
+            color_guide:
+              type:
+                - object
+              properties:
+                palettes:
+                  $at: core/brand-asset-library.json#/properties/color_guide/properties/palettes
+                roles:
+                  $at: core/brand-asset-library.json#/properties/color_guide/properties/roles
+            description:
+              type:
+                - string
+            name:
+              type:
+                - string
+            type:
+              enum:
+                - icon_set
+                - illustration_system
+                - image_library
+                - template_library
+                - video_library
+            url:
+              format: uri
+              type:
+                - string
+      border_radius:
+        type:
+          - object
+        additionalProperties:
+          type:
+            - string
+        properties:
+          default:
+            type:
+              - string
+          large:
+            type:
+              - string
+          none:
+            type:
+              - string
+          pill:
+            type:
+              - string
+          small:
+            type:
+              - string
+      color_constraints:
+        type:
+          - array
+        items:
+          required:
+            - color
+          type:
+            - object
+          properties:
+            allowed_on:
+              type:
+                - array
+              items:
+                $at: core/brand-color-ref.json#
+            applies_to:
+              type:
+                - array
+              items:
+                $at: core/brand-color-surface.json#
+            color:
+              type:
+                - object
+              oneOf:
+                - $at: core/brand-color-ref.json#/oneOf/0
+                - $at: core/brand-color-ref.json#/oneOf/1
+                - $at: core/brand-color-ref.json#/oneOf/2
+              properties:
+                kind:
+                  $at: core/brand-color-ref.json#/properties/kind
+                name:
+                  $at: core/brand-color-ref.json#/properties/name
+                surface:
+                  $at: core/brand-color-surface.json#
+                value:
+                  $at: core/hex-color.json#
+            contexts:
+              type:
+                - array
+              items:
+                $at: core/brand-color-constraint.json#/properties/contexts/items
+            description:
+              type:
+                - string
+            forbidden_on:
+              type:
+                - array
+              items:
+                $at: core/brand-color-ref.json#
+            never_pair_with:
+              type:
+                - array
+              items:
+                $at: core/brand-color-ref.json#
+            severity:
+              enum:
+                - must
+                - should
+      colorways:
+        type:
+          - array
+        items:
+          required:
+            - background
+            - foreground
+            - name
+          type:
+            - object
+          properties:
+            accent:
+              pattern: ^#[0-9A-Fa-f]{6}$
+              type:
+                - string
+            background:
+              pattern: ^#[0-9A-Fa-f]{6}$
+              type:
+                - string
+            border:
+              pattern: ^#[0-9A-Fa-f]{6}$
+              type:
+                - string
+            channels:
+              type:
+                - array
+              items:
+                $at: core/brand-colorway.json#/properties/channels/items
+            cta_background:
+              pattern: ^#[0-9A-Fa-f]{6}$
+              type:
+                - string
+            cta_foreground:
+              pattern: ^#[0-9A-Fa-f]{6}$
+              type:
+                - string
+            foreground:
+              pattern: ^#[0-9A-Fa-f]{6}$
+              type:
+                - string
+            name:
+              type:
+                - string
+      composition:
+        type:
+          - object
+        properties:
+          backgrounds:
+            type:
+              - object
+            properties:
+              types_allowed:
+                type:
+                  - array
+                items:
+                  $at: core/brand-composition-rules.json#/properties/backgrounds/properties/types_allowed/items
+          overlays:
+            type:
+              - object
+            properties:
+              gradient_direction:
+                type:
+                  - string
+              gradient_style:
+                enum:
+                  - conic
+                  - linear
+                  - none
+                  - radial
+              opacity:
+                type:
+                  - string
+          texture:
+            type:
+              - object
+            properties:
+              intensity:
+                enum:
+                  - high
+                  - low
+                  - medium
+              style:
+                enum:
+                  - concrete
+                  - fabric
+                  - noise
+                  - none
+                  - paper
+                  - subtle_grain
+      elevation:
+        type:
+          - object
+        additionalProperties:
+          type:
+            - string
+        properties:
+          card:
+            type:
+              - string
+          modal:
+            type:
+              - string
+          none:
+            type:
+              - string
+          subtle:
+            type:
+              - string
+      graphic_elements:
+        type:
+          - array
+        items:
+          required:
+            - name
+          type:
+            - object
+          properties:
+            colors:
+              type:
+                - array
+              items:
+                $at: core/hex-color.json#
+            description:
+              type:
+                - string
+            max_per_layout:
+              type:
+                - integer
+            name:
+              type:
+                - string
+            orientation:
+              enum:
+                - any
+                - horizontal
+                - vertical
+            type:
+              enum:
+                - border
+                - decorative
+                - divider
+                - frame
+                - pattern
+                - texture_overlay
+                - watermark
+      graphic_style:
+        type:
+          - object
+        properties:
+          corner_radius:
+            type:
+              - string
+          stroke_style:
+            enum:
+              - mixed
+              - none
+              - rounded
+              - square
+          stroke_weight:
+            type:
+              - string
+          style_type:
+            enum:
+              - 3d_render
+              - editorial_collage
+              - flat_illustration
+              - geometric
+              - gradient_mesh
+              - hand_drawn
+              - isometric
+              - minimal_line_art
+              - photographic_composite
+          tags:
+            type:
+              - array
+            items:
+              type:
+                - string
+      iconography:
+        type:
+          - object
+        properties:
+          corner_style:
+            enum:
+              - mixed
+              - rounded
+              - square
+          stroke_weight:
+            type:
+              - string
+          style:
+            enum:
+              - duotone
+              - filled
+              - flat
+              - glyph
+              - hand_drawn
+              - outline
+          usage:
+            type:
+              - object
+            properties:
+              max_per_frame:
+                type:
+                  - integer
+              size_ratio:
+                type:
+                  - string
+      logo_placement:
+        type:
+          - object
+        properties:
+          background_contrast:
+            enum:
+              - any
+              - dark_only
+              - light_only
+          min_clear_space:
+            type:
+              - string
+          min_height:
+            type:
+              - string
+          preferred_position:
+            enum:
+              - bottom-center
+              - bottom-left
+              - bottom-right
+              - center
+              - top-center
+              - top-left
+              - top-right
+      logo_usage_rules:
+        type:
+          - array
+        items:
+          type:
+            - object
+          anyOf:
+            - required:
+                - logo_id
+            - required:
+                - logo_tags
+            - required:
+                - logo_url
+            - required:
+                - logo_variant
+            - required:
+                - slots
+          properties:
+            allowed_backgrounds:
+              type:
+                - array
+              items:
+                $at: core/brand-color-ref.json#
+            clear_space:
+              type:
+                - string
+            contexts:
+              type:
+                - array
+              items:
+                $at: core/brand-logo-usage-rule.json#/properties/contexts/items
+            description:
+              type:
+                - string
+            forbidden_backgrounds:
+              type:
+                - array
+              items:
+                $at: core/brand-color-ref.json#
+            forbidden_contexts:
+              type:
+                - array
+              items:
+                $at: core/brand-logo-usage-rule.json#/properties/forbidden_contexts/items
+            logo_id:
+              pattern: ^[a-z0-9][a-z0-9_-]*$
+              type:
+                - string
+            logo_tags:
+              minItems: 1
+              type:
+                - array
+              items:
+                $at: core/brand-logo-usage-rule.json#/properties/logo_tags/items
+            logo_url:
+              format: uri
+              type:
+                - string
+            logo_variant:
+              enum:
+                - full-lockup
+                - icon
+                - primary
+                - secondary
+                - wordmark
+            minimum_size:
+              type:
+                - object
+              properties:
+                height:
+                  $at: core/brand-logo-usage-rule.json#/properties/minimum_size/properties/height
+                width:
+                  $at: core/brand-logo-usage-rule.json#/properties/minimum_size/properties/width
+            severity:
+              enum:
+                - must
+                - should
+            slots:
+              minItems: 1
+              type:
+                - array
+              uniqueItems: true
+              items:
+                $at: enums/logo-slot.json#
+      mark_lockups:
+        type:
+          - array
+        items:
+          required:
+            - lockup_type
+          type:
+            - object
+          properties:
+            brand_logo_id:
+              pattern: ^[a-z0-9][a-z0-9_-]*$
+              type:
+                - string
+            brand_min_optical_weight_ratio:
+              exclusiveMinimum: 0
+              type:
+                - number
+            contexts:
+              type:
+                - array
+              items:
+                $at: core/brand-mark-lockup.json#/properties/contexts/items
+            description:
+              type:
+                - string
+            lockup_type:
+              enum:
+                - co_brand
+                - custom
+                - partner
+                - program
+                - secondary_mark
+                - sponsor
+                - talent
+            min_gap:
+              type:
+                - string
+            ordering:
+              enum:
+                - brand_first
+                - contextual
+                - equal
+                - partner_first
+            partner_max_optical_weight_ratio:
+              exclusiveMinimum: 0
+              type:
+                - number
+            secondary_logo_ids:
+              type:
+                - array
+              uniqueItems: true
+              items:
+                $at: core/brand-logo-id.json#
+            separator:
+              required:
+                - type
+              type:
+                - object
+              properties:
+                color:
+                  $at: core/brand-color-ref.json#
+                type:
+                  $at: core/brand-mark-lockup.json#/properties/separator/properties/type
+                width:
+                  $at: core/brand-mark-lockup.json#/properties/separator/properties/width
+            severity:
+              enum:
+                - must
+                - should
+      motion:
+        type:
+          - object
+        properties:
+          animation_speed:
+            enum:
+              - fast
+              - moderate
+              - slow
+          easing:
+            type:
+              - string
+          kinetic_typography:
+            type:
+              - boolean
+          pacing:
+            enum:
+              - fast_cuts
+              - lingering
+              - moderate
+          tags:
+            type:
+              - array
+            items:
+              type:
+                - string
+          text_entrance:
+            enum:
+              - fade
+              - none
+              - scale
+              - slide_left
+              - slide_up
+              - typewriter
+          transition_style:
+            enum:
+              - cut
+              - dissolve
+              - fade
+              - slide
+              - wipe
+              - zoom
+      photography:
+        type:
+          - object
+        properties:
+          color_temperature:
+            enum:
+              - cool
+              - neutral
+              - warm
+          contrast:
+            enum:
+              - high
+              - low
+              - medium
+          depth_of_field:
+            enum:
+              - deep
+              - medium
+              - shallow
+          framing:
+            type:
+              - object
+            properties:
+              crop_style:
+                type:
+                  - string
+              perspective:
+                type:
+                  - string
+              subject_position:
+                type:
+                  - string
+          lighting:
+            type:
+              - string
+          preferred_aspect_ratios:
+            type:
+              - array
+            items:
+              pattern: ^[0-9]+(\.[0-9]+)?:[0-9]+(\.[0-9]+)?$
+              type:
+                - string
+          realism:
+            enum:
+              - abstract
+              - hyperreal
+              - natural
+              - stylized
+          subject:
+            type:
+              - object
+            properties:
+              people:
+                type:
+                  - object
+                properties:
+                  age_range:
+                    $at: >-
+                      core/brand-photography-style.json#/properties/subject/properties/people/properties/age_range
+                  diversity:
+                    $at: >-
+                      core/brand-photography-style.json#/properties/subject/properties/people/properties/diversity
+                  mood:
+                    $at: core/brand-photography-style.json#/properties/subject/properties/people/properties/mood
+              product_focus:
+                enum:
+                  - detail
+                  - in-use
+                  - isolated
+                  - lifestyle
+              setting:
+                type:
+                  - string
+          tags:
+            type:
+              - array
+            items:
+              type:
+                - string
+      restrictions:
+        type:
+          - array
+        items:
+          type:
+            - string
+      shapes:
+        type:
+          - object
+        properties:
+          primary_shape:
+            type:
+              - string
+          secondary_shapes:
+            type:
+              - array
+            items:
+              type:
+                - string
+          usage:
+            type:
+              - object
+            properties:
+              max_per_layout:
+                type:
+                  - integer
+              overlap_allowed:
+                type:
+                  - boolean
+      spacing:
+        type:
+          - object
+        properties:
+          scale:
+            type:
+              - object
+            additionalProperties:
+              type:
+                - string
+            properties:
+              2xl:
+                type:
+                  - string
+              lg:
+                type:
+                  - string
+              md:
+                type:
+                  - string
+              sm:
+                type:
+                  - string
+              xl:
+                type:
+                  - string
+              xs:
+                type:
+                  - string
+          unit:
+            type:
+              - string
+      type_scale:
+        type:
+          - object
+        additionalProperties:
+          type:
+            - object
+          properties:
+            font:
+              type:
+                - string
+            letter_spacing:
+              type:
+                - string
+            line_height:
+              type:
+                - string
+            size:
+              type:
+                - string
+            text_transform:
+              enum:
+                - capitalize
+                - lowercase
+                - none
+                - uppercase
+            weight:
+              type:
+                - string
+        properties:
+          base_width:
+            type:
+              - string
+          body:
+            type:
+              - object
+            properties:
+              font:
+                type:
+                  - string
+              letter_spacing:
+                type:
+                  - string
+              line_height:
+                type:
+                  - string
+              size:
+                type:
+                  - string
+              text_transform:
+                enum:
+                  - capitalize
+                  - lowercase
+                  - none
+                  - uppercase
+              weight:
+                type:
+                  - string
+          caption:
+            type:
+              - object
+            properties:
+              font:
+                type:
+                  - string
+              letter_spacing:
+                type:
+                  - string
+              line_height:
+                type:
+                  - string
+              size:
+                type:
+                  - string
+              text_transform:
+                enum:
+                  - capitalize
+                  - lowercase
+                  - none
+                  - uppercase
+              weight:
+                type:
+                  - string
+          cta:
+            type:
+              - object
+            properties:
+              font:
+                type:
+                  - string
+              letter_spacing:
+                type:
+                  - string
+              line_height:
+                type:
+                  - string
+              size:
+                type:
+                  - string
+              text_transform:
+                enum:
+                  - capitalize
+                  - lowercase
+                  - none
+                  - uppercase
+              weight:
+                type:
+                  - string
+          heading:
+            type:
+              - object
+            properties:
+              font:
+                type:
+                  - string
+              letter_spacing:
+                type:
+                  - string
+              line_height:
+                type:
+                  - string
+              size:
+                type:
+                  - string
+              text_transform:
+                enum:
+                  - capitalize
+                  - lowercase
+                  - none
+                  - uppercase
+              weight:
+                type:
+                  - string
+          subheading:
+            type:
+              - object
+            properties:
+              font:
+                type:
+                  - string
+              letter_spacing:
+                type:
+                  - string
+              line_height:
+                type:
+                  - string
+              size:
+                type:
+                  - string
+              text_transform:
+                enum:
+                  - capitalize
+                  - lowercase
+                  - none
+                  - uppercase
+              weight:
+                type:
+                  - string
+    direction: tighten
+    side: response
+    note: >-
+      brand/get-brand-identity-response.json#/oneOf/0/properties/visual_guidelines ->
+      core/brand-visual-guidelines.json#. The tool's witness search found none (cannot attribute: properties/$ref
+      is not written at core/brand-visual-guidelines.json#).
+  - location: core/brand-logo.json#
+    keyword: properties
+    new:
+      type:
+        - integer
+    direction: tighten
+    side: response
+    note: >-
+      brand/search-brands-response.json#/definitions/SearchBrandResult/properties/logos/items ->
+      core/brand-logo.json#. Verdict delta: id:property:tighten:correction; slots:property:tighten:correction;
+      tags:property:tighten:correction; usage:property:tighten:correction; width:property:tighten:correction;
+      height:property:tighten:correction. Witness: brand/search-brands-response.json /brands/0/logos/0/width = {}
+      (tighten).
+  - location: core/brand-logo.json#
+    keyword: properties
+    new:
+      type:
+        - array
+      items:
+        type:
+          - string
+    direction: tighten
+    side: response
+    note: >-
+      brand/search-brands-response.json#/definitions/SearchBrandResult/properties/logos/items ->
+      core/brand-logo.json#. Verdict delta: id:property:tighten:correction; slots:property:tighten:correction;
+      tags:property:tighten:correction; usage:property:tighten:correction; width:property:tighten:correction;
+      height:property:tighten:correction. Witness: brand/search-brands-response.json /brands/0/logos/0/tags = {}
+      (tighten).
+  - location: core/brand-logo.json#
+    keyword: properties
+    new:
+      type:
+        - string
+    direction: tighten
+    side: response
+    note: >-
+      brand/search-brands-response.json#/definitions/SearchBrandResult/properties/logos/items ->
+      core/brand-logo.json#. Verdict delta: id:property:tighten:correction; slots:property:tighten:correction;
+      tags:property:tighten:correction; usage:property:tighten:correction; width:property:tighten:correction;
+      height:property:tighten:correction. Witness: brand/search-brands-response.json /brands/0/logos/0/usage = {}
+      (tighten).
+  - location: core/rights-availability-summary.json#
+    keyword: properties
+    new:
+      type:
+        - array
+      items:
+        type:
+          - string
+    direction: tighten
+    side: response
+    note: >-
+      brand/search-brands-response.json#/definitions/SearchBrandResult/properties/rights ->
+      new:core/rights-availability-summary.json. Verdict delta: exclusivity_model:property:tighten:correction;
+      content_restrictions:property:tighten:correction. Witness: brand/search-brands-response.json
+      /brands/0/rights/content_restrictions = {} (tighten).
+  - location: core/rights-availability-summary.json#
+    keyword: properties
+    new:
+      type:
+        - string
+    direction: tighten
+    side: response
+    note: >-
+      brand/search-brands-response.json#/definitions/SearchBrandResult/properties/rights ->
+      new:core/rights-availability-summary.json. Verdict delta: exclusivity_model:property:tighten:correction;
+      content_restrictions:property:tighten:correction. Witness: brand/search-brands-response.json
+      /brands/0/rights/exclusivity_model = {} (tighten).
+  - location: core/brand-property.json#/properties/identifier
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: request
+    note: >-
+      brand/verify-brand-claim-request.json#/oneOf/2/properties/claim/properties/property ->
+      core/brand-property.json#. Verdict delta: identifier:minLength:tighten:correction. Witness:
+      brand/verify-brand-claim-request.json /claim/property/identifier = "" (tighten).
+  - location: core/brand-property.json#
+    keyword: properties
+    new:
+      type:
+        - boolean
+    direction: tighten
+    side: request
+    note: >-
+      brand/verify-brand-claim-request.json#/oneOf/2/properties/claim/properties/property ->
+      core/brand-property.json#. Verdict delta: primary:property:tighten:correction;
+      relationship:property:tighten:plausible_impact. Witness: brand/verify-brand-claim-request.json
+      /claim/property/primary = null (tighten).
+  - location: core/brand-property.json#/properties/region
+    keyword: pattern
+    new: ^([A-Z]{2}|global)$
+    direction: tighten
+    side: request
+    note: >-
+      brand/verify-brand-claim-request.json#/oneOf/2/properties/claim/properties/property ->
+      core/brand-property.json#. Verdict delta: region:pattern:tighten:correction. Witness:
+      brand/verify-brand-claim-request.json /claim/property/region = "x" (tighten).
+  - location: core/brand-property.json#
+    keyword: properties
+    new:
+      enum:
+        - ad_network
+        - delegated
+        - direct
+        - owned
+    direction: tighten
+    side: request
+    note: >-
+      brand/verify-brand-claim-request.json#/oneOf/2/properties/claim/properties/property ->
+      core/brand-property.json#. Verdict delta: primary:property:tighten:correction;
+      relationship:property:tighten:plausible_impact. Witness: brand/verify-brand-claim-request.json
+      /claim/property/relationship = null (tighten).
+  - location: core/brand-agent-id.json#
+    keyword: pattern
+    new: ^[a-z0-9_]+$
+    direction: tighten
+    side: response
+    note: >-
+      core/transformer.json#/properties/voice_synthesis_ref/items/properties/brand_agent ->
+      core/brand-agent.json#. Verdict delta: url:pattern:tighten:correction; id:pattern:tighten:correction.
+      Witness: core/transformer.json /voice_synthesis_ref/0/brand_agent/id = "NOVA_BRAND_AGENT" (tighten).
+  - location: core/https-url.json#
+    keyword: pattern
+    new: ^https://
+    direction: tighten
+    side: response
+    note: >-
+      core/transformer.json#/properties/voice_synthesis_ref/items/properties/brand_agent ->
+      core/brand-agent.json#. Verdict delta: url:pattern:tighten:correction; id:pattern:tighten:correction.
+      Witness: core/transformer.json /voice_synthesis_ref/0/brand_agent/url = "HTTPS://BRAND.NOVABRANDS.EXAMPLE/MCP"
+      (tighten).

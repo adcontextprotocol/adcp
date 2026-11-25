@@ -172,6 +172,15 @@ function loadSchema(ref) {
   return doc;
 }
 
+/** Follow a JSON Pointer fragment (`/definitions/x`) inside a loaded document. */
+function resolvePointer(doc, fragment) {
+  if (!doc || !fragment) return doc;
+  return fragment
+    .split('/')
+    .slice(1)
+    .reduce((node, token) => (node == null ? node : node[token.replace(/~1/g, '/').replace(/~0/g, '~')]), doc);
+}
+
 /**
  * Walk a JSON Schema node to find the `x-entity` annotation at a dotted path.
  * Follows `$ref`, descends through `properties.<name>` for object steps,
@@ -179,12 +188,15 @@ function loadSchema(ref) {
  * `oneOf` / `anyOf`. Returns the annotation string if present, undefined if
  * absent, or an `{ ambiguous: [values] }` object if variants disagree.
  */
-function resolveEntityAtPath(node, segments) {
+function resolveEntityAtPath(node, segments, root = node) {
   if (!node || typeof node !== 'object') return undefined;
 
   if (node.$ref) {
-    const resolved = loadSchema(node.$ref);
-    return resolveEntityAtPath(resolved, segments);
+    // A ref names a document, a fragment of one, or (#...) a fragment of the
+    // document being walked, such as a local definition.
+    const [file, fragment] = node.$ref.split('#');
+    const doc = file ? loadSchema(file) : root;
+    return resolveEntityAtPath(resolvePointer(doc, fragment), segments, doc);
   }
 
   // Root-level annotation on the current node — useful on composite types like
@@ -213,9 +225,9 @@ function resolveEntityAtPath(node, segments) {
   if (segments.length > 0) {
     const [seg, ...rest] = segments;
     if (/^\d+$/.test(seg)) {
-      if (node.items) pushHit(resolveEntityAtPath(node.items, rest));
+      if (node.items) pushHit(resolveEntityAtPath(node.items, rest, root));
     } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
-      pushHit(resolveEntityAtPath(node.properties[seg], rest));
+      pushHit(resolveEntityAtPath(node.properties[seg], rest, root));
     }
   }
 
@@ -223,7 +235,7 @@ function resolveEntityAtPath(node, segments) {
   // lint cares whether ANY branch resolves; it reconciles hits below.
   if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
     const variants = node.oneOf || node.anyOf || node.allOf;
-    for (const variant of variants) pushHit(resolveEntityAtPath(variant, segments));
+    for (const variant of variants) pushHit(resolveEntityAtPath(variant, segments, root));
   }
 
   const unique = Array.from(new Set(hits));

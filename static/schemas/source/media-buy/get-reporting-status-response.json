@@ -44,8 +44,9 @@
     "ledger_snapshot_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value." },
     "ledger_as_of": { "type": "string", "format": "date-time", "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation." },
     "changes_checkpoint": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Opaque durable incremental-repair checkpoint for this periods snapshot. Consumers persist it only after consuming every page, then send it as changes_after. It is bound to authenticated caller, account, and filters and MUST order every committed obligation, revision, adjustment, materialization, consumer status statement, revision receipt, and adjustment receipt without gaps." },
-    "account_id": { "type": "string", "minLength": 1, "x-entity": "account", "description": "Resolved seller/storefront account identifier." },
+    "account_id": { "$ref": "/schemas/core/account-id.json", "description": "Resolved seller/storefront account identifier." },
     "scope": {
+      "title": "Reporting Status Evaluated Scope",
       "type": "object",
       "description": "Exact denominator evaluated for summary or periods health. complete is valid only when scope_closed is true.",
       "properties": {
@@ -58,12 +59,13 @@
           "type": "array",
           "description": "Exact independently reconciled configuration generations in the denominator. A generation derived from a reporting subscription is listed once per resolved offering, with offering_id, because one subscription version can resolve several offerings (match all, different products, or a resolution change).",
           "items": {
+            "title": "Reporting Configuration Generation Reference",
             "type": "object",
             "properties": {
-              "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" },
+              "delivery_config_id": { "$ref": "/schemas/core/reporting-delivery-config-id.json" },
               "delivery_config_version": { "type": "integer", "minimum": 1 },
               "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
-              "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
+              "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
             },
             "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
             "additionalProperties": true
@@ -120,18 +122,18 @@
   "oneOf": [
     {
       "title": "Successful lookup",
-      "properties": { "status": { "type": "string", "const": "completed" } },
+      "properties": { "status": { "type": "string", "const": "completed", "default": "completed" } },
       "required": ["status"],
       "oneOf": [
         {
       "title": "Summary view",
-      "properties": { "view": { "type": "string", "const": "summary" } },
+      "properties": { "view": { "type": "string", "const": "summary", "default": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "coverage", "data_through", "obligation_counts", "issues"],
       "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["adjustments"], "properties": { "adjustments": {} } }, { "required": ["consumer_statuses"], "properties": { "consumer_statuses": {} } }, { "required": ["adjustment_receipts"], "properties": { "adjustment_receipts": {} } }, { "required": ["pagination"], "properties": { "pagination": {} } }, { "required": ["revision"], "properties": { "revision": {} } }, { "required": ["materializations"], "properties": { "materializations": {} } }, { "required": ["receipts"], "properties": { "receipts": {} } }] }
     },
     {
       "title": "Periods view",
-      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "periods", "default": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "receipts", "pagination"],
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
       "then": { "not": { "required": ["next_expected_at"], "properties": { "next_expected_at": {} } } },
@@ -139,7 +141,7 @@
     },
     {
       "title": "Revision view",
-      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "revision", "default": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "receipts", "pagination"],
       "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["scope"], "properties": { "scope": {} } }, { "required": ["health"], "properties": { "health": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["subscription_coverage"], "properties": { "subscription_coverage": {} } }] }
         }
@@ -147,59 +149,54 @@
     },
     {
       "title": "Failed lookup",
-      "properties": { "status": { "type": "string", "const": "failed" } },
+      "properties": { "status": { "type": "string", "const": "failed", "default": "failed" } },
       "required": ["status"],
       "oneOf": [
         {
       "description": "Every unknown or unauthorized identifier returns this one shape: its message and error are constants, its error objects are closed, and it names no ledger snapshot, ledger time or account.",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "title": "Unavailable lookup",
-      "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
-        "failure_kind": { "type": "string", "const": "lookup_unavailable" },
-        "context": { "$ref": "/schemas/core/context.json" },
+        "status": { "type": "string", "const": "failed", "default": "failed" },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
+        "failure_kind": { "type": "string", "const": "lookup_unavailable", "default": "lookup_unavailable" },
         "message": { "const": "Reporting status resource is unavailable." },
-        "adcp_error": {
-          "type": "object",
-          "properties": {
-            "code": { "const": "NOT_FOUND" },
-            "message": { "const": "Reporting status resource is unavailable." }
-          },
-          "required": ["code", "message"],
-          "additionalProperties": false
-        },
+        "adcp_error": { "$ref": "#/definitions/ReportingStatusUnavailableError" },
         "errors": {
-          "type": "array",
-          "minItems": 1,
           "maxItems": 1,
           "items": {
-            "type": "object",
-            "properties": {
-              "code": { "const": "NOT_FOUND" },
-              "message": { "const": "Reporting status resource is unavailable." }
-            },
-            "required": ["code", "message"],
-            "additionalProperties": false
+            "$ref": "#/definitions/ReportingStatusUnavailableError"
           }
         }
       },
-      "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": true,
+      "required": [
+        "status",
+        "view",
+        "failure_kind"
+      ],
       "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
     },
     {
       "title": "Operational failure",
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "properties": {
-        "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
-        "failure_kind": { "type": "string", "const": "operational" },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
+        "status": { "type": "string", "const": "failed", "default": "failed" },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
+        "failure_kind": { "type": "string", "const": "operational", "default": "operational" }
       },
-      "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": true,
+      "required": [
+        "status",
+        "view",
+        "failure_kind"
+      ],
       "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
         }
       ]
@@ -218,5 +215,19 @@
     "subscription_coverage": "Obligations derived from a subscription carry delivery_config_id equal to subscription_id and the resolved offering_id and report_definition_id, and appear in scope.delivery_config_generations like any configuration generation. Which periods are owed is computable by the buyer by the coverage rule in reporting-subscription.json: visible confirmed buys, the resolved offering's published schedule, periods starting on or after the first boundary at or after the later of accepted_at and authorized_at, ending after the buy's confirmed_at, and overlapping the buy's flight, which ends at the cancellation's delivery stop (cancellation_effective_at) rather than when the cancellation was recorded, as resolved at each period's scope_resolved_at. A cutover onto a billing feed whose schedule has no boundary at E adds one stub obligation (stub true) for [E, first incoming boundary), so billing coverage has no unowed stretch. The obligation's offering_id and report_definition_id are authoritative for timing (alignment, anchor, delivery_sla, and so expected_at). subscription_coverage lists only exceptions, each removing the periods whose start falls in [from, until); a seller MUST NOT owe fewer periods than that rule implies without a matching exception, and exceptions never add periods. A resolution change is a cutover per reporting-subscription.json, so no period is owed under two offerings. Each obligation freezes media_buy_ids at its own scope_resolved_at. A period's owed set is frozen at its scope_resolved_at and is final in a snapshot whose ledger_as_of is later than period.end, where obligation_availability already requires its obligation; a period ending at or after ledger_as_of is not frozen, so the buyer treats its own projection, and next_expected_at, as provisional and reports nothing missing for it. A buyer reads the flight in force at each scope_resolved_at from the buy's flight_history, the offerings each package could resolve from its reporting_delivery_offering_ids snapshot and each offering's available_from and withdrawn_at, and re-grant timing from authorization.regranted_at. caller_isolation is unchanged: once the caller loses authority for the account, this task treats it as unknown, and the revocation is reported in get_principal reporting_subscriptions accounts_unauthorized instead.",
     "consumer_status_deadline": "A buyer owes a current consumer status for every elapsed expected period by expected_at plus automated_recovery_window_seconds, not merely before it closes the scope. Past that deadline with no current statement from the authenticated caller, the seller counts the obligation in obligation_counts.consumer_status_pending. Silence is a counted unknown only: it MUST NOT create an issue, change health, excuse a seller obligation, or appear in another caller's view."
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "ReportingStatusUnavailableError": {
+      "title": "Reporting Status Unavailable Error",
+      "description": "The one error an unknown or unauthorized reporting status identifier returns: NOT_FOUND with a constant message and no other field, so the response does not reveal whether the resource exists.",
+      "type": "object",
+      "allOf": [{ "$ref": "/schemas/core/error.json" }],
+      "properties": {
+        "code": { "const": "NOT_FOUND" },
+        "message": { "const": "Reporting status resource is unavailable." }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    }
+  }
 }

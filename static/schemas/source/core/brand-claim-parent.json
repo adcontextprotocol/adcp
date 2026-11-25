@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-claim-parent.json",
+  "title": "Brand Claim Parent",
+  "description": "A brand claim that a domain belongs to a parent organization, with the parent domain, the claimant's statement, and the time the claim was observed.",
+  "type": "object",
+  "properties": {
+    "parent_domain": {
+      "type": "string",
+      "format": "hostname",
+      "description": "Domain of the house claimed as this brand's parent."
+    },
+    "claimant_says": {
+      "type": "string",
+      "description": "Optional context — what the claimant published or said. Helps the agent disambiguate competing claims."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "parent_domain"
+  ],
+  "additionalProperties": true
+}

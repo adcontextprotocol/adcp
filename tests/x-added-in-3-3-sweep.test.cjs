@@ -7,10 +7,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveSchema, schemaAt } = require('./helpers/named-scalar-schemas.cjs');
 
 const SRC = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const load = (f) => JSON.parse(fs.readFileSync(path.join(SRC, f), 'utf8'));
-const at = (obj, keys) => keys.reduce((o, k) => o[k], obj);
+// Reads through each `$ref` on the way; the site at the end keeps its own annotations.
+const at = (obj, keys) => schemaAt(obj, ...keys);
 
 const WHOLE_FILE_3_3 = [
   // Account requests (account.requests, #8280).
@@ -126,7 +128,7 @@ const PROPERTIES_3_3 = [
   ['media-buy/sync-event-sources-response.json', ['oneOf', 0, 'properties', 'event_sources', 'items', 'properties', 'archived']],
   ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'properties', 'provenance']],
   ['core/error.json', ['properties', 'mutation_outcome']],
-  ['core/evaluator-spec.json', ['oneOf', 1, 'properties', 'agent_url']],
+  ['core/evaluator-spec.json', ['oneOf', 1, 'allOf', 1, 'properties', 'agent_url']],
   ['core/canonical-projection-ref.json', ['properties', 'supported_delivery_types']],
   ['media-buy/request-proposals-response.json', ['properties', 'later_proposals']],
   ['creative/validate-input-result.json', ['properties', 'warnings', 'items', 'properties', 'field']],
@@ -149,7 +151,7 @@ const PROPERTIES_3_3 = [
   ['core/media-buy.json', ['properties', 'cancellation_effective_at']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation_effective_at']],
   ['core/reporting-obligation.json', ['properties', 'stub']],
-  ['protocol/get-principal-response.json', ['properties', 'result', 'oneOf', 0, 'properties', 'reporting_subscription_page']],
+  ['protocol/get-principal-response.json', ['definitions', 'principal_result', 'oneOf', 0, 'properties', 'reporting_subscription_page']],
   ['core/account-authorization.json', ['properties', 'regranted_at']],
   ['core/media-buy.json', ['properties', 'flight_history']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'flight_history']],
@@ -182,7 +184,7 @@ test('whole-file 3.3 schemas and enums carry x-added-in 3.3.0', () => {
 
 test('expected_confirmation_at sites carry x-added-in 3.3.0', () => {
   const sites = [
-    ['media-buy/create-media-buy-async-response-submitted.json', ['properties', 'expected_confirmation_at']],
+    ['core/media-buy-submitted.json', ['properties', 'expected_confirmation_at']],
     ['media-buy/create-media-buy-response.json', ['oneOf', 2, 'properties', 'expected_confirmation_at']],
     ['media-buy/media-buy-commitment-response.json', ['oneOf', 2, 'properties', 'expected_confirmation_at']],
     ['media-buy/refine-proposals-async-response-submitted.json', ['properties', 'expected_confirmation_at']],
@@ -199,7 +201,7 @@ test('3.3 properties carry x-added-in 3.3.0', () => {
 
 test('by_spot lifecycle fields carry x-added-in 3.3.0', () => {
   const resp = load('media-buy/get-media-buy-delivery-response.json');
-  const spot = resp.properties.media_buy_deliveries.items.properties.by_package.items.allOf[1].properties.by_spot.items.allOf[1].properties;
+  const spot = resolveSchema(resp.properties.media_buy_deliveries.items).properties.by_package.items.allOf[1].properties.by_spot.items.allOf[1].properties;
   for (const k of ['spot_status', 'scheduled_at', 'replaces_spot_id', 'break_position']) {
     assert.equal(spot[k]['x-added-in'], '3.3.0', k);
   }

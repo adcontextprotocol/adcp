@@ -51,10 +51,13 @@ describe('audience_targeting member-push requirements', () => {
   let validateCapabilities;
 
   before(async () => {
-    const response = readSchema(CAPABILITIES_URI);
-    const audienceTargeting = response.properties.media_buy.properties.audience_targeting;
-    validateAudienceTargeting = await newAjv().compileAsync(audienceTargeting);
-    validateCapabilities = await newAjv().compileAsync(response);
+    // Compile the whole document and take audience_targeting from it by
+    // pointer, so local refs such as #/definitions/... resolve against the
+    // document root.
+    const ajv = newAjv();
+    validateCapabilities = await ajv.compileAsync(readSchema(CAPABILITIES_URI));
+    validateAudienceTargeting = ajv.getSchema(`${CAPABILITIES_URI}#/properties/media_buy/properties/audience_targeting`);
+    assert.equal(typeof validateAudienceTargeting, 'function', 'audience_targeting resolves inside its document');
   });
 
   function accepts(value, message) {

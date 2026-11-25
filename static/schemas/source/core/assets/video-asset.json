@@ -9,6 +9,7 @@
     "asset_type": {
       "type": "string",
       "const": "video",
+      "default": "video",
       "description": "Discriminator identifying this as a video asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {
@@ -17,13 +18,11 @@
       "description": "URL to the video asset"
     },
     "width": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Width in pixels — the video file's intrinsic native width. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no width; see the `vast` asset.)"
     },
     "height": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Height in pixels — the video file's intrinsic native height. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no height; see the `vast` asset.)"
     },
     "duration_ms": {
@@ -106,8 +105,7 @@
       "description": "Audio channel configuration"
     },
     "audio_bit_depth": {
-      "type": "integer",
-      "enum": [16, 24, 32],
+      "$ref": "/schemas/enums/audio-bit-depth.json",
       "description": "Audio bit depth"
     },
     "audio_bitrate_kbps": {

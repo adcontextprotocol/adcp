@@ -12,6 +12,19 @@ function readSchema(uri) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
 }
 
+// Follows a $ref (a local #/definitions pointer or a /schemas/ document) to the schema it names.
+function deref(node, doc) {
+  while (node && typeof node.$ref === 'string') {
+    if (node.$ref.startsWith('#/')) {
+      node = node.$ref.slice(2).split('/').reduce((n, key) => n[key], doc);
+    } else {
+      doc = readSchema(node.$ref);
+      node = doc;
+    }
+  }
+  return node;
+}
+
 async function compile(uri) {
   const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: async ref => readSchema(ref) });
   addFormats(ajv);
@@ -326,7 +339,7 @@ describe('portable demographic targeting', () => {
 
   it('requires explicit support for each omitted continuous bound', () => {
     const capability = readSchema('/schemas/core/demographic-targeting-capability.json');
-    const age = capability.properties.age.properties;
+    const age = deref(capability.properties.age, capability).properties;
 
     assert.match(age.execution_modes.description, /supports_unbounded_min or supports_unbounded_max/);
     assert.match(age.min_supported_age.description, /omission means no lower age restriction/);

@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-filters.json",
+  "title": "Task Filters",
+  "description": "Criteria that filter a list of tasks, by protocol, status, task type, time, task ID, context, and webhook.",
+  "type": "object",
+  "properties": {
+    "protocol": {
+      "$ref": "/schemas/enums/adcp-protocol.json",
+      "description": "Filter by single AdCP protocol"
+    },
+    "protocols": {
+      "type": "array",
+      "description": "Filter by multiple AdCP protocols",
+      "items": {
+        "$ref": "/schemas/enums/adcp-protocol.json"
+      },
+      "minItems": 1
+    },
+    "status": {
+      "$ref": "/schemas/enums/task-status.json",
+      "description": "Filter by single task status"
+    },
+    "statuses": {
+      "type": "array",
+      "description": "Filter by multiple task statuses",
+      "items": {
+        "$ref": "/schemas/enums/task-status.json"
+      },
+      "minItems": 1
+    },
+    "task_type": {
+      "$ref": "/schemas/enums/task-type.json",
+      "description": "Filter by single task type"
+    },
+    "task_types": {
+      "type": "array",
+      "description": "Filter by multiple task types",
+      "items": {
+        "$ref": "/schemas/enums/task-type.json"
+      },
+      "minItems": 1
+    },
+    "created_after": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter tasks created after this date (ISO 8601)"
+    },
+    "created_before": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter tasks created before this date (ISO 8601)"
+    },
+    "updated_after": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter tasks last updated after this date (ISO 8601)"
+    },
+    "updated_before": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter tasks last updated before this date (ISO 8601)"
+    },
+    "task_ids": {
+      "type": "array",
+      "description": "Filter by specific task IDs",
+      "items": {
+        "$ref": "/schemas/core/task-id.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context_contains": {
+      "type": "string",
+      "description": "Filter tasks where context contains this text (searches media_buy_id, signal_id, etc.)"
+    },
+    "has_webhook": {
+      "type": "boolean",
+      "description": "Filter tasks that have webhook configuration when true"
+    }
+  },
+  "additionalProperties": true
+}

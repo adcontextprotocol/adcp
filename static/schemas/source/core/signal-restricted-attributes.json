@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-restricted-attributes.json",
+  "title": "Signal Restricted Attributes",
+  "description": "Restricted attribute categories a signal touches.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/restricted-attribute.json"
+  },
+  "minItems": 1
+}

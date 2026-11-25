@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-data-source.json",
+  "title": "Signal Data Source",
+  "description": "Kind of data source behind a signal.",
+  "type": "string",
+  "enum": [
+    "app_behavior",
+    "app_usage",
+    "web_usage",
+    "geo_location",
+    "email",
+    "tv_ott_or_stb_device",
+    "panel",
+    "online_ecommerce",
+    "credit_data",
+    "loyalty_card",
+    "transaction",
+    "online_survey",
+    "offline_survey",
+    "public_record_census",
+    "public_record_voter_file",
+    "public_record_other",
+    "offline_transaction"
+  ]
+}

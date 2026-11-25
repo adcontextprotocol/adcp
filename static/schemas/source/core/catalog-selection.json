@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "catalog_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/catalog-id.json",
       "x-entity": "catalog",
       "description": "Seller-known catalog identifier returned by sync_catalogs."
     },

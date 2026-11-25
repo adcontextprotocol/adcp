@@ -12,6 +12,7 @@
       "minItems": 1,
       "maxItems": 4,
       "items": {
+        "title": "Accessibility Violation",
         "type": "object",
         "properties": {
           "pointer": {

@@ -11,6 +11,7 @@
   ],
   "properties": {
     "query_summary": {
+      "title": "Creative Query Summary",
       "type": "object",
       "description": "Summary of the query that was executed",
       "properties": {
@@ -32,16 +33,18 @@
           }
         },
         "sort_applied": {
-          "type": "object",
-          "description": "Sort order that was applied",
-          "properties": {
-            "field": {
-              "type": "string"
+          "allOf": [
+            {
+              "$ref": "/schemas/core/creative-sort.json"
             },
-            "direction": {
-              "$ref": "/schemas/enums/sort-direction.json"
+            {
+              "required": [
+                "field",
+                "direction"
+              ]
             }
-          }
+          ],
+          "description": "Sort order that was applied"
         }
       },
       "required": [
@@ -92,7 +95,7 @@
             "x-added-in": "3.3.0"
           },
           "seller_revision": {
-            "type": ["integer", "string"],
+            "$ref": "/schemas/core/revision-token.json",
             "description": "Seller-maintained change token for this creative, distinct from the buyer-assigned revision_id. Sellers MUST use a positive integer or a string of 1 to 255 characters; the schema does not encode these bounds because JSON Schema bounds on an integer-or-string type break SDK code generation. The seller advances it on every committed change to state this read reports, whatever its origin: an AdCP task, a seller operator, seller automation, another authorized principal, or a connected platform. An externally observed change advances it when the seller ingests it. Reads, validation-only calls, and exact idempotency replays do not advance it. Sellers MUST NOT reuse a value for a different state of the same creative or move it backward. Buyers MUST treat the value as opaque: equal values mean the same state as the seller has observed and a different value means the state changed. Integer values also order numerically. A change record's resource_revision is the value immediately after that change, in the same JSON type; a read that returns a different value reflects later changes. Sellers MUST NOT use it as the buyer revision_id, and a buyer revision_id never substitutes for it. Optional; a seller that does not maintain it omits it.",
             "x-entity": "creative_seller_revision",
             "x-added-in": "3.3.0"
@@ -178,12 +181,8 @@
             "additionalProperties": true
           },
           "component_assets": {
-            "type": "object",
-            "description": "Preserved component-addressed asset maps for `coordinated_placements`, keyed by coordinated component ID.",
-            "patternProperties": {
-              "^[a-z][a-z0-9_]*$": { "$ref": "/schemas/core/creative-assets.json" }
-            },
-            "additionalProperties": false
+            "$ref": "/schemas/core/component-assets.json",
+            "description": "Preserved component-addressed asset maps for `coordinated_placements`, keyed by coordinated component ID."
           },
           "localization": {
             "$ref": "/schemas/core/creative-localization-readback.json",
@@ -264,6 +263,7 @@
             }
           },
           "assignments": {
+            "title": "Creative Assignment Summary",
             "type": "object",
             "description": "Current package assignments (included when include_assignments=true)",
             "properties": {
@@ -420,28 +420,7 @@
                       "$ref": "/schemas/core/indicator-bearing.json"
                     },
                     {
-                      "properties": {
-                        "indicator_types_evaluated": {
-                          "items": {
-                            "enum": [
-                              "creative_fatigue",
-                              "creative_quality_opportunity"
-                            ]
-                          }
-                        },
-                        "indicators": {
-                          "items": {
-                            "properties": {
-                              "type": {
-                                "enum": [
-                                  "creative_fatigue",
-                                  "creative_quality_opportunity"
-                                ]
-                              }
-                            }
-                          }
-                        }
-                      }
+                      "$ref": "/schemas/core/creative-indicator-types.json"
                     },
                     {
                       "if": {
@@ -474,7 +453,7 @@
                           "approval_scopes": {
                             "allOf": [
                               { "contains": { "properties": { "approval_status": { "const": "approved" } } } },
-                              { "contains": { "properties": { "approval_status": { "enum": ["pending_review", "rejected"] } } } }
+                              { "contains": { "properties": { "approval_status": { "$ref": "/schemas/enums/creative-unapproved-status.json" } } } }
                             ]
                           }
                         }
@@ -506,6 +485,7 @@
             "additionalProperties": true
           },
           "snapshot": {
+            "title": "Creative Delivery Snapshot",
             "type": "object",
             "description": "Lightweight delivery snapshot (included when include_snapshot=true). For detailed performance analytics, use get_creative_delivery.",
             "properties": {
@@ -650,6 +630,39 @@
             },
             "then": {
               "required": ["rights"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "format_kind": {
+                  "const": "coordinated_placements"
+                }
+              },
+              "required": [
+                "format_kind"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "component_assets"
+                ]
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "capability_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "capability_ref"
+                  ]
+                }
+              ]
             }
           }
         ],
