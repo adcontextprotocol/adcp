@@ -52,44 +52,68 @@ afterEach(() => {
   running.clear();
 });
 
+type ProbeStep = {
+  /** Repo-relative module to import. */
+  modulePath: string;
+  /** Source of an async function `(mod) => output` run after the import snapshot. */
+  use?: string;
+};
+
+/** The modules each probe process started by this file imported, in order. */
+const probeRuns: string[][] = [];
+
 /**
- * Import `modulePath` (repo-relative) in a fresh process, then optionally run
- * `use`, the source of an async function `(mod) => output` evaluated in the
- * child after the import snapshot is taken. The child runs asynchronously, so
- * the test's own timeout bounds it.
+ * Import each step's `modulePath` (repo-relative) in turn in one fresh
+ * process, running its `use` after its import snapshot. A step's atImport and
+ * afterUse list the heavy packages resolved since that step began. That is
+ * exactly what the step's own evaluation loads while no earlier step loaded
+ * any of the packages the step's test observes: a module that an earlier step
+ * left evaluated would have resolved them then. The tests of the earlier steps
+ * assert that, so steps share a process only when every step but the last
+ * expects none of the packages a later step observes. The child runs
+ * asynchronously, so the test's own timeout bounds it.
  */
-async function probe(modulePath: string, options: { use?: string; env?: Record<string, string | undefined> } = {}): Promise<ProbeResult> {
-  const moduleUrl = new URL(modulePath, `file://${REPO_ROOT}`).href;
+async function probeSteps(steps: readonly ProbeStep[], options: { env?: Record<string, string | undefined> } = {}): Promise<ProbeResult[]> {
+  const stepSources = steps.map(({ modulePath, use }) => `{ url: ${JSON.stringify(new URL(modulePath, `file://${REPO_ROOT}`).href)}, use: ${use ?? 'null'} }`);
   const script = `
     import { registerHooks } from 'node:module';
     const matchers = ${JSON.stringify(Object.fromEntries(Object.entries(PACKAGE_MATCHERS).map(([k, v]) => [k, v.source])))};
-    const seen = new Set();
-    registerHooks({ resolve(specifier, context, next) { const r = next(specifier, context); seen.add(r.url); return r; } });
-    const loaded = () => Object.entries(matchers)
-      .filter(([, source]) => [...seen].some((url) => new RegExp(source).test(url)))
-      .map(([name]) => name);
-    const result = { atImport: [], afterUse: [] };
-    let mod;
-    try {
-      mod = await import(${JSON.stringify(moduleUrl)});
-    } catch (error) {
-      result.importError = String(error?.code ?? '') + ' ' + String(error?.message ?? error);
-    }
-    result.atImport = loaded();
-    const use = ${options.use ?? 'null'};
-    if (mod && use) {
+    const seen = [];
+    registerHooks({ resolve(specifier, context, next) { const r = next(specifier, context); seen.push(r.url); return r; } });
+    const loadedSince = (start) => {
+      const urls = seen.slice(start);
+      return Object.entries(matchers)
+        .filter(([, source]) => urls.some((url) => new RegExp(source).test(url)))
+        .map(([name]) => name);
+    };
+    const steps = [${stepSources.join(',\n')}];
+    const results = [];
+    for (const step of steps) {
+      const start = seen.length;
+      const result = { atImport: [], afterUse: [] };
+      let mod;
       try {
-        result.output = await use(mod);
+        mod = await import(step.url);
       } catch (error) {
-        result.useError = String(error?.stack ?? error);
+        result.importError = String(error?.code ?? '') + ' ' + String(error?.message ?? error);
       }
+      result.atImport = loadedSince(start);
+      if (mod && step.use) {
+        try {
+          result.output = await step.use(mod);
+        } catch (error) {
+          result.useError = String(error?.stack ?? error);
+        }
+      }
+      result.afterUse = loadedSince(start);
+      results.push(result);
     }
-    result.afterUse = loaded();
-    await new Promise((resolve) => process.stdout.write(${JSON.stringify(OUTPUT_PREFIX)} + JSON.stringify(result) + '\\n', resolve));
+    await new Promise((resolve) => process.stdout.write(${JSON.stringify(OUTPUT_PREFIX)} + JSON.stringify(results) + '\\n', resolve));
     process.exit(0);
   `;
   const env: Record<string, string | undefined> = { ...process.env, NODE_ENV: 'test', LOG_LEVEL: 'silent', ...options.env };
   for (const [key, value] of Object.entries(env)) if (value === undefined) delete env[key];
+  probeRuns.push(steps.map((step) => step.modulePath));
   const child = await new Promise<{ error?: Error; status: number | null; stdout: string; stderr: string }>((resolve) => {
     const process_ = spawn(process.execPath, ['--import', 'tsx/esm', '--input-type=module', '--eval', script], {
       cwd: REPO_ROOT,
@@ -109,26 +133,64 @@ async function probe(modulePath: string, options: { use?: string; env?: Record<s
   expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0);
   const line = child.stdout.split('\n').find((l) => l.startsWith(OUTPUT_PREFIX));
   expect(line, `${child.stdout}\n${child.stderr}`).toBeDefined();
-  return JSON.parse(line!.slice(OUTPUT_PREFIX.length)) as ProbeResult;
+  const results = JSON.parse(line!.slice(OUTPUT_PREFIX.length)) as ProbeResult[];
+  expect(results).toHaveLength(steps.length);
+  return results;
 }
 
+/** One step in its own fresh process. */
+async function probe(modulePath: string, options: { use?: string; env?: Record<string, string | undefined> } = {}): Promise<ProbeResult> {
+  const [result] = await probeSteps([{ modulePath, use: options.use }], { env: options.env });
+  return result!;
+}
+
+/** A shared probe run, started by the first test that needs it. */
+function shared<T>(run: () => Promise<T>): () => Promise<T> {
+  let pending: Promise<T> | undefined;
+  return () => (pending ??= run());
+}
+
+// Modules whose import evaluates none of the heavy packages. One module per
+// test so a regression names the module that reintroduced the eager load. The
+// imports share one process (probeSteps): no test expects any of the packages.
+const LEAF_MODULES = [
+  'server/src/legal-markdown.ts',
+  'server/src/services/brand-logo-service.ts',
+  'server/src/training-agent/vast-document-validation.ts',
+  'server/src/addie/jobs/committee-document-indexer.ts',
+  'server/src/security/gcp-kms-signer.ts',
+  'server/src/services/supply-path-input.ts',
+  'server/src/compliance/run-provenance.ts',
+  'server/src/training-agent/plan-hash.ts',
+];
+
+const leafProbe = shared(() => probeSteps(LEAF_MODULES.map((modulePath) => ({ modulePath }))));
+
+// The durable reporting probes share one process (probeSteps), in this order:
+// every step but the last expects neither package, and the last, the first
+// reporting call, is the one that loads them.
+const REPORTING_STEPS = {
+  routes: { modulePath: 'server/src/training-agent/gcs-reporting-routes.ts' },
+  tools: { modulePath: 'server/src/training-agent/gcs-reporting-tools.ts' },
+  router: {
+    modulePath: 'server/src/training-agent/index.ts',
+    use: 'async (mod) => { mod.createTrainingAgentRouter({ disableRateLimit: true }); (await import("./server/src/training-agent/state.ts")).stopSessionCleanup(); return "built"; }',
+  },
+  runtime: {
+    modulePath: 'server/src/training-agent/gcs-reporting-runtime.ts',
+    use: 'async (mod) => String(await mod.loadTrainingGcsReporting())',
+  },
+} satisfies Record<string, ProbeStep>;
+const reportingProbe = shared(async () => {
+  const results = await probeSteps(Object.values(REPORTING_STEPS), {
+    env: { PUBLIC_TEST_AGENT_TOKEN: 'test-token', TRAINING_REPORTING_GCS_ENABLED: undefined },
+  });
+  return Object.fromEntries(Object.keys(REPORTING_STEPS).map((name, i) => [name, results[i]!])) as Record<keyof typeof REPORTING_STEPS, ProbeResult>;
+});
 
 describe('importing a module does not evaluate heavy dependencies it uses only on some paths', () => {
-  // One module per test so a regression names the module that reintroduced
-  // the eager load.
-  const LEAF_MODULES = [
-    'server/src/legal-markdown.ts',
-    'server/src/services/brand-logo-service.ts',
-    'server/src/training-agent/vast-document-validation.ts',
-    'server/src/addie/jobs/committee-document-indexer.ts',
-    'server/src/security/gcp-kms-signer.ts',
-    'server/src/services/supply-path-input.ts',
-    'server/src/compliance/run-provenance.ts',
-    'server/src/training-agent/plan-hash.ts',
-  ];
-
   it.each(LEAF_MODULES)('%s', async (modulePath) => {
-    const result = await probe(modulePath);
+    const result = (await leafProbe())[LEAF_MODULES.indexOf(modulePath)]!;
     expect(result.importError).toBeUndefined();
     expect(result.atImport, `heavy packages evaluated by importing ${modulePath}`).toEqual([]);
   });
@@ -194,11 +256,9 @@ describe('building the training agent does not load the durable reporting stack'
   // serves only the reporting routes and tools; its runtime exists only after
   // server boot initializes it (server/src/http.ts). Building the router, as
   // every training-agent test's setup does, must not evaluate it.
+
   it('createTrainingAgentRouter() evaluates neither package', async () => {
-    const result = await probe('server/src/training-agent/index.ts', {
-      use: 'async (mod) => { mod.createTrainingAgentRouter({ disableRateLimit: true }); (await import("./server/src/training-agent/state.ts")).stopSessionCleanup(); return "built"; }',
-      env: { PUBLIC_TEST_AGENT_TOKEN: 'test-token', TRAINING_REPORTING_GCS_ENABLED: undefined },
-    });
+    const result = (await reportingProbe()).router;
     expect(result.importError).toBeUndefined();
     expect(result.useError).toBeUndefined();
     expect(result.output).toBe('built');
@@ -207,19 +267,16 @@ describe('building the training agent does not load the durable reporting stack'
   });
 
   it.each([
-    'server/src/training-agent/gcs-reporting-routes.ts',
-    'server/src/training-agent/gcs-reporting-tools.ts',
-  ])('importing %s evaluates neither package', async (modulePath) => {
-    const result = await probe(modulePath, { env: { PUBLIC_TEST_AGENT_TOKEN: 'test-token' } });
+    ['server/src/training-agent/gcs-reporting-routes.ts', 'routes'],
+    ['server/src/training-agent/gcs-reporting-tools.ts', 'tools'],
+  ] as const)('importing %s evaluates neither package', async (_modulePath, step) => {
+    const result = (await reportingProbe())[step];
     expect(result.importError).toBeUndefined();
     expect(result.atImport.filter((name) => DURABLE_REPORTING.includes(name))).toEqual([]);
   });
 
   it('the first reporting call loads the runtime module and, with reporting off, finds no runtime', async () => {
-    const result = await probe('server/src/training-agent/gcs-reporting-runtime.ts', {
-      use: 'async (mod) => String(await mod.loadTrainingGcsReporting())',
-      env: { TRAINING_REPORTING_GCS_ENABLED: undefined },
-    });
+    const result = (await reportingProbe()).runtime;
     expect(result.importError).toBeUndefined();
     expect(result.useError).toBeUndefined();
     expect(result.atImport.filter((name) => DURABLE_REPORTING.includes(name)), 'loaded before first use').toEqual([]);
@@ -344,3 +401,13 @@ describe('server unit setup file', () => {
   });
 });
 
+describe('probe processes', () => {
+  it('the leaf modules share one probe process, and the durable reporting probes another', async () => {
+    await leafProbe();
+    await reportingProbe();
+    const reporting = Object.values(REPORTING_STEPS).map((step) => step.modulePath);
+    // Other tests probe some of these modules again, alone, for first use.
+    expect(probeRuns.filter((run) => LEAF_MODULES.some((m) => run.includes(m)) && run.length > 1)).toEqual([LEAF_MODULES]);
+    expect(probeRuns.filter((run) => reporting.some((m) => run.includes(m)) && run.length > 1)).toEqual([reporting]);
+  });
+});

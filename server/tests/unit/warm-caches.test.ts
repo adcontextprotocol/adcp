@@ -17,7 +17,7 @@
 // by .json file name and bytes only; nothing here reads entry contents.
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -105,24 +105,63 @@ const projectWithEnv = (env: Record<string, string>): TestProject => ({
   vite: { environments: { ssr: { name: 'ssr', transformRequest: async () => ({ code: '', map: null, deps: [], dynamicDeps: [] }) } } },
 }) as unknown as TestProject;
 
+type DevEnvironment = Parameters<typeof warmTransforms>[0];
+
+/** A Vite root with a small module graph: static, nested and dynamic imports, a package, a builtin, a missing import. */
+function fixtureRoot(): string {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'warm-transforms-')));
+  dirs.push(root);
+  const files: Record<string, string> = {
+    'src/entry.ts': [
+      "import { a } from './a.js';",
+      "import { pkg } from '../node_modules/fake-pkg/index.js';",
+      "import { join } from 'node:path';",
+      'export const v = [a, pkg, join("x")];',
+      "export const later = () => import('./lazy.js');",
+    ].join('\n'),
+    'src/a.ts': "import { b } from './nested/b.js';\nexport const a: number = b + 1;\n",
+    'src/nested/b.ts': 'export const b = 1;\n',
+    'src/lazy.ts': "import { missing } from './missing.js';\nexport const lazy = missing;\n",
+    'node_modules/fake-pkg/package.json': JSON.stringify({ name: 'fake-pkg', type: 'module', main: 'index.js' }),
+    'node_modules/fake-pkg/index.js': 'export const pkg = 1;\n',
+  };
+  for (const [file, source] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, file)), { recursive: true });
+    writeFileSync(join(root, file), source);
+  }
+  return root;
+}
+
+async function withViteServer<T>(root: string, run: (environment: DevEnvironment) => Promise<T>): Promise<T> {
+  const server = await createServer({
+    root, configFile: false, logLevel: 'silent', appType: 'custom',
+    server: { middlewareMode: true, hmr: false, ws: false },
+  });
+  try {
+    return await run(server.environments.ssr!);
+  } finally {
+    await server.close();
+  }
+}
+
 describe('warmTransforms', () => {
-  it('transforms the training agent entry and the repository modules it imports in the server, skipping node_modules', async () => {
-    const server = await createServer({
-      root: SERVER_ROOT, configFile: false, logLevel: 'silent', appType: 'custom',
-      server: { middlewareMode: true, hmr: false, ws: false },
+  it('transforms the entry and the repository modules it imports, statically or dynamically, skipping node_modules', async () => {
+    const root = fixtureRoot();
+    await withViteServer(root, async (environment) => {
+      const warmed = await warmTransforms(environment, ['/src/entry.ts']);
+      expect([...warmed].sort()).toEqual(['/src/a.ts', '/src/entry.ts', '/src/lazy.ts', '/src/nested/b.ts']);
+      for (const url of warmed) expect(environment.moduleGraph.getModuleById(join(root, url))?.transformResult, url).toBeTruthy();
+      expect(environment.moduleGraph.getModuleById(join(root, 'node_modules/fake-pkg/index.js'))?.transformResult ?? null).toBeNull();
+      await expect(warmTransforms(environment, ['/src/no-such-module.ts'])).rejects.toThrow();
     });
-    try {
-      const environment = server.environments.ssr!;
-      const warmed = await warmTransforms(environment, [TRAINING_AGENT_ENTRY_URL]);
-      for (const url of [TRAINING_AGENT_ENTRY_URL, '/src/training-agent/schema-compat.ts']) {
-        expect(warmed, url).toContain(url);
-        expect(environment.moduleGraph.getModuleById(join(SERVER_ROOT, url))?.transformResult, url).toBeTruthy();
-      }
-      expect([...warmed].filter((url) => url.includes('/node_modules/'))).toEqual([]);
-      await expect(warmTransforms(environment, ['/src/training-agent/no-such-module.ts'])).rejects.toThrow();
-    } finally {
-      await server.close();
-    }
+  });
+
+  it('the training agent entry transforms in the server and imports the schema-root module the warm-up is for', async () => {
+    // warmTransforms follows every import (above), so warming the entry warms schema-compat.ts.
+    await withViteServer(SERVER_ROOT, async (environment) => {
+      const result = await environment.transformRequest(TRAINING_AGENT_ENTRY_URL);
+      expect(result?.deps).toContain('/src/training-agent/schema-compat.ts');
+    });
   });
 });
 

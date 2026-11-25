@@ -40,13 +40,19 @@
  * module does not help: the importer must import from the leaf directly.
  *
  * Cost: a module's analysis (a TypeScript pass for type elision, then its
- * imports, exports and evaluation-time uses) is most of the run. lint() keeps
- * each module's record in a cache file across processes (openCache) and
- * reuses a record only when every input it was computed from is unchanged:
- * the module's source text, the resolution of every relative specifier it
- * resolved, this script's source and the TypeScript build. The cache lives in
- * ADCP_LINT_CACHE_DIR (default <repo>/node_modules/.cache/adcp-lint); '' turns
- * it off, and CI runs uncached, as the SDK validator cache does.
+ * imports, exports and evaluation-time uses) is most of the run, so only the
+ * modules that can hold a violation are analysed. A violation needs an import
+ * cycle, so scan() first reads every module's import declarations (a parse,
+ * no type pass) and checks each cycle of that static import graph on its own;
+ * only when a cycle has a violation does it evaluate in full the entries that
+ * reach it, which gives the same result as evaluating every entry in full.
+ * lint() keeps each module's import declarations and analysis in a cache file
+ * across processes (openCache) and reuses a record only when every input it
+ * was computed from is unchanged: the module's source text, the resolution of
+ * every relative specifier it resolved, this script's source and the
+ * TypeScript build. The cache lives in ADCP_LINT_CACHE_DIR (default
+ * <repo>/node_modules/.cache/adcp-lint); '' turns it off, and CI runs
+ * uncached, as the SDK validator cache does.
  */
 
 'use strict';
@@ -87,11 +93,63 @@ function sha256(text) {
  * optional record store (openCache) shared across processes: a module whose
  * stored record still matches its source text and the resolution of every
  * specifier it resolved is not analysed again. `stats` counts the modules
- * analysed and the records reused.
+ * analysed, the records reused, and the modules whose import declarations
+ * were parsed for the static import graph (`parsed`).
  */
 function createAnalyzer(read, { cache } = {}) {
   const modules = new Map();
-  const stats = { analysed: 0, reused: 0 };
+  const stats = { analysed: 0, reused: 0, parsed: 0 };
+  const hashes = new Map();
+  const syntaxSpecifiers = new Map();
+  const staticDepsCache = new Map();
+
+  function hashOf(file, source) {
+    if (!hashes.has(file)) hashes.set(file, sha256(source));
+    return hashes.get(file);
+  }
+
+  /**
+   * Every specifier a top-level import, `export ... from` or `import = require`
+   * declaration names, type-only ones included: the runtime imports before type
+   * elision, read from the parse tree alone (no binding, no transform). From
+   * the cache when the stored record's source hash matches.
+   */
+  function staticSpecifiers(file, source) {
+    if (syntaxSpecifiers.has(file)) return syntaxSpecifiers.get(file);
+    const sourceHash = cache ? hashOf(file, source) : null;
+    const stored = sourceHash && cache.get(file);
+    let specifiers;
+    if (stored && stored.sourceHash === sourceHash && Array.isArray(stored.syntax)) {
+      specifiers = stored.syntax;
+    } else {
+      stats.parsed += 1;
+      specifiers = [];
+      const sf = ts.createSourceFile(file, source, { languageVersion: ts.ScriptTarget.ES2022, jsDocParsingMode: ts.JSDocParsingMode.ParseNone }, false);
+      for (const st of sf.statements) {
+        if ((ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) && st.moduleSpecifier && ts.isStringLiteral(st.moduleSpecifier)) {
+          specifiers.push(st.moduleSpecifier.text);
+        } else if (ts.isImportEqualsDeclaration(st) && ts.isExternalModuleReference(st.moduleReference)
+          && ts.isStringLiteral(st.moduleReference.expression)) {
+          specifiers.push(st.moduleReference.expression.text);
+        }
+      }
+      if (sourceHash) cache.set(file, { ...(stored && stored.sourceHash === sourceHash ? stored : { sourceHash }), syntax: specifiers });
+    }
+    syntaxSpecifiers.set(file, specifiers);
+    return specifiers;
+  }
+
+  /**
+   * The modules `file` imports statically, before type elision: a superset of
+   * its runtime deps (analyzeModule checks that it is), in source order.
+   */
+  function staticDeps(file) {
+    if (staticDepsCache.has(file)) return staticDepsCache.get(file);
+    const source = read(file);
+    const deps = source === undefined ? [] : runtimeDeps(file, staticSpecifiers(file, source));
+    staticDepsCache.set(file, deps);
+    return deps;
+  }
   // Every resolve() made from `resolving` while it is analysed: spec -> target | null.
   let resolving = null;
   let resolutions = null;
@@ -131,6 +189,8 @@ function createAnalyzer(read, { cache } = {}) {
     const specifiers = [];
     ts.transpileModule(source, {
       fileName: file,
+      // No check reads JSDoc, and type elision in TypeScript files ignores it.
+      jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
       compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, isolatedModules: true, jsx: ts.JsxEmit.Preserve },
       transformers: {
         before: [() => (original) => {
@@ -168,9 +228,10 @@ function createAnalyzer(read, { cache } = {}) {
   function analyzeModule(file) {
     if (modules.has(file)) return modules.get(file);
     const source = read(file);
-    const sourceHash = cache && source !== undefined ? sha256(source) : null;
+    const sourceHash = cache && source !== undefined ? hashOf(file, source) : null;
     const stored = sourceHash && cache.get(file);
-    if (stored && stored.sourceHash === sourceHash && stored.resolutions.every(([spec, target]) => resolve(file, spec) === target)) {
+    if (stored && stored.sourceHash === sourceHash && Array.isArray(stored.resolutions)
+      && stored.resolutions.every(([spec, target]) => resolve(file, spec) === target)) {
       stats.reused += 1;
       const mod = {
         file,
@@ -185,13 +246,19 @@ function createAnalyzer(read, { cache } = {}) {
       return mod;
     }
     stats.analysed += 1;
+    // The static import graph scan() prunes with must cover every runtime dep.
+    // Read before the resolutions are recorded: the record depends only on
+    // the specifiers that survive elision.
+    const superset = source === undefined ? [] : staticDeps(file);
     resolving = file;
     resolutions = new Map();
+    let mod;
     try {
-      const mod = analyzeSource(file, source);
+      mod = analyzeSource(file, source);
       if (sourceHash) {
         cache.set(file, {
           sourceHash,
+          syntax: syntaxSpecifiers.get(file),
           resolutions: [...resolutions],
           imports: [...mod.imports],
           locals: [...mod.locals],
@@ -201,11 +268,15 @@ function createAnalyzer(read, { cache } = {}) {
           uses: mod.uses,
         });
       }
-      return mod;
     } finally {
       resolving = null;
       resolutions = null;
     }
+    const missing = mod.deps.filter((dep) => !superset.includes(dep));
+    if (missing.length) {
+      throw new Error(`lint-module-eval-cycles: ${file} imports ${missing.join(', ')} at runtime, but no import declaration names it`);
+    }
+    return mod;
   }
 
   function analyzeSource(file, source) {
@@ -427,10 +498,18 @@ function createAnalyzer(read, { cache } = {}) {
   }
 
   /** Violations found while this module's top level runs, given the modules in progress. */
-  function checkModule(mod, inProgress) {
+  /**
+   * Violations found while this module's top level runs, given the modules in
+   * progress. With `within` (an import cycle the walk is confined to), a use
+   * of a binding imported from outside it is skipped unresolved: the in-progress
+   * modules are all inside, and a re-export chain that starts outside cannot
+   * come back in (it would then be part of the cycle).
+   */
+  function checkModule(mod, inProgress, within) {
     const found = [];
     for (const use of mod.uses) {
       const binding = mod.imports.get(use.local);
+      if (within && !within.has(binding.file)) continue;
       const name = use.member ?? binding.imported;
       const resolved = resolveBinding(binding.file, name);
       if (!resolved) continue;
@@ -452,8 +531,12 @@ function createAnalyzer(read, { cache } = {}) {
     return found;
   }
 
-  /** Simulates evaluation with `entry` imported first; returns violations in evaluation order. */
-  function evaluate(entry) {
+  /**
+   * Simulates evaluation with `entry` imported first; returns violations in
+   * evaluation order. With `within`, the walk does not leave that set of
+   * modules (see scan).
+   */
+  function evaluate(entry, within) {
     const state = new Map();
     const inProgress = new Set();
     const found = [];
@@ -461,8 +544,8 @@ function createAnalyzer(read, { cache } = {}) {
       state.set(file, 'in');
       inProgress.add(file);
       const mod = analyzeModule(file);
-      for (const dep of mod.deps) if (!state.has(dep)) visitModule(dep);
-      found.push(...checkModule(mod, inProgress));
+      for (const dep of mod.deps) if (!state.has(dep) && (!within || within.has(dep))) visitModule(dep);
+      found.push(...checkModule(mod, inProgress, within));
       inProgress.delete(file);
       state.set(file, 'done');
     };
@@ -470,7 +553,103 @@ function createAnalyzer(read, { cache } = {}) {
     return found;
   }
 
-  return { analyzeModule, evaluate, resolveBinding, stats };
+  /**
+   * The strongly connected components of the static import graph reachable
+   * from `entries` (staticDeps edges), in Tarjan's order: every component
+   * comes after the components it reaches.
+   */
+  function components(entries) {
+    const index = new Map();
+    const low = new Map();
+    const onStack = new Set();
+    const stack = [];
+    const result = [];
+    for (const root of entries) {
+      if (index.has(root)) continue;
+      const frames = [[root, 0]];
+      index.set(root, index.size);
+      low.set(root, index.get(root));
+      stack.push(root);
+      onStack.add(root);
+      while (frames.length) {
+        const frame = frames[frames.length - 1];
+        const [file] = frame;
+        const deps = staticDeps(file);
+        if (frame[1] < deps.length) {
+          const dep = deps[frame[1]++];
+          if (!index.has(dep)) {
+            index.set(dep, index.size);
+            low.set(dep, index.get(dep));
+            stack.push(dep);
+            onStack.add(dep);
+            frames.push([dep, 0]);
+          } else if (onStack.has(dep)) {
+            low.set(file, Math.min(low.get(file), index.get(dep)));
+          }
+          continue;
+        }
+        frames.pop();
+        if (frames.length) {
+          const parent = frames[frames.length - 1][0];
+          low.set(parent, Math.min(low.get(parent), low.get(file)));
+        }
+        if (low.get(file) === index.get(file)) {
+          const members = [];
+          let member;
+          do {
+            member = stack.pop();
+            onStack.delete(member);
+            members.push(member);
+          } while (member !== file);
+          result.push(members);
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Every distinct violation over `entries`, each with the entries that
+   * trigger it, in key order.
+   *
+   * A violation needs its importer and the in-progress module it reads from in
+   * one import cycle, and the cycle's modules evaluate the same way from any
+   * entry that first reaches the cycle at a given module. So each cycle of the
+   * static import graph (a superset of the runtime one: type-only imports are
+   * not elided) is checked first on its own, from each of its modules, with
+   * the walk confined to it; that analyses only the modules in cycles. Only
+   * the entries that reach a cycle with a violation are then evaluated in full,
+   * which gives the same violations and triggering entries as evaluating every
+   * entry in full.
+   */
+  function scan(entries) {
+    const comps = components(entries);
+    const reachesViolation = new Map();
+    for (const members of comps) {
+      let found = false;
+      if (members.length > 1) {
+        const within = new Set(members);
+        found = members.some((member) => evaluate(member, within).length > 0);
+      }
+      for (const member of members) {
+        if (!found) found = staticDeps(member).some((dep) => reachesViolation.get(dep));
+      }
+      for (const member of members) reachesViolation.set(member, found);
+    }
+    const byKey = new Map();
+    for (const entry of entries) {
+      if (!reachesViolation.get(entry)) continue;
+      for (const hole of evaluate(entry)) {
+        const key = holeKey(hole);
+        if (!byKey.has(key)) byKey.set(key, { ...hole, entries: [] });
+        const agg = byKey.get(key);
+        if (!agg.entries.includes(entry)) agg.entries.push(entry);
+      }
+    }
+    return [...byKey.values()].sort((a, b) => holeKey(a).localeCompare(holeKey(b)));
+  }
+
+  return { analyzeModule, evaluate, resolveBinding, scan, staticDeps, stats };
 }
 
 /**
@@ -561,17 +740,7 @@ function analyzerFor(read, cache) {
 }
 
 function scan({ entries, read, cache }) {
-  const analyzer = analyzerFor(read, cache);
-  const byKey = new Map();
-  for (const entry of entries) {
-    for (const hole of analyzer.evaluate(entry)) {
-      const key = holeKey(hole);
-      if (!byKey.has(key)) byKey.set(key, { ...hole, entries: [] });
-      const agg = byKey.get(key);
-      if (!agg.entries.includes(entry)) agg.entries.push(entry);
-    }
-  }
-  return [...byKey.values()].sort((a, b) => holeKey(a).localeCompare(holeKey(b)));
+  return analyzerFor(read, cache).scan(entries);
 }
 
 function* walk(dir) {

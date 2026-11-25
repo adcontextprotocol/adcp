@@ -11,7 +11,9 @@
  *      reference only, a read inside a function body, an entry order that
  *      finishes the definer first, a cycle that exists only in types).
  *   3. Type-elision parity: which imports survive as runtime dependencies,
- *      per import form.
+ *      per import form. The scan's work: a clean tree analyses only the
+ *      modules in import cycles, and a cycle with a violation is reported for
+ *      every entry that triggers it.
  *   4. The module record cache (openCache): a fresh process reuses records
  *      whose inputs are unchanged and re-analyses exactly the ones whose
  *      source, resolutions or cache version changed, with violations identical
@@ -234,6 +236,38 @@ test('scans that share a reader analyse each module once', () => {
   assert.ok(afterFirst > 0);
   assert.deepEqual(scan({ entries: ['src/a.ts', 'src/b.ts'], read }).map(holeKey), first);
   assert.equal(reads, afterFirst, 'the second scan re-read (and re-parsed) modules the first scan analysed');
+});
+
+// a.ts <-> b.ts is a cycle; c.ts is a leaf both read at evaluation time;
+// d.ts and e.ts import into the cycle from outside; e.ts also imports a type
+// from b.ts, which is not a runtime import.
+function cycleWithTails(bImports, bBody) {
+  const files = cycle(`${bImports}\nimport { LEAF } from './c.js';`, `${bBody}\nexport const COPY = [LEAF];`, "import { LEAF } from './c.js';\nexport const OWN = [LEAF];");
+  return {
+    ...files,
+    'src/c.ts': 'export const LEAF = 1;\n',
+    'src/d.ts': "import { touch } from './a.js';\nexport const T = touch;\n",
+    'src/e.ts': "import type { Base } from './b.js';\nimport { LEAF } from './c.js';\nexport const E: Base[] = [LEAF as never];\n",
+  };
+}
+
+test('a scan analyses only the modules in import cycles when no cycle has a violation', () => {
+  const files = cycleWithTails("import { helper } from './a.js';", 'export const HANDLERS = [helper];');
+  const analyzer = createAnalyzer((f) => files[f]);
+  assert.deepEqual(analyzer.scan(Object.keys(files)), []);
+  assert.deepEqual(analyzer.stats, { analysed: 2, reused: 0, parsed: 5 },
+    'a.ts and b.ts analysed; c.ts, d.ts and e.ts only parsed for their import declarations');
+});
+
+test('a scan evaluates in full exactly the entries that reach a cycle with a violation', () => {
+  const files = cycleWithTails("import { SCHEMA } from './a.js';", 'export const TOOLS = [SCHEMA];');
+  const analyzer = createAnalyzer((f) => files[f]);
+  const found = analyzer.scan(Object.keys(files));
+  assert.deepEqual(found.map(holeKey), ['src/b.ts:1 reads SCHEMA from in-progress src/a.ts']);
+  // Entered at d.ts, a.ts is imported first, as when entered at a.ts. e.ts
+  // reaches b.ts only through a type, so its full evaluation finds nothing.
+  assert.deepEqual(found[0].entries, ['src/a.ts', 'src/d.ts']);
+  assert.deepEqual(analyzer.stats, { analysed: 5, reused: 0, parsed: 5 });
 });
 
 test('the analyser resolves .js specifiers to .ts sources and directory imports to index.ts', () => {
