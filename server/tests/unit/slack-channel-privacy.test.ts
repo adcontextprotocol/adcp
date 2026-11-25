@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // load — set a fake value BEFORE the import resolves (vi.hoisted runs
 // before import statements) so slackRequest doesn't throw.
 vi.hoisted(() => {
-  process.env.ADDIE_BOT_TOKEN = 'xoxb-test-fake';
+  vi.stubEnv('ADDIE_BOT_TOKEN', 'xoxb-test-fake');
 });
 
 import {
@@ -14,6 +14,12 @@ import {
   verifyChannelPrivacyForWrite,
   __resetChannelCacheForTests,
 } from '../../src/slack/client.js';
+
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('ADDIE_BOT_TOKEN', 'xoxb-test-fake');
+});
 
 /**
  * #2735 — channel privacy TOCTOU recheck.

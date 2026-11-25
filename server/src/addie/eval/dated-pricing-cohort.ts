@@ -17,6 +17,7 @@ import {
   openaiReturnedModelIdentityMatches,
 } from '../model-providers/openai-responses-provider.js';
 import type { ModelProviderId } from '../model-providers/model-provider.js';
+import { isDeepFrozenJsonData } from '../model-providers/capabilities.js';
 
 const COHORT_DIGEST_DOMAIN = 'adcp:addie:dated-prospective-pricing-cohort:v1\0';
 const PROFILE_DIGEST_DOMAIN = 'adcp:addie:dated-prospective-pricing-profile:v1\0';
@@ -490,10 +491,18 @@ function cohortDigest(profiles: readonly DatedPricingProfile[]): string {
   return `sha256:${createHash('sha256').update(COHORT_DIGEST_DOMAIN, 'utf8').update(JSON.stringify(canonical), 'utf8').digest('hex')}`;
 }
 
+let fixedTraceProfiles: readonly DatedPricingProfile[] | undefined;
+
 /** Review-only profiles for fixed-trace artifact validation; this grants no provider admission. */
 export function datedPricingProfilesForFixedTrace(): readonly DatedPricingProfile[] {
+  if (fixedTraceProfiles) return fixedTraceProfiles;
   const result = buildDatedPricingCohort(OFFICIAL_PRICING_RECORDS, new Date(DIRECT_FULL_SUITE_CHECKED_AT));
   if (result.status !== 'available') throw new Error('built-in dated pricing registry is invalid');
+  // A pure function of frozen constants: keep the frozen result once both the
+  // records and the profiles are proven deep-frozen JSON data.
+  if (isDeepFrozenJsonData(OFFICIAL_PRICING_RECORDS) && isDeepFrozenJsonData(result.cohort.profiles)) {
+    fixedTraceProfiles = result.cohort.profiles;
+  }
   return result.cohort.profiles;
 }
 

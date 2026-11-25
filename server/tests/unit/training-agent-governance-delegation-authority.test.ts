@@ -7,7 +7,7 @@
  * committed spend is denied with a finding, in every governance mode.
  */
 import { createHash } from 'node:crypto';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '../../src/training-agent/task-handlers.js';
 import { handleCheckGovernance, handleSyncPlans } from '../../src/training-agent/governance-handlers.js';

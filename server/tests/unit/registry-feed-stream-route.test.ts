@@ -26,6 +26,7 @@ vi.mock('../../src/middleware/rate-limit.js', () => {
 });
 
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 function makeFeed(overrides: Partial<FeedResult> = {}): FeedResult {
   return {
@@ -86,7 +87,7 @@ async function readFirstSseFrame(app: express.Express, path: string): Promise<{
   text: string;
 }> {
   const server = http.createServer(app);
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  await listenOnLoopback(server);
   const { port } = server.address() as AddressInfo;
 
   return new Promise((resolve, reject) => {

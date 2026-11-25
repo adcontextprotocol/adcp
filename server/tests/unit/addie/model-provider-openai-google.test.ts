@@ -26,6 +26,11 @@ import {
   UnsupportedModelCapabilityError,
   type ModelRequest,
 } from '../../../src/addie/model-providers/model-provider.js';
+import * as capabilitiesModule from '../../../src/addie/model-providers/capabilities.js';
+import {
+  addieMatchedV4RouterWireSurface,
+  addieMatchedV4WireSurface,
+} from '../../../src/addie/eval/matched-v4-runtime-surface.js';
 import {
   executeReadOnlyToolLoop,
   ReadOnlyToolLoopBoundaryError,
@@ -562,6 +567,329 @@ describe('OpenAIResponsesProvider', () => {
       incomplete_details: { reason: 'content_filter' },
       output: [],
     })).finishReason).toBe('refusal');
+  });
+});
+
+/* Guards for tp-jyw.6. A cached OpenAI tool projection is valid only for a tool
+ * proven deep-frozen, data-only, proxy-free JSON (isDeepFrozenJsonData in
+ * model-providers/capabilities.ts). Every other input keeps today's uncached
+ * projection, so its wire request reflects the input's current state. */
+
+/** Test fixture freezer: freezes every own data property (symbols included)
+ * through descriptors, so fixture getters are never invoked. */
+function deepFrozenFixture<T>(value: T): T {
+  if (typeof value !== 'object' || value === null) return value;
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor && 'value' in descriptor) deepFrozenFixture(descriptor.value);
+  }
+  return Object.freeze(value);
+}
+
+type ToolDefinition = ModelRequest['tools'][number];
+
+function searchToolDefinition(name = 'search_docs'): ToolDefinition {
+  return {
+    name,
+    description: `Search fixture for ${name}.`,
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Query text.' } },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  };
+}
+
+/** A frozen tool shell and frozen inputSchema shell over MUTABLE `properties`. */
+function shallowFrozenToolOverMutableProperties(): {
+  tool: ToolDefinition;
+  properties: Record<string, Record<string, unknown>>;
+} {
+  const properties: Record<string, Record<string, unknown>> = {
+    query: { type: 'string', description: 'Query text.' },
+  };
+  const tool = Object.freeze({
+    name: 'search_docs',
+    description: 'Search fixture for search_docs.',
+    inputSchema: Object.freeze({
+      type: 'object',
+      properties,
+      additionalProperties: false,
+    }),
+  }) as unknown as ToolDefinition;
+  return { tool, properties };
+}
+
+/** A deep-frozen tool whose nested description is a (frozen) getter. */
+function frozenToolWithGetter(read: () => string): ToolDefinition {
+  const query = { type: 'string' } as Record<string, unknown>;
+  Object.defineProperty(query, 'description', { enumerable: true, get: read });
+  return deepFrozenFixture({
+    name: 'search_docs',
+    description: 'Search fixture for search_docs.',
+    inputSchema: { type: 'object', properties: { query }, additionalProperties: false },
+  }) as unknown as ToolDefinition;
+}
+
+const openAIProjections = {
+  runtime: (tools: readonly ToolDefinition[]) => new OpenAIResponsesProvider(
+    'unused',
+    {} as OpenAIResponsesTransport,
+  ).prepare(request(OPENAI_ROUTER_MODEL, { tools: tools as ToolDefinition[] })).providerRequest,
+  evaluation: (tools: readonly ToolDefinition[]) => prepareOpenAIResponsesEvaluationRequest(
+    request(OPENAI_ROUTER_MODEL, { tools: tools as ToolDefinition[] }),
+  ),
+} as const;
+
+function thrownBy(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('Expected the projection to throw');
+}
+
+function wireParameters(providerRequest: Readonly<Record<string, unknown>>): unknown {
+  return (providerRequest.tools as Array<{ parameters: unknown }>)[0].parameters;
+}
+
+describe.each(Object.entries(openAIProjections))('OpenAI %s tool projection reuse', (_label, project) => {
+  it('reflects a nested mutation under a frozen tool shell and frozen schema shell', () => {
+    const { tool, properties } = shallowFrozenToolOverMutableProperties();
+    const first = project([tool]);
+    expect(wireParameters(first)).toEqual({
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Query text.' } },
+      additionalProperties: false,
+    });
+
+    properties.query.description = 'Mutated query text.';
+    properties.limit = { type: 'integer' };
+    const second = project([tool]);
+
+    expect(wireParameters(second)).toEqual({
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Mutated query text.' },
+        limit: { type: 'integer' },
+      },
+      additionalProperties: false,
+    });
+    // The earlier wire request is an immutable snapshot of the earlier state.
+    expect(wireParameters(first)).toEqual({
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Query text.' } },
+      additionalProperties: false,
+    });
+  });
+
+  it('re-reads a frozen getter on every projection instead of caching its value', () => {
+    let description = 'First description.';
+    const tool = frozenToolWithGetter(() => description);
+    expect(wireParameters(project([tool]))).toEqual({
+      type: 'object',
+      properties: { query: { type: 'string', description: 'First description.' } },
+      additionalProperties: false,
+    });
+    description = 'Second description.';
+    expect(wireParameters(project([tool]))).toEqual({
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Second description.' } },
+      additionalProperties: false,
+    });
+  });
+
+  it('throws the same DataCloneError for a proxied schema, even after its target was projected', () => {
+    const target = deepFrozenFixture(searchToolDefinition().inputSchema);
+    // Warm any projection state with the proxy's deep-frozen target first.
+    project([deepFrozenFixture({ ...searchToolDefinition(), inputSchema: target })]);
+    const proxied = Object.freeze({
+      ...searchToolDefinition(),
+      inputSchema: new Proxy(target, {}),
+    }) as ToolDefinition;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const error = thrownBy(() => project([proxied]));
+      expect(error).toBeInstanceOf(DOMException);
+      expect(error).toMatchObject({ name: 'DataCloneError', message: '#<Object> could not be cloned.' });
+    }
+  });
+
+  it('serializes verified-frozen tools exactly like unfrozen copies, alone and mixed', () => {
+    const surface = addieMatchedV4WireSurface('broad', 'openai').tools;
+    const verified = surface.slice(0, 12);
+    const unfrozen = structuredClone(verified) as ToolDefinition[];
+    expect(Object.isFrozen(unfrozen[0])).toBe(false);
+
+    expect(JSON.stringify(project(verified))).toBe(JSON.stringify(project(unfrozen)));
+    // Repeating the verified projection must not drift from the uncached bytes.
+    expect(JSON.stringify(project(verified))).toBe(JSON.stringify(project(unfrozen)));
+
+    const mixed = [verified[0], unfrozen[1], verified[2]];
+    expect(JSON.stringify(project(mixed))).toBe(JSON.stringify(project(unfrozen.slice(0, 3))));
+    expect(JSON.stringify(project(Object.freeze([])))).toBe(JSON.stringify(project([])));
+    expect(JSON.stringify(project(surface))).toBe(JSON.stringify(project(structuredClone(surface) as ToolDefinition[])));
+  });
+
+  it('shares one frozen projection per verified tool across prepares', () => {
+    const verified = addieMatchedV4WireSurface('clean', 'openai').tools;
+    expect(verified.length).toBeGreaterThan(1);
+    const first = project(verified).tools as readonly object[];
+    const second = project(verified).tools as readonly object[];
+
+    expect(first).toHaveLength(verified.length);
+    expect(second).toHaveLength(verified.length);
+    for (const [index, projected] of first.entries()) {
+      expect(second[index]).toBe(projected);
+      expect(Object.isFrozen(projected)).toBe(true);
+      expect(Object.isFrozen((projected as { parameters: object }).parameters)).toBe(true);
+    }
+  });
+});
+
+const capabilitiesExports = capabilitiesModule as unknown as Record<string, unknown>;
+
+/** The exported predicate under test; asserts its presence so a missing export
+ * fails as an assertion. */
+function isDeepFrozenJsonData(value: unknown): boolean {
+  expect(
+    capabilitiesExports.isDeepFrozenJsonData,
+    'model-providers/capabilities.ts must export isDeepFrozenJsonData',
+  ).toBeTypeOf('function');
+  return (capabilitiesExports.isDeepFrozenJsonData as (candidate: unknown) => boolean)(value);
+}
+
+function frozenChain(depth: number): unknown {
+  let node: unknown = 'leaf';
+  for (let level = 0; level < depth; level++) node = Object.freeze({ child: node });
+  return node;
+}
+
+describe('isDeepFrozenJsonData', () => {
+  it('accepts the frozen fixed-trace suite and every matched-v4 wire-surface tool', () => {
+    expect(isDeepFrozenJsonData(FIXED_TRACE_SUITE)).toBe(true);
+    for (const trace of FIXED_TRACE_SUITE) expect(isDeepFrozenJsonData(trace)).toBe(true);
+    for (const provider of ['anthropic', 'openai', 'google'] as const) {
+      for (const surface of ['broad', 'clean'] as const) {
+        const tools = addieMatchedV4WireSurface(surface, provider).tools;
+        expect(tools.length).toBeGreaterThan(0);
+        expect(isDeepFrozenJsonData(tools)).toBe(true);
+        for (const tool of tools) expect(isDeepFrozenJsonData(tool)).toBe(true);
+      }
+      expect(isDeepFrozenJsonData(addieMatchedV4RouterWireSurface(provider).tools)).toBe(true);
+    }
+  });
+
+  it('accepts JSON primitives, null-prototype records and shared (acyclic) frozen subtrees', () => {
+    for (const primitive of [null, 'text', 0, -1.5, true, false]) {
+      expect(isDeepFrozenJsonData(primitive)).toBe(true);
+    }
+    const record = Object.assign(Object.create(null) as Record<string, unknown>, { a: 1, b: ['x'] });
+    expect(isDeepFrozenJsonData(deepFrozenFixture(record))).toBe(true);
+    const shared = deepFrozenFixture({ type: 'string' });
+    expect(isDeepFrozenJsonData(Object.freeze({ left: shared, right: shared, list: Object.freeze([shared, shared]) })))
+      .toBe(true);
+    expect(isDeepFrozenJsonData(frozenChain(90))).toBe(true);
+    expect(isDeepFrozenJsonData(Object.freeze(Array.from({ length: 10_000 }, (_, index) => index)))).toBe(true);
+  });
+
+  it('rejects shallow-frozen shells, including a frozen request shell over a mutable message', () => {
+    expect(isDeepFrozenJsonData({ type: 'object' })).toBe(false);
+    expect(isDeepFrozenJsonData(Object.freeze({ properties: { query: { type: 'string' } } }))).toBe(false);
+    expect(isDeepFrozenJsonData(shallowFrozenToolOverMutableProperties().tool)).toBe(false);
+    expect(isDeepFrozenJsonData(Object.freeze([{ mutable: true }]))).toBe(false);
+
+    const message = { role: 'user', content: [{ type: 'text', text: 'hello' }] };
+    const requestShell = Object.freeze({
+      ...request(OPENAI_ROUTER_MODEL),
+      system: deepFrozenFixture([{ text: 'Route this request.' }]),
+      tools: Object.freeze([]),
+      messages: Object.freeze([message]),
+    });
+    expect(isDeepFrozenJsonData(requestShell)).toBe(false);
+    expect(isDeepFrozenJsonData(deepFrozenFixture(structuredClone(requestShell)))).toBe(true);
+  });
+
+  it('rejects accessors without invoking them', () => {
+    let reads = 0;
+    const withGetter = frozenToolWithGetter(() => {
+      reads++;
+      return 'Getter description.';
+    });
+    expect(isDeepFrozenJsonData(withGetter)).toBe(false);
+    expect(reads).toBe(0);
+  });
+
+  it('rejects proxies without invoking any trap', () => {
+    let trapCalls = 0;
+    const handler = new Proxy({}, {
+      get: () => {
+        trapCalls++;
+        return undefined;
+      },
+    });
+    const target = deepFrozenFixture({ type: 'object', properties: { query: { type: 'string' } } });
+    expect(isDeepFrozenJsonData(new Proxy(target, handler))).toBe(false);
+    expect(isDeepFrozenJsonData(Object.freeze({ inputSchema: new Proxy(target, handler) }))).toBe(false);
+    expect(trapCalls).toBe(0);
+  });
+
+  it('rejects sparse arrays, extra array properties, undefined, non-finite numbers and non-JSON values', () => {
+    const sparse = new Array<unknown>(3);
+    sparse[0] = 'a';
+    sparse[2] = 'c';
+    expect(isDeepFrozenJsonData(Object.freeze(sparse))).toBe(false);
+    const extra = Object.assign(['a'], { extra: 'b' });
+    expect(isDeepFrozenJsonData(Object.freeze(extra))).toBe(false);
+    for (const value of [undefined, Number.NaN, Number.POSITIVE_INFINITY, 1n, Symbol('s'), () => 'f']) {
+      expect(isDeepFrozenJsonData(value)).toBe(false);
+      expect(isDeepFrozenJsonData(Object.freeze({ value }))).toBe(false);
+      expect(isDeepFrozenJsonData(Object.freeze([value]))).toBe(false);
+    }
+  });
+
+  it('rejects symbol keys, non-enumerable properties and non-plain prototypes', () => {
+    expect(isDeepFrozenJsonData(Object.freeze({ [Symbol('key')]: 'value', a: 1 }))).toBe(false);
+    const hidden = { a: 1 };
+    Object.defineProperty(hidden, 'b', { value: 2, enumerable: false });
+    expect(isDeepFrozenJsonData(Object.freeze(hidden))).toBe(false);
+    class Schema { type = 'object'; }
+    for (const value of [new Date(0), /x/u, new Map(), new Set(), new Schema(), new Uint8Array(0)]) {
+      expect(isDeepFrozenJsonData(Object.freeze(value))).toBe(false);
+    }
+  });
+
+  it('returns false for cycles and over-limit inputs instead of throwing', () => {
+    const left: Record<string, unknown> = {};
+    const right: Record<string, unknown> = { left };
+    left.right = right;
+    Object.freeze(left);
+    Object.freeze(right);
+    expect(isDeepFrozenJsonData(left)).toBe(false);
+    expect(isDeepFrozenJsonData(left)).toBe(false);
+    expect(isDeepFrozenJsonData(Object.freeze({ wrapped: right }))).toBe(false);
+
+    expect(() => isDeepFrozenJsonData(frozenChain(150))).not.toThrow();
+    expect(isDeepFrozenJsonData(frozenChain(150))).toBe(false);
+    expect(isDeepFrozenJsonData(frozenChain(5_000))).toBe(false);
+    expect(isDeepFrozenJsonData(Object.freeze(Array.from({ length: 25_000 }, (_, index) => index)))).toBe(false);
+  });
+
+  it('never memoizes a partial or failed verification', () => {
+    const shared = deepFrozenFixture({ type: 'string' });
+    const mutableSibling = { type: 'integer' };
+    const parentWithMutableSibling = Object.freeze({ shared, sibling: mutableSibling });
+    expect(isDeepFrozenJsonData(shared)).toBe(true);
+    expect(isDeepFrozenJsonData(parentWithMutableSibling)).toBe(false);
+
+    const child = { type: 'string' };
+    const parent = Object.freeze({ child });
+    expect(isDeepFrozenJsonData(parent)).toBe(false);
+    Object.freeze(child);
+    expect(isDeepFrozenJsonData(parent)).toBe(true);
+    expect(isDeepFrozenJsonData(parentWithMutableSibling)).toBe(false);
   });
 });
 

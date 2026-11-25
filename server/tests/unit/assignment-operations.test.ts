@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Assignment trackers and landing pages are 3.3 surfaces, served only through
 // the candidate wire contract.
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+  vi.stubEnv('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE', '1');
+  vi.stubEnv('ADCP_TRAINING_CANDIDATE_VERSION', '3.3-beta.0');
 });
 
 import crypto from 'node:crypto';

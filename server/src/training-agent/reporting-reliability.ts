@@ -16,7 +16,7 @@ import type {
   ReportingObligation,
   ReportingRevision,
 } from '@adcp/sdk';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import { getPool, isDatabaseInitialized } from '../db/client.js';
 import { accountScopeFromRef } from './account-scope.js';
 import { validateSourceSchema } from './source-schema.js';

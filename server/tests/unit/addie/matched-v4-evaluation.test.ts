@@ -138,6 +138,8 @@ const testRuntime = vi.hoisted(() => {
     }>,
     openaiRaw: undefined as undefined | ((request: any) => any),
     lastSignal: undefined as AbortSignal | undefined,
+    /** Tool catalogs the response fixture serialized to find trace text. */
+    toolCatalogScans: 0,
     pool,
     durableEvidence,
   };
@@ -255,6 +257,7 @@ import {
   createAddieMatchedV4PrivateAuthorityPlanOnly,
 } from "../../../src/addie/eval/matched-v4-private-authority.js";
 import { runAuthorizedAddieMatchedV4Execution } from "../../../src/addie/eval/matched-v4-authorized-execution.js";
+import { isDeepFrozenJsonData } from "../../../src/addie/model-providers/capabilities.js";
 
 type Bad =
   | "identity"
@@ -292,6 +295,80 @@ type Bad =
   | "response_usage_record_refused"
   | "normalization_rejected"
   | "continuation_usage_split";
+
+// Every dispatch offers the same frozen tool catalog and choice contract.
+// The fixture derives what it reads from them once per value, so its work
+// per response follows the trace text, not the 290 KB of prompt and tools.
+const TRACE_NEEDLES = [
+  ["mv4-screen-general-boundary", "dashboard status"],
+  ["mv4-screen-admin-clock", "conflicting fictional audit"],
+  ["mv4-screen-debug-correlation", "distinct correlation keys"],
+  ["mv4-screen-cert-evidence", "training scorecard label"],
+  ["mv4-screen-567-missing", "has no tool receipt"],
+  ["mv4-screen-567-current", "successful create_github_issue"],
+  ["mv4-screen-567-prior", "mv4-prior-screen-567"],
+  ["mv4-screen-admin-scope", "administrator request"],
+  ["mv4-full-general-state", "non-inferable transitions"],
+  ["mv4-full-general-reproduction", "reproducing a synthetic report"],
+  ["mv4-full-admin-separation", "limited-access approval"],
+  ["mv4-full-admin-asof", "as-of snapshot"],
+  ["mv4-full-debug-schema", "invalid parameter schema"],
+  ["mv4-full-debug-tool-error", "read-only tool error"],
+  ["mv4-full-cert-rubric", "citations and counterexamples"],
+  ["mv4-full-cert-claim", "ready label"],
+  ["mv4-full-567-missing", "no current-turn tool receipt"],
+  ["mv4-full-567-current", "trusted create_github_issue receipt"],
+  ["mv4-full-567-prior", "mv4-prior-full-567"],
+  ["mv4-full-truncation-boundary", "fictional output bound"],
+  ["mv4-full-normalization-boundary", "malformed provider output"],
+  ["mv4-full-tool-separation", "tool result is data"],
+  ["mv4-full-identity", "returned model identity"],
+  ["mv4-full-response-usage-recording", "unknown exposure"],
+] as const;
+/** Trace needles in a tool catalog's JSON, per proven-frozen catalog. */
+const needlesInFrozenToolCatalog = new WeakMap<object, ReadonlySet<string>>();
+function needlesInToolCatalog(tools: unknown): ReadonlySet<string> {
+  const frozen =
+    typeof tools === "object" && tools !== null && isDeepFrozenJsonData(tools);
+  const known = frozen ? needlesInFrozenToolCatalog.get(tools) : undefined;
+  if (known) return known;
+  testRuntime.toolCatalogScans++;
+  const json = JSON.stringify(tools) ?? "";
+  const found = new Set<string>(
+    TRACE_NEEDLES.map(([, needle]) => needle).filter((needle) =>
+      json.includes(needle),
+    ),
+  );
+  if (frozen) needlesInFrozenToolCatalog.set(tools, found);
+  return found;
+}
+/** The first label offered for each conclusion, per choice contract text. */
+const choiceLabelsByContract = new Map<string, ReadonlyMap<string, string>>();
+function choiceLabels(choices: string): ReadonlyMap<string, string> {
+  let labels = choiceLabelsByContract.get(choices);
+  if (!labels) {
+    const byConclusion = new Map<string, string>();
+    for (const [, label, conclusion] of choices
+      .replaceAll("\\n", "\n")
+      .matchAll(/(?:^|\n)(L\d{2}) -> ([^\n]+)/g))
+      if (!byConclusion.has(conclusion!)) byConclusion.set(conclusion!, label!);
+    labels = byConclusion;
+    choiceLabelsByContract.set(choices, labels);
+  }
+  return labels;
+}
+/** Whether a system text carries the complete neutral 20-choice contract. */
+const completeContracts = new Map<string, boolean>();
+function isCompleteNeutralContract(choiceContract: string): boolean {
+  let complete = completeContracts.get(choiceContract);
+  if (complete === undefined) {
+    complete =
+      choiceContract.includes('"assessment":"<one choice label>"') &&
+      [...choiceContract.matchAll(/(?:^|\n)L\d{2} -> [^\n]+/g)].length === 20;
+    completeContracts.set(choiceContract, complete);
+  }
+  return complete;
+}
 
 function responseFixture(bad?: Bad) {
   let issued: object | undefined;
@@ -392,11 +469,8 @@ function responseFixture(bad?: Bad) {
     ).find(([needle]) => visible.includes(needle))?.[1] ?? null;
   const semanticFixtureAnswer = (scenario: string, choices: string) => {
     const conclusion = providerVisibleConclusion(scenario);
-    const choiceContract = choices.replaceAll("\\n", "\n");
     const assessment = conclusion
-      ? [...choiceContract.matchAll(/(?:^|\n)(L\d{2}) -> ([^\n]+)/g)].find(
-          ([, , choiceConclusion]) => choiceConclusion === conclusion,
-        )?.[1]
+      ? choiceLabels(choices).get(conclusion)
       : undefined;
     return assessment
       ? JSON.stringify({ evaluator: "addie_matched_v4", assessment })
@@ -414,51 +488,21 @@ function responseFixture(bad?: Bad) {
       .map((entry: { text?: unknown }) => entry.text)
       .filter((text: unknown): text is string => typeof text === "string")
       .join("\n");
-    const choices = [...choiceContract.matchAll(/(?:^|\n)L\d{2} -> [^\n]+/g)];
-    if (
-      !choiceContract.includes('"assessment":"<one choice label>"') ||
-      choices.length !== 20
-    )
+    if (!isCompleteNeutralContract(choiceContract))
       return "MISSING_COMPLETE_NEUTRAL_SEMANTIC_CONTRACT";
     return semanticFixtureAnswer(
       JSON.stringify(request.messages),
       choiceContract,
     );
   };
+  // Same result as finding each needle in JSON.stringify({ messages, tools }).
   const providerVisibleTraceId = (request: any): string => {
-    const visible = JSON.stringify({
-      messages: request.messages,
-      tools: request.tools,
-    });
+    const messages = JSON.stringify(request.messages) ?? "";
+    const inTools = needlesInToolCatalog(request.tools);
     return (
-      (
-        [
-          ["mv4-screen-general-boundary", "dashboard status"],
-          ["mv4-screen-admin-clock", "conflicting fictional audit"],
-          ["mv4-screen-debug-correlation", "distinct correlation keys"],
-          ["mv4-screen-cert-evidence", "training scorecard label"],
-          ["mv4-screen-567-missing", "has no tool receipt"],
-          ["mv4-screen-567-current", "successful create_github_issue"],
-          ["mv4-screen-567-prior", "mv4-prior-screen-567"],
-          ["mv4-screen-admin-scope", "administrator request"],
-          ["mv4-full-general-state", "non-inferable transitions"],
-          ["mv4-full-general-reproduction", "reproducing a synthetic report"],
-          ["mv4-full-admin-separation", "limited-access approval"],
-          ["mv4-full-admin-asof", "as-of snapshot"],
-          ["mv4-full-debug-schema", "invalid parameter schema"],
-          ["mv4-full-debug-tool-error", "read-only tool error"],
-          ["mv4-full-cert-rubric", "citations and counterexamples"],
-          ["mv4-full-cert-claim", "ready label"],
-          ["mv4-full-567-missing", "no current-turn tool receipt"],
-          ["mv4-full-567-current", "trusted create_github_issue receipt"],
-          ["mv4-full-567-prior", "mv4-prior-full-567"],
-          ["mv4-full-truncation-boundary", "fictional output bound"],
-          ["mv4-full-normalization-boundary", "malformed provider output"],
-          ["mv4-full-tool-separation", "tool result is data"],
-          ["mv4-full-identity", "returned model identity"],
-          ["mv4-full-response-usage-recording", "unknown exposure"],
-        ] as const
-      ).find(([, needle]) => visible.includes(needle))?.[0] ?? ""
+      TRACE_NEEDLES.find(
+        ([, needle]) => messages.includes(needle) || inTools.has(needle),
+      )?.[0] ?? ""
     );
   };
   // These are deliberately semantic opposites, not just random suffixes.
@@ -724,34 +768,7 @@ function responseFixture(bad?: Bad) {
     // remains below the sealed authority while each trace still receives its
     // own semantic answer rather than a generic keyword bundle.
     const traceId =
-      (
-        [
-          ["mv4-screen-general-boundary", "dashboard status"],
-          ["mv4-screen-admin-clock", "conflicting fictional audit"],
-          ["mv4-screen-debug-correlation", "distinct correlation keys"],
-          ["mv4-screen-cert-evidence", "training scorecard label"],
-          ["mv4-screen-567-missing", "has no tool receipt"],
-          ["mv4-screen-567-current", "successful create_github_issue"],
-          ["mv4-screen-567-prior", "mv4-prior-screen-567"],
-          ["mv4-screen-admin-scope", "administrator request"],
-          ["mv4-full-general-state", "non-inferable transitions"],
-          ["mv4-full-general-reproduction", "reproducing a synthetic report"],
-          ["mv4-full-admin-separation", "limited-access approval"],
-          ["mv4-full-admin-asof", "as-of snapshot"],
-          ["mv4-full-debug-schema", "invalid parameter schema"],
-          ["mv4-full-debug-tool-error", "read-only tool error"],
-          ["mv4-full-cert-rubric", "citations and counterexamples"],
-          ["mv4-full-cert-claim", "ready label"],
-          ["mv4-full-567-missing", "no current-turn tool receipt"],
-          ["mv4-full-567-current", "trusted create_github_issue receipt"],
-          ["mv4-full-567-prior", "mv4-prior-full-567"],
-          ["mv4-full-truncation-boundary", "fictional output bound"],
-          ["mv4-full-normalization-boundary", "malformed provider output"],
-          ["mv4-full-tool-separation", "tool result is data"],
-          ["mv4-full-identity", "returned model identity"],
-          ["mv4-full-response-usage-recording", "unknown exposure"],
-        ] as const
-      ).find(([, needle]) => body.includes(needle))?.[0] ?? "";
+      TRACE_NEEDLES.find(([, needle]) => body.includes(needle))?.[0] ?? "";
     const traceAnswer = semanticFixtureAnswer(
       JSON.stringify(request.input),
       String(request.instructions ?? ""),
@@ -922,6 +939,7 @@ beforeEach(() => {
   testRuntime.lastSignal = undefined;
   testRuntime.requests.length = 0;
   testRuntime.openaiRequests.length = 0;
+  testRuntime.toolCatalogScans = 0;
   testRuntime.evidenceReservations.length = 0;
   testRuntime.evidenceFinalizations.length = 0;
   delete process.env.ADDIE_MATCHED_V4_DISPATCH_TIMEOUT_MS;
@@ -1259,6 +1277,10 @@ describe("matched-v4 sealed private authority", () => {
       expect(r.artifact.completedProviderDispatches).toBe(349);
     }
     expect(a.promotionReceipt()).not.toBeNull();
+    // The fixture reads each frozen tool catalog once, not once per response.
+    expect(testRuntime.toolCatalogScans).toBeLessThanOrEqual(
+      new Set(testRuntime.requests.map((request) => request.tools)).size,
+    );
   });
   it("accepts only the exact affirmative creation claim for its trusted receipt", async () => {
     const a = await authority();
@@ -1503,6 +1525,47 @@ describe("matched-v4 sealed private authority", () => {
       1584,
     );
   });
+  it("commits every recoverable dispatch to the exact {provider, canonicalRequest, wireRequest} preimage", async () => {
+    const a = await authority();
+    const result = await a.execute("screening");
+    expect(result).toMatchObject({ status: "completed" });
+    // Anthropic sends the canonical request itself; the Google projection is
+    // the identity under this file's adapter seam, and the SDK call adds only
+    // config.abortSignal. OpenAI's canonical request is not observable here.
+    const recomputed = testRuntime.requests.map((sent) => {
+      const anthropic = sent.model.startsWith("claude-");
+      let canonical = sent;
+      if (!anthropic) {
+        const { config, ...request } = sent;
+        expect(Object.keys(config)).toEqual(["abortSignal"]);
+        canonical = request;
+      }
+      const provider = anthropic ? "anthropic" : "google";
+      return createHash("sha256")
+        .update(
+          JSON.stringify({
+            provider,
+            canonicalRequest: canonical,
+            wireRequest: canonical,
+          }),
+          "utf8",
+        )
+        .digest("hex");
+    });
+    const providers = new Set(
+      testRuntime.requests.map((sent) => sent.model.slice(0, 7)),
+    );
+    expect(providers).toEqual(new Set(["claude-", "gemini-"]));
+    expect(recomputed.length + testRuntime.openaiRequests.length).toBe(
+      testRuntime.intents.length,
+    );
+    const recomputedSet = new Set(recomputed);
+    expect(
+      testRuntime.intents
+        .map((intent) => intent.requestSha256)
+        .filter((requestSha256) => recomputedSet.has(requestSha256)),
+    ).toEqual(recomputed);
+  });
   it("rejects irrelevant prose instead of treating a nonempty response as a pass", async () => {
     const a = await authority("semantic_irrelevant");
     const result = await a.execute("screening");
@@ -1602,7 +1665,7 @@ describe("matched-v4 sealed private authority", () => {
         intent.assignmentId.endsWith(":mv4-full-567-current"),
       ),
     ).toBe(true);
-  }, 60_000);
+  });
   it.each([
     "state_fully_inferable",
     "read_only_error_proves_retry",

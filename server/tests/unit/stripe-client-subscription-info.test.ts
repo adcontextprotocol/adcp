@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Stripe from 'stripe';
 
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_subscription_info');
+});
+
 const retrieveCustomer = vi.fn();
 const retrieveSubscription = vi.fn();
 const retrieveProduct = vi.fn();
@@ -25,7 +31,7 @@ vi.mock('stripe', () => {
   return { default: MockStripe };
 });
 
-process.env.STRIPE_SECRET_KEY = 'sk_test_subscription_info';
+vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_subscription_info');
 
 const { getStripeSubscriptionInfo } = await import('../../src/billing/stripe-client.js');
 

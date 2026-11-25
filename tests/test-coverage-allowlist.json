@@ -10,6 +10,10 @@
       "reason": "Simulation scenarios need a real Postgres (DATABASE_URL) and a single forked worker. Run them on demand with `npm run test:simulation`."
     },
     {
+      "path": "tests/hook-checks/**",
+      "reason": "The pre-commit hook's command checks (vitest project precommit:checks). CI runs the same commands as its own stages: `npm run typecheck` and `npm run test:governance-jws-vectors`; the image check is an advisory check of staged files, which CI has none of."
+    },
+    {
       "path": "tests/e2e/**",
       "reason": "Playwright smoke scripts that drive a running app through dev login (TARGET_URL). Run them manually with `node tests/e2e/<name>.smoke.js` against a local server."
     }

@@ -3,9 +3,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Installments are a 3.3 canonical-product field, so the canonical shape this
 // suite grades is served to a 3.3 caller. The trusted local candidate wire
 // contract is the only way the training agent serves 3.3.
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
+  vi.stubEnv('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE', '1');
+  vi.stubEnv('ADCP_TRAINING_CANDIDATE_VERSION', '3.3-beta.1');
 });
 
 import {

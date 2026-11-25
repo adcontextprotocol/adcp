@@ -16,7 +16,7 @@
  *   3. `node --test <files>`, `node <file>`, and `tsx <file>` reach the files
  *      they name.
  *   4. `vitest run ...` reaches what `vitest list --filesOnly` reports for the
- *      same config, --dir/--root/--exclude, and path filters. A package whose
+ *      same config, --dir/--root/--exclude/--project, and path filters. A package whose
  *      Vite config has no `test` block uses vitest's default include, resolved
  *      here without loading the config (its plugins may not be installed).
  *
@@ -32,6 +32,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const YAML = require('yaml');
+const { checkoutGitEnv } = require('./helpers/git-object-fixture.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const WORKFLOWS_DIR = path.join(ROOT, '.github', 'workflows');
@@ -62,10 +63,12 @@ const isTestFile = (relative) => TEST_FILE_PATTERNS.some((pattern) => pattern.te
 function listTestFiles() {
   // Tracked plus untracked-but-not-ignored files, so a new suite is caught
   // before it is committed.
+  // lint-allow-caller-git: lists the enclosing checkout's own files
   const output = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    env: checkoutGitEnv(),
   });
   const files = new Set();
   for (const file of output.split('\0')) {
@@ -355,7 +358,7 @@ class CoverageResolver {
     if (rest[0] && !rest[0].startsWith('-') && ['watch', 'dev', 'related', 'bench', 'list'].includes(rest[0])) {
       fail(`unsupported vitest subcommand ${rest[0]}`);
     }
-    const query = { cwd: context.cwd, source: context.source, config: null, dir: null, root: null, exclude: [], filters: [] };
+    const query = { cwd: context.cwd, source: context.source, config: null, dir: null, root: null, exclude: [], filters: [], projects: [] };
     // Flags that only change how selected files run, not which files.
     const ignoredWithValue = new Set(['--pool', '--testTimeout', '--hookTimeout', '--shard', '--reporter', '--maxWorkers']);
     const ignoredBoolean = new Set(['--passWithNoTests', '--silent', '--no-file-parallelism', '--bail']);
@@ -372,6 +375,7 @@ class CoverageResolver {
       else if (flag === '--dir') query.dir = takeValue();
       else if (flag === '--root' || flag === '-r') query.root = takeValue();
       else if (flag === '--exclude') query.exclude.push(takeValue());
+      else if (flag === '--project') query.projects.push(takeValue());
       else if (ignoredWithValue.has(flag)) takeValue();
       else if (ignoredBoolean.has(flag) || flag.startsWith('--poolOptions.')) continue;
       else fail(`unsupported vitest flag ${flag}`);
@@ -408,6 +412,7 @@ function hasTestBlock(query) {
 /** vitest defaults for a package whose config sets no `test` options. */
 function defaultVitestFiles(query) {
   if (query.exclude.length) throw new Error(`--exclude without a vitest test config is not modeled (${query.source})`);
+  if (query.projects.length) throw new Error(`--project without a vitest test config is not modeled (${query.source})`);
   const base = path.resolve(query.cwd, query.root ?? '.', query.dir ?? '.');
   const files = [];
   const walk = (dir) => {
@@ -432,6 +437,7 @@ async function vitestList(query) {
   if (query.root) args.push('--root', query.root);
   if (query.dir) args.push('--dir', query.dir);
   for (const pattern of query.exclude) args.push('--exclude', pattern);
+  for (const project of query.projects) args.push('--project', project);
   args.push(...query.filters);
   let stdout;
   try {
@@ -443,7 +449,12 @@ async function vitestList(query) {
   } catch (error) {
     throw new Error(`vitest list failed for ${query.source}: ${error.stderr || error.message}`);
   }
-  return stdout.split('\n').map((line) => line.trim()).filter((line) => VITEST_DEFAULT_INCLUDE.test(line));
+  // A config that declares projects prefixes each file with its project name
+  // ("[unit-shared] server/tests/..."); server/vitest.config.ts does. Not
+  // --json: it takes the next argument as an output file, which here would
+  // be a test file.
+  return stdout.split('\n').map((line) => line.trim().replace(/^\[[^\]]+\]\s+/, ''))
+    .filter((line) => VITEST_DEFAULT_INCLUDE.test(line));
 }
 
 function ciSteps() {

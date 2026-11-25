@@ -13,19 +13,19 @@
  *   `iss` = the training agent URL the storyboards register, that URL
  *   serves MCP, and the revocation list names the same issuer (B3).
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import express from 'express';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const PUBLIC_TOKEN = 'test-token-governance-agent-credentials';
+const PUBLIC_TOKEN = 'test-token';
 
-// Generated per run so no key material lives in the repository.
-const { CREDENTIAL_SECRET } = vi.hoisted(() => {
-  const secret = require('node:crypto').randomBytes(32).toString('hex') as string;
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-governance-agent-credentials';
-  process.env.TRAINING_GOVERNANCE_CREDENTIAL_SECRET = secret;
-  return { CREDENTIAL_SECRET: secret };
+// Generated per run so no key material lives in the repository. The key is
+// derived on every mint and verify (governance-agent-credentials.ts), so a
+// stub before each test is enough; unstubEnvs undoes it after the file.
+const CREDENTIAL_SECRET = randomBytes(32).toString('hex');
+beforeEach(() => {
+  vi.stubEnv('TRAINING_GOVERNANCE_CREDENTIAL_SECRET', CREDENTIAL_SECRET);
 });
 
 import {
@@ -36,6 +36,8 @@ import {
 import { getTrainingGovernanceIssuer } from '../../src/training-agent/canonical-base.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const SELLER = 'https://seller.gov-7758.example/mcp';
 const OTHER_SELLER = 'https://other-seller.gov-7758.example/mcp';
@@ -47,7 +49,6 @@ let base = '';
 let close: () => Promise<void> = async () => {};
 
 beforeAll(async () => {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -57,7 +58,7 @@ beforeAll(async () => {
   }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
   const srv = http.createServer(app);
-  await new Promise<void>(resolve => srv.listen(0, '127.0.0.1', () => resolve()));
+  await listenOnLoopback(srv);
   origin = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
   base = `${origin}/api/training-agent`;
   // Local runs pin the canonical base (and so the governance identity) to

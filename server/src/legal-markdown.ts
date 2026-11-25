@@ -1,4 +1,4 @@
-import DOMPurify from 'isomorphic-dompurify';
+import { getDOMPurify } from './utils/deferred-modules.js';
 import { Marked } from 'marked';
 
 const legalMarkdown = new Marked();
@@ -19,5 +19,5 @@ const LEGAL_MARKDOWN_SANITIZE_CONFIG = {
 /** Render administrator-authored legal Markdown for insertion into a public page. */
 export function renderLegalMarkdown(markdown: string): string {
   const rendered = legalMarkdown.parse(markdown, { async: false }) as string;
-  return DOMPurify.sanitize(rendered, LEGAL_MARKDOWN_SANITIZE_CONFIG);
+  return getDOMPurify().sanitize(rendered, LEGAL_MARKDOWN_SANITIZE_CONFIG);
 }

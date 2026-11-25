@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, AccountRef, PropertyListState } from './types.js';
 import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
-import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
+import { ACCOUNT_REF_SCHEMA } from './account-ref-schema.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { isWebhookTestOrDevelopment, validateWebhookUrl } from './webhook-fetch.js';
 import { emitPropertyListChangedWebhook } from './webhooks.js';

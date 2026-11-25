@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepFrozenJsonData } from '../model-providers/capabilities.js';
 import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
 import {
   fixedTraceArchitectureArm,
@@ -48,6 +49,7 @@ import {
   validateFixedTraceCorpusToolContracts,
 } from './fixed-trace-corpus-contracts.js';
 import { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
+import { memoizedByString } from './fixed-trace-string-memo.js';
 
 /** Version lock for the predeclared partitioned corpus. */
 export const FIXED_TRACE_CORPUS_VERSION = 'addie-fixed-traces-v32';
@@ -1987,18 +1989,40 @@ export function fixedTraceCoverageInventory(
       .map(([key, nested]) => [key, inputShape(nested)]));
     return typeof value;
   };
-  const normalizedRequest = (value: string) => value.normalize('NFKC').toLocaleLowerCase('en-US')
-    .replace(/[^a-z0-9]+/g, ' ').trim();
-  const nearDuplicateCount = (cases: readonly FixedTraceCorpusCase[]) => {
-    const values = cases.map((trace) => new Set(normalizedRequest(trace.request.message).split(' ').filter(Boolean)));
+  // Each message is normalized and tokenized once per call; the pair checks
+  // below reuse the results. |a ∪ b| = |a| + |b| - |a ∩ b|, so a pair's
+  // similarity needs no merged set.
+  const normalizedByTrace = new Map<FixedTraceCorpusCase, string>();
+  const tokensByTrace = new Map<FixedTraceCorpusCase, Set<string>>();
+  const normalizedRequestOf = (trace: FixedTraceCorpusCase): string => {
+    let normalized = normalizedByTrace.get(trace);
+    if (normalized === undefined) {
+      normalized = trace.request.message.normalize('NFKC').toLocaleLowerCase('en-US')
+        .replace(/[^a-z0-9]+/g, ' ').trim();
+      normalizedByTrace.set(trace, normalized);
+    }
+    return normalized;
+  };
+  const requestTokensOf = (trace: FixedTraceCorpusCase): Set<string> => {
+    let tokens = tokensByTrace.get(trace);
+    if (!tokens) {
+      tokens = new Set(normalizedRequestOf(trace).split(' ').filter(Boolean));
+      tokensByTrace.set(trace, tokens);
+    }
+    return tokens;
+  };
+  const similarPairCount = (cases: readonly FixedTraceCorpusCase[], threshold: number) => {
+    const values = cases.map(requestTokensOf);
     let count = 0;
     for (let index = 0; index < values.length; index++) for (let other = index + 1; other < values.length; other++) {
-      const overlap = [...values[index]].filter((token) => values[other].has(token)).length;
-      const union = new Set([...values[index], ...values[other]]).size;
-      if (union > 0 && overlap / union >= 0.9) count++;
+      let overlap = 0;
+      for (const token of values[index]) if (values[other].has(token)) overlap++;
+      const union = values[index].size + values[other].size - overlap;
+      if (union > 0 && overlap / union >= threshold) count++;
     }
     return count;
   };
+  const nearDuplicateCount = (cases: readonly FixedTraceCorpusCase[]) => similarPairCount(cases, 0.9);
   const structuralFingerprintDuplicates = (() => {
     const fingerprints = suite.map((trace) => canonicalJson({
       category: trace.category,
@@ -2029,19 +2053,10 @@ export function fixedTraceCoverageInventory(
     }
     return { crossPhase, samePhase };
   })();
-  const highSimilarityRequestPairs = (() => {
-    const values = suite.map((trace) => new Set(normalizedRequest(trace.request.message).split(' ').filter(Boolean)));
-    let count = 0;
-    for (let index = 0; index < values.length; index++) for (let other = index + 1; other < values.length; other++) {
-      const overlap = [...values[index]].filter((token) => values[other].has(token)).length;
-      const union = new Set([...values[index], ...values[other]]).size;
-      if (union > 0 && overlap / union >= 0.75) count++;
-    }
-    return count;
-  })();
+  const highSimilarityRequestPairs = similarPairCount(suite, 0.75);
   const phaseBehavior = Object.fromEntries(phases.map((phase) => {
     const cases = suite.filter((trace) => trace.phase === phase);
-    const normalized = cases.map((trace) => normalizedRequest(trace.request.message));
+    const normalized = cases.map(normalizedRequestOf);
     const mutationCases = cases.filter((trace) => trace.toolFixtures.some((fixture) => fixture.effect === 'mutation'));
     return [phase, {
       casesWithFixtures: cases.filter((trace) => trace.toolFixtures.length > 0).length,
@@ -2177,7 +2192,28 @@ function rawStringLeaves(value: unknown): string[] {
   return [];
 }
 
+// Each predicate below is a pure function of its string argument over frozen
+// module constants, so its result is memoized by the string itself
+// (fixed-trace-string-memo.ts). Corpus validation re-checks the same leaves
+// for every suite variant.
+const identityValueLeakageMemo = new Map<string, boolean>();
+const identityKeyLeakageMemo = new Map<string, boolean>();
+
+const PROTECTED_IDENTITY_SKELETONS = [
+  'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
+] as const;
+// The 'u' flag alone keeps RegExp.prototype.test stateless (no g or y), so
+// these can be shared across calls.
+const PROTECTED_VALUE_SKELETON_PATTERNS = PROTECTED_IDENTITY_SKELETONS
+  .map((identity) => new RegExp([...identity].join('[\\p{P}\\p{Z}\\p{C}_]*'), 'u'));
+const PROTECTED_KEY_SKELETON_PATTERNS = PROTECTED_IDENTITY_SKELETONS
+  .map((identity) => new RegExp([...identity].join('_*'), 'u'));
+
 function identityValueLeakage(value: string): boolean {
+  return memoizedByString(identityValueLeakageMemo, value, computeIdentityValueLeakage);
+}
+
+function computeIdentityValueLeakage(value: string): boolean {
   const allowedDomains = FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST.allowedDomains;
   const canonical = canonicalFixedTraceText(value);
   const normalized = canonical.text;
@@ -2198,9 +2234,7 @@ function identityValueLeakage(value: string): boolean {
   // punctuation, or controls. This catches punctuation and zero-width
   // evasions (Br.i.an O Kelley) after the narrow confusable fold, without
   // joining arbitrary prose fragments into a synthetic identity.
-  const hasProtectedSkeleton = [
-    'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
-  ].some((identity) => new RegExp([...identity].join('[\\p{P}\\p{Z}\\p{C}_]*'), 'u').test(debracketedDomain));
+  const hasProtectedSkeleton = PROTECTED_VALUE_SKELETON_PATTERNS.some((pattern) => pattern.test(debracketedDomain));
   const hasUnapprovedOpaqueIdentity = [...debracketedDomain.matchAll(/\b(?:org|user)[_.-][a-z0-9]+(?:[_.-][a-z0-9]+)*\b/gi)]
     .some((match) => !FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST.allowedOpaqueIdentifiers.includes(match[0]
       .toLowerCase().replace(/[ .-]+/g, '_')));
@@ -2212,15 +2246,17 @@ function identityValueLeakage(value: string): boolean {
 }
 
 function identityKeyLeakage(key: string): boolean {
+  return memoizedByString(identityKeyLeakageMemo, key, computeIdentityKeyLeakage);
+}
+
+function computeIdentityKeyLeakage(key: string): boolean {
   // Canonical snake-case schema field names such as org_id and user_id are
   // structure, not production identities. Keep the allowance narrow and
   // still reject protected compact spellings inside otherwise valid keys.
   if (/^[a-z][a-z0-9_]{0,63}$/.test(key)) {
     const canonical = canonicalFixedTraceText(key);
     const normalizedWords = ` ${canonical.text.replace(/[^a-z0-9_]+/g, ' ').trim()} `;
-    const protectedSkeleton = [
-      'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
-    ].some((identity) => new RegExp([...identity].join('_*'), 'u').test(canonical.text));
+    const protectedSkeleton = PROTECTED_KEY_SKELETON_PATTERNS.some((pattern) => pattern.test(canonical.text));
     return FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST.deniedIdentityTokens
       .some((token) => normalizedWords.includes(` ${token} `))
       || protectedSkeleton || /\b[uw]\d{9,}\b/i.test(canonical.compact);
@@ -2521,13 +2557,23 @@ export function fixedTraceCorpusValidationReport(
   });
 }
 
+// Fingerprints of suites proven deep-frozen JSON data, keyed by the suite
+// array. Such a suite can never change, so its fingerprint is computed once;
+// any other suite (for example a mutable copy a caller edits between checks)
+// is hashed afresh on every call.
+const frozenSuiteSha256 = new WeakMap<object, string>();
+
 export function fixedTraceSuiteSha256(
   suite: ReadonlyArray<FixedTraceCase> = FIXED_TRACE_SUITE,
 ): string {
   // Deterministic public integrity fingerprint only; it does not authenticate
   // caller-owned JSON. This foundation's serialized summaries remain
   // diagnostic-only pending the evaluator-owned coordinator and raw ledger.
-  return createHash('sha256').update(canonicalJson({ version: FIXED_TRACE_SUITE_VERSION, suite }), 'utf8').digest('hex');
+  const known = frozenSuiteSha256.get(suite);
+  if (known !== undefined) return known;
+  const digest = createHash('sha256').update(canonicalJson({ version: FIXED_TRACE_SUITE_VERSION, suite }), 'utf8').digest('hex');
+  if (isDeepFrozenJsonData(suite)) frozenSuiteSha256.set(suite, digest);
+  return digest;
 }
 
 if (fixedTraceSuiteSha256(FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE)

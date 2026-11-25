@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -16,7 +15,10 @@ function assertRequiredRolloutTypecheckWiring(scripts: RootScripts): void {
     scripts.typecheck.indexOf("npm run typecheck:fixed-trace-rollout-tests"),
   );
   expect(scripts.test.split(/\s+&&\s+/)).toContain("npm run typecheck");
-  expect(scripts.precommit.split(/\s+&&\s+/)).toContain("npm run typecheck");
+  // The pre-commit hook is one vitest run over the precommit:* projects; its
+  // precommit:checks project expands and runs `npm run typecheck`.
+  expect(scripts.precommit.split(/\s+&&\s+/)).toContain("vitest run --project 'precommit:*'");
+  expect(readFileSync(resolve(root, "tests/hook-checks/typecheck.test.ts"), "utf8")).toContain("roots: [{ line: 'npm run typecheck' }]");
 }
 
 describe("fixed-trace rollout test-aware typecheck wiring", () => {
@@ -37,16 +39,10 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
   });
 
   it("fails independently when an isolated script manifest drops the parent invocation", () => {
-    // This is deliberately the production compiler command, without the root
-    // script wrapper. It succeeds for the current source, which demonstrates
-    // why the independent root manifest assertion is necessary.
-    const compiler = spawnSync(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["tsc", "--project", "server/tsconfig.json", "--noEmit", "--pretty", "false"],
-      { cwd: root, encoding: "utf8" },
-    );
-    expect(compiler.status, `${compiler.stdout}${compiler.stderr}`).toBe(0);
-
+    // The production compiler command alone passes on the current source (the
+    // hook's own typecheck step runs it through `npm run typecheck`), so only
+    // this manifest assertion catches a typecheck script that drops the
+    // rollout-tests invocation.
     const orphaned = {
       ...packageJson.scripts,
       typecheck: productionTypecheck,
@@ -61,5 +57,5 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
     } finally {
       rmSync(isolated, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 });

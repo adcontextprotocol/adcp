@@ -44,11 +44,12 @@ function walkYaml(dir) {
   return out;
 }
 
-// js-yaml is loaded lazily so that requiring this module for unit tests
-// (which only exercise the pure helper functions) does not fail in environments
-// where node_modules are not installed.
-function loadYaml() {
-  return require('js-yaml'); // eslint-disable-line global-require
+// The YAML loader (and js-yaml behind it) is required lazily so that
+// requiring this module for unit tests (which only exercise the pure helper
+// functions) does not fail in environments where node_modules are not
+// installed.
+function loadYamlFile(file) {
+  return require('./compliance-yaml.cjs').loadYamlFile(file); // eslint-disable-line global-require
 }
 
 /** Pull out every step from a parsed storyboard document. */
@@ -140,7 +141,7 @@ function lint() {
   for (const file of files) {
     let doc;
     try {
-      doc = loadYaml().load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -171,7 +172,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ vendor metric uniqueness lint: no duplicate (vendor.domain, vendor.brand_id, metric_id) tuples in storyboard fixtures');
-    return;
+    return 0;
   }
 
   console.error(`✗ vendor metric uniqueness lint: ${violations.length} violation(s)\n`);
@@ -181,9 +182,9 @@ function main() {
   console.error('\nFix: each (vendor.domain, vendor.brand_id, metric_id) tuple MUST appear at most once per array.');
   console.error('See static/schemas/source/core/reporting-capabilities.json and delivery-metrics.json for the');
   console.error('normative constraint. Sellers MUST de-duplicate before emission. adcontextprotocol/adcp#3502.');
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
-module.exports = { lint, findDuplicatesInPayload, vendorMetricKey, canonicalQualifier };
+module.exports = { main, lint, findDuplicatesInPayload, vendorMetricKey, canonicalQualifier };

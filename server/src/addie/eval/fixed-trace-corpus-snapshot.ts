@@ -3,7 +3,7 @@ import { isProxy } from 'node:util/types';
 /**
  * Detach corpus input without invoking caller-defined getters. Validation only
  * reads this plain-data snapshot, so a mutable accessor cannot change data
- * after one validation pass has begun.
+ * after one validation pass has begun. The snapshot is deep-frozen.
  */
 export interface FixedTraceSnapshotResult<T> {
   readonly snapshot?: T;
@@ -11,8 +11,19 @@ export interface FixedTraceSnapshotResult<T> {
     | 'non_finite_number' | 'non_plain_object' | 'proxy' | 'symbol_key';
 }
 
+// Every object or array a successful detach built. Each is a fresh plain
+// object (Object.prototype) or array that only detach held while filling it,
+// frozen before it is recorded, and recorded only after the whole detach
+// succeeded. Detaching one again could raise no error and could only build an
+// equal tree, so it is returned as is: a validator that hands its snapshot to
+// another validator does not copy the corpus again. This is deliberately not
+// capabilities.ts's verifiedDeepFrozenJson: that set also accepts
+// null-prototype input, which detach normalizes to Object.prototype output.
+const detachedNodes = new WeakSet<object>();
+
 export function detachFixedTraceSnapshot<T>(value: T): FixedTraceSnapshotResult<T> {
   const active = new WeakSet<object>();
+  const produced: object[] = [];
   const detach = (input: unknown): unknown => {
     if (input === null || typeof input === 'string' || typeof input === 'boolean') return input;
     if (typeof input === 'number') {
@@ -23,6 +34,7 @@ export function detachFixedTraceSnapshot<T>(value: T): FixedTraceSnapshotResult<
     // This check must precede every reflective operation: proxy traps are
     // caller code and must never participate in corpus validation.
     if (isProxy(input)) throw new Error('proxy');
+    if (detachedNodes.has(input)) return input;
     if (active.has(input)) throw new Error('cyclic');
     active.add(input);
     const prototype = Object.getPrototypeOf(input);
@@ -49,10 +61,14 @@ export function detachFixedTraceSnapshot<T>(value: T): FixedTraceSnapshotResult<
       }
     }
     active.delete(input);
+    Object.freeze(output);
+    produced.push(output);
     return output;
   };
   try {
-    return { snapshot: detach(value) as T };
+    const snapshot = detach(value) as T;
+    for (const node of produced) detachedNodes.add(node);
+    return { snapshot };
   } catch (error) {
     const knownErrors = new Set<NonNullable<FixedTraceSnapshotResult<T>['error']>>([
       'accessor', 'array_extra_property', 'array_hole', 'cyclic', 'non_enumerable',

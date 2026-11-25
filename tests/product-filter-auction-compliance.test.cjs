@@ -3,7 +3,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const test = require('node:test');
 const YAML = require('yaml');
 const { runCatalogReportingStoryboard: runStoryboard } = require('../server/src/compliance/catalog-reporting-runner.ts');
 
@@ -102,9 +101,9 @@ function failures(result) {
   return result.phases.flatMap(phase => phase.steps).filter(step => !step.passed && !step.skipped);
 }
 
-test('auction-only sellers seed no guaranteed products and pass every advertised buying mode', async t => {
+describe('auction-only sellers seed no guaranteed products and pass every advertised buying mode', () => {
   for (const buyingModes of [undefined, ['brief'], ['brief', 'wholesale'], ['brief', 'refine'], ['brief', 'wholesale', 'refine']]) {
-    await t.test(buyingModes?.join(', ') ?? 'default brief', async () => {
+    test(buyingModes?.join(', ') ?? 'default brief', async () => {
       const { result, seeds, requests, responses } = await runFilters({ buyingModes });
       assert.equal(result.overall_passed, true, JSON.stringify(failures(result)));
       assert.equal(result.failed_count, 0);
@@ -146,9 +145,9 @@ test('the display negative control is rejected even after additional matching in
   assert.ok(failures(result).some(step => step.validations.some(check => check.check === 'field_excludes' && !check.passed)));
 });
 
-test('ignoring delivery in brief or wholesale leaks an actual auction fixture and fails', async t => {
+describe('ignoring delivery in brief or wholesale leaks an actual auction fixture and fails', () => {
   for (const ignoreDeliveryIn of ['brief', 'wholesale']) {
-    await t.test(ignoreDeliveryIn, async () => {
+    test(ignoreDeliveryIn, async () => {
       const { result, requests, responses } = await runFilters({ buyingModes: ['brief', 'wholesale', 'refine'], ignoreDeliveryIn });
       assert.equal(result.overall_passed, false);
       const failed = failures(result);

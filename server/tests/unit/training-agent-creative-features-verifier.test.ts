@@ -13,12 +13,10 @@ import express from 'express';
 import { parse as parseYaml } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-vi.hoisted(() => {
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-creative-features-verifier';
-});
-
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { jsonBodyLimitForPath } from '../../src/utils/json-body-limit.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const ROOT = resolve(__dirname, '../../..');
 const SCENARIOS = resolve(ROOT, 'static/compliance/source/protocols/media-buy/scenarios');
@@ -34,12 +32,11 @@ let unlimitedBase = '';
 const closers: Array<() => Promise<void>> = [];
 
 async function serve(disableRateLimit: boolean): Promise<string> {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit }));
   const srv = http.createServer(app);
-  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  await listenOnLoopback(srv);
   closers.push(() => new Promise(done => srv.close(() => done())));
   return `http://127.0.0.1:${(srv.address() as { port: number }).port}/api/training-agent`;
 }
@@ -50,7 +47,6 @@ async function serve(disableRateLimit: boolean): Promise<string> {
  * is reachable both under `/api/training-agent` and bare (host-based routing).
  */
 async function serveWithTransportCaps(): Promise<{ bare: string; mounted: string }> {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use((req, res, next) => express.json({ limit: jsonBodyLimitForPath(req.path) })(req, res, next));
   const router = createTrainingAgentRouter({ disableRateLimit: true });
@@ -61,7 +57,7 @@ async function serveWithTransportCaps(): Promise<{ bare: string; mounted: string
     res.status(err.status ?? 500).json({ error: 'body_error' });
   });
   const srv = http.createServer(app);
-  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  await listenOnLoopback(srv);
   closers.push(() => new Promise(done => srv.close(() => done())));
   const origin = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
   return { bare: origin, mounted: `${origin}/api/training-agent` };

@@ -16,6 +16,22 @@ const SHARDED_RUNNER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-sharded.
 const ISOLATED_SHARDED_RUNNER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-isolated-shards.sh');
 const MATRIX_RUNNER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-matrix.sh');
 const STORYBOARD_WORKFLOW = path.join(REPO_ROOT, '.github', 'workflows', 'training-agent-storyboards.yml');
+const PRE_PUSH_HOOK = path.join(REPO_ROOT, '.husky', 'pre-push');
+const PREPUSH_WRAPPER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-prepush.sh');
+const QUEUE_RUNNER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-queue.mjs');
+
+// The whole shell command that contains `needle`: its line plus any
+// backslash-continued lines before and after it.
+function shellCommandContaining(source, needle) {
+  const lines = source.split('\n');
+  const index = lines.findIndex(line => line.includes(needle));
+  assert.notEqual(index, -1, `expected a command containing ${needle}`);
+  let start = index;
+  while (start > 0 && lines[start - 1].trimEnd().endsWith('\\')) start -= 1;
+  let end = index;
+  while (end < lines.length - 1 && lines[end].trimEnd().endsWith('\\')) end += 1;
+  return lines.slice(start, end + 1).join('\n');
+}
 
 function makeFakeRunner() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-shard-test-'));
@@ -295,9 +311,21 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /Training agent · current \/sales/);
   assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
   assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
-  assert.match(matrixRunner, /bash scripts\/run-storyboards-isolated-shards\.sh/);
-  assert.match(matrixRunner, /--shard-count 8 --max-parallel 2 --timeout-ms 180000/);
+  // Local /sales runs its storyboards through the one storyboard queue
+  // (scripts/run-storyboards-queue.mjs, one discovery, a pool of
+  // ADCP_STORYBOARD_JOBS) instead of eight shard orchestrators in lock-step
+  // pairs, in workers of STORYBOARD_STORYBOARDS_PER_PROCESS storyboards. Same
+  // 180 s per-storyboard timeout, same isolated-orchestrator failure flag; the
+  // queue reuses run-storyboards-isolated.mjs's process management.
+  const queueRunner = fs.readFileSync(QUEUE_RUNNER, 'utf8');
+  assert.match(matrixRunner, /node "\$\{REPO_ROOT\}\/scripts\/run-storyboards-queue\.mjs" --state "\$\{STATE_DIR\}"/);
+  assert.match(matrixRunner, /--timeout-ms "?\$\{STORYBOARD_TIMEOUT_MS:-180000\}"?/);
+  assert.doesNotMatch(matrixRunner, /run-storyboards-isolated-shards\.sh/);
+  assert.doesNotMatch(matrixRunner, /--max-parallel/);
   assert.match(matrixRunner, /orchestrator_failure=1/);
+  assert.match(queueRunner, /from '\.\/run-storyboards-isolated\.mjs'/);
+  assert.match(queueRunner, /'npx', \['tsx', 'server\/tests\/manual\/run-storyboards\.ts'\]/);
+  assert.doesNotMatch(queueRunner, /(?:import|require)\s*\(?['"][^'"]*@adcp\/sdk/);
   assert.match(workflow, /wholesale_feed_products_scope_isolation/);
   assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:9:0/);
 });
@@ -331,10 +359,51 @@ test('creative-builder uses bounded isolated children in local and CI matrices',
   assert.match(workflow, /isolated_orchestrator_failure=0/);
   assert.match(workflow, /\| tee \/tmp\/storyboards\.log \|\| isolated_orchestrator_failure=1/);
   assert.match(workflow, /if \[ "\$\{isolated_orchestrator_failure\}" -ne 0 \]; then/);
+  // creative-builder (and current /sales) are queued as isolated tenants: a
+  // timeout, RSS, output and envelope check per storyboard.
   assert.match(
     matrixRunner,
-    /\|\| \[ "\$\{tenant\}" = "creative-builder" \]; then\n\s+TENANT_PATH=/,
+    /\|\| \[ "\$\{tenant\}" = "creative-builder" \]; then\n\s+tenant_mode=isolated/,
   );
+});
+
+test('pre-push runs both storyboard surfaces through one wrapper that cannot skip builds', () => {
+  const hook = fs.readFileSync(PRE_PUSH_HOOK, 'utf8');
+  const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
+  assert.ok(fs.existsSync(PREPUSH_WRAPPER), 'scripts/run-storyboards-prepush.sh is missing');
+  const wrapper = fs.readFileSync(PREPUSH_WRAPPER, 'utf8');
+
+  const commandLines = hook.split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#') && !line.startsWith('echo '));
+  const storyboardCommands = commandLines.filter(line => /scripts\/run-storyboards-[\w.-]+\.sh/.test(line));
+  assert.equal(storyboardCommands.length, 1, `expected one storyboard command, found:\n${storyboardCommands.join('\n')}`);
+  assert.match(storyboardCommands[0], /^bash scripts\/run-storyboards-prepush\.sh(?:\s|$)/);
+  assert.match(storyboardCommands[0], /\|\| exit 1$/);
+
+  // The test-only build skip must never be reachable from the hook path.
+  assert.doesNotMatch(hook, /ADCP_STORYBOARD_TEST_SKIP_BUILDS/);
+  assert.doesNotMatch(wrapper, /ADCP_STORYBOARD_TEST_SKIP_BUILDS/);
+
+  // Changes to the scripts the storyboard phase now runs re-trigger it.
+  const pathsMatch = hook.match(/^STORYBOARD_PATHS='([^']+)'/m);
+  assert.ok(pathsMatch, 'expected STORYBOARD_PATHS in the hook');
+  const storyboardPaths = new RegExp(pathsMatch[1]);
+  for (const file of [
+    'scripts/run-storyboards-prepush.sh',
+    'scripts/run-storyboards-matrix.sh',
+    'scripts/run-storyboards-3-0-compat.sh',
+    'scripts/run-storyboards-isolated.mjs',
+    'scripts/run-storyboards-queue.mjs',
+    'scripts/build-schemas.cjs',
+  ]) {
+    assert.match(file, storyboardPaths, `${file} must trigger the pre-push storyboard phase`);
+  }
+
+  // CI is unchanged: the queue is a local-only path.
+  assert.doesNotMatch(workflow, /run-storyboards-queue/);
+  assert.doesNotMatch(workflow, /run-storyboards-prepush/);
+  assert.doesNotMatch(workflow, /ADCP_STORYBOARD_JOBS|STORYBOARD_CONCURRENCY|--concurrency/);
 });
 
 test('current training-agent floors are ratcheted and mirrored by local and CI runners', () => {
@@ -393,6 +462,57 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
   }
 });
 
+// Guard against per-tenant serial launches coming back: the matrix and the
+// pre-push wrapper never start a storyboard runner themselves. Every
+// training-agent process is started by the one queue, which bounds them
+// together. Returns the offending commands.
+const STORYBOARD_RUN_COMMAND = /(?:npx tsx server\/tests\/manual\/run-storyboards\.ts|scripts\/run-storyboards-isolated\.mjs|scripts\/run-storyboards-isolated-shards\.sh|scripts\/run-storyboards-sharded\.sh|server\/tests\/manual\/run-storyboards\.ts)/;
+
+function directRunnerLaunches(source) {
+  const lines = source.split('\n');
+  const offending = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*#/.test(line) || /^\s*echo\b/.test(line) || !STORYBOARD_RUN_COMMAND.test(line)) continue;
+    let start = index;
+    while (start > 0 && lines[start - 1].trimEnd().endsWith('\\')) start -= 1;
+    let end = index;
+    while (end < lines.length - 1 && lines[end].trimEnd().endsWith('\\')) end += 1;
+    offending.push(lines.slice(start, end + 1).join('\n').trim());
+    index = end;
+  }
+  return offending;
+}
+
+test('only the storyboard queue starts training-agent runners on the local path', () => {
+  assert.deepEqual(directRunnerLaunches(fs.readFileSync(MATRIX_RUNNER, 'utf8')), []);
+  assert.deepEqual(directRunnerLaunches(fs.readFileSync(PREPUSH_WRAPPER, 'utf8')), []);
+});
+
+test('the direct-launch guard flags serial, backgrounded and shard-coordinator launches', () => {
+  // Negative: delegating to the queue, comments and echo lines pass.
+  assert.deepEqual(directRunnerLaunches([
+    'node scripts/run-storyboards-queue.mjs --state "${state_dir}"',
+    '# npx tsx server/tests/manual/run-storyboards.ts in a comment',
+    '    echo "   or run: bash scripts/run-storyboards-isolated-shards.sh"',
+  ].join('\n')), []);
+  // Positive: the old serial loop, a backgrounded launch and the shard
+  // coordinator are flagged.
+  assert.equal(directRunnerLaunches([
+    'TENANT_PATH="${tenant}" \\',
+    '  npx tsx server/tests/manual/run-storyboards.ts > "${log}" 2>&1 || true',
+  ].join('\n')).length, 1);
+  assert.equal(directRunnerLaunches('node scripts/run-storyboards-isolated.mjs --timeout-ms 180000 > "${log}" 2>&1 &').length, 1);
+  assert.equal(directRunnerLaunches([
+    '  bash scripts/run-storyboards-isolated-shards.sh \\',
+    '    --shard-count 8 --max-parallel 2 --timeout-ms 180000 > "${log}" 2>&1',
+  ].join('\n')).length, 1);
+  // Would-be-missed: the runner started through node --import tsx, or named
+  // on a continuation line, is still flagged.
+  assert.equal(directRunnerLaunches('node --import tsx server/tests/manual/run-storyboards.ts --storyboard-id x').length, 1);
+  assert.equal(directRunnerLaunches(['MONOLITHIC=(npx \\', '  tsx server/tests/manual/run-storyboards.ts)'].join('\n')).length, 1);
+});
+
 // The matrix runs a copy of itself from a temporary repository root whose
 // build scripts are stubs: each writes the output a partial build leaves
 // behind, then exits with the status the case gives it. `npx` is stubbed so
@@ -403,6 +523,9 @@ function runMatrixWithBuildStatus(t, { schemaStatus, complianceStatus }) {
   fs.mkdirSync(path.join(root, 'scripts'));
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(MATRIX_RUNNER, path.join(root, 'scripts', 'run-storyboards-matrix.sh'));
+  // The matrix builds through the build cache, which runs the stubs below
+  // because the temporary root has no build stamp.
+  fs.copyFileSync(path.join(REPO_ROOT, 'scripts', 'built-schemas.cjs'), path.join(root, 'scripts', 'built-schemas.cjs'));
   const stubBuild = (name, tree, status) => fs.writeFileSync(path.join(root, 'scripts', name), `
 const fs = require('node:fs');
 const path = require('node:path');

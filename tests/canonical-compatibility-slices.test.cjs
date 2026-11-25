@@ -3,7 +3,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const test = require('node:test');
 const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
 
 const directory = path.join(__dirname, '..', 'static', 'compliance', 'source', 'protocols', 'media-buy', 'scenarios');
@@ -137,8 +136,8 @@ for (const [name, shape] of [['canonical_custom_formats', 'custom'], ['canonical
     assert.equal(seeds(calls).length, 1);
   });
 
-  test(`${name}: discovery and accepted seed failures stay visible`, async t => {
-    for (const failure of ['discoveryFailure', 'seedFailure']) await t.test(failure, async () => {
+  describe(`${name}: discovery and accepted seed failures stay visible`, () => {
+    for (const failure of ['discoveryFailure', 'seedFailure']) test(failure, async () => {
       const { result, calls } = await runSlice(name, { shapes: [shape], named: false, [failure]: true });
       assert.equal(result.overall_passed, false);
       assert.ok(result.failed_count > 0, JSON.stringify(result.phases));

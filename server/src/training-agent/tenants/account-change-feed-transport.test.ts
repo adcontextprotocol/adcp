@@ -6,6 +6,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../types.js';
+import { listenOnLoopback } from '../../testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../index.js';
 
 interface McpEnvelope {
   result?: {
@@ -15,12 +17,11 @@ interface McpEnvelope {
 }
 
 async function bootServer(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
-  const { createTrainingAgentRouter } = await import('../index.js');
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use('/api/training-agent', createTrainingAgentRouter());
   const server = http.createServer(app);
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  await listenOnLoopback(server);
   const port = (server.address() as { port: number }).port;
   return {
     baseUrl: `http://127.0.0.1:${port}/api/training-agent/sales/mcp`,
@@ -52,7 +53,6 @@ describe('v6 /sales/mcp account change cursor recovery', () => {
   let server: { baseUrl: string; close: () => Promise<void> };
 
   beforeAll(async () => {
-    vi.stubEnv('PUBLIC_TEST_AGENT_TOKEN', 'account-change-transport-token');
     server = await bootServer();
   }, 30_000);
 
@@ -62,7 +62,7 @@ describe('v6 /sales/mcp account change cursor recovery', () => {
   });
 
   it('returns CURSOR_EXPIRED over MCP and resumes after snapshot rebootstrap', async () => {
-    const bearer = 'account-change-transport-token';
+    const bearer = 'test-token';
     const account = { account_id: 'acc_luma_shared' };
     const unavailable = (await callTool(server.baseUrl, bearer, 1, 'list_account_changes', {
       adcp_version: '3.1-rc.15',
@@ -136,7 +136,7 @@ describe('v6 /sales/mcp account change cursor recovery', () => {
   }, 60_000);
 
   it('repairs the shared creative to the status recorded by a separate controller request', async () => {
-    const bearer = 'account-change-transport-token';
+    const bearer = 'test-token';
     const account = { account_id: 'acc_luma_shared' };
     const adcp_version = TRAINING_AGENT_CURRENT_ADCP_VERSION;
     const creativeId = randomUUID();

@@ -23,7 +23,8 @@ import type {
   SessionState,
 } from './types.js';
 import { servesReleaseBefore } from './types.js';
-import { canonicalize, type BrandReference } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
+import type { BrandReference } from '@adcp/sdk';
 import {
   getSession,
   sessionKeyFromArgs,

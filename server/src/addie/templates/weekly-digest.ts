@@ -10,7 +10,7 @@ import {
 import { getCustomSections, getPastedContent, isSectionHidden } from '../../newsletters/config.js';
 import { markdownToEmailHtml as renderMarkdownToEmailHtml } from '../../utils/markdown.js';
 import { pickNudge } from '../services/digest-nudge.js';
-import DOMPurify from 'isomorphic-dompurify';
+import { getDOMPurify } from '../../utils/deferred-modules.js';
 
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
@@ -22,7 +22,7 @@ function isHtml(text: string): boolean {
 
 /** Add inline styles to TipTap HTML for email client rendering. */
 function htmlToEmailHtml(html: string): string {
-  const clean = DOMPurify.sanitize(html, {
+  const clean = getDOMPurify().sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href', 'target', 'rel'],
   });
@@ -36,7 +36,7 @@ function htmlToEmailHtml(html: string): string {
 
 /** Convert TipTap HTML to Slack mrkdwn using DOM traversal. */
 function htmlToSlackMrkdwn(html: string): string {
-  const dom = DOMPurify.sanitize(html, {
+  const dom = getDOMPurify().sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,
@@ -65,7 +65,7 @@ function domToSlackMrkdwn(node: any): string {
 
 /** Convert TipTap HTML to plain text using DOM traversal. */
 function htmlToPlainText(html: string): string {
-  const dom = DOMPurify.sanitize(html, {
+  const dom = getDOMPurify().sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'a', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,
@@ -119,7 +119,7 @@ type SanitizedFragment = {
 
 function markdownToTrackedEmailHtml(md: string, trackingId: string, tagPrefix = 'pasted_body'): string {
   let linkIndex = 0;
-  const dom = DOMPurify.sanitize(renderMarkdownToEmailHtml(md), {
+  const dom = getDOMPurify().sanitize(renderMarkdownToEmailHtml(md), {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li', 'code', 'pre', 'h1', 'h2', 'h3'],
     ALLOWED_ATTR: ['href'],
     RETURN_DOM: true,

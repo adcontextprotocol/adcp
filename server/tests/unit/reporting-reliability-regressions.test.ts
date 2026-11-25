@@ -43,7 +43,7 @@ import { handleGetMediaBuyDelivery } from '../../src/training-agent/task-handler
 import { legacyGetReportingStatusHandler } from '../../src/training-agent/v6-sales-platform.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import { createHash } from 'node:crypto';
 
 describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {

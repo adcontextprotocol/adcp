@@ -4,11 +4,11 @@ import http from 'node:http';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 async function bootServer(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): Promise<{ baseUrl: string; close: () => Promise<void> }> {
-  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -18,7 +18,7 @@ async function bootServer(options: { storyboardCompat?: TrainingContext['storybo
   }));
   app.use('/api/training-agent', createTrainingAgentRouter(options));
   const srv = http.createServer(app);
-  await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
+  await listenOnLoopback(srv);
   const port = (srv.address() as { port: number }).port;
   return {
     baseUrl: `http://127.0.0.1:${port}/api/training-agent`,

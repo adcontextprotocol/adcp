@@ -12,7 +12,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 
 /**
  * Closed exclusion list — fields the governance agent writes onto its

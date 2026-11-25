@@ -14,8 +14,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { Readability } from '@mozilla/readability';
-import { parseHTML } from 'linkedom';
-import { PDFParse } from 'pdf-parse';
 import sharp from 'sharp';
 import yauzl from 'yauzl';
 import * as crypto from 'crypto';
@@ -23,6 +21,7 @@ import { z } from 'zod';
 import type { ClaudeUsage } from '../addie/claude-pricing.js';
 import { ModelConfig } from '../config/models.js';
 import { createLogger } from '../logger.js';
+import { getLinkedom } from '../utils/deferred-modules.js';
 import { safeFetchAxiosLike } from '../utils/url-security.js';
 
 const logger = createLogger('brand-book-import');
@@ -109,7 +108,7 @@ export async function sourceFromUrl(rawUrl: string): Promise<BrandBookSource> {
 }
 
 function htmlToText(html: string): string {
-  const { document } = parseHTML(html) as unknown as { document: ConstructorParameters<typeof Readability>[0] };
+  const { document } = getLinkedom().parseHTML(html) as unknown as { document: ConstructorParameters<typeof Readability>[0] };
   const article = new Readability(document).parse();
   const body = (document as unknown as { body?: { textContent?: string | null } }).body;
   const text = article?.textContent ?? body?.textContent ?? '';
@@ -132,6 +131,7 @@ export interface PptxExtraction {
 }
 
 async function extractPdfImages(buffer: Buffer): Promise<RawImage[]> {
+  const { PDFParse } = await import('pdf-parse');
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
     const result = await parser.getImage({ imageBuffer: true, imageThreshold: CANDIDATE_MIN_PX });

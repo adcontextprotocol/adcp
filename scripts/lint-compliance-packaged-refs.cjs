@@ -3,7 +3,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const DEFAULT_COMPLIANCE_ROOT = path.join(__dirname, '..', 'static', 'compliance', 'source');
 const PACKAGED_REF_KEYS = new Set([
@@ -155,7 +155,7 @@ function lint(complianceRoot = DEFAULT_COMPLIANCE_ROOT) {
   for (const file of walkFiles(complianceRoot)) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue;
     }
@@ -193,8 +193,9 @@ function assertCompliancePackagedRefs(complianceRoot = DEFAULT_COMPLIANCE_ROOT, 
   );
 }
 
-if (require.main === module) {
-  const complianceRoot = process.argv[2] ? path.resolve(process.argv[2]) : DEFAULT_COMPLIANCE_ROOT;
+/** The CLI: `[complianceRoot]` defaults to the compliance source tree. Returns the exit code. */
+function main(args = []) {
+  const complianceRoot = args[0] ? path.resolve(args[0]) : DEFAULT_COMPLIANCE_ROOT;
   try {
     assertCompliancePackagedRefs(complianceRoot);
   } catch (err) {
@@ -204,11 +205,15 @@ if (require.main === module) {
       `For versioned test vectors, put the file under static/compliance/source/test-vectors/ ` +
       `and reference it as test-vectors/<name>.json.`
     );
-    process.exit(1);
+    return 1;
   }
+  return 0;
 }
 
+if (require.main === module) process.exitCode = main(process.argv.slice(2));
+
 module.exports = {
+  main,
   assertCompliancePackagedRefs,
   lint,
   formatViolations,

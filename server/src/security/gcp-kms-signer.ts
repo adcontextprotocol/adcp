@@ -22,7 +22,7 @@
  */
 
 import { createPublicKey } from 'node:crypto';
-import { KeyManagementServiceClient } from '@google-cloud/kms';
+import type { KeyManagementServiceClient } from '@google-cloud/kms';
 import type { SigningProvider } from '@adcp/sdk/signing';
 import { createLogger } from '../logger.js';
 import {
@@ -106,6 +106,7 @@ async function getProvider(spec: SignerSpec, state: ProviderState): Promise<Sign
   if (!state.initInFlight) {
     state.initInFlight = (async () => {
       const credentials = parseServiceAccountJson(saJson);
+      const { KeyManagementServiceClient } = await import('@google-cloud/kms');
       const client = new KeyManagementServiceClient({ credentials });
       const provider = await buildProvider(client, spec, keyVersion);
       state.cached = provider;

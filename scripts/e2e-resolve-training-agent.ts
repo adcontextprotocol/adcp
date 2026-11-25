@@ -27,10 +27,8 @@
 import { getDomain } from 'tldts';
 import express from 'express';
 import request from 'supertest';
-import {
-  fetchAgentAuthorizationsFromDirectory,
-  type DirectoryPublisherEntry,
-} from '@adcp/sdk';
+import { fetchAgentAuthorizationsFromDirectory } from '@adcp/sdk/discovery';
+import type { DirectoryPublisherEntry } from '@adcp/sdk';
 
 const MAX_CAPABILITIES_BYTES = 65_536;
 const MAX_BRAND_JSON_BYTES = 2_097_152;

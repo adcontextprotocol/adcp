@@ -31,10 +31,12 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const semver = require('semver');
+const { Worker, isMainThread, workerData } = require('worker_threads');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const {
   MCP_PROTOCOL_VERSION,
+  createSourceCache,
   generateMcpSchemaProjection,
 } = require('./mcp-schema-projection.cjs');
 
@@ -72,7 +74,12 @@ function resolveBuildTimestamp(env = process.env, now = new Date()) {
   return date.toISOString();
 }
 
-const BUILD_TIMESTAMP = resolveBuildTimestamp();
+// The bundling worker (bundleSchemasInWorker) stamps its output with the
+// main thread's timestamp, so one build has one timestamp.
+const BUNDLE_TASK = 'adcp-build-schemas:bundle';
+const BUILD_TIMESTAMP = !isMainThread && workerData?.task === BUNDLE_TASK
+  ? workerData.buildTimestamp
+  : resolveBuildTimestamp();
 const BUILD_DATE = BUILD_TIMESTAMP.slice(0, 10);
 
 // Active MCP role catalogs intentionally use explicit tool sets. Protocol
@@ -1653,6 +1660,21 @@ function findSchemaFiles(dir, baseDir = dir) {
  * is set only by `hoistBySourceIdentity`: listed refs are rewritten to
  * `#/$defs/<defName>` instead of inlined, and `count` tallies call-sites.
  */
+/**
+ * A source schema parsed once per `documents` map (path -> parsed JSON).
+ * resolveRefs only reads what it gets and returns new objects, so callers
+ * share the parsed document. A failed read or parse is not cached.
+ */
+function readSourceDocument(file, documents) {
+  if (!documents) return JSON.parse(fs.readFileSync(file, 'utf8'));
+  let document = documents.get(file);
+  if (document === undefined) {
+    document = JSON.parse(fs.readFileSync(file, 'utf8'));
+    documents.set(file, document);
+  }
+  return document;
+}
+
 function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) {
   if (!schema || typeof schema !== 'object') {
     return schema;
@@ -1693,7 +1715,7 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
       // at a schema that does not exist.
       let refContent;
       try {
-        refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        refContent = readSourceDocument(refPath, options.documents);
         if (fragment) {
           if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
           refContent = fragment
@@ -1767,7 +1789,7 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
  * appears 2+ times in the resolved schema; otherwise it is inlined as
  * before and no `$defs` entry is added.
  */
-function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set()) {
+function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set(), documents = new Map()) {
   const hoistRefs = new Map();
   const bodies = new Map();
   for (const refPath of refPaths) {
@@ -1777,8 +1799,8 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
     // A missing source file just means this tree never references it
     // (synthetic fixtures); a real dangling ref is handled by `resolveRefs`.
     const sourceFile = path.join(sourceDir, refPath.replace('/schemas/', ''));
-    if (!fs.existsSync(sourceFile)) continue;
-    const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
+    if (!documents.has(sourceFile) && !fs.existsSync(sourceFile)) continue;
+    const source = readSourceDocument(sourceFile, documents);
     const defName = typeof source.title === 'string' ? source.title.replace(/[^A-Za-z0-9_]/g, '') : '';
     if (!defName || ['__proto__', 'constructor', 'prototype'].includes(defName)) {
       throw new Error(`hoistBySourceIdentity: ${refPath} needs a usable \`title\` to name its $defs entry.`);
@@ -1787,7 +1809,7 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
     bodies.set(refPath, source);
   }
 
-  let options = { hoistRefs };
+  let options = { hoistRefs, documents };
   let result = resolveRefs(schema, sourceDir, ancestorRefs, options);
 
   // Like `hoistDuplicateInlineEnums`, only hoist what repeats. A single
@@ -1803,7 +1825,7 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
   if (hasSingleton) {
     for (const refPath of [...bodies.keys()]) if (!hoistRefs.has(refPath)) bodies.delete(refPath);
     for (const entry of hoistRefs.values()) entry.count = 0;
-    options = { hoistRefs };
+    options = { hoistRefs, documents };
     result = resolveRefs(schema, sourceDir, ancestorRefs, options);
   }
   if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
@@ -2501,7 +2523,7 @@ const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
  * These have all $ref resolved inline for tools that can't handle references
  * @returns {{ successCount: number, failures: Array<{ schema: string, message: string }> }}
  */
-async function generateBundledSchemas(sourceDir, bundledDir, version) {
+async function generateBundledSchemas(sourceDir, bundledDir, version, { error: logError = message => console.error(message) } = {}) {
   ensureDir(bundledDir);
 
   const schemaFiles = findSchemaFiles(sourceDir);
@@ -2509,6 +2531,8 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
   // Every root that fails to bundle, as { schema, message }. The loop keeps
   // going so one build lists every failure; main() fails the build on any.
   const failures = [];
+  // Each referenced source schema is parsed once for the whole run.
+  const documents = new Map();
 
   // Only bundle request/response schemas - these are the "root" schemas
   // that tools actually validate against. Core objects like product.json
@@ -2546,7 +2570,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // Resolve all $refs. Schemas listed in IDENTITY_HOISTED_REFS are
       // written once to root $defs instead of being inlined at every
       // call-site, keeping per-call-site `description` siblings. See #4875.
-      const dereferenced = hoistBySourceIdentity(schema, sourceDir, IDENTITY_HOISTED_REFS, new Set([schemaPath]));
+      const dereferenced = hoistBySourceIdentity(schema, sourceDir, IDENTITY_HOISTED_REFS, new Set([schemaPath]), documents);
 
       // After inlining, referenced schemas that carried local `#/$defs/...`
       // pointers leave their `$defs` nested wherever they were inlined —
@@ -2605,7 +2629,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       fs.writeFileSync(outputPath, JSON.stringify(dereferenced, null, 2));
       successCount++;
     } catch (error) {
-      console.error(`   ❌ Failed to bundle ${relativePath}: ${error.message}`);
+      logError(`   ❌ Failed to bundle ${relativePath}: ${error.message}`);
       failures.push({ schema: relativePath, message: error.message });
     }
   }
@@ -2625,6 +2649,35 @@ function assertNoBundleFailures(failures) {
   throw new Error(`${failures.length} bundled schema(s) failed to build:\n${lines.join('\n')}`);
 }
 
+/**
+ * generateBundledSchemas in a worker thread. Bundling reads only the source
+ * tree and writes only `bundledDir`, and nothing else in the build reads
+ * `bundledDir`, so the main thread writes the MCP projection and the skill
+ * schemas meanwhile. The worker is this file (no extra build input). It
+ * resolves with generateBundledSchemas's { successCount, failures }; the
+ * worker's error lines come back with them and print on the main thread.
+ * `sourceDir` and `bundledDir` travel explicitly: the worker must bundle the
+ * tree this run builds (`--root`), whatever REPO_ROOT the worker computes.
+ */
+function bundleSchemasInWorker(sourceDir, bundledDir, version) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(__filename, {
+      workerData: { task: BUNDLE_TASK, buildTimestamp: BUILD_TIMESTAMP, sourceDir, bundledDir, version },
+    });
+    let result;
+    worker.once('message', (message) => { result = message; });
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (result) {
+        for (const line of result.errors) console.error(line);
+        resolve({ successCount: result.successCount, failures: result.failures });
+      } else {
+        reject(new Error(`the bundling worker exited ${code} without a result`));
+      }
+    });
+  });
+}
+
 function generateMcpProjectionForVersion(versionDir, urlVersion) {
   const targetDir = path.join(versionDir, 'mcp', MCP_PROTOCOL_VERSION);
   const manifestPath = path.join(versionDir, 'manifest.json');
@@ -2635,7 +2688,10 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     console.log(`   ✓ No tools in manifest.json; MCP ${MCP_PROTOCOL_VERSION} projection skipped`);
     return;
   }
+  // Every projection below reads the same source tree.
+  const sourceCache = createSourceCache();
   const stats = generateMcpSchemaProjection({
+    sourceCache,
     sourceDir: SOURCE_DIR,
     targetDir,
     manifestPath,
@@ -2677,6 +2733,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
   );
   const productionTargetDir = path.join(targetDir, 'profiles', 'production');
   const productionStats = generateMcpSchemaProjection({
+    sourceCache,
     sourceDir: SOURCE_DIR,
     targetDir: productionTargetDir,
     manifestPath,
@@ -2720,6 +2777,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     );
     const profileTargetDir = path.join(targetDir, 'profiles', profileName);
     const profileStats = generateMcpSchemaProjection({
+      sourceCache,
       sourceDir: SOURCE_DIR,
       targetDir: profileTargetDir,
       manifestPath,
@@ -2750,6 +2808,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
 
     const modelContextTargetDir = path.join(profileTargetDir, 'model-context');
     const modelContextStats = generateMcpSchemaProjection({
+      sourceCache,
       sourceDir: SOURCE_DIR,
       targetDir: modelContextTargetDir,
       manifestPath,
@@ -2933,11 +2992,12 @@ async function main() {
     // Generate bundled schemas for release
     const bundledDir = path.join(versionDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/${version}/bundled/`);
-    const { successCount, failures } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
-    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
-    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
+    const bundling = bundleSchemasInWorker(SOURCE_DIR, bundledDir, version);
     console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
     generateMcpProjectionForVersion(versionDir, version);
+    const { successCount, failures } = await bundling;
+    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
+    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
 
     // Note: Version aliases (v2, v2.5, v1, latest) are handled by HTTP middleware
     // No symlinks needed - the server rewrites /schemas/v2.5/* to /schemas/2.5.1/*
@@ -2961,9 +3021,10 @@ async function main() {
 
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
-    const latestBundled = await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
-    bundleFailures.push(...latestBundled.failures.map(failure => ({ bundledDir: latestBundledDir, ...failure })));
+    const latestBundling = bundleSchemasInWorker(SOURCE_DIR, latestBundledDir, 'latest');
     generateMcpProjectionForVersion(latestDir, 'latest');
+    const latestBundled = await latestBundling;
+    bundleFailures.push(...latestBundled.failures.map(failure => ({ bundledDir: latestBundledDir, ...failure })));
 
     // Generate skill schemas from the release version
     generateSkillSchemas(versionDir, version);
@@ -3033,14 +3094,16 @@ async function main() {
     // Generate bundled schemas for latest
     const bundledDir = path.join(latestDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
-    const { successCount, failures } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
-    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
-    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
+    const bundling = bundleSchemasInWorker(SOURCE_DIR, bundledDir, 'latest');
     console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
     generateMcpProjectionForVersion(latestDir, 'latest');
 
     // Generate skill schemas from latest
     generateSkillSchemas(latestDir, 'latest');
+
+    const { successCount, failures } = await bundling;
+    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
+    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
 
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
@@ -3114,7 +3177,14 @@ module.exports = {
   generateBundledSchemas,
 };
 
-if (require.main === module) {
+if (!isMainThread && workerData?.task === BUNDLE_TASK) {
+  // The bundling worker started by bundleSchemasInWorker.
+  const errors = [];
+  const { parentPort } = require('worker_threads');
+  generateBundledSchemas(workerData.sourceDir, workerData.bundledDir, workerData.version, {
+    error: message => errors.push(message),
+  }).then(({ successCount, failures }) => parentPort.postMessage({ successCount, failures, errors }));
+} else if (require.main === module) {
   // One build of dist/schemas/latest at a time (scripts/built-schemas.cjs).
   const build = BUILDS_THIS_REPOSITORY ? require('./built-schemas.cjs').withBuildLock(main) : main();
   build.catch(err => {

@@ -7,16 +7,19 @@ import path from 'node:path';
 import { loadStoryboardFile, registerExternalSchemaRoot, runStoryboardStep, unregisterExternalSchemaRoot } from '@adcp/sdk/testing';
 import { storyboardStepStatus } from '../manual/storyboard-report-format.js';
 
+// Read once, when src/training-agent/candidate-version.ts is imported;
+// unstubEnvs (server/vitest.config.ts) restores both before the first test.
 vi.hoisted(() => {
-  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'candidate-version-test-token';
+  vi.stubEnv('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE', '1');
+  vi.stubEnv('ADCP_TRAINING_CANDIDATE_VERSION', '3.3-beta.1');
 });
 
 import { trainingAgentCandidateVersion } from '../../src/training-agent/candidate-version.js';
 import { createTrainingAgentServer } from '../../src/training-agent/task-handlers.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION } from '../../src/training-agent/types.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 describe('local candidate wire contract', () => {
   let schemaRoot: string;
@@ -37,14 +40,13 @@ describe('local candidate wire contract', () => {
     const index = JSON.parse(readFileSync(indexPath, 'utf8'));
     writeFileSync(indexPath, JSON.stringify({ ...index, adcp_version: '3.3.0-beta.1' }));
     registerExternalSchemaRoot('3.3.0-beta.1', schemaRoot);
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ verify: (req, _res, body) => {
       (req as unknown as { rawBody: string }).rawBody = body.toString('utf8');
     } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;
@@ -76,7 +78,7 @@ describe('local candidate wire contract', () => {
     for (const adcp_version of ['3.3-beta.1', '3.2', undefined]) {
       const response = await fetch(`${baseUrl}/${tenant}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { adcp_version } } }),
       });
       const envelope = await response.json();
@@ -113,7 +115,7 @@ describe('local candidate wire contract', () => {
     // declaration to 3.3; this keeps it off the route that cannot honor it).
     const response = await fetch(`${baseUrl}/mcp`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { adcp_version: '3.3-beta.1' } } }),
     });
     const result = (await response.json()).result?.structuredContent;
@@ -141,7 +143,7 @@ describe('local candidate wire contract', () => {
       id += 1;
       const response = await fetch(`${baseUrl}/sales/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: { adcp_version, ...args } } }),
       });
       expect(response.status).toBe(200);
@@ -216,7 +218,7 @@ describe('local candidate wire contract', () => {
     const storyboard = loadStoryboardFile(path.resolve('static/compliance/source/universal/capability-discovery.yaml'));
     const options = {
       adcpVersion: '3.3.0-beta.1', wireAdcpVersion: '3.3-beta.1', schemaRoot,
-      auth: { type: 'bearer' as const, token: 'candidate-version-test-token' }, allow_http: true,
+      auth: { type: 'bearer' as const, token: 'test-token' }, allow_http: true,
     };
     const advisory = await runStoryboardStep(`${baseUrl}/sales/mcp`, storyboard, 'get_capabilities', options);
     expect(advisory.validations).toEqual(expect.arrayContaining([
@@ -243,7 +245,7 @@ describe('local candidate wire contract', () => {
       id += 1;
       const response = await fetch(`${baseUrl}/${tenant}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }),
       });
       const envelope = await response.json();

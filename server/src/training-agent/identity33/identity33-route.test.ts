@@ -10,11 +10,12 @@ import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { signWebBotAuth } from '@adcp/sdk/identity-3.3';
 import { FIXTURE_AGENTS, FIXTURE_DOMAINS, fixtureSigningKey, type FixtureAgentName } from './fixture-world.js';
+import { listenOnLoopback } from '../../testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../index.js';
 
 const ROUTE = '/api/training-agent/sales/identity/mcp';
 
 async function bootServer(): Promise<{ port: number; close: () => Promise<void> }> {
-  const { createTrainingAgentRouter } = await import('../index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -24,7 +25,7 @@ async function bootServer(): Promise<{ port: number; close: () => Promise<void> 
   }));
   app.use('/api/training-agent', createTrainingAgentRouter());
   const srv = http.createServer(app);
-  await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
+  await listenOnLoopback(srv);
   return {
     port: (srv.address() as { port: number }).port,
     close: () => new Promise(r => srv.close(() => r())),

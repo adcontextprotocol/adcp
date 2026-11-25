@@ -4,9 +4,11 @@ import crypto from 'node:crypto';
 // `platform_id` is the 3.3 name for an event source's seller-assigned id, so
 // this suite calls as a 3.3 caller through the trusted local candidate wire
 // contract. A 3.2 caller gets `seller_id` alone (#8487).
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
+  vi.stubEnv('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE', '1');
+  vi.stubEnv('ADCP_TRAINING_CANDIDATE_VERSION', '3.3-beta.1');
 });
 import {
   createTrainingAgentServer,

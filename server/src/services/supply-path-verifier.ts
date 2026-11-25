@@ -3,11 +3,11 @@
  * Inputs are evidence, never seller-supplied verdicts. Each collection is
  * evaluated independently so domain-level queries cannot join unrelated legs.
  */
-import { resolveAgentProperties } from '@adcp/sdk';
 import {
+  resolveAgentProperties,
   parsePublisherPropertySelector,
   expandPublisherPropertySelector,
-} from '@adcp/sdk';
+} from '@adcp/sdk/discovery';
 import type { AdAgentsJson, AuthorizedAgent } from '@adcp/sdk';
 import type { SupplyPathInput, SupplyPathLegs, SupplyPathManifest, SupplyPathVerdict } from './supply-path-contract.js';
 import { agentIdentity, domain, record, records, strings } from './supply-path-input.js';

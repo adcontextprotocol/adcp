@@ -9,15 +9,18 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.TRAINING_AGENT_DISABLE_ADCP_PREVIEW = '1';
-  process.env.PUBLIC_TEST_AGENT_TOKEN = 'preview-kill-switch-token';
+  vi.stubEnv('TRAINING_AGENT_DISABLE_ADCP_PREVIEW', '1');
 });
 
 import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../../src/training-agent/candidate-version.js';
 import { PREVIEW_SCHEMA_BUNDLE } from '../../src/training-agent/schema-compat.js';
 import { TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS } from '../../src/training-agent/types.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 
 const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
 
@@ -30,21 +33,20 @@ describe('hosted 3.3 preview kill switch', () => {
     rpcId += 1;
     const response = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer preview-kill-switch-token' },
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer test-token' },
       body: JSON.stringify({ jsonrpc: '2.0', id: rpcId, method, ...(params && { params }) }),
     });
     return response.json() as Promise<Record<string, any>>;
   };
 
   beforeAll(async () => {
-    const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
     const app = express();
     app.use(express.json({ verify: (req, _res, body) => {
       (req as unknown as { rawBody: string }).rawBody = body.toString('utf8');
     } }));
     app.use('/api/training-agent', createTrainingAgentRouter({ disableRateLimit: true }));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenOnLoopback(server);
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test server address');
     baseUrl = `http://127.0.0.1:${address.port}/api/training-agent`;

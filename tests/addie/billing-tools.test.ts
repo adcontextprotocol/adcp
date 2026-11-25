@@ -1,8 +1,14 @@
-// lint-allow-test-imports-file: TODO(#3118-followup) — this suite uses
-// dynamic-import-after-vi.mock to grab fresh mock refs per test. Convert to
-// the vi.hoisted pattern so it can drop the resetModules + dynamic imports.
 import { describe, test, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
+import {
+  getProductsForCustomer,
+  createCheckoutSession,
+  createAndSendInvoice,
+  validateInvoiceDetails,
+  createStripeCustomer,
+  getPriceByLookupKey,
+} from '../../server/src/billing/stripe-client.js';
+import { createBillingToolHandlers, BILLING_TOOLS } from '../../server/src/addie/mcp/billing-tools.js';
 
 const {
   mockGetOrganization,
@@ -11,6 +17,8 @@ const {
   mockGetRelationshipByWorkosId,
   mockGetRelationshipBySlackId,
   mockRecordEvent,
+  stripeMocks,
+  moduleEvaluations,
 } = vi.hoisted(() => {
   const mockGetOrganization = vi.fn<any>();
   const mockSearchOrganizations = vi.fn<any>();
@@ -20,6 +28,16 @@ const {
   const mockGetRelationshipByWorkosId = vi.fn<any>();
   const mockGetRelationshipBySlackId = vi.fn<any>();
   const mockRecordEvent = vi.fn<any>().mockResolvedValue(undefined);
+  const stripeMocks = {
+    getProductsForCustomer: vi.fn<any>(),
+    createCheckoutSession: vi.fn<any>(),
+    createAndSendInvoice: vi.fn<any>(),
+    validateInvoiceDetails: vi.fn<any>(),
+    createStripeCustomer: vi.fn<any>(),
+    getPriceByLookupKey: vi.fn<any>(),
+  };
+  // billing-tools.ts builds one OrganizationDatabase when it is evaluated.
+  const moduleEvaluations = { billingTools: 0 };
   return {
     mockGetOrganization,
     mockSearchOrganizations,
@@ -27,23 +45,21 @@ const {
     mockGetRelationshipByWorkosId,
     mockGetRelationshipBySlackId,
     mockRecordEvent,
+    stripeMocks,
+    moduleEvaluations,
   };
 });
 
 // Mock the stripe-client module
-vi.mock('../../server/src/billing/stripe-client.js', () => ({
-  getProductsForCustomer: vi.fn<any>(),
-  createCheckoutSession: vi.fn<any>(),
-  createAndSendInvoice: vi.fn<any>(),
-  validateInvoiceDetails: vi.fn<any>(),
-  createStripeCustomer: vi.fn<any>().mockResolvedValue('cus_new_123'),
-  getPriceByLookupKey: vi.fn<any>(),
-}));
+vi.mock('../../server/src/billing/stripe-client.js', () => stripeMocks);
 
 // Mock the organization-db module
 vi.mock('../../server/src/db/organization-db.js', () => {
   return {
     OrganizationDatabase: class {
+      constructor() {
+        moduleEvaluations.billingTools++;
+      }
       getOrganization = mockGetOrganization;
       searchOrganizations = mockSearchOrganizations;
       getOrCreateStripeCustomer = mockGetOrCreateStripeCustomer;
@@ -83,9 +99,19 @@ const mockMemberContext: MemberContext = {
 describe('billing-tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.resetModules();
+    // Every test starts with the stripe-client mocks as the module factory
+    // made them: no implementation, except createStripeCustomer.
+    for (const mock of Object.values(stripeMocks)) mock.mockReset();
+    stripeMocks.createStripeCustomer.mockResolvedValue('cus_new_123');
     mockGetOrganization.mockResolvedValue(null);
     mockSearchOrganizations.mockResolvedValue([]);
+  });
+
+  // The module graph is evaluated once per file, not once per test. A module
+  // reset plus a dynamic import in every test re-evaluated it each time, and
+  // under load the first test spent its whole time limit on it.
+  test('evaluates the billing-tools module once for the whole file', () => {
+    expect(moduleEvaluations.billingTools).toBe(1);
   });
 
   describe('find_membership_products', () => {
@@ -121,10 +147,8 @@ describe('billing-tools', () => {
         },
       ];
 
-      const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getProductsForCustomer as Mock).mockResolvedValue(mockProducts);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const findProducts = handlers.get('find_membership_products')!;
 
@@ -146,13 +170,11 @@ describe('billing-tools', () => {
     });
 
     test('returns error message when no products found and no products exist', async () => {
-      const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
       // First call (with filters) returns empty, second call (without filters) also returns empty
       (getProductsForCustomer as Mock)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const findProducts = handlers.get('find_membership_products')!;
 
@@ -182,13 +204,11 @@ describe('billing-tools', () => {
         },
       ];
 
-      const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
       // First call (with filters) returns empty, second call (without filters) returns products
       (getProductsForCustomer as Mock)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce(mockProducts);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const findProducts = handlers.get('find_membership_products')!;
 
@@ -202,10 +222,8 @@ describe('billing-tools', () => {
     });
 
     test('filters by revenue tier correctly', async () => {
-      const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getProductsForCustomer as Mock).mockResolvedValue([]);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const findProducts = handlers.get('find_membership_products')!;
 
@@ -221,7 +239,6 @@ describe('billing-tools', () => {
 
   describe('create_payment_link', () => {
     test('returns error when no signed-in member context', async () => {
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const createLink = handlers.get('create_payment_link')!;
 
@@ -245,7 +262,6 @@ describe('billing-tools', () => {
         },
       };
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(contextWithUserNoOrg);
       const createLink = handlers.get('create_payment_link')!;
 
@@ -258,13 +274,11 @@ describe('billing-tools', () => {
     });
 
     test('creates payment link using memberContext email and stamps workosUserId', async () => {
-      const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as Mock).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
       });
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
@@ -307,7 +321,6 @@ describe('billing-tools', () => {
     });
 
     test('refuses when memberContext has org but no workos_user email', async () => {
-      const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as Mock).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
@@ -332,7 +345,6 @@ describe('billing-tools', () => {
         },
       };
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(slackOnlyContext);
       const createLink = handlers.get('create_payment_link')!;
 
@@ -346,10 +358,8 @@ describe('billing-tools', () => {
     });
 
     test('returns error when price not found', async () => {
-      const { getPriceByLookupKey } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as Mock).mockResolvedValue(null);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
@@ -363,11 +373,9 @@ describe('billing-tools', () => {
     });
 
     test('returns error when Stripe session creation fails', async () => {
-      const { getPriceByLookupKey, createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as Mock).mockResolvedValue(null);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
@@ -381,7 +389,6 @@ describe('billing-tools', () => {
 
   describe('send_invoice', () => {
     test('returns invoice preview using memberContext identity (no caller-supplied fields)', async () => {
-      const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
       (validateInvoiceDetails as Mock).mockResolvedValue({
         amountDue: 150000,
         currency: 'usd',
@@ -396,7 +403,6 @@ describe('billing-tools', () => {
         discount_amount_cents: null,
       });
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
@@ -419,7 +425,6 @@ describe('billing-tools', () => {
     });
 
     test('refuses without a signed-in member context', async () => {
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const sendInvoice = handlers.get('send_invoice')!;
 
@@ -431,7 +436,6 @@ describe('billing-tools', () => {
     });
 
     test('returns error when product not found', async () => {
-      const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
       (validateInvoiceDetails as Mock).mockResolvedValue(null);
       mockGetOrganization.mockResolvedValue({
         workos_organization_id: 'org_test_123',
@@ -439,7 +443,6 @@ describe('billing-tools', () => {
         stripe_coupon_id: null,
       });
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
@@ -451,7 +454,6 @@ describe('billing-tools', () => {
     });
 
     test('handles exceptions gracefully', async () => {
-      const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
       (validateInvoiceDetails as Mock).mockRejectedValue(new Error('Stripe API error'));
       mockGetOrganization.mockResolvedValue({
         workos_organization_id: 'org_test_123',
@@ -459,7 +461,6 @@ describe('billing-tools', () => {
         stripe_coupon_id: null,
       });
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
@@ -488,7 +489,6 @@ describe('billing-tools', () => {
     };
 
     test('creates and sends invoice using memberContext identity + org billing address', async () => {
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
       (createAndSendInvoice as Mock).mockResolvedValue({
         invoiceId: 'in_abc123',
         invoiceUrl: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
@@ -497,7 +497,6 @@ describe('billing-tools', () => {
       });
       mockGetOrganization.mockResolvedValue(orgWithBillingAddress);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
@@ -518,13 +517,11 @@ describe('billing-tools', () => {
     });
 
     test('refuses when org has no billing address on file', async () => {
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
       mockGetOrganization.mockResolvedValue({
         ...orgWithBillingAddress,
         billing_address: null,
       });
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
@@ -537,7 +534,6 @@ describe('billing-tools', () => {
     });
 
     test('refuses without a signed-in member context', async () => {
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
@@ -549,11 +545,9 @@ describe('billing-tools', () => {
     });
 
     test('returns error when invoice send fails', async () => {
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
       (createAndSendInvoice as Mock).mockResolvedValue(null);
       mockGetOrganization.mockResolvedValue(orgWithBillingAddress);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
@@ -567,7 +561,6 @@ describe('billing-tools', () => {
 
   describe('tool handler registration', () => {
     test('all billing tools have handlers registered', async () => {
-      const { createBillingToolHandlers, BILLING_TOOLS } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
 
       for (const tool of BILLING_TOOLS) {
@@ -577,7 +570,6 @@ describe('billing-tools', () => {
     });
 
     test('BILLING_TOOLS array contains expected tools', async () => {
-      const { BILLING_TOOLS } = await import('../../server/src/addie/mcp/billing-tools.js');
 
       const toolNames = BILLING_TOOLS.map(t => t.name);
       expect(toolNames).toContain('find_membership_products');
@@ -610,7 +602,6 @@ describe('billing-tools', () => {
       mockGetRelationshipByWorkosId.mockResolvedValue(null);
       mockGetRelationshipBySlackId.mockResolvedValue({ id: personId });
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(slackOnly);
 
       const result = JSON.parse(await handlers.get('send_invoice')({ lookup_key: 'aao_membership_explorer_50' }));
@@ -636,7 +627,6 @@ describe('billing-tools', () => {
         name: 'Test Corp',
         billing_address: null,
       });
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
 
       const result = JSON.parse(await handlers.get('confirm_send_invoice')({
@@ -659,10 +649,8 @@ describe('billing-tools', () => {
     });
 
     test('create_payment_link with bad lookup_key emits tool_error', async () => {
-      const stripeMock = await import('../../server/src/billing/stripe-client.js');
-      (stripeMock.getPriceByLookupKey as any).mockResolvedValue(null);
+      (getPriceByLookupKey as any).mockResolvedValue(null);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
 
       const result = JSON.parse(await handlers.get('create_payment_link')({
@@ -688,7 +676,6 @@ describe('billing-tools', () => {
       mockGetRelationshipByWorkosId.mockResolvedValue(null);
       mockGetRelationshipBySlackId.mockResolvedValue(null);
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(null);
 
       const result = JSON.parse(await handlers.get('send_invoice')!({ lookup_key: 'aao_membership_explorer_50' }));
@@ -710,7 +697,6 @@ describe('billing-tools', () => {
       mockGetRelationshipBySlackId.mockResolvedValue({ id: personId });
       mockRecordEvent.mockRejectedValueOnce(new Error('DB pool exhausted'));
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(slackOnly);
 
       const result = JSON.parse(await handlers.get('send_invoice')!({ lookup_key: 'foo' }));
@@ -725,13 +711,11 @@ describe('billing-tools', () => {
         name: 'Test Corp',
         billing_address: { line1: '1 Way' },
       });
-      const stripeMock = await import('../../server/src/billing/stripe-client.js');
       // Simulate a Stripe error message that embeds PII — email + customer id.
-      (stripeMock.createAndSendInvoice as any).mockRejectedValue(
+      (createAndSendInvoice as any).mockRejectedValue(
         new Error('No such customer: cus_ABC123 for victim@example.com'),
       );
 
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
 
       await handlers.get('confirm_send_invoice')!({ lookup_key: 'aao_membership_explorer_50' });
@@ -756,7 +740,6 @@ describe('billing-tools', () => {
         billing_address: null,
       });
       const huge = 'a'.repeat(1024);
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
 
       await handlers.get('confirm_send_invoice')!({ lookup_key: huge });

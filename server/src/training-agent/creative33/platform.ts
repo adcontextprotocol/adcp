@@ -1,6 +1,6 @@
 /** Isolated fixture-backed beta platform. No legacy handlers, outbound fetches, or buyer-code execution. */
 import { createHash } from 'node:crypto';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import { getAgentUrl } from '../config.js';
 import { createLogger } from '../../logger.js';

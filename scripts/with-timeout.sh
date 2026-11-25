@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Portable timeout wrapper. Prefers coreutils `timeout`/`gtimeout`; falls back
-# to a bash background/trap/kill pattern when neither is installed.
+# to a bash background/trap/kill pattern when neither is installed. Both stop
+# the command's whole process group, not only its direct child.
 #
 # Usage: scripts/with-timeout.sh <seconds> <cmd> [args...]
 #
@@ -70,30 +71,49 @@ elif command -v gtimeout >/dev/null 2>&1; then
   exit "$code"
 fi
 
-"$@" &
+# Fallback, as coreutils `timeout` does: run the command in its own process
+# group and signal the whole group, not only the direct child. A vitest
+# forks-pool worker whose main process is killed would otherwise run on,
+# waiting for it forever. With job control on (`set -m`), each background
+# job gets its own group: the command's, and the watcher's below, so killing
+# the watcher also stops its `sleep`. The command's standard input stays
+# /dev/null, as it is for a background job without job control. Job control
+# goes off again once both have started, so bash reports their exits as it
+# did before.
+set -m
+"$@" </dev/null &
 pid=$!
 
-# `kill -0` guards against PID recycling: if the child has already exited,
-# skip the kill so we don't target a reused pid.
+group_alive() { kill -0 -- "-$1" 2>/dev/null; }
+
+# SIGTERM the command's group, then SIGKILL whatever is left after the 5 s
+# grace window. `group_alive` guards against reuse: once the group is gone,
+# its id is not signalled again.
+stop_group() {
+  group_alive "$pid" || return 0
+  kill -TERM -- "-$pid" 2>/dev/null
+  local waited=0
+  while group_alive "$pid" && [ "$waited" -lt 50 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if group_alive "$pid"; then
+    kill -KILL -- "-$pid" 2>/dev/null
+  fi
+}
+
 (
   sleep "$secs"
-  if kill -0 "$pid" 2>/dev/null; then
-    kill -TERM "$pid" 2>/dev/null
-    sleep 5
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -KILL "$pid" 2>/dev/null
-    fi
-  fi
+  stop_group
 ) &
 watcher=$!
+set +m
 
+# Also on a normal exit: processes the command left in its group (workers
+# of a main process that crashed) must not outlive it.
 cleanup() {
-  if kill -0 "$watcher" 2>/dev/null; then
-    kill "$watcher" 2>/dev/null || true
-  fi
-  if kill -0 "$pid" 2>/dev/null; then
-    kill -TERM "$pid" 2>/dev/null || true
-  fi
+  kill -- "-$watcher" 2>/dev/null || true
+  stop_group
 }
 trap cleanup EXIT INT TERM
 

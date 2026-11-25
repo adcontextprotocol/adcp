@@ -2,7 +2,7 @@
 
 import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import canonicalize from 'canonicalize';
 
 const fixtureUrl = new URL(
@@ -317,29 +317,45 @@ function buildCase(definition) {
   };
 }
 
-const fixture = JSON.parse(readFileSync(fixtureUrl, 'utf8'));
-fixture.signed_jws = {
-  profile: 'adcp/governance-authorization-jws/v1',
-  warning: 'TEST-ONLY cryptographic material. Never install this JWK as a production trust anchor and never use it to authorize real spend or other activity.',
-  serialization: 'UTF-8 JSON.stringify insertion order for the published protected_header and claims objects, followed by unpadded base64url and deterministic Ed25519 signing.',
-  test_key: TEST_KEY,
-  verification_defaults: VERIFICATION_DEFAULTS,
-  cases: definitions.map(buildCase),
-};
+/** The fixture file's text as this generator writes it. */
+export function renderGovernanceJwsVectors() {
+  const fixture = JSON.parse(readFileSync(fixtureUrl, 'utf8'));
+  fixture.signed_jws = {
+    profile: 'adcp/governance-authorization-jws/v1',
+    warning: 'TEST-ONLY cryptographic material. Never install this JWK as a production trust anchor and never use it to authorize real spend or other activity.',
+    serialization: 'UTF-8 JSON.stringify insertion order for the published protected_header and claims objects, followed by unpadded base64url and deterministic Ed25519 signing.',
+    test_key: TEST_KEY,
+    verification_defaults: VERIFICATION_DEFAULTS,
+    cases: definitions.map(buildCase),
+  };
 
-// Escape compact-JWS separators in the JSON source so generic credential
-// scanners do not mistake these deliberately public test vectors for tokens.
-// JSON parsers decode \u002e back to ".", preserving the byte-exact value.
-const rendered = `${JSON.stringify(fixture, null, 2).replace(
-  /^(\s*"compact_jws": ")([^"]+)(".*)$/gm,
-  (_, prefix, compactJws, suffix) => `${prefix}${compactJws.replaceAll('.', '\\u002e')}${suffix}`
-)}\n`;
-if (process.argv.includes('--check')) {
-  const current = readFileSync(fixtureUrl, 'utf8');
-  if (current !== rendered) {
-    console.error(`${fileURLToPath(fixtureUrl)} is stale; run node scripts/generate-governance-jws-vectors.mjs`);
-    process.exitCode = 1;
+  // Escape compact-JWS separators in the JSON source so generic credential
+  // scanners do not mistake these deliberately public test vectors for tokens.
+  // JSON parsers decode \u002e back to ".", preserving the byte-exact value.
+  return `${JSON.stringify(fixture, null, 2).replace(
+    /^(\s*"compact_jws": ")([^"]+)(".*)$/gm,
+    (_, prefix, compactJws, suffix) => `${prefix}${compactJws.replaceAll('.', '\\u002e')}${suffix}`
+  )}\n`;
+}
+
+/**
+ * The --check: null when the committed fixture is what the generator writes,
+ * otherwise the message the CLI prints.
+ */
+export function checkGovernanceJwsVectors() {
+  return readFileSync(fixtureUrl, 'utf8') === renderGovernanceJwsVectors()
+    ? null
+    : `${fileURLToPath(fixtureUrl)} is stale; run node scripts/generate-governance-jws-vectors.mjs`;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv.includes('--check')) {
+    const stale = checkGovernanceJwsVectors();
+    if (stale) {
+      console.error(stale);
+      process.exitCode = 1;
+    }
+  } else {
+    writeFileSync(fixtureUrl, renderGovernanceJwsVectors());
   }
-} else {
-  writeFileSync(fixtureUrl, rendered);
 }

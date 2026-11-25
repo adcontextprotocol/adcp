@@ -13,7 +13,7 @@
  *   - "(root): Invalid input"
  */
 import { describe, it, expect } from 'vitest';
-import { unwrapProtocolResponse, isAdcpError } from '@adcp/sdk';
+import { unwrapProtocolResponse, isAdcpError } from '@adcp/sdk/utils';
 
 /**
  * Wrap AdCP data in an MCP CallToolResult envelope (content[0].text).

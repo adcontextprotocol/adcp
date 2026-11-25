@@ -15,12 +15,19 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_SWEEP');
+  vi.stubEnv('SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/T/B/sweep');
+});
+
 vi.hoisted(() => {
-  process.env.REGISTRY_EDITS_CHANNEL_ID = 'C_SWEEP';
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_SWEEP');
   process.env.SLACK_BOT_TOKEN ||= 'xoxb-test-sweep';
   // The staff-channel builders post through an incoming webhook rather
   // than the bot client, so they need a configured URL to send at all.
-  process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/T/B/sweep';
+  vi.stubEnv('SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/T/B/sweep');
 });
 
 const mocks = vi.hoisted(() => ({

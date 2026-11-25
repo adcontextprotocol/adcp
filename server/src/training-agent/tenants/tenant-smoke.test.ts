@@ -44,8 +44,9 @@ import {
   reportingMediaBuyCandidateHistoryForTesting,
   resolveReportingAccountDurably,
 } from '../reporting-reliability.js';
+import { listenOnLoopback } from '../../testing/loopback-server.js';
+import { createTrainingAgentRouter } from '../index.js';
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 // The schema trees the build publishes, and the copies inside them that
 // reuse the $ids of the schemas they project.
@@ -134,7 +135,6 @@ const SALES_THREE_ZERO_COMPLY_SCENARIOS = [
 ];
 
 async function bootServer(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): Promise<{ baseUrl: string; close: () => Promise<void> }> {
-  const { createTrainingAgentRouter } = await import('../index.js');
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -144,7 +144,7 @@ async function bootServer(options: { storyboardCompat?: TrainingContext['storybo
   }));
   app.use('/api/training-agent', createTrainingAgentRouter(options));
   const srv = http.createServer(app);
-  await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
+  await listenOnLoopback(srv);
   const port = (srv.address() as { port: number }).port;
   return {
     baseUrl: `http://127.0.0.1:${port}/api/training-agent`,

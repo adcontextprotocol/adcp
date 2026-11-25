@@ -5,7 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 const STRATEGIES = new Set(['seed', 'discover', 'construct']);
@@ -180,7 +180,7 @@ function lint(sourceDir = SOURCE_DIR) {
   for (const file of walkYaml(sourceDir)) {
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+      doc = loadYamlFile(file);
     } catch {
       continue; // YAML syntax is owned by the existing source parser.
     }
@@ -191,16 +191,19 @@ function lint(sourceDir = SOURCE_DIR) {
   return violations;
 }
 
-if (require.main === module) {
+function main() {
   const violations = lint();
   if (violations.length > 0) {
     console.error('Storyboard fixture-resolution violations:');
     for (const violation of violations) {
       console.error(`  ${violation.file}:${violation.at} — ${violation.rule}`);
     }
-    process.exit(1);
+    return 1;
   }
   console.log('Storyboard fixture-resolution declarations are valid.');
+  return 0;
 }
 
-module.exports = { lint, lintDoc };
+if (require.main === module) process.exitCode = main();
+
+module.exports = { main, lint, lintDoc };

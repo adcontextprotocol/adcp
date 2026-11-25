@@ -327,6 +327,12 @@ export function createTrainingAgentRouter(options: {
   storyboardCompat?: TrainingContext['storyboardCompat'];
   /** Test harnesses may disable the production request ceiling for exhaustive local evaluation. */
   disableRateLimit?: boolean;
+  /**
+   * Server boot: build the tenant registries now rather than on the first
+   * request (mountTenantRoutes' prewarm). Off by default, so building a
+   * router starts no registry work its requests don't need.
+   */
+  prewarmTenantRegistries?: boolean;
 } = {}): Router {
   const router = Router();
   const buyerOAuth = trainingBuyerOAuthConfig();
@@ -388,7 +394,7 @@ export function createTrainingAgentRouter(options: {
     requireSalesAuth,
     requireGovernanceAuth: requireTokenGovernance,
     storyboardCompat: options.storyboardCompat,
-  });
+  }, { prewarm: options.prewarmTenantRegistries });
 
   if (options.storyboardCompat?.version !== '3.0') {
     mountCreative33Sandbox(router, {

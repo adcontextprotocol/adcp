@@ -1,4 +1,3 @@
-const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash, createPrivateKey, createPublicKey, sign, verify } = require('node:crypto');
 const { readFileSync } = require('node:fs');

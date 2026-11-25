@@ -82,3 +82,6 @@ server/tests/fixtures/c2pa/*.pem
 # tree. Always-ignore so they don't pollute `git status`.
 .prepush-*/
 dist/docs/.prepush-*/
+
+# Pre-commit profiler run directories (scripts/profile-precommit.mjs)
+.hook-runs/

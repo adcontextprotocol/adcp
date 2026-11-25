@@ -1,17 +1,20 @@
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import { createHash } from 'node:crypto';
-import { ADMIN_TOOLS } from '../mcp/admin-tools.js';
-import { BILLING_TOOLS } from '../mcp/billing-tools.js';
-import { BRAND_CANONICAL_TOOLS } from '../mcp/brand-canonical-tools.js';
-import { COMMITTEE_LEADER_TOOLS } from '../mcp/committee-leader-tools.js';
-import { DIRECTORY_TOOLS } from '../mcp/directory-tools.js';
-import { ILLUSTRATION_TOOLS } from '../mcp/illustration-tools.js';
-import { KNOWLEDGE_TOOLS } from '../mcp/knowledge-search.js';
-import { MEETING_TOOLS } from '../mcp/meeting-tools.js';
-import { MEMBER_TOOLS } from '../mcp/member-tools.js';
-import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
-import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
+import { ADMIN_TOOLS } from '../mcp/admin-tool-definitions.js';
+import { BILLING_TOOLS } from '../mcp/billing-tool-definitions.js';
+import { BRAND_CANONICAL_TOOLS } from '../mcp/brand-canonical-tool-definitions.js';
+import { COMMITTEE_LEADER_TOOLS } from '../mcp/committee-leader-tool-definitions.js';
+import { DIRECTORY_TOOLS } from '../mcp/directory-tool-definitions.js';
+import { ILLUSTRATION_TOOLS } from '../mcp/illustration-tool-definitions.js';
+import { KNOWLEDGE_TOOLS } from '../mcp/knowledge-search-tool-definitions.js';
+import { MEETING_TOOLS } from '../mcp/meeting-tool-definitions.js';
+import { MEMBER_TOOLS } from '../mcp/member-tool-definitions.js';
+import { PROPERTY_TOOLS } from '../mcp/property-tool-definitions.js';
+import { SI_HOST_TOOLS } from '../mcp/si-host-tool-definitions.js';
+import {
+  compileToolInputSchema,
+  isCacheableToolRegistration,
+  newToolSchemaAjv,
+} from '../model-providers/tool-schema-validator.js';
 import type { AddieTool } from '../types.js';
 import type { FixedTraceCorpusCase } from './fixed-trace-suite.js';
 import {
@@ -20,6 +23,9 @@ import {
   type FixedTraceTuningSemanticAuthorityEntry,
 } from './fixed-trace-corpus-authority.js';
 import { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
+import { memoizedByString } from './fixed-trace-string-memo.js';
+
+const canonicalTextMemo = new Map<string, FixedTraceCanonicalText>();
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -131,11 +137,11 @@ function decodeHtmlEntities(value: string): { value: string; changed: boolean; m
 
 export interface FixedTraceCanonicalText {
   /** Lowercase, deobfuscated text suitable for bounded policy matching. */
-  text: string;
+  readonly text: string;
   /** Separator-free form for protected multi-token identity and marker matching. */
-  compact: string;
+  readonly compact: string;
   /** Malformed or still-encoded data is rejected by consumers rather than ignored. */
-  malformedPercentEncoding: boolean;
+  readonly malformedPercentEncoding: boolean;
 }
 
 /**
@@ -144,6 +150,13 @@ export interface FixedTraceCanonicalText {
  * encoding, while malformed or further-encoded input remains fail-closed.
  */
 export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText {
+  // A pure function of `value` (inline patterns, frozen tables, a fixed
+  // locale), recomputed otherwise for every leaf of every suite variant. The
+  // result is shared, so it is frozen.
+  return memoizedByString(canonicalTextMemo, value, computeCanonicalFixedTraceText);
+}
+
+function computeCanonicalFixedTraceText(value: string): FixedTraceCanonicalText {
   let text = value.normalize('NFKC');
   let malformedPercentEncoding = false;
   for (let round = 0; round < MAX_PERCENT_DECODE_ROUNDS; round++) {
@@ -169,11 +182,11 @@ export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText 
     .replace(/\[\s*(?:\.|dot)\s*\]|\(\s*(?:\.|dot)\s*\)|\{\s*(?:\.|dot)\s*\}/g, '.')
     .replace(/\b(?:dot|period)\b/g, '.')
     .replace(/[\[\]{}()]/g, '');
-  return {
+  return Object.freeze({
     text,
     compact: text.replace(/[^a-z0-9]+/g, ''),
     malformedPercentEncoding,
-  };
+  });
 }
 
 /**
@@ -424,8 +437,14 @@ export function validateFixedTraceCorpusToolContracts(
   suite = detachedSuite.snapshot;
   try {
   const definitions = canonicalDefinitions(suite);
-  const ajv = new Ajv({ allErrors: true, strict: false });
-  addFormats(ajv);
+  // Identity-free JSON schemas share process-wide compiled validators across
+  // audits; otherwise one fresh instance serves this audit, as before.
+  const definitionsList = [...definitions.values()];
+  const shared = isCacheableToolRegistration(definitionsList, 'input_schema');
+  let own: ReturnType<typeof newToolSchemaAjv> | undefined;
+  const compile = (schema: AddieTool['input_schema']): (input: unknown) => boolean => (shared
+    ? compileToolInputSchema(schema, 'corpus_contract')
+    : (own ??= newToolSchemaAjv('corpus_contract')).compile(schema));
 
   for (const trace of suite.filter((candidate) => candidate.toolContract)) {
     const contract = trace.toolContract;
@@ -463,7 +482,7 @@ export function validateFixedTraceCorpusToolContracts(
         failures.push(`missing_canonical_tool:${trace.id}:${call.name}`);
         continue;
       }
-      const validate = ajv.compile(definition.input_schema);
+      const validate = compile(definition.input_schema);
       if (!validate(call.input)) failures.push(`invalid_contract_input:${trace.id}:${call.name}:${index}`);
       if (call.execution === 'blocked') {
         if (call.policyDisposition !== 'blocked') failures.push(`blocked_disposition_mismatch:${trace.id}:${index}`);

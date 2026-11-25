@@ -56,7 +56,8 @@ import {
 } from '../../src/training-agent/idempotency.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { canonicalize, ProtocolClient } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
+import { ProtocolClient } from '@adcp/sdk/advanced';
 
 function resignTermsDigest(proposal: Record<string, unknown>): void {
   proposal.terms_digest = `sha256:${createHash('sha256')

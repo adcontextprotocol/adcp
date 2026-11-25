@@ -1,13 +1,21 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const encryption = vi.hoisted(() => ({ deriveKey: vi.fn(() => Buffer.alloc(32, 17)) }));
 vi.mock('../../src/db/encryption.js', () => encryption);
 
-import { agentQualityEvaluationFingerprint } from '../../src/db/agent-quality-evaluation-identity.js';
+import {
+  agentQualityEvaluationFingerprint,
+  resetAgentQualityEvaluationIdentityForTests,
+} from '../../src/db/agent-quality-evaluation-identity.js';
 
 const storedRepresentation = JSON.stringify(['context-one', 'bearer', '2026-09-22 12:00:00.123456+00']);
 
 describe('keyed evaluation identity', () => {
+  beforeEach(() => {
+    resetAgentQualityEvaluationIdentityForTests();
+    encryption.deriveKey.mockClear();
+  });
+
   it('derives its dedicated key once and is deterministic for the same stored representation', () => {
     expect(encryption.deriveKey).not.toHaveBeenCalled();
     const digest = agentQualityEvaluationFingerprint('row-generation', storedRepresentation);

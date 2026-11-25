@@ -5,7 +5,7 @@
  * never evidence that an external action happened; action-specific receipt
  * modules own that boundary instead.
  */
-import { isMutatingTool } from '../training-agent/idempotency.js';
+import { isMutatingTool } from '../training-agent/mutating-tools.js';
 
 
 /** Every known Addie mutation is conservative replay-sensitive. */

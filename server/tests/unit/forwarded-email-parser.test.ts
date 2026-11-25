@@ -5,6 +5,18 @@ import {
   mergeAddresses,
 } from '../../src/utils/forwarded-email-parser.js';
 
+/** A Gmail-style forwarded body whose To header lists `count` recipients. */
+function forwardedBodyWithRecipients(count: number): string {
+  const recipients = Array.from({ length: count }, (_, i) => `User ${i} <user${i}@example.com>`).join(', ');
+  return `
+---------- Forwarded message ---------
+From: John Doe <john@example.com>
+To: ${recipients}
+
+Content
+`;
+}
+
 describe('forwarded-email-parser', () => {
   describe('parseForwardedEmailHeaders', () => {
     describe('forward detection', () => {
@@ -516,24 +528,21 @@ Content
       expect(result).toBe('"<script>alert("xss")</script>" <test@example.com>');
     });
 
-    it('should handle large number of recipients efficiently', () => {
-      const recipients = Array.from({ length: 50 }, (_, i) =>
-        `User ${i} <user${i}@example.com>`
-      ).join(', ');
+    it('parses all recipients of a large list and caps the header block it reads', () => {
+      // A list that fits in the header block parses completely.
+      const fits = parseForwardedEmailHeaders('Fwd: test', forwardedBodyWithRecipients(50));
+      expect(fits.originalTo.map((address) => address.email))
+        .toEqual(Array.from({ length: 50 }, (_, i) => `user${i}@example.com`));
 
-      const body = `
----------- Forwarded message ---------
-From: John Doe <john@example.com>
-To: ${recipients}
-
-Content
-`;
-      const start = Date.now();
-      const result = parseForwardedEmailHeaders('Fwd: test', body);
-      const elapsed = Date.now() - start;
-
-      expect(result.originalTo.length).toBe(50);
-      expect(elapsed).toBeLessThan(100); // Should complete quickly
+      // A list far past the header block cap (MAX_HEADER_BLOCK_SIZE) parses
+      // only the recipients before the cut, in order. The entry that straddles
+      // the cut may be dropped or truncated, so it is not checked.
+      const huge = parseForwardedEmailHeaders('Fwd: test', forwardedBodyWithRecipients(5000));
+      const emails = huge.originalTo.map((address) => address.email);
+      expect(emails.length).toBeGreaterThan(1);
+      expect(emails.length).toBeLessThan(5000);
+      const complete = emails.slice(0, -1);
+      expect(complete).toEqual(complete.map((_, i) => `user${i}@example.com`));
     });
 
     it('should return empty result for excessively large body', () => {

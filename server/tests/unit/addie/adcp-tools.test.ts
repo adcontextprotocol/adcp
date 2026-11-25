@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { extractAdcpErrorInfo } from '@adcp/sdk';
+import { extractAdcpErrorInfo } from '@adcp/sdk/errors';
 
 const executeTrainingAgentTool = vi.hoisted(() => vi.fn());
 const executeRemoteTask = vi.hoisted(() => vi.fn());

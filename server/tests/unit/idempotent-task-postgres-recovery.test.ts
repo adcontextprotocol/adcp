@@ -1,4 +1,5 @@
-import { PostgresTaskStore, type PgQueryable } from '@adcp/sdk';
+import { PostgresTaskStore } from '@adcp/sdk/server';
+import type { PgQueryable } from '@adcp/sdk';
 import { describe, expect, it } from 'vitest';
 import {
   createOrReuseIdempotentTask,

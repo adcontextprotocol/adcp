@@ -2,6 +2,7 @@ import express from 'express';
 import http from 'node:http';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ComplianceResult } from '@adcp/sdk/testing';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 // The hosted SSRF guard refuses loopback agents. This test drives an
 // in-process training agent, so let the SDK use the global fetch.
@@ -10,7 +11,6 @@ vi.mock('../../src/utils/sdk-safe-fetch.js', async (importOriginal) => ({
   withSdkSafeTransport: <T extends object>(options: T) => options,
 }));
 
-process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
@@ -106,7 +106,7 @@ describe('hosted compliance on a 3.0 target for an agent that echoes 3.2', () =>
     });
     app.use('/api/training-agent', createTrainingAgentRouter({}));
     server = http.createServer(app);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
+    await listenOnLoopback(server);
     const { port } = server.address() as { port: number };
     agentUrl = `http://127.0.0.1:${port}/api/training-agent/sales/mcp`;
   });

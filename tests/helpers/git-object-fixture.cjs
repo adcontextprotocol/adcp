@@ -13,7 +13,9 @@ const path = require('node:path');
 // they would route `git add` into the caller's index. Every GIT_* variable is
 // dropped, and global and system config are ignored so caller hooks, signing
 // and templates cannot run. HOME and the parent environment are left alone.
-function fixtureEnv() {
+// Pass { identity: false } when the code under test sets its own commit
+// identity: an author/committer in the environment would override it.
+function fixtureEnv({ identity = true } = {}) {
   const env = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith('GIT_')) env[key] = value;
@@ -23,10 +25,32 @@ function fixtureEnv() {
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: os.devNull,
     GIT_TERMINAL_PROMPT: '0',
-    GIT_AUTHOR_NAME: 't',
-    GIT_AUTHOR_EMAIL: 't@example.com',
-    GIT_COMMITTER_NAME: 't',
-    GIT_COMMITTER_EMAIL: 't@example.com',
+    ...(identity ? {
+      GIT_AUTHOR_NAME: 't',
+      GIT_AUTHOR_EMAIL: 't@example.com',
+      GIT_COMMITTER_NAME: 't',
+      GIT_COMMITTER_EMAIL: 't@example.com',
+    } : {}),
+  };
+}
+
+// Applies fixtureEnv to process.env in place, for test files whose fixture git
+// runs in many places: their own helpers, workflow steps they spawn with
+// { ...process.env }, and wrapper scripts that call the real git. Inside a
+// linked-worktree hook git exports GIT_DIR=<repo>/.git/worktrees/<name> and
+// GIT_INDEX_FILE; inherited, they make fixture commands commit, tag and fetch
+// into the caller's repository, and make `git init` write core.bare=true into
+// its shared config. Call it at module scope, before the first git launch.
+// Returns a function that restores the previous environment (for runners
+// that reuse the process across files).
+function isolateGitEnv(options) {
+  const previous = { ...process.env };
+  const isolated = fixtureEnv(options);
+  for (const key of Object.keys(process.env)) if (!Object.hasOwn(isolated, key)) delete process.env[key];
+  Object.assign(process.env, isolated);
+  return () => {
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, previous);
   };
 }
 
@@ -61,4 +85,12 @@ function gitFixture({ filePath, content, missing = 'none' }) {
   return { repo, runGit, cleanup: () => fs.rmSync(repo, { recursive: true, force: true }) };
 }
 
-module.exports = { fixtureEnv, gitFixture };
+// For a test that reads the enclosing checkout on purpose
+// (lint-allow-caller-git): the environment without GIT_*, so git finds the
+// checkout from its working directory. In a real hook the dropped GIT_DIR names
+// this same checkout; under tests/git-env-isolation.test.cjs it names a
+// throwaway repository, and the read would see that one instead.
+function checkoutGitEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+}
+module.exports = { checkoutGitEnv, fixtureEnv, gitFixture, isolateGitEnv };

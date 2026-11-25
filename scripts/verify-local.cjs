@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// On-demand local verification. The commit hooks run only fast checks
-// (.husky/pre-commit, .husky/pre-push); CI runs every suite and is the gate.
-// Run this before pushing a change you want checked locally:
+// On-demand local verification, outside the commit hooks (.husky/pre-commit,
+// .husky/pre-push); CI runs every suite and is the gate. Run it to check the
+// tests your change affects, or the full suites, without committing:
 //
 //   npm run verify:local                  tests affected since origin/main, then typecheck
 //   npm run verify:local -- --since HEAD~1

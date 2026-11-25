@@ -287,10 +287,7 @@ describe('createMemberToolHandlers', () => {
             expect(read).toContain('[PASS]');
             expect(scenario.calls.slice(before).some((call: { task: string }) => call.task === 'get_media_buys')).toBe(true);
           }
-          // The first case in a process pays the SDK's one-time JSON Schema
-          // compilation (about 9s alone, over 30s in a loaded full run); the
-          // others finish in about 150ms.
-        }, 90_000);
+        });
       }
     }
   });

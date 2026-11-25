@@ -38,7 +38,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require('js-yaml');
+const { loadYamlFile } = require('./compliance-yaml.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
@@ -65,7 +65,7 @@ const CHECK_MATCHER_KEYS = new Map([
 ]);
 
 function loadKnownCheckKinds() {
-  const doc = yaml.load(fs.readFileSync(CONTRACT_FILE, 'utf8'));
+  const doc = loadYamlFile(CONTRACT_FILE);
   const authored = doc && Array.isArray(doc.authored_check_kinds) ? doc.authored_check_kinds : null;
   if (!authored || authored.length === 0) {
     throw new Error(
@@ -138,7 +138,7 @@ function lint(sourceDir = SOURCE_DIR) {
     if (!isStoryboardYaml(rel)) return;
     let doc;
     try {
-      doc = yaml.load(fs.readFileSync(p, 'utf8'));
+      doc = loadYamlFile(p);
     } catch {
       return;
     }
@@ -221,7 +221,7 @@ function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ storyboard check-enum lint: every authored validation check is in the enum');
-    return;
+    return 0;
   }
   console.error(`✗ storyboard check-enum lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -230,12 +230,13 @@ function main() {
     console.error(`    ${msg}`);
     console.error('');
   }
-  process.exit(1);
+  return 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) process.exitCode = main();
 
 module.exports = {
+  main,
   RULE_MESSAGES,
   SYNTHESIZED_CHECK_KINDS,
   NEGATIVE_PATH_VALUES,

@@ -1,16 +1,13 @@
 import { defineConfig } from 'vitest/config';
+import { resolveWorkerCount, serverProjects, serverTestBase } from './vitest.projects.ts';
 
+// The server suite (`npm run test:server-unit`, CI's shards). Its projects
+// are defined in ./vitest.projects.ts, which the root vitest.config.ts also
+// uses for the pre-commit hook's server step.
 export default defineConfig({
   test: {
-    globals: true,
-    environment: 'node',
-    root: __dirname,
-    setupFiles: ['./tests/setup/revenue-tracking-env.ts'],
-    globalSetup: ['./tests/setup/built-schemas.ts'],
-    testTimeout: 30000,
-    // Keep process isolation explicit so module-level singletons (database
-    // pool, WorkOS client, env-cached secrets) cannot bleed between files.
-    pool: 'forks',
-    fileParallelism: false,
+    ...serverTestBase(),
+    maxWorkers: resolveWorkerCount({ reservedCpus: 1 }),
+    projects: serverProjects().map((test) => ({ extends: true, test })),
   },
 });

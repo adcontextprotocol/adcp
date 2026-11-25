@@ -5,9 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Installments are a 3.3 canonical-product field, so the compact lifecycle
 // cases below list products as a 3.3 caller, through the trusted local
 // candidate wire contract.
+// unstubEnvs (server/vitest.config.ts) restores these before the first test;
+// modules that read them at import have already done so.
 vi.hoisted(() => {
-  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
+  vi.stubEnv('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE', '1');
+  vi.stubEnv('ADCP_TRAINING_CANDIDATE_VERSION', '3.3-beta.1');
 });
 import type { CanonicalProposal } from '@adcp/sdk';
 import { CREATOR_PUBLISHER } from '../../src/training-agent/creators.js';

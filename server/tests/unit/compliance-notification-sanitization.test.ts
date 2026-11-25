@@ -21,9 +21,12 @@ const AGENT_URL = 'https://hostile.example.com/mcp';
 const OWNER_USER_ID = 'user_owner_1';
 const SLACK_USER_ID = 'U_OWNER_1';
 
+// Modules read these at import; unstubEnvs (server/vitest.config.ts) restores
+// them before every test, so beforeEach stubs them again for the tests.
+const ENV = { REGISTRY_EDITS_CHANNEL_ID: 'C_REGISTRY_EDITS', BASE_URL: 'https://agenticadvertising.org' } as const;
 vi.hoisted(() => {
-  process.env.REGISTRY_EDITS_CHANNEL_ID = 'C_REGISTRY_EDITS';
-  process.env.BASE_URL = 'https://agenticadvertising.org';
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_REGISTRY_EDITS');
+  vi.stubEnv('BASE_URL', 'https://agenticadvertising.org');
 });
 
 const slackMocks = vi.hoisted(() => ({
@@ -127,6 +130,7 @@ function channelText(): string {
 }
 
 beforeEach(() => {
+  for (const [name, value] of Object.entries(ENV)) vi.stubEnv(name, value);
   vi.clearAllMocks();
   slackMocks.sendDirectMessage.mockResolvedValue({ ok: true });
   slackMocks.sendChannelMessage.mockResolvedValue({ ok: true, ts: '1.0' });

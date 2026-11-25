@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.hoisted(() => {
   // Read at module load by the notifier, so it must be set before the import.
-  process.env.REGISTRY_EDITS_CHANNEL_ID = 'C_REGISTRY_EDITS';
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_REGISTRY_EDITS');
 });
 
 vi.mock('../../src/db/client.js', () => ({
@@ -53,6 +53,12 @@ import {
 import { query } from '../../src/db/client.js';
 import { notifyUser } from '../../src/notifications/notification-service.js';
 import { sendChannelMessage } from '../../src/slack/client.js';
+
+// unstubEnvs (server/vitest.config.ts) restores env before every test;
+// this file's tests keep the values it stubs at import.
+beforeEach(() => {
+  vi.stubEnv('REGISTRY_EDITS_CHANNEL_ID', 'C_REGISTRY_EDITS');
+});
 
 const mockedQuery = vi.mocked(query);
 const mockedNotifyUser = vi.mocked(notifyUser);

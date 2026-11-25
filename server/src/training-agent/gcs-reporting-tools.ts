@@ -1,6 +1,6 @@
 import type { LegacyAdcpToolMap as AdcpToolMap, RequestContext, Account } from '@adcp/sdk/server';
 import { AdcpError } from '@adcp/sdk/server';
-import { getTrainingGcsReporting } from './gcs-reporting.js';
+import { loadTrainingGcsReporting } from './gcs-reporting-runtime.js';
 import { trainingGcsReportingConfig } from './gcs-reporting-config.js';
 import { commitTrainingDailySourcePeriod, resolveReportingAccountDurably } from './reporting-reliability.js';
 import { resolveServedAdcpVersion } from './task-handlers.js';
@@ -21,7 +21,7 @@ async function publishSourceDelivery(
 ): Promise<void> {
   const config = trainingGcsReportingConfig();
   if (!config || !principal || principal !== config.canaryPrincipal) return;
-  const runtime = getTrainingGcsReporting();
+  const runtime = await loadTrainingGcsReporting();
   if (!runtime || principal !== runtime.config.canaryPrincipal || !input.account
     || input.reporting_revision_id || result.errors || !Array.isArray(input.media_buy_ids)
     || typeof input.start_date !== 'string' || typeof input.end_date !== 'string') return;
@@ -53,7 +53,7 @@ export async function dispatchTrainingGcsReporting<T extends Operation>(operatio
     : Array.isArray(input.delivery_config_ids) ? input.delivery_config_ids : [];
   const selectsGcs = configIds.some(id => typeof id === 'string' && id.startsWith('gcs:'));
   if ((operation === 'get_reporting_status' || operation === 'sync_reporting_status') && configIds.length > 0 && !selectsGcs) return undefined;
-  const runtime = getTrainingGcsReporting();
+  const runtime = await loadTrainingGcsReporting();
   if (!runtime && selectsGcs) throw new AdcpError('SERVICE_UNAVAILABLE', { recovery: 'transient', message: 'Durable reporting is unavailable.' });
   if (!runtime || !input.account) return undefined;
   if (operation === 'get_media_buy_delivery' && !input.reporting_revision_id) return undefined;

@@ -3280,6 +3280,7 @@ import {
   handleAcquireRights,
   handleUpdateRights,
   handleCreativeApproval,
+  warmBrandCatalog,
 } from './brand-handlers.js';
 import {
   PROPERTY_TOOLS,
@@ -3299,8 +3300,8 @@ import {
   handleCalibrateContent,
   handleValidateContentDelivery,
 } from './content-standards-handlers.js';
+import { ACCOUNT_REF_SCHEMA } from './account-ref-schema.js';
 import {
-  ACCOUNT_REF_SCHEMA,
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
@@ -3346,8 +3347,8 @@ import {
   handleSiSendMessage,
   handleSiTerminateSession,
 } from './si-handlers.js';
+import { COMPLY_TEST_CONTROLLER_TOOL } from './comply-test-controller-tool.js';
 import {
-  COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
   getDeliverySimulationForPeriod,
@@ -11058,13 +11059,30 @@ export function validateProductDiscoveryAliasInput(
   return undefined;
 }
 
-const LIST_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('list-products-request');
-const REQUEST_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('request-proposals-request');
-const REFINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('refine-proposals-request');
-const DECLINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('decline-proposals-request');
-const BUY_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('buy-products-request');
-const ACCEPT_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('accept-proposal-request');
-const CONTROL_MEDIA_BUY_INPUT_SCHEMA = loadProductDiscoveryInputSchema('control-media-buy-request');
+// The product-discovery tools' input schemas are bundled from the source
+// schemas on first read of a tool's inputSchema (a getter below), so reading
+// tool names or task support does not bundle them; serializing the
+// definitions does. warmTrainingAgentCatalog() bundles them at production boot.
+const PRODUCT_DISCOVERY_INPUT_SCHEMA_FILES = [
+  'list-products-request',
+  'request-proposals-request',
+  'refine-proposals-request',
+  'decline-proposals-request',
+  'buy-products-request',
+  'accept-proposal-request',
+  'control-media-buy-request',
+] as const;
+const productDiscoveryInputSchemas = new Map<string, ReturnType<typeof loadProductDiscoveryInputSchema>>();
+function productDiscoveryInputSchema(
+  fileName: (typeof PRODUCT_DISCOVERY_INPUT_SCHEMA_FILES)[number],
+): ReturnType<typeof loadProductDiscoveryInputSchema> {
+  let schema = productDiscoveryInputSchemas.get(fileName);
+  if (!schema) {
+    schema = loadProductDiscoveryInputSchema(fileName);
+    productDiscoveryInputSchemas.set(fileName, schema);
+  }
+  return schema;
+}
 const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
   type: 'object',
   description: 'Planning-cycle context. Explicit packages carry opportunity_id for account-scoped correlation only and omit status, close_reason, close_detail, and later_proposals; they never change opportunity status or consent. Proposal execution infers accepted closure when status is omitted, or accepts closed with accepted_with_seller. Canonical request validation enforces the mode-specific rules.',
@@ -11137,49 +11155,63 @@ const TOOLS = [
     description: 'List product offers with structured commercial criteria. Returns products only; use request_proposals for seller-authored plans.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
-    inputSchema: LIST_PRODUCTS_INPUT_SCHEMA,
+    get inputSchema() {
+      return productDiscoveryInputSchema('list-products-request');
+    },
   },
   {
     name: 'request_proposals',
     description: 'Request immutable draft media-plan proposals from a brief and optional listed product IDs. Drafts can be revised, finalized into inventory holds, or declined.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
-    inputSchema: REQUEST_PROPOSALS_INPUT_SCHEMA,
+    get inputSchema() {
+      return productDiscoveryInputSchema('request-proposals-request');
+    },
   },
   {
     name: 'refine_proposals',
     description: 'Create draft revisions or finalize drafts into committed inventory holds. Every result receives a new proposal_id; source snapshots remain immutable.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
-    inputSchema: REFINE_PROPOSALS_INPUT_SCHEMA,
+    get inputSchema() {
+      return productDiscoveryInputSchema('refine-proposals-request');
+    },
   },
   {
     name: 'decline_proposals',
     description: 'Terminally decline one or more immutable proposals. Repeated declines are semantically idempotent and declined proposals cannot be purchased.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
-    inputSchema: DECLINE_PROPOSALS_INPUT_SCHEMA,
+    get inputSchema() {
+      return productDiscoveryInputSchema('decline-proposals-request');
+    },
   },
   {
     name: 'buy_products',
     description: 'Buy exact published product offers against the feed and pricing versions returned by list_products.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
-    inputSchema: BUY_PRODUCTS_INPUT_SCHEMA,
+    get inputSchema() {
+      return productDiscoveryInputSchema('buy-products-request');
+    },
   },
   {
     name: 'accept_proposal',
     description: 'Accept one committed immutable proposal and create or amend its MediaBuy atomically.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
-    inputSchema: ACCEPT_PROPOSAL_INPUT_SCHEMA,
+    get inputSchema() {
+      return productDiscoveryInputSchema('accept-proposal-request');
+    },
   },
   {
     name: 'control_media_buy',
     description: 'Apply operational controls within an accepted MediaBuy commercial envelope using optimistic concurrency.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
-    inputSchema: CONTROL_MEDIA_BUY_INPUT_SCHEMA,
+    get inputSchema() {
+      return productDiscoveryInputSchema('control-media-buy-request');
+    },
   },
   {
     name: 'list_creative_formats',
@@ -11626,7 +11658,7 @@ export function productDiscoveryAliasToolDefinitions(): Array<(typeof TOOLS)[num
   )));
 }
 
-function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
+export function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
   const threeZero = isThreeZeroStoryboardCompat(ctx);
   return TOOLS
     .filter(tool => !threeZero || (
@@ -11652,6 +11684,17 @@ function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
         },
       };
     }) as typeof TOOLS;
+}
+
+/**
+ * Builds the tool definitions' lazy parts now: the brand catalog and the
+ * product-discovery input schemas. Production boot calls it so boot-time
+ * failure and first-request latency stay as before; tests build them on the
+ * first full tool list instead.
+ */
+export function warmTrainingAgentCatalog(): void {
+  warmBrandCatalog();
+  for (const fileName of PRODUCT_DISCOVERY_INPUT_SCHEMA_FILES) productDiscoveryInputSchema(fileName);
 }
 
 export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string[] {

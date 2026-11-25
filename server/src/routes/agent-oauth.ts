@@ -215,12 +215,21 @@ export function createMembershipGuardedPendingFlowStore(
 }
 
 // Periodic cleanup of expired pending-flow rows (the SDK deletes on
-// consume, but rows abandoned mid-flow still need a sweeper).
-const cleanupStore = new AgentOAuthPendingFlowStore();
-const cleanupTimer = setInterval(() => {
-  cleanupStore.cleanupExpired().catch(() => undefined);
-}, 5 * 60 * 1000);
-cleanupTimer.unref();
+// consume, but rows abandoned mid-flow still need a sweeper). Armed once per
+// process; the guard lives on `globalThis` (as in native-auth.ts) because a
+// test file that resets the module registry evaluates this module again.
+const CLEANUP_TIMER_STARTED_KEY = '__adcp_agent_oauth_pending_flow_cleanup_started__';
+const globalWithAgentOAuthCleanup = globalThis as typeof globalThis & {
+  [CLEANUP_TIMER_STARTED_KEY]?: boolean;
+};
+if (!globalWithAgentOAuthCleanup[CLEANUP_TIMER_STARTED_KEY]) {
+  globalWithAgentOAuthCleanup[CLEANUP_TIMER_STARTED_KEY] = true;
+  const cleanupStore = new AgentOAuthPendingFlowStore();
+  const cleanupTimer = setInterval(() => {
+    cleanupStore.cleanupExpired().catch(() => undefined);
+  }, 5 * 60 * 1000);
+  cleanupTimer.unref();
+}
 
 /**
  * Map an `@adcp/sdk` web-flow error to a stable error code we surface

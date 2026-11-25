@@ -1,6 +1,6 @@
 import { beforeEach, describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize } from '@adcp/sdk/utils';
 import {
   handleGetBrandIdentity,
   handleGetRights,

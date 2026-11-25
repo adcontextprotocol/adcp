@@ -1,4 +1,4 @@
-import { LIBRARY_VERSION } from '@adcp/sdk';
+import { LIBRARY_VERSION } from '@adcp/sdk/version';
 import type { ComplianceResult, ComplyOptions } from '@adcp/sdk/testing';
 
 export interface ComplianceRunProvenance {

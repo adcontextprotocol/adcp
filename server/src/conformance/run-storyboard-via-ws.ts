@@ -13,7 +13,7 @@
  * from the same registry.
  */
 
-import { AgentClient } from '@adcp/sdk';
+import { AgentClient } from '@adcp/sdk/client/core';
 import { withHostedReportingBudget, runCatalogReportingStoryboard as runStoryboard } from '../compliance/catalog-reporting-runner.js';
 import type { StoryboardResult, StoryboardRunOptions } from '@adcp/sdk/testing';
 import { conformanceSessions } from './session-store.js';

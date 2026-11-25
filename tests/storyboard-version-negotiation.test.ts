@@ -1,8 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadStoryboardFile, registerExternalSchemaRoot, runStoryboardStep, unregisterExternalSchemaRoot } from '@adcp/sdk/testing';
+
+const { recordCalls } = createRequire(import.meta.url)('./helpers/spawn-counter.cjs') as {
+  recordCalls(id: string, names: string[]): { calls: Array<{ name: string; target: string }>; restore(): void };
+};
 
 const sourceRoot = path.resolve('static/compliance/source');
 const affected = [
@@ -105,30 +110,66 @@ function seller(selectedRelease: string) {
 // Register disposable source snapshots for both selected releases. This also
 // exercises maintenance SDKs that predate the stable 3.2 bundled schemas.
 // Repository metadata and immutable released artifacts stay untouched.
+// External roots require a versioned or latest namespace, so each snapshot
+// is the source tree normalized as build:schemas does for development
+// output, with its own index.json version. Each source file is read and
+// normalized once and written into every snapshot; the guard below counts
+// that work.
+const SNAPSHOT_VERSIONS = ['3.2.4', '3.3.0'];
+const SCHEMA_SOURCE = path.resolve('static/schemas/source');
 const schemaRoots: string[] = [];
+let setupFsCalls: Array<{ name: string; target: string }> = [];
+let sourceFiles: string[] = [];
+
+/** Every snapshot root gets the normalized tree; index.json names the root's version. */
+function writeSnapshots(roots: Map<string, string>): void {
+  sourceFiles = (readdirSync(SCHEMA_SOURCE, { recursive: true, withFileTypes: true }) as Array<{ isFile(): boolean; name: string; parentPath: string }>)
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(SCHEMA_SOURCE, path.join(entry.parentPath, entry.name)))
+    .sort();
+  const dirs = new Set(sourceFiles.map((file) => path.dirname(file)));
+  for (const root of roots.keys()) for (const dir of dirs) mkdirSync(path.join(root, dir), { recursive: true });
+  for (const file of sourceFiles) {
+    const source = readFileSync(path.join(SCHEMA_SOURCE, file), 'utf8');
+    const normalized = file.endsWith('.json') ? source.replaceAll('"/schemas/', '"/schemas/latest/') : source;
+    for (const [root, version] of roots) {
+      const content = file === 'index.json' ? JSON.stringify({ ...JSON.parse(normalized), adcp_version: version }) : normalized;
+      writeFileSync(path.join(root, file), content);
+    }
+  }
+}
+
 beforeAll(() => {
-  for (const version of ['3.2.4', '3.3.0']) {
+  const roots = new Map(SNAPSHOT_VERSIONS.map((version) => {
     const schemaRoot = mkdtempSync(path.join(tmpdir(), 'adcp-storyboard-version-'));
     schemaRoots.push(schemaRoot);
-    cpSync(path.resolve('static/schemas/source'), schemaRoot, { recursive: true });
-    // External roots require a versioned or latest namespace. Normalize only
-    // this disposable copy, as build:schemas does for development output.
-    for (const file of readdirSync(schemaRoot, { recursive: true }) as string[]) {
-      if (!file.endsWith('.json')) continue;
-      const filename = path.join(schemaRoot, file);
-      writeFileSync(filename, readFileSync(filename, 'utf8').replaceAll('"/schemas/', '"/schemas/latest/'));
-    }
-    const indexPath = path.join(schemaRoot, 'index.json');
-    const index = JSON.parse(readFileSync(indexPath, 'utf8'));
-    writeFileSync(indexPath, JSON.stringify({ ...index, adcp_version: version }));
-    registerExternalSchemaRoot(version, schemaRoot);
+    return [schemaRoot, version] as const;
+  }));
+  const fsCalls = recordCalls('node:fs', ['readFileSync', 'writeFileSync', 'cpSync', 'copyFileSync']);
+  try {
+    writeSnapshots(roots);
+  } finally {
+    fsCalls.restore();
   }
-  // Two full copies and rewrites of the schema tree; the default 10 s hook
-  // budget is too tight for that much synchronous I/O on a busy machine.
-}, 60_000);
+  setupFsCalls = fsCalls.calls;
+  for (const [schemaRoot, version] of roots) registerExternalSchemaRoot(version, schemaRoot);
+});
 afterAll(() => {
-  for (const version of ['3.2.4', '3.3.0']) unregisterExternalSchemaRoot(version);
+  for (const version of SNAPSHOT_VERSIONS) unregisterExternalSchemaRoot(version);
   for (const schemaRoot of schemaRoots) rmSync(schemaRoot, { recursive: true, force: true });
+});
+
+it('builds the snapshots reading each source schema once and copying nothing', () => {
+  const under = (dir: string) => ({ target }: { target: string }) => target.startsWith(`${dir}${path.sep}`);
+  expect(sourceFiles.length, 'the source tree has schemas').toBeGreaterThan(100);
+  expect(setupFsCalls.filter(({ name }) => name === 'cpSync' || name === 'copyFileSync'), 'no copy of the tree').toEqual([]);
+  expect(setupFsCalls.filter(({ name }) => name === 'readFileSync').filter(under(SCHEMA_SOURCE)).length, 'one read per source file')
+    .toBe(sourceFiles.length);
+  for (const root of schemaRoots) {
+    expect(setupFsCalls.filter(({ name }) => name === 'readFileSync').filter(under(root)), `nothing read back from ${root}`).toEqual([]);
+    expect(setupFsCalls.filter(({ name }) => name === 'writeFileSync').filter(under(root)).length, `one write per file into ${root}`)
+      .toBe(sourceFiles.length);
+  }
 });
 
 for (const [bundleVersion, wireVersion] of [['3.2.4', '3.2'], ['3.3.0', '3.3']] as const) {
@@ -156,7 +197,7 @@ for (const [bundleVersion, wireVersion] of [['3.2.4', '3.2'], ['3.3.0', '3.3']] 
         expect(endpoint.calls.some(call => call.name === 'get_adcp_capabilities')).toBe(true);
         expect(endpoint.supported).not.toContain('3.2-beta.6');
         expect(endpoint.supported).not.toContain('3.1-beta.5');
-      }, 60_000);
+      });
     }
   });
 }
@@ -182,7 +223,7 @@ it('preserves unsupported-release and RC0 exact-read negative tests on the wire'
     expect(result.passed, JSON.stringify(result)).toBe(true);
     expect(result.response).toMatchObject({ adcp_error: { code: 'VERSION_UNSUPPORTED' } });
   }
-}, 30_000);
+});
 
 it('reproduces the stale prerelease refusal without overriding caller versions', async () => {
   for (const [file, staleVersion] of [
@@ -203,4 +244,4 @@ it('reproduces the stale prerelease refusal without overriding caller versions',
     expect(result.passed).toBe(false);
     expect(result.response).toMatchObject({ adcp_error: { code: 'VERSION_UNSUPPORTED' } });
   }
-}, 30_000);
+});

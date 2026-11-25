@@ -13,6 +13,7 @@ import {
   hostedMultiAgentRoutingForStoryboard,
   withHostedMultiAgentRouting,
 } from '../../src/compliance/hosted-multi-agent-routing.js';
+import { listenOnLoopback } from '../../src/testing/loopback-server.js';
 
 const SELLER_TOKEN = 'owner-secret-seller-token-0123456789';
 const GOVERNANCE_TOKEN = 'grader-governance-token-abcdef0123';
@@ -68,7 +69,7 @@ async function startAgent(name: string, protocols: string[], tools: string[]): P
     }
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }));
   });
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  await listenOnLoopback(server);
   const { port } = server.address() as AddressInfo;
   return { url: `http://127.0.0.1:${port}/mcp`, seen, server };
 }

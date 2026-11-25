@@ -36,10 +36,20 @@ const logger = createLogger('mcp-oauth');
  */
 export const MCP_AUTH_ENABLED = process.env.MCP_AUTH_DISABLED !== 'true';
 
-// Periodically clean up expired OAuth state rows
+// Periodically clean up expired OAuth state rows, once per process. The guard
+// lives on `globalThis` (as in routes/native-auth.ts): a test file that resets
+// the module registry evaluates this module again, and a module-scope guard
+// would arm one more interval, holding that graph, per evaluation.
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const cleanupTimer = setInterval(() => mcpOAuthStateDb.cleanupExpired(), CLEANUP_INTERVAL_MS);
-cleanupTimer.unref();
+const CLEANUP_TIMER_STARTED_KEY = '__adcp_mcp_oauth_state_cleanup_started__';
+const globalWithMcpOAuthCleanup = globalThis as typeof globalThis & {
+  [CLEANUP_TIMER_STARTED_KEY]?: boolean;
+};
+if (!globalWithMcpOAuthCleanup[CLEANUP_TIMER_STARTED_KEY]) {
+  globalWithMcpOAuthCleanup[CLEANUP_TIMER_STARTED_KEY] = true;
+  const cleanupTimer = setInterval(() => mcpOAuthStateDb.cleanupExpired(), CLEANUP_INTERVAL_MS);
+  cleanupTimer.unref();
+}
 
 // ---------------------------------------------------------------------------
 // JWT verification
