@@ -7294,22 +7294,69 @@ function cacheScopeForWholesaleRequest(req: WholesaleFeedRequest): 'public' | 'a
     : 'public';
 }
 
-function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
-  if (map.size === 0) return 'base';
-  const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  return createHash('sha256').update(JSON.stringify(entries)).digest('hex').slice(0, 16);
+function revisionDigest(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex').slice(0, 16);
 }
 
-function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
-  const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
-  const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+/**
+ * Digests of the whole served product feed: every built-in product as this
+ * context serves it, with the session's controller-seeded products and prices
+ * overlaid, before any filter, targeting configuration or pagination. Those
+ * per-request inputs are already part of the version's scope tuple, so one
+ * whole-feed digest is a valid version for every selection, and a change to
+ * any product moves it for all of them. Prices (product and nested signal
+ * targeting `pricing_options`) are digested separately, so a price-only
+ * change moves pricing_version alone (get-products-response.json#pricing_version).
+ * Forecasts are in neither: the version covers the durable offer definition,
+ * not forecast data (list_products.mdx, "Availability forecasts are a per-read
+ * overlay").
+ */
+function servedProductFeedRevisions(session: SessionState, ctx: TrainingContext): { feed: string; pricing: string } {
+  const productMap = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, { ...entry.product }]));
+  overlaySeededProducts(session, productMap);
+  const structure: Array<[string, unknown]> = [];
+  const pricing: Array<[string, unknown]> = [];
+  for (const [productId, product] of [...productMap].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const {
+      pricing_options: pricingOptions,
+      signal_targeting_options: signalOptions,
+      forecast: _forecast,
+      ...rest
+    } = product as unknown as Record<string, unknown>;
+    const signals = Array.isArray(signalOptions) ? signalOptions : undefined;
+    structure.push([productId, {
+      ...rest,
+      ...(signals && {
+        signal_targeting_options: signals.map(option => {
+          if (!isRecord(option)) return option;
+          const { pricing_options: _pricing, ...optionRest } = option;
+          return optionRest;
+        }),
+      }),
+    }]);
+    pricing.push([productId, {
+      pricing_options: pricingOptions ?? null,
+      ...(signals && {
+        signal_targeting_options: signals.map(option => (isRecord(option) ? option.pricing_options ?? null : null)),
+      }),
+    }]);
+  }
+  return { feed: revisionDigest(structure), pricing: revisionDigest(pricing) };
+}
+
+function productWholesaleFeedMeta(
+  req: WholesaleFeedRequest,
+  session: SessionState,
+  ctx: TrainingContext,
+): WholesaleFeedMeta {
+  const revisions = servedProductFeedRevisions(session, ctx);
   const cacheScope = cacheScopeForWholesaleRequest(req);
   // Tokens are scope-keyed: the same feed state yields a distinct token per
   // cache_scope so a token minted under one scope never short-circuits a probe
   // the seller resolves to another. See media-buy/get-products-response.json#unchanged.
   return {
-    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${seededProductsRevision}`,
-    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${seededPricingRevision}`,
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${revisions.feed}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${revisions.pricing}`,
     cache_scope: cacheScope,
   };
 }
@@ -7905,6 +7952,8 @@ export function normalizeProductDiscoveryArgs(
         : {}),
       ...(ifFeedVersion !== undefined && { if_wholesale_feed_version: ifFeedVersion }),
       buying_mode: 'wholesale',
+      // Errors on expanded criteria report the compact path they arrived on.
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'request_proposals') {
@@ -7915,6 +7964,7 @@ export function normalizeProductDiscoveryArgs(
       buying_mode: 'brief',
       __compact_proposal_lifecycle: true,
       __require_proposals: true,
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'refine_proposals') {
@@ -8875,9 +8925,12 @@ function canonicalStringSet(value: unknown): string[] | undefined {
   return [...new Set(value)].sort();
 }
 
-/** Controller fixtures expose discrete inventory coverage separately from
- * overlay_support. The training seller can evaluate country and metro facts;
- * it refuses geography it cannot evaluate instead of ignoring a predicate. */
+/** Built-in products and controller fixtures expose discrete inventory
+ * coverage as `ext.training.coverage`, separately from overlay_support. The
+ * training seller can evaluate country and metro facts; it refuses geography
+ * it cannot evaluate instead of ignoring a predicate. A coverage filter
+ * returns products whose inventory covers a requested area, so a product
+ * that declares no facts for a requested field is left out. */
 function filterProductsByCoverage(
   products: Product[],
   filters: Record<string, unknown>,
@@ -8887,23 +8940,15 @@ function filterProductsByCoverage(
   if (requested.length === 0) return { products };
   const unsupported = requested.find(field => field !== 'countries' && field !== 'metros');
   if (unsupported) return { products: [], unsupported };
-  const coverageByProduct = new Map<Product, Record<string, unknown>>();
-  for (const product of products) {
-    const ext = (product as unknown as Record<string, unknown>).ext;
-    const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
-    const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
-    for (const field of requested) {
-      if (!coverage || !Array.isArray(coverage[field])) return { products: [], unsupported: field };
-    }
-    coverageByProduct.set(product, coverage!);
-  }
   return {
     products: products.filter(product => {
-      const coverage = coverageByProduct.get(product)!;
+      const ext = (product as unknown as Record<string, unknown>).ext;
+      const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
+      const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
       return requested.every(field => {
         const values = filters[field];
-        if (!Array.isArray(values)) return false;
-        const inventory = coverage[field] as unknown[];
+        const inventory = coverage?.[field];
+        if (!Array.isArray(values) || !Array.isArray(inventory)) return false;
         return values.some(value => inventory.some(area => field === 'countries'
           ? area === value
           : isRecord(area) && isRecord(value)
@@ -11898,7 +11943,7 @@ async function handleGetProductsUnlocked(
       .map(proposal => [proposal.proposal_id, proposal]),
   );
   const wholesaleMeta = buyingMode === 'wholesale'
-    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
+    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session, ctx)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
 
@@ -24247,7 +24292,7 @@ export async function handleBuyProducts(
     sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(args, ctx),
   );
-  const feed = productWholesaleFeedMeta(args, session);
+  const feed = productWholesaleFeedMeta(args, session, ctx);
   if (args.feed_version !== feed.wholesale_feed_version) {
     return { errors: [{
       code: 'INVALID_REQUEST',
