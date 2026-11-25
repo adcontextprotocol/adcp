@@ -26,11 +26,23 @@ const WEBSITE_PAGES_TO_EXCLUDE = [
 
 // Aggregate schemas duplicate large portions of the component schemas and
 // overwhelm keyword ranking. Their referenced component schemas are indexed.
-const SCHEMA_FILES_TO_EXCLUDE = new Set([
+// An entry ending in "/" is a whole tree of them: bundled/ holds every
+// request and response with its references inlined, and mcp/<date>/ the same
+// copies as MCP tool schemas. Together they are about 95% of the indexed
+// releases' schema bytes, so they are never read.
+const SCHEMA_FILES_TO_EXCLUDE = [
   'index.json',
   'protocol/get-adcp-capabilities-response.json',
   'brand.json',
-]);
+  'bundled/',
+  'mcp/',
+];
+
+function isExcludedSchema(relativePath: string): boolean {
+  return SCHEMA_FILES_TO_EXCLUDE.some((entry) => (
+    entry.endsWith('/') ? relativePath.startsWith(entry) : relativePath === entry
+  ));
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -517,7 +529,7 @@ function indexSchemaFiles(
 
   for (const filePath of findJsonFiles(schemaRoot)) {
     const relativePath = path.relative(schemaRoot, filePath).replace(/\\/g, '/');
-    if (SCHEMA_FILES_TO_EXCLUDE.has(relativePath)) continue;
+    if (isExcludedSchema(relativePath)) continue;
 
     try {
       const schema = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;

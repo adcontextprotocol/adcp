@@ -108,10 +108,65 @@ it('echoes caller text on one bounded line', () => {
   expect(long.length).toBeLessThanOrEqual(201);
 });
 
+// Schema files initializeDocsIndex read, by path relative to dist/schemas.
+const DIST_SCHEMAS = path.join(REPO_ROOT, 'dist/schemas');
+const schemaReads: string[] = [];
+const AGGREGATE_SCHEMA_TREE = /^[^/]+\/(?:bundled|mcp)\//;
+
+function componentSchemaFileCount(schemaRoot: string): number {
+  let count = 0;
+  for (const entry of fs.readdirSync(schemaRoot, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    const relativePath = path.relative(DIST_SCHEMAS, path.join(entry.parentPath, entry.name));
+    if (!AGGREGATE_SCHEMA_TREE.test(relativePath)) count++;
+  }
+  return count;
+}
+
 describe('docs-indexer', () => {
   beforeAll(async () => {
-    await initializeDocsIndex();
-  }, 30_000);
+    const readFileSync = fs.readFileSync;
+    const spy = vi.spyOn(fs, 'readFileSync').mockImplementation(((file: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+      const relativePath = path.relative(DIST_SCHEMAS, String(file));
+      if (!relativePath.startsWith('..')) schemaReads.push(relativePath);
+      return (readFileSync as (...args: unknown[]) => unknown)(file, ...rest);
+    }) as typeof fs.readFileSync);
+    try {
+      await initializeDocsIndex();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // tp-jyw.69.5: bundled/ and mcp/<date>/ are dereferenced copies of the
+  // component schemas, about 95% of the schema bytes. One startup reads each
+  // component schema at most once (plus each release's error-code enum) and
+  // never opens an aggregate copy.
+  it('reads each component schema once per startup and no aggregate copy', () => {
+    expect(schemaReads.filter((file) => AGGREGATE_SCHEMA_TREE.test(file))).toEqual([]);
+    const versions = getSupportedDocsVersions();
+    const componentFiles = versions.reduce(
+      (sum, { artifactVersion }) => sum + componentSchemaFileCount(path.join(DIST_SCHEMAS, artifactVersion)),
+      0,
+    );
+    expect(schemaReads.length).toBeGreaterThan(0);
+    expect(schemaReads.length).toBeLessThanOrEqual(componentFiles + versions.length);
+  });
+
+  // Aggregate copies used to outrank the pages and component schemas they
+  // duplicate; these searches returned bundled/ copies in their top five.
+  it('returns component schemas, not their aggregate copies, for task and field searches', () => {
+    const cases = [
+      { query: 'targeting_overlay', version: '3.1', expected: 'doc:3.1:media-buy/advanced-topics/targeting' },
+      { query: 'get_products', version: '3.1', expected: 'schema:3.1:media-buy/get-products-request' },
+      { query: 'sync_creatives', version: '3.0', expected: 'schema:3.0:creative/sync-creatives-request' },
+    ];
+    for (const { query, version, expected } of cases) {
+      const ids = searchDocs(query, { version, limit: 5 }).map((doc) => doc.id);
+      expect(ids, `${query} in ${version}`).toContain(expected);
+      expect(ids.filter((id) => /^schema:[^:]+:(?:bundled|mcp)\//.test(id)), `${query} in ${version}`).toEqual([]);
+    }
+  });
 
   it('initializes successfully with docs from the real docs directory', () => {
     expect(isDocsIndexReady()).toBe(true);
