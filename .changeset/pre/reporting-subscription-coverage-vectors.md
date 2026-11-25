@@ -2,7 +2,7 @@
 "adcontextprotocol": patch
 ---
 
-Add canonical reporting-subscription coverage vectors (experimental `media_buy.reporting_subscriptions`) under `static/compliance/source/test-vectors/reporting-subscriptions/`, with a case schema and a pinned IANA tzdata release (2026f). There are 113 cases. 81 are ported from the TypeScript SDK's parity table and re-derived from the spec text. The new cases cover:
+Add canonical reporting-subscription coverage vectors (experimental `media_buy.reporting_subscriptions`) under `static/compliance/source/test-vectors/reporting-subscriptions/`, with a case schema and a pinned IANA tzdata release (2026f). The set launched with 113 cases. 81 are ported from the TypeScript SDK's parity table and re-derived from the spec text. The new cases cover:
 
 - DST gaps and folds at midnight in Santiago, Havana, and Cairo.
 - Lord Howe's 30-minute DST.

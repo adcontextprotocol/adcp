@@ -13,4 +13,4 @@ Nothing in `commercial_terms` changes. Buying a product still buys its complete 
 
 A seller that supports it lists `media_buy.installment_refinement` in `experimental_features` and `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, and the capabilities schema requires the first whenever the second is present. Buyers send `installment_changes` only to such a seller. This is a new feature id. `media_buy.installment_selection`, which named the signed `purchases[].installments[]` withdrawn after beta.1, stays withdrawn, and 4.0 keeps that design (`installment_selection_required_in_4_0`).
 
-New schemas: `core/installment-change.json` and `core/installment-change-set.json`. Every new field is `x-status: experimental` and `x-added-in: 3.3.0`. The training agent doesn't implement it yet.
+New schemas: `core/installment-change.json` and `core/installment-change-set.json`. Every new field is `x-status: experimental` and `x-added-in: 3.3.0`.

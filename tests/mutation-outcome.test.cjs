@@ -114,7 +114,7 @@ test('normative docs define pre-commit evidence and the async no-re-plan rule', 
   assert.match(errorHandling, /whole request envelope/);
   assert.match(errorHandling, /async task that ends in `failed`/);
   assert.match(errorHandling, /MUST NOT emit `unknown` or `applied` unless the claim is fenced/);
-  assert.match(errorHandling, /SHOULD in 3\.3 and becomes a MUST in 3\.4/);
+  assert.match(errorHandling, /SHOULD in 3\.3 and becomes a MUST in 4\.0/);
   assert.match(errorHandling, /PROPOSAL_EXPIRED/);
   assert.match(security, /mutation_outcome/);
   assert.match(security, /async task that ends in `failed`/);

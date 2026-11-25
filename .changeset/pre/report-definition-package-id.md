@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-spec(reporting): report definitions at contract_version 1.2 require a package_id dimension on media-buy reporting (experimental, #8971).
+Report definitions at `contract_version` 1.2 require a package_id dimension on media-buy reporting (experimental, #8971).
 
 Reliable Reporting (`media_buy.reporting_delivery`, experimental) adds report-definition `contract_version` `1.2` in `core/reporting-report-definition.json`. A `1.2` definition keeps every `1.1` rule, including `restatement_policy.official_correction_mode`. When its `dimensions` include `media_buy_id`, they MUST also include `package_id`, so every row carries the buyer-visible package. A definition without `media_buy_id`, whose rows aggregate across media buys (an account-level summary, for example), is exempt at every version. Definitions at `1.0` and `1.1` keep validating unchanged; a grader SHOULD report one that includes `media_buy_id` but not `package_id` as an advisory finding.
 
