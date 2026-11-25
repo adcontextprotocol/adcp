@@ -97,7 +97,15 @@ or other operational work. Empty changesets do not belong in the beta cut.
 
 Do not hand-edit `CHANGELOG.md`; changesets owns it. Correct or remove the
 source `.changeset/*.md` file on `main`, then wait for the release branch to
-regenerate.
+regenerate. Open that correction PR from a `release-audit/<version>` branch
+in this repository (a fork branch never gets the exemption) that only edits or
+deletes existing `.changeset/*.md` and `.changeset/pre/*.md` files, so the
+changeset scope check accepts text edits and bump changes.
+
+The changesets that earlier cuts consumed sit in `.changeset/pre/`, and the
+stable cut consumes them again into the GA changelog. The scope check rejects
+any change to them from other branches, including ones that also change
+protocol files. Only Version Packages may add, move or rename them.
 
 ### Publish
 

@@ -1,12 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { Storage } from '@google-cloud/storage';
 import { canonicalize } from '@adcp/sdk/utils';
-import { AdcpError, type NotificationSubscriptionConfigInput, type ResolveContext } from '@adcp/sdk/server';
+import { AdcpError, projectNotificationSubscriptionReadback, type NotificationSubscriptionConfigInput,
+  type NotificationSubscriptionScope, type PersistentNotificationRuntime, type ResolveContext } from '@adcp/sdk/server';
 import { reportingManagedDeliveryBindingV1 } from '@adcp/sdk/reporting/ledger';
 import { reportingSchedulerErrorMessage, type ReliableReportingConfigurationInputV1 } from '@adcp/sdk/reporting/service';
 import { PostgresReportingLedgerStore, reportingObjectWriteScopeKey, type ReportingPgPool } from '@adcp/reporting-storage';
 import { PostgresReportingManagedDeliveryStore, type ReportingManagedDeliveryAdapterV1 } from '@adcp/reporting-storage/managed';
 import { createGcsReportingManagedDeliveryAdapterV1, createGcsReportingObjectFenceV1, isReportingGcsFenceError, type GcsReportingReaderOptionsV1 } from '@adcp/reporting-storage/gcs';
+import { ReportingNotificationAbandonedError, ReportingNotificationUnsettledError } from '@adcp/reporting-storage/notifications';
 import { createPostgresReliableReportingProductionService,
   type CreatePostgresReliableReportingProductionServiceOptionsV1,
   type PostgresReliableReportingProductionServiceV1,
@@ -44,6 +47,135 @@ function denied(): never {
   throw new AdcpError('ACCOUNT_NOT_FOUND', { recovery: 'correctable', message: 'Reporting account was not found.' });
 }
 
+/** Attempt outcomes over the account's most recent webhook attempts. */
+export interface TrainingReportingSubscriberAttempts {
+  success: number; failed: number; timeout: number; connection_error: number; pending: number;
+  last_fired_at?: string; last_status?: string; last_http_status_code?: number;
+}
+/** An operator's view of one subscriber: identifiers and state, never its URL path, query or credentials. */
+export interface TrainingReportingSubscriber {
+  account_id: string;
+  subscriber_id: string;
+  active: boolean;
+  url_host: string | null;
+  event_types: string[];
+  /** Absent when webhook activity could not be read. */
+  recent_attempts?: TrainingReportingSubscriberAttempts;
+}
+export type TrainingReportingSubscriberUpdate = 'applied' | 'unchanged' | 'not_found';
+
+/**
+ * Sets one subscriber's `active` flag.
+ *
+ * Only `active` changes, so the destination generation and its proof survive:
+ * resuming needs no new challenge. An inactive subscriber is not resolved for
+ * new emissions, a pending activity settles it as terminal on its next claim
+ * instead of retrying, and an outbox retry is suppressed as
+ * `subscription_inactive`. Every write is a compare-and-set on the set's
+ * generation, so a concurrent replacement by the owning principal is never
+ * overwritten.
+ *
+ * Suspending writes the stored set directly, because stopping delivery must not
+ * depend on the destination still validating: the runtime's `replace`
+ * revalidates every destination, so a subscriber whose host stopped resolving
+ * could never be turned off. Resuming goes through `replace`, so a destination
+ * is revalidated before delivery to it restarts.
+ */
+export async function setNotificationSubscriberActive(
+  notifications: Pick<PersistentNotificationRuntime, 'read' | 'replace' | 'store'>,
+  scope: NotificationSubscriptionScope, subscriberId: string, active: boolean,
+): Promise<TrainingReportingSubscriberUpdate> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!active) {
+      const stored = await notifications.store.get(scope);
+      const subscriber = stored?.subscriptions.find(item => item.subscriberId === subscriberId);
+      if (!stored || !subscriber) return 'not_found';
+      if (!subscriber.active) return 'unchanged';
+      const written = await notifications.store.replace({
+        scope, expectedGeneration: stored.generation, nextGeneration: `cfg_${randomUUID()}`,
+        subscriptions: stored.subscriptions.map(item => item.subscriberId === subscriberId ? { ...item, active: false } : item),
+      });
+      if (written.outcome === 'conflict') continue;
+      return written.outcome === 'unchanged' ? 'unchanged' : 'applied';
+    }
+    const current = await notifications.read(scope);
+    const target = current.notificationConfigs.find(config => config.subscriber_id === subscriberId);
+    if (!target || current.generation === undefined) return 'not_found';
+    if (target.active === active) return 'unchanged';
+    const configs = projectNotificationSubscriptionReadback(current.notificationConfigs)
+      .map(config => config.subscriber_id === subscriberId ? { ...config, active } : config);
+    const result = await notifications.replace(scope, configs, { expectedGeneration: current.generation });
+    if (result.outcome === 'conflict') continue;
+    if (result.outcome === 'proof_failed') {
+      throw new Error('Notification subscriber update was refused: the destination needs a new proof');
+    }
+    return result.outcome === 'unchanged' ? 'unchanged' : 'applied';
+  }
+  throw new Error('Notification subscriber update kept conflicting with concurrent replacements');
+}
+
+function urlHost(url: string): string | null {
+  try { return new URL(url).hostname; } catch { return null; }
+}
+
+function summarizeAttempts(records: ReadonlyArray<{ status: string; fired_at: string; http_status_code?: number | null }>): TrainingReportingSubscriberAttempts {
+  const counts = { success: 0, failed: 0, timeout: 0, connection_error: 0, pending: 0 };
+  for (const record of records) {
+    if (Object.hasOwn(counts, record.status)) counts[record.status as keyof typeof counts]++;
+  }
+  const summary: TrainingReportingSubscriberAttempts = counts;
+  // Records arrive newest first.
+  const last = records[0];
+  if (last) {
+    summary.last_fired_at = last.fired_at;
+    summary.last_status = last.status;
+    if (typeof last.http_status_code === 'number') summary.last_http_status_code = last.http_status_code;
+  }
+  return summary;
+}
+
+/** `instanceof` that reports false instead of throwing on a hostile prototype chain. */
+function isInstance<T>(value: unknown, type: abstract new (...args: never[]) => T): value is T {
+  try { return value instanceof type; } catch { return false; }
+}
+
+/**
+ * Non-secret identifiers from `ReportingNotificationUnsettledError` (or the
+ * abandonment that follows it): enough to find the subscriber, never its URL.
+ * Fields are read as own data properties, so an accessor is never invoked.
+ */
+function notificationRetryDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {};
+  for (const key of ['transitionId', 'unsettled', 'attempt', 'maxAttempts']) {
+    const value = ownValue(error, key);
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isSafeInteger(value))) details[key] = value;
+  }
+  const recipients = ownValue(error, 'recipients');
+  let isArray = false;
+  try { isArray = Array.isArray(recipients); } catch { /* a revoked proxy */ }
+  if (isArray) {
+    // Read the length and indexes as own data properties too: no array method or element accessor runs.
+    const length = ownValue(recipients, 'length');
+    const count = typeof length === 'number' && Number.isSafeInteger(length) ? Math.min(Math.max(length, 0), 10) : 0;
+    const subscribers: Record<string, unknown>[] = [];
+    for (let index = 0; index < count; index++) {
+      const recipient = ownValue(recipients, String(index));
+      const subscriberId = ownValue(recipient, 'subscriberId');
+      const accountId = ownValue(ownValue(recipient, 'scope'), 'accountId');
+      const reason = ownValue(recipient, 'reason');
+      const finalStatus = ownValue(recipient, 'finalStatus');
+      subscribers.push({
+        ...(typeof subscriberId === 'string' ? { subscriberId } : {}),
+        ...(typeof accountId === 'string' ? { accountId } : {}),
+        ...(typeof reason === 'string' ? { reason } : {}),
+        ...(typeof finalStatus === 'number' ? { finalStatus } : {}),
+      });
+    }
+    details.subscribers = subscribers;
+  }
+  return details;
+}
+
 /** Keep the PostgreSQL receipt when the storage layer wraps a query failure. */
 export function logTrainingReportingSchedulerFailure(error: unknown): void {
   let databaseCode: string | undefined;
@@ -60,8 +192,19 @@ export function logTrainingReportingSchedulerFailure(error: unknown): void {
       cause = next && 'value' in next ? next.value : undefined;
     } catch { break; }
   }
-  logger.error({ diagnostic: reportingSchedulerErrorMessage(error), databaseCode },
-    'Durable reporting scheduler failed');
+  const diagnostic = reportingSchedulerErrorMessage(error);
+  // A webhook subscriber that is not accepting deliveries is an expected retry,
+  // bounded by the SDK's maxAttempts; only its abandonment needs an operator.
+  // Any other failure, including a plain Error with the same message, stays at
+  // error.
+  if (databaseCode === undefined && isInstance(error, ReportingNotificationUnsettledError)) {
+    logger.warn({ diagnostic, ...notificationRetryDetails(error) }, 'Reporting notification delivery is retrying');
+    return;
+  }
+  logger.error({
+    diagnostic, databaseCode,
+    ...(isInstance(error, ReportingNotificationAbandonedError) ? notificationRetryDetails(error) : {}),
+  }, 'Durable reporting scheduler failed');
 }
 
 /** Reserve one active or unfinished canary account per organization. Retired
@@ -393,6 +536,37 @@ export class TrainingGcsReporting {
     if (!await this.owns(principal, accountId)) denied();
     return this.service.notifications.replace({ kind: 'account', tenantId: 'sales', principalId: principal, accountId }, configs);
   }
+  /** Every subscriber on this installation's accounts, for operators; needs no principal credential. */
+  async listNotificationSubscribers(): Promise<TrainingReportingSubscriber[]> {
+    if (this.stopping) unavailable();
+    const { rows } = await this.db.query<{ principal_id: string; account_id: string }>(
+      'SELECT principal_id, account_id FROM host_accounts ORDER BY account_id LIMIT 200');
+    const subscribers: TrainingReportingSubscriber[] = [];
+    for (const row of rows) {
+      const [{ notificationConfigs }, activity] = await Promise.all([
+        this.service.notifications.read({ kind: 'account', tenantId: 'sales', principalId: row.principal_id, accountId: row.account_id }),
+        this.service.webhookActivity.listActivity({ tenantId: 'sales', principalId: row.principal_id, accountId: row.account_id, limit: 200 })
+          .catch(() => undefined),
+      ]);
+      for (const config of notificationConfigs) {
+        subscribers.push({
+          account_id: row.account_id, subscriber_id: config.subscriber_id, active: config.active,
+          url_host: urlHost(config.url), event_types: [...config.event_types],
+          ...(activity ? { recent_attempts: summarizeAttempts(activity.filter(record => record.subscriber_id === config.subscriber_id)) } : {}),
+        });
+      }
+    }
+    return subscribers;
+  }
+  /** Suspend (`active: false`) or resume one subscriber as an operator. */
+  async setNotificationSubscriberActive(accountId: string, subscriberId: string, active: boolean): Promise<TrainingReportingSubscriberUpdate> {
+    if (this.stopping) unavailable();
+    const { rows } = await this.db.query<{ principal_id: string }>(
+      'SELECT principal_id FROM host_accounts WHERE account_id = $1', [accountId]);
+    if (!rows[0]) return 'not_found';
+    return setNotificationSubscriberActive(this.service.notifications,
+      { kind: 'account', tenantId: 'sales', principalId: rows[0].principal_id, accountId }, subscriberId, active);
+  }
   async revoke(principal: string, accountId: string, destination: string, generation: number): Promise<boolean> {
     if (!await this.owns(principal, accountId)) denied();
     return this.service.stores.managed.revokeDestination({ account_id: accountId, destination_ref: destination, generation, revoked_at: new Date().toISOString() });
@@ -443,7 +617,9 @@ function redactCredentials(text: string): string {
   }
   return redacted.slice(0, 1000);
 }
-function ownValue(target: object, key: string): unknown {
+/** Own data property only: never invokes an accessor. */
+function ownValue(target: unknown, key: string): unknown {
+  if (typeof target !== 'object' || target === null) return undefined;
   try {
     const descriptor = Object.getOwnPropertyDescriptor(target, key);
     return descriptor && 'value' in descriptor ? descriptor.value : undefined;
